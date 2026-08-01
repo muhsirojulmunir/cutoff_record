@@ -225,6 +225,47 @@ class SalesOrderService
     }
 
     /**
+     * Periksa kecukupan stok seluruh item lebih dulu.
+     *
+     * Pemeriksaan dilakukan sekaligus supaya penyetuju melihat seluruh produk
+     * yang kurang dalam satu pesan, lengkap dengan jumlah yang dibutuhkan dan
+     * yang tersedia — bukan menemukannya satu per satu setiap kali menekan
+     * tombol approve.
+     */
+    private function assertStockIsSufficient(SalesOrder $salesOrder): void
+    {
+        $shortages = [];
+
+        foreach ($salesOrder->items as $item) {
+            if (!$item->product_id || $item->quantity <= 0) continue;
+
+            $product = Product::find($item->product_id);
+            if (!$product) continue;
+
+            $available = (int) $product->stock;
+            $needed    = (int) $item->quantity;
+
+            if ($available < $needed) {
+                $shortages[] = sprintf(
+                    '%s (%s) butuh %d, tersedia %d',
+                    $product->name,
+                    $product->sku,
+                    $needed,
+                    $available
+                );
+            }
+        }
+
+        if ($shortages === []) return;
+
+        throw new InvalidArgumentException(
+            'Stok tidak mencukupi sehingga Sales Order belum bisa disetujui — '
+            . implode('; ', $shortages)
+            . '. Lakukan penerimaan barang dari PO atau penyesuaian stok terlebih dahulu.'
+        );
+    }
+
+    /**
      * Potong stok fisik untuk seluruh item Sales Order.
      *
      * Dipanggil saat SO disetujui — pada titik itu barang sudah dipastikan
@@ -240,6 +281,8 @@ class SalesOrderService
 
         $warehouseId = $this->resolveWarehouseId($salesOrder);
         $salesOrder->loadMissing('items');
+
+        $this->assertStockIsSufficient($salesOrder);
 
         foreach ($salesOrder->items as $item) {
             if (!$item->product_id || $item->quantity <= 0) continue;
