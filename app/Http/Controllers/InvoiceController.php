@@ -7,6 +7,7 @@ use App\Http\Requests\UpdateInvoiceRequest;
 use App\Models\Invoice;
 use App\Models\SalesOrder;
 use App\Services\InvoiceService;
+use App\Services\WorkQueueService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -36,6 +37,7 @@ class InvoiceController extends Controller
         $endDate = $request->input('end_date');
         $dueStartDate = $request->input('due_start_date');
         $dueEndDate = $request->input('due_end_date');
+        $dueFilter = $request->input('due_filter');
 
         // Automatically update overdue status on view for accuracy
         $unpaidOrOverdue = Invoice::whereIn('status', ['unpaid', 'overdue'])->get();
@@ -70,13 +72,32 @@ class InvoiceController extends Controller
             ->when($dueEndDate, function ($query, $dueEndDate) {
                 $query->whereDate('due_date', '<=', $dueEndDate);
             })
+            // Daftar tindak lanjut Finance: siapa yang telat, siapa yang segera
+            // jatuh tempo. Selalu hanya invoice yang masih menyisakan tagihan.
+            ->when($dueFilter, function ($query, $dueFilter) {
+                $today    = now()->toDateString();
+                $dueLimit = now()->addDays(WorkQueueService::DUE_SOON_DAYS)->toDateString();
+
+                $query->whereNotIn('status', ['paid', 'cancelled'])
+                    ->whereColumn('paid_amount', '<', 'total_amount');
+
+                if ($dueFilter === 'overdue') {
+                    $query->whereNotNull('due_date')->whereDate('due_date', '<', $today);
+                } elseif ($dueFilter === 'due_soon') {
+                    $query->whereNotNull('due_date')
+                        ->whereDate('due_date', '>=', $today)
+                        ->whereDate('due_date', '<=', $dueLimit);
+                }
+
+                $query->reorder('due_date', 'asc');
+            })
             ->orderBy('id', 'desc')
             ->paginate(15)
             ->withQueryString();
 
         return Inertia::render('Invoices/Index', [
             'invoices' => $invoices,
-            'filters'  => $request->only(['search', 'status', 'start_date', 'end_date', 'due_start_date', 'due_end_date']),
+            'filters'  => $request->only(['search', 'status', 'start_date', 'end_date', 'due_start_date', 'due_end_date', 'due_filter']),
         ]);
     }
 

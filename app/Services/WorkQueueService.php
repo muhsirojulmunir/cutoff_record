@@ -25,6 +25,9 @@ class WorkQueueService
     /** Severity: dampak paling tinggi lebih dulu saat diurutkan. */
     private const SEVERITY_ORDER = ['critical' => 0, 'warning' => 1, 'info' => 2];
 
+    /** Berapa hari sebelum jatuh tempo Finance mulai diingatkan menagih. */
+    public const DUE_SOON_DAYS = 7;
+
     /**
      * @return array{items: array<int, array<string, mixed>>, total: int, critical: int}
      */
@@ -89,6 +92,24 @@ class WorkQueueService
     {
         return Invoice::whereNotIn('status', ['paid', 'cancelled'])
             ->whereColumn('paid_amount', '<', 'total_amount');
+    }
+
+    /** Belum telat, tapi jatuh tempo sudah dekat — waktunya Finance menagih. */
+    private function dueSoonInvoices(): Builder
+    {
+        return $this->unpaidInvoices()
+            ->whereNotNull('due_date')
+            ->whereDate('due_date', '>=', now()->toDateString())
+            ->whereDate('due_date', '<=', now()->addDays(self::DUE_SOON_DAYS)->toDateString());
+    }
+
+    /** Masih lama jatuh temponya, atau memang tanpa tanggal jatuh tempo. */
+    private function notYetDueInvoices(): Builder
+    {
+        return $this->unpaidInvoices()->where(
+            fn($q) => $q->whereNull('due_date')
+                ->orWhereDate('due_date', '>', now()->addDays(self::DUE_SOON_DAYS)->toDateString())
+        );
     }
 
     /** Tagihan pabrik yang masih menyisakan kewajiban bayar. */
@@ -184,10 +205,22 @@ class WorkQueueService
                 'title'       => 'Customer telat bayar',
                 'description' => ':count invoice sudah lewat jatuh tempo, total :amount belum tertagih.',
                 'severity'    => 'critical',
-                'href'        => '/invoices?status=overdue',
+                'href'        => '/invoices?due_filter=overdue',
                 'count'       => fn() => $this->unpaidInvoices()->whereDate('due_date', '<', $today)->count(),
                 'amount'      => fn() => $this->unpaidInvoices()->whereDate('due_date', '<', $today)
                     ->sum(DB::raw('total_amount - paid_amount')),
+            ],
+            [
+                // Peringatan sebelum telat, supaya Finance sempat menagih lebih dulu.
+                'key'         => 'invoice_due_soon',
+                'type'        => 'invoice',
+                'permission'  => 'invoice.view',
+                'title'       => 'Jatuh tempo dalam ' . self::DUE_SOON_DAYS . ' hari',
+                'description' => ':count invoice akan jatuh tempo, total :amount. Ingatkan customer sebelum telat.',
+                'severity'    => 'warning',
+                'href'        => '/invoices?due_filter=due_soon',
+                'count'       => fn() => $this->dueSoonInvoices()->count(),
+                'amount'      => fn() => $this->dueSoonInvoices()->sum(DB::raw('total_amount - paid_amount')),
             ],
             [
                 'key'         => 'invoice_awaiting_payment',
@@ -196,13 +229,9 @@ class WorkQueueService
                 'title'       => 'Menunggu pembayaran customer',
                 'description' => ':count invoice belum lunas dan belum jatuh tempo, nilai :amount.',
                 'severity'    => 'info',
-                'href'        => '/invoices?status=unpaid',
-                'count'       => fn() => $this->unpaidInvoices()
-                    ->where(fn($q) => $q->whereNull('due_date')->orWhereDate('due_date', '>=', $today))
-                    ->count(),
-                'amount'      => fn() => $this->unpaidInvoices()
-                    ->where(fn($q) => $q->whereNull('due_date')->orWhereDate('due_date', '>=', $today))
-                    ->sum(DB::raw('total_amount - paid_amount')),
+                'href'        => '/invoices?due_filter=unpaid',
+                'count'       => fn() => $this->notYetDueInvoices()->count(),
+                'amount'      => fn() => $this->notYetDueInvoices()->sum(DB::raw('total_amount - paid_amount')),
             ],
 
             // ── Kewajiban bayar ke pabrik / supplier (uang keluar) ──────────────
