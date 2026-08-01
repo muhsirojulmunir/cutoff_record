@@ -50,6 +50,8 @@ interface InvoiceIndexProps {
     end_date?: string;
     due_start_date?: string;
     due_end_date?: string;
+    /** Pintasan Finance: overdue | due_soon | unpaid */
+    due_filter?: string;
   };
 }
 
@@ -68,6 +70,32 @@ const statusLabel: Record<string, string> = {
   overdue:        'Jatuh Tempo (Overdue)',
   cancelled:      'Dibatalkan',
 };
+
+/** Berapa hari sebelum jatuh tempo mulai diberi penanda kuning. */
+const DUE_SOON_DAYS = 7;
+
+/**
+ * Penanda tindak lanjut Finance pada kolom jatuh tempo: sudah telat berapa
+ * hari, atau tinggal berapa hari lagi. Invoice lunas/batal tidak diberi
+ * penanda karena tidak perlu ditagih.
+ */
+function dueMarker(invoice: Invoice): { label: string; className: string } | null {
+  if (!invoice.due_date) return null;
+  if (invoice.status === 'paid' || invoice.status === 'cancelled') return null;
+  if (Number(invoice.remaining_amount) <= 0) return null;
+
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+  const due = startOfDay(new Date(invoice.due_date));
+  const today = startOfDay(new Date());
+  const days = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+
+  if (days < 0) return { label: `Telat ${Math.abs(days)} hari`, className: 'text-rose-400' };
+  if (days === 0) return { label: 'Jatuh tempo hari ini', className: 'text-amber-400' };
+  if (days <= DUE_SOON_DAYS) return { label: `${days} hari lagi`, className: 'text-amber-400' };
+
+  return null;
+}
 
 export default function Index({ invoices, filters }: InvoiceIndexProps) {
   const { flash, auth } = usePage<PageProps>().props;
@@ -129,6 +157,30 @@ export default function Index({ invoices, filters }: InvoiceIndexProps) {
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight">Invoice Customer</h1>
           <p className="text-slate-400 text-xs mt-1">Penjualan / Laporan Tagihan Resmi Customer</p>
+        </div>
+
+        {/* Pintasan tindak lanjut penagihan untuk Finance */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-500 mr-1">Tindak Lanjut</span>
+          {[
+            { key: 'overdue', label: 'Telat Bayar', active: 'bg-rose-500/15 text-rose-400 border-rose-500/30' },
+            { key: 'due_soon', label: `Jatuh Tempo ≤ ${DUE_SOON_DAYS} Hari`, active: 'bg-amber-400/15 text-amber-400 border-amber-400/30' },
+            { key: 'unpaid', label: 'Semua Belum Lunas', active: 'bg-violet-500/15 text-violet-400 border-violet-500/30' },
+          ].map((chip) => {
+            const isActive = filters.due_filter === chip.key;
+            return (
+              <button
+                key={chip.key}
+                type="button"
+                onClick={() => router.get('/invoices', isActive ? {} : { due_filter: chip.key }, { preserveState: true })}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
+                  isActive ? chip.active : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
+                }`}
+              >
+                {chip.label}
+              </button>
+            );
+          })}
         </div>
 
         {/* Alerts */}
@@ -291,11 +343,22 @@ export default function Index({ invoices, filters }: InvoiceIndexProps) {
                       </td>
                       <td className="py-3.5 px-6 text-center text-xs whitespace-nowrap text-slate-300">
                         {invoice.due_date ? (
-                          new Date(invoice.due_date).toLocaleDateString('id-ID', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric',
-                          })
+                          <>
+                            {new Date(invoice.due_date).toLocaleDateString('id-ID', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric',
+                            })}
+                            {(() => {
+                              const marker = dueMarker(invoice);
+                              if (!marker) return null;
+                              return (
+                                <span className={`mt-1 block text-[10px] font-bold ${marker.className}`}>
+                                  {marker.label}
+                                </span>
+                              );
+                            })()}
+                          </>
                         ) : (
                           <span className="text-slate-600">—</span>
                         )}
