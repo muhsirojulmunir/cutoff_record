@@ -5,11 +5,16 @@ namespace App\Services;
 use App\Models\Product;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderItem;
+use App\Models\Warehouse;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 class SalesOrderService
 {
+    public function __construct(
+        private readonly StockMovementService $stockMovementService,
+    ) {}
+
     /**
      * Create a new Sales Order.
      */
@@ -181,11 +186,118 @@ class SalesOrderService
                 'approved_at' => now(),
             ]);
 
+            // Barang dinyatakan keluar untuk pelanggan pada titik ini. Bila stok
+            // kurang, exception dari sini membatalkan seluruh persetujuan.
+            $this->deductStock($salesOrder->fresh(['items']), auth()->id());
+
             // SO Grosir dibayar di kasir, jadi invoicenya terbit begitu disetujui.
             $this->issueGrosirInvoice($salesOrder->fresh(['invoice']));
 
             return $approved;
         });
+    }
+
+    /**
+     * Order marketplace memotong stoknya sendiri lewat reservasi saat
+     * fulfillment, jadi jalur ini harus melewatinya agar stok tidak
+     * terpotong dua kali.
+     */
+    private function usesOwnStockFlow(SalesOrder $salesOrder): bool
+    {
+        return $salesOrder->source === 'marketplace' || $salesOrder->marketplace_order_id !== null;
+    }
+
+    /**
+     * Gudang tujuan pengeluaran barang. SO lama banyak yang belum mengisi
+     * gudang, jadi dipakai gudang aktif pertama sebagai penanda. Nilai null
+     * tetap diterima — saldo stok bersifat global, gudang hanya keterangan
+     * pada catatan pergerakan, sehingga stok tidak boleh gagal terpotong
+     * hanya karena gudang belum disiapkan.
+     */
+    private function resolveWarehouseId(SalesOrder $salesOrder): ?int
+    {
+        if ($salesOrder->warehouse_id) return (int) $salesOrder->warehouse_id;
+
+        $warehouseId = Warehouse::where('status', 'active')->orderBy('id')->value('id')
+            ?? Warehouse::orderBy('id')->value('id');
+
+        return $warehouseId ? (int) $warehouseId : null;
+    }
+
+    /**
+     * Potong stok fisik untuk seluruh item Sales Order.
+     *
+     * Dipanggil saat SO disetujui — pada titik itu barang sudah dipastikan
+     * keluar untuk pelanggan. Bila stok tidak mencukupi, StockMovementService
+     * melempar exception sehingga persetujuan ikut dibatalkan; ini yang
+     * mencegah penjualan barang yang sebenarnya sudah habis.
+     */
+    public function deductStock(SalesOrder $salesOrder, ?int $userId = null): bool
+    {
+        if ($this->usesOwnStockFlow($salesOrder) || $salesOrder->stock_deducted_at) {
+            return false;
+        }
+
+        $warehouseId = $this->resolveWarehouseId($salesOrder);
+        $salesOrder->loadMissing('items');
+
+        foreach ($salesOrder->items as $item) {
+            if (!$item->product_id || $item->quantity <= 0) continue;
+
+            $product = Product::find($item->product_id);
+            if (!$product) continue;
+
+            $this->stockMovementService->recordStockOut(
+                $product,
+                $warehouseId,
+                (int) $item->quantity,
+                'sales_order',
+                $salesOrder->id,
+                $salesOrder->so_number,
+                "Penjualan SO {$salesOrder->so_number}",
+                $userId
+            );
+        }
+
+        $salesOrder->update(['stock_deducted_at' => now()]);
+
+        return true;
+    }
+
+    /**
+     * Kembalikan stok saat SO dibatalkan, hanya bila stoknya memang pernah
+     * dipotong. Tanpa ini, pembatalan akan menghilangkan barang dari catatan.
+     */
+    public function restoreStock(SalesOrder $salesOrder, ?int $userId = null): bool
+    {
+        if (!$salesOrder->stock_deducted_at) {
+            return false;
+        }
+
+        $warehouseId = $this->resolveWarehouseId($salesOrder);
+        $salesOrder->loadMissing('items');
+
+        foreach ($salesOrder->items as $item) {
+            if (!$item->product_id || $item->quantity <= 0) continue;
+
+            $product = Product::find($item->product_id);
+            if (!$product) continue;
+
+            $this->stockMovementService->recordStockIn(
+                $product,
+                $warehouseId,
+                (int) $item->quantity,
+                'sales_order',
+                $salesOrder->id,
+                $salesOrder->so_number,
+                "Pembatalan SO {$salesOrder->so_number} — stok dikembalikan",
+                $userId
+            );
+        }
+
+        $salesOrder->update(['stock_deducted_at' => null]);
+
+        return true;
     }
 
     /**
@@ -265,7 +377,12 @@ class SalesOrderService
             throw new InvalidArgumentException('Sales Order yang sudah Selesai atau Dibatalkan tidak dapat diubah lagi.');
         }
 
-        return $salesOrder->update(['status' => 'cancelled']);
+        return DB::transaction(function () use ($salesOrder) {
+            // Barang batal keluar ⇒ stok yang sempat dipotong dikembalikan.
+            $this->restoreStock($salesOrder->fresh(['items']), auth()->id());
+
+            return $salesOrder->update(['status' => 'cancelled']);
+        });
     }
 
     /**

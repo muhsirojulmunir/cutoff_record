@@ -48,14 +48,16 @@ class SalesOrder extends Model
         'approved_at',
         'completed_by',
         'completed_at',
+        'stock_deducted_at',
     ];
 
     protected $casts = [
         'order_date'      => 'date',
         'payment_date'    => 'datetime',
-        'submitted_at'    => 'datetime',
-        'approved_at'     => 'datetime',
-        'completed_at'    => 'datetime',
+        'submitted_at'      => 'datetime',
+        'approved_at'       => 'datetime',
+        'completed_at'      => 'datetime',
+        'stock_deducted_at' => 'datetime',
         'subtotal'        => 'decimal:2',
         'discount_amount' => 'decimal:2',
         'tax_amount'      => 'decimal:2',
