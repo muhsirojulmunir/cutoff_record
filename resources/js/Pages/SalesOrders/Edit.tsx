@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
+import CurrencyInput from '@/Components/CurrencyInput';
 import { PageProps } from '../../Types';
 
 interface Customer {
@@ -346,10 +347,10 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                         <div className="space-y-1">
                           <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">Kuantitas</label>
-                          <input
-                            type="number"
+                          <CurrencyInput
+                            hidePrefix
                             value={item.quantity}
-                            onChange={(e) => handleItemChange(idx, 'quantity', Number(e.target.value))}
+                            onChange={(v) => handleItemChange(idx, 'quantity', v)}
                             className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 text-xs focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
                             min="1"
                             required
@@ -361,10 +362,10 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
 
                         <div className="space-y-1">
                           <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">Harga Satuan</label>
-                          <input
-                            type="number"
+                          <CurrencyInput
+                            hidePrefix
                             value={item.price}
-                            onChange={(e) => handleItemChange(idx, 'price', Number(e.target.value))}
+                            onChange={(v) => handleItemChange(idx, 'price', v)}
                             className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 text-xs focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
                             min="0"
                             required
@@ -376,10 +377,10 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
 
                         <div className="space-y-1">
                           <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">Diskon Item</label>
-                          <input
-                            type="number"
+                          <CurrencyInput
+                            hidePrefix
                             value={item.discount_amount}
-                            onChange={(e) => handleItemChange(idx, 'discount_amount', Number(e.target.value))}
+                            onChange={(v) => handleItemChange(idx, 'discount_amount', v)}
                             className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 text-xs focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
                             min="0"
                           />
@@ -387,10 +388,10 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
 
                         <div className="space-y-1">
                           <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">Pajak Item</label>
-                          <input
-                            type="number"
+                          <CurrencyInput
+                            hidePrefix
                             value={item.tax_amount}
-                            onChange={(e) => handleItemChange(idx, 'tax_amount', Number(e.target.value))}
+                            onChange={(v) => handleItemChange(idx, 'tax_amount', v)}
                             className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 text-xs focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
                             min="0"
                           />
@@ -439,10 +440,10 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
                   <div className="flex justify-between items-center">
                     <label className="text-slate-500">Diskon Transaksi (Header)</label>
                   </div>
-                  <input
-                    type="number"
+                  <CurrencyInput
+                    hidePrefix
                     value={data.discount_amount}
-                    onChange={(e) => setData('discount_amount', Number(e.target.value))}
+                    onChange={(v) => setData('discount_amount', v)}
                     className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 text-xs focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
                     min="0"
                   />
@@ -454,10 +455,10 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
                   <div className="flex justify-between items-center">
                     <label className="text-slate-500">Pajak Transaksi (Header)</label>
                   </div>
-                  <input
-                    type="number"
+                  <CurrencyInput
+                    hidePrefix
                     value={data.tax_amount}
-                    onChange={(e) => setData('tax_amount', Number(e.target.value))}
+                    onChange={(v) => setData('tax_amount', v)}
                     className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 text-xs focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
                     min="0"
                   />
@@ -469,10 +470,10 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
                   <div className="flex justify-between items-center">
                     <label className="text-slate-500">Biaya Pengiriman</label>
                   </div>
-                  <input
-                    type="number"
+                  <CurrencyInput
+                    hidePrefix
                     value={data.shipping_cost}
-                    onChange={(e) => setData('shipping_cost', Number(e.target.value))}
+                    onChange={(v) => setData('shipping_cost', v)}
                     className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 text-xs focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
                     min="0"
                   />

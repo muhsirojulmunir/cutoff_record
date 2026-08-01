@@ -1,6 +1,7 @@
 import React from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
+import CurrencyInput from '@/Components/CurrencyInput';
 
 interface Category {
   id: number;
@@ -194,14 +195,13 @@ export default function Edit({ product, categories }: EditProps) {
                 <label htmlFor="purchase_price" className="block text-sm font-semibold text-slate-300">
                   Harga Beli <span className="text-violet-400">*</span>
                 </label>
-                <input
+                <CurrencyInput
                   id="purchase_price"
-                  type="number"
                   value={data.purchase_price}
-                  onChange={(e) => setData('purchase_price', e.target.value)}
+                  onChange={(v) => setData('purchase_price', String(v))}
+                  disabled={processing}
                   className={`w-full px-4 py-2.5 rounded-xl bg-slate-900 border text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all
                     ${errors.purchase_price ? 'border-rose-500' : 'border-slate-800 hover:border-slate-700'}`}
-                  disabled={processing}
                 />
                 {errors.purchase_price && <p className="text-rose-400 text-xs mt-1">{errors.purchase_price}</p>}
               </div>
@@ -211,14 +211,13 @@ export default function Edit({ product, categories }: EditProps) {
                 <label htmlFor="selling_price" className="block text-sm font-semibold text-slate-300">
                   Harga Jual <span className="text-violet-400">*</span>
                 </label>
-                <input
+                <CurrencyInput
                   id="selling_price"
-                  type="number"
                   value={data.selling_price}
-                  onChange={(e) => setData('selling_price', e.target.value)}
+                  onChange={(v) => setData('selling_price', String(v))}
+                  disabled={processing}
                   className={`w-full px-4 py-2.5 rounded-xl bg-slate-900 border text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all
                     ${errors.selling_price ? 'border-rose-500' : 'border-slate-800 hover:border-slate-700'}`}
-                  disabled={processing}
                 />
                 {errors.selling_price && <p className="text-rose-400 text-xs mt-1">{errors.selling_price}</p>}
               </div>
@@ -228,14 +227,14 @@ export default function Edit({ product, categories }: EditProps) {
                 <label htmlFor="minimum_stock" className="block text-sm font-semibold text-slate-300">
                   Minimum Stok <span className="text-violet-400">*</span>
                 </label>
-                <input
+                <CurrencyInput
                   id="minimum_stock"
-                  type="number"
+                  hidePrefix
                   value={data.minimum_stock}
-                  onChange={(e) => setData('minimum_stock', e.target.value)}
+                  onChange={(v) => setData('minimum_stock', String(v))}
+                  disabled={processing}
                   className={`w-full px-4 py-2.5 rounded-xl bg-slate-900 border text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all
                     ${errors.minimum_stock ? 'border-rose-500' : 'border-slate-800 hover:border-slate-700'}`}
-                  disabled={processing}
                 />
                 {errors.minimum_stock && <p className="text-rose-400 text-xs mt-1">{errors.minimum_stock}</p>}
               </div>

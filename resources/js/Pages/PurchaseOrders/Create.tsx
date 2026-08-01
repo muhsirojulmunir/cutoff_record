@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
+import CurrencyInput from '@/Components/CurrencyInput';
 import { PageProps } from '../../Types';
 
 interface Supplier {
@@ -293,11 +294,10 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
                           {/* Quantity */}
                           <div className="md:col-span-1 space-y-1">
                             <label className="block md:hidden text-xs font-semibold text-slate-400">Kuantitas (Qty)</label>
-                            <input
-                              type="number"
-                              min="1"
+                            <CurrencyInput
+                              hidePrefix
                               value={item.quantity}
-                              onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
+                              onChange={(v) => handleItemChange(index, 'quantity', v)}
                               placeholder="1"
                               className="w-full px-2.5 py-2 rounded-xl bg-slate-900 border border-slate-700/80 text-slate-200 text-xs text-center focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all font-mono"
                             />
@@ -309,11 +309,10 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
                             <label className="block md:hidden text-xs font-semibold text-slate-400">Harga Satuan (Rp)</label>
                             <div className="flex rounded-xl bg-slate-900 border border-slate-700/80 overflow-hidden focus-within:ring-2 focus-within:ring-violet-500">
                               <span className="px-2 py-2 text-[10px] font-bold text-slate-500 bg-slate-800/50 border-r border-slate-700/80 flex items-center shrink-0">Rp</span>
-                              <input
-                                type="number"
-                                min="0"
+                              <CurrencyInput
+                                hidePrefix
                                 value={item.price}
-                                onChange={(e) => handleItemChange(index, 'price', Number(e.target.value))}
+                                onChange={(v) => handleItemChange(index, 'price', v)}
                                 placeholder="0"
                                 className="w-full px-2 py-2 bg-transparent text-slate-200 text-xs font-mono focus:outline-none min-w-0"
                               />
@@ -326,11 +325,10 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
                             <label className="block md:hidden text-xs font-semibold text-slate-400">Diskon Item (Rp)</label>
                             <div className="flex rounded-xl bg-slate-900 border border-slate-700/80 overflow-hidden focus-within:ring-2 focus-within:ring-violet-500">
                               <span className="px-2 py-2 text-[10px] font-bold text-slate-500 bg-slate-800/50 border-r border-slate-700/80 flex items-center shrink-0">Rp</span>
-                              <input
-                                type="number"
-                                min="0"
+                              <CurrencyInput
+                                hidePrefix
                                 value={item.discount_amount}
-                                onChange={(e) => handleItemChange(index, 'discount_amount', Number(e.target.value))}
+                                onChange={(v) => handleItemChange(index, 'discount_amount', v)}
                                 placeholder="0"
                                 className="w-full px-2 py-2 bg-transparent text-slate-200 text-xs font-mono focus:outline-none min-w-0"
                               />
@@ -343,11 +341,10 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
                             <label className="block md:hidden text-xs font-semibold text-slate-400">Pajak Item (Rp)</label>
                             <div className="flex rounded-xl bg-slate-900 border border-slate-700/80 overflow-hidden focus-within:ring-2 focus-within:ring-violet-500">
                               <span className="px-2 py-2 text-[10px] font-bold text-slate-500 bg-slate-800/50 border-r border-slate-700/80 flex items-center shrink-0">Rp</span>
-                              <input
-                                type="number"
-                                min="0"
+                              <CurrencyInput
+                                hidePrefix
                                 value={item.tax_amount}
-                                onChange={(e) => handleItemChange(index, 'tax_amount', Number(e.target.value))}
+                                onChange={(v) => handleItemChange(index, 'tax_amount', v)}
                                 placeholder="0"
                                 className="w-full px-2 py-2 bg-transparent text-slate-200 text-xs font-mono focus:outline-none min-w-0"
                               />
@@ -400,11 +397,10 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
                 {/* Discount Header */}
                 <div className="flex justify-between items-center pt-3">
                   <span className="text-slate-400">Diskon PO</span>
-                  <input
-                    type="number"
-                    min="0"
+                  <CurrencyInput
+                    hidePrefix
                     value={data.discount_amount}
-                    onChange={(e) => setData('discount_amount', Number(e.target.value))}
+                    onChange={(v) => setData('discount_amount', v)}
                     className="w-32 px-3 py-1 bg-slate-900 border border-slate-800 text-slate-200 text-sm text-right rounded-lg focus:ring-1 focus:ring-violet-500 focus:outline-none"
                   />
                 </div>
@@ -412,11 +408,10 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
                 {/* Tax Header */}
                 <div className="flex justify-between items-center pt-3">
                   <span className="text-slate-400">Pajak PO</span>
-                  <input
-                    type="number"
-                    min="0"
+                  <CurrencyInput
+                    hidePrefix
                     value={data.tax_amount}
-                    onChange={(e) => setData('tax_amount', Number(e.target.value))}
+                    onChange={(v) => setData('tax_amount', v)}
                     className="w-32 px-3 py-1 bg-slate-900 border border-slate-800 text-slate-200 text-sm text-right rounded-lg focus:ring-1 focus:ring-violet-500 focus:outline-none"
                   />
                 </div>
@@ -424,11 +419,10 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
                 {/* Shipping Header */}
                 <div className="flex justify-between items-center pt-3">
                   <span className="text-slate-400">Biaya Pengiriman</span>
-                  <input
-                    type="number"
-                    min="0"
+                  <CurrencyInput
+                    hidePrefix
                     value={data.shipping_cost}
-                    onChange={(e) => setData('shipping_cost', Number(e.target.value))}
+                    onChange={(v) => setData('shipping_cost', v)}
                     className="w-32 px-3 py-1 bg-slate-900 border border-slate-800 text-slate-200 text-sm text-right rounded-lg focus:ring-1 focus:ring-violet-500 focus:outline-none"
                   />
                 </div>

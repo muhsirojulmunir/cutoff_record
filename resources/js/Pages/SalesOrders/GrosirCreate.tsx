@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Head, Link, useForm, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import Alert from '../../Components/Alert';
+import CurrencyInput from '../../Components/CurrencyInput';
 import * as XLSX from 'xlsx';
 
 import { PageProps } from '../../Types';
@@ -441,12 +442,12 @@ export default function GrosirCreate({ products }: GrosirCreateProps) {
               {/* 6. QTY */}
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1">6. QTY *</label>
-                <input
-                  type="number"
-                  min="1"
+                <CurrencyInput
+                  hidePrefix
+                  placeholder="1"
                   required
                   value={data.quantity}
-                  onChange={(e) => setData('quantity', Number(e.target.value))}
+                  onChange={(v) => setData('quantity', v)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
                 />
               </div>
@@ -454,12 +455,10 @@ export default function GrosirCreate({ products }: GrosirCreateProps) {
               {/* 7. Satuan Harga */}
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1">7. Satuan Harga (Rp) *</label>
-                <input
-                  type="number"
-                  min="0"
+                <CurrencyInput
                   required
                   value={data.unit_price}
-                  onChange={(e) => setData('unit_price', Number(e.target.value))}
+                  onChange={(v) => setData('unit_price', v)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
                 />
               </div>
@@ -467,11 +466,9 @@ export default function GrosirCreate({ products }: GrosirCreateProps) {
               {/* 8. Voucher */}
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1">8. Voucher / Diskon (Rp)</label>
-                <input
-                  type="number"
-                  min="0"
+                <CurrencyInput
                   value={data.voucher}
-                  onChange={(e) => setData('voucher', Number(e.target.value))}
+                  onChange={(v) => setData('voucher', v)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
                 />
               </div>
@@ -479,11 +476,9 @@ export default function GrosirCreate({ products }: GrosirCreateProps) {
               {/* 9. Pajak */}
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1">9. Pajak (Rp)</label>
-                <input
-                  type="number"
-                  min="0"
+                <CurrencyInput
                   value={data.tax}
-                  onChange={(e) => setData('tax', Number(e.target.value))}
+                  onChange={(v) => setData('tax', v)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
                 />
               </div>
@@ -540,11 +535,9 @@ export default function GrosirCreate({ products }: GrosirCreateProps) {
               {/* DP Amount */}
               <div>
                 <label className="block text-xs font-medium text-amber-400 mb-1">Uang Muka / DP Dibayar (Rp)</label>
-                <input
-                  type="number"
-                  min="0"
+                <CurrencyInput
                   value={data.dp_amount}
-                  onChange={(e) => setData('dp_amount', Number(e.target.value))}
+                  onChange={(v) => setData('dp_amount', v)}
                   placeholder="0 (Jika DP, sisa jadi Piutang)"
                   className="w-full bg-slate-900 border border-amber-500/40 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400"
                 />
