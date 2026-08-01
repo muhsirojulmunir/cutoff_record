@@ -142,7 +142,7 @@ const channelLabel: Record<string, string> = {
 
 
 export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps) {
-  const { flash, auth } = usePage<PageProps>().props;
+  const { flash, auth, errors } = usePage<PageProps>().props;
   const permissions = auth.user?.permissions ?? [];
 
   const [loading, setLoading] = useState(false);
@@ -279,7 +279,11 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
     <AppLayout>
       <Head title={`Detail Sales Order — ${salesOrder.so_number}`} />
       <Alert message={flash.success ?? null} type="success" />
+      {/* Aksi approve/cancel mengembalikan pesan lewat withErrors, bukan flash.
+          Tanpa baris errors.error di bawah, kegagalan approve tidak terlihat
+          sama sekali dan tombolnya seolah tidak berfungsi. */}
       {flash.error && <Alert message={flash.error} type="error" />}
+      {errors?.error && <Alert message={errors.error} type="error" />}
 
       <div className="space-y-6">
         {/* Header Section */}
