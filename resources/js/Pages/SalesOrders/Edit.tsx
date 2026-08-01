@@ -344,7 +344,7 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
                       </div>
 
                       {/* Calculations Row */}
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                         <div className="space-y-1">
                           <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">Kuantitas</label>
                           <CurrencyInput
@@ -397,10 +397,10 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
                           />
                         </div>
 
-                        <div className="col-span-2 md:col-span-1 flex items-end gap-2">
+                        <div className="col-span-2 md:col-span-2 flex items-end gap-2">
                           <div className="flex-1 space-y-1">
                             <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">Subtotal</label>
-                            <div className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-emerald-400 font-bold text-xs min-h-[32px] flex items-center">
+                            <div className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-emerald-400 font-bold font-mono text-xs min-h-[32px] flex items-center justify-end whitespace-nowrap overflow-x-auto">
                               Rp {(item.subtotal || 0).toLocaleString('id-ID')}
                             </div>
                           </div>
