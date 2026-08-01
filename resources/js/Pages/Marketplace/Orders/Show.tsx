@@ -1,0 +1,450 @@
+import React, { useState } from 'react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import AppLayout from '@/Layouts/AppLayout';
+
+interface Product { id: number; name: string; sku: string; }
+interface OrderItem {
+    id: number; external_sku: string | null; product_name: string;
+    quantity: number; unit_price: string; subtotal: string;
+    product: Product | null;
+}
+interface StockReservation {
+    id: number; quantity: number; status: string;
+    reserved_at: string; released_at: string | null; consumed_at: string | null;
+    product: Product | null;
+}
+interface SalesOrder {
+    id: number; so_number: string; status: string; grand_total: string;
+    invoice: { id: number; invoice_number: string; status: string; } | null;
+}
+interface Warehouse { id: number; name: string; }
+interface Account { id: number; account_name: string; marketplace: string; }
+interface TimelineEvent { label: string; at: string | null; done: boolean; }
+
+interface Order {
+    id: number;
+    marketplace: string;
+    external_order_id: string;
+    external_order_number: string | null;
+    internal_status: string;
+    workflow_status: string;
+    conversion_status: string;
+    customer_name: string | null;
+    customer_phone: string | null;
+    customer_email: string | null;
+    shipping_address: string | null;
+    province: string | null;
+    city: string | null;
+    district: string | null;
+    postal_code: string | null;
+    tracking_number: string | null;
+    courier_name: string | null;
+    subtotal: string;
+    discount: string;
+    voucher_discount: string;
+    shipping_fee: string;
+    service_fee: string;
+    tax: string;
+    total_amount: string;
+    order_date: string;
+    shipped_at: string | null;
+    completed_at: string | null;
+    converted_at: string | null;
+    items: OrderItem[];
+    sales_order: SalesOrder | null;
+    warehouse: Warehouse | null;
+    account: Account;
+    stock_reservations: StockReservation[];
+}
+
+interface Props {
+    order: Order;
+    canViewPayload: boolean;
+    timeline: TimelineEvent[];
+}
+
+const WORKFLOW_COLORS: Record<string, string> = {
+    pending:            'bg-slate-700/50 text-slate-400',
+    ready_to_process:   'bg-blue-500/20 text-blue-400',
+    converted_to_so:    'bg-indigo-500/20 text-indigo-400',
+    stock_reserved:     'bg-violet-500/20 text-violet-400',
+    processing:         'bg-amber-500/20 text-amber-400',
+    shipped:            'bg-sky-500/20 text-sky-400',
+    completed:          'bg-emerald-500/20 text-emerald-400',
+    cancelled:          'bg-red-500/20 text-red-400',
+    failed:             'bg-red-700/20 text-red-500',
+    stock_insufficient: 'bg-rose-500/20 text-rose-400',
+    mapping_required:   'bg-orange-500/20 text-orange-400',
+};
+
+const WORKFLOW_LABELS: Record<string, string> = {
+    pending:            'Pending',
+    ready_to_process:   'Siap Diproses',
+    converted_to_so:    'Dikonversi ke SO',
+    stock_reserved:     'Stok Di-Reserve',
+    processing:         'Dalam Proses',
+    shipped:            'Dikirim',
+    completed:          'Selesai',
+    cancelled:          'Dibatalkan',
+    failed:             'Gagal',
+    stock_insufficient: 'Stok Tidak Cukup',
+    mapping_required:   'Perlu Mapping SKU',
+};
+
+const RESERVE_STATUS_COLORS: Record<string, string> = {
+    reserved:  'text-violet-400',
+    released:  'text-slate-400',
+    consumed:  'text-emerald-400',
+    cancelled: 'text-red-400',
+};
+
+const MP_LABELS: Record<string, string> = { shopee: 'Shopee', tiktok_shop: 'TikTok Shop' };
+
+const fmt = (v: string | number) => Number(v).toLocaleString('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
+const fmtDate = (v: string | null) => v ? new Date(v).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+
+interface FulfillModalProps {
+    order: Order;
+    onClose: () => void;
+}
+
+function FulfillModal({ order, onClose }: FulfillModalProps) {
+    const [form, setForm] = useState({ tracking_number: order.tracking_number ?? '', courier_name: order.courier_name ?? '' });
+    const submit = (e: React.FormEvent) => {
+        e.preventDefault();
+        router.post(`/marketplace/orders/${order.id}/fulfill`, form);
+        onClose();
+    };
+    return (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md">
+                <h3 className="text-white font-semibold mb-4">Proses Fulfillment / Kirim Order</h3>
+                <form onSubmit={submit} className="space-y-4">
+                    <div>
+                        <label className="block text-slate-400 text-xs mb-1">Nomor Resi</label>
+                        <input type="text" value={form.tracking_number}
+                            onChange={e => setForm(f => ({ ...f, tracking_number: e.target.value }))}
+                            className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-violet-500"
+                            placeholder="Masukkan nomor resi pengiriman" />
+                    </div>
+                    <div>
+                        <label className="block text-slate-400 text-xs mb-1">Nama Kurir</label>
+                        <input type="text" value={form.courier_name}
+                            onChange={e => setForm(f => ({ ...f, courier_name: e.target.value }))}
+                            className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-violet-500"
+                            placeholder="JNE / J&T / SiCepat / dll" />
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                        <button type="button" onClick={onClose}
+                            className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-sm transition-colors">
+                            Batal
+                        </button>
+                        <button type="submit"
+                            className="flex-1 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-sm font-medium transition-colors">
+                            Kirim & Potong Stok
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+export default function MarketplaceOrderShow({ order, canViewPayload, timeline }: Props) {
+    const { props } = usePage<{ flash?: { success?: string; error?: string } }>();
+    const flash = props.flash ?? {};
+    const [showFulfill, setShowFulfill] = useState(false);
+
+    const canConvert     = order.conversion_status !== 'converted' && order.internal_status !== 'cancelled';
+    const canReserve     = order.conversion_status === 'converted' && order.workflow_status !== 'stock_reserved' && order.workflow_status !== 'shipped' && order.workflow_status !== 'completed';
+    const hasActiveRes   = order.stock_reservations.some(r => r.status === 'reserved');
+    const canFulfill     = order.conversion_status === 'converted' && order.workflow_status !== 'shipped' && order.workflow_status !== 'completed' && order.internal_status !== 'cancelled';
+
+    return (
+        <AppLayout>
+            <Head title={`Order ${order.external_order_id}`} />
+            {showFulfill && <FulfillModal order={order} onClose={() => setShowFulfill(false)} />}
+
+            <div className="min-h-screen bg-slate-950 p-6">
+                {/* Header */}
+                <div className="flex items-start justify-between mb-6">
+                    <div>
+                        <Link href="/marketplace/orders" className="text-slate-500 text-sm hover:text-slate-300 transition-colors mb-1 inline-block">
+                            ← Kembali ke Daftar Order
+                        </Link>
+                        <h1 className="text-2xl font-bold text-white font-mono">{order.external_order_id}</h1>
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className="text-slate-400 text-sm">{MP_LABELS[order.marketplace] ?? order.marketplace}</span>
+                            <span className="text-slate-600">•</span>
+                            <span className="text-slate-400 text-sm">{order.account.account_name}</span>
+                            <span className="text-slate-600">•</span>
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${WORKFLOW_COLORS[order.workflow_status] ?? 'bg-slate-700 text-slate-300'}`}>
+                                {WORKFLOW_LABELS[order.workflow_status] ?? order.workflow_status}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                        {canConvert && (
+                            <button id="btn-convert-so"
+                                onClick={() => router.post(`/marketplace/orders/${order.id}/convert`, {})}
+                                className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm rounded-xl transition-colors font-medium">
+                                Konversi ke Sales Order
+                            </button>
+                        )}
+                        {canReserve && (
+                            <button id="btn-reserve-stock"
+                                onClick={() => router.post(`/marketplace/orders/${order.id}/reserve-stock`, {})}
+                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded-xl transition-colors font-medium">
+                                Reserve Stok
+                            </button>
+                        )}
+                        {hasActiveRes && (
+                            <button id="btn-release-stock"
+                                onClick={() => router.post(`/marketplace/orders/${order.id}/release-stock`, {})}
+                                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-xl transition-colors">
+                                Release Reservasi
+                            </button>
+                        )}
+                        {canFulfill && (
+                            <button id="btn-fulfill"
+                                onClick={() => setShowFulfill(true)}
+                                className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white text-sm rounded-xl transition-colors font-medium">
+                                Proses Fulfillment
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {flash.success && <div className="mb-5 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-sm">{flash.success}</div>}
+                {flash.error   && <div className="mb-5 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">{flash.error}</div>}
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                    {/* Left Column */}
+                    <div className="lg:col-span-2 space-y-5">
+                        {/* Order Info */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                            <h2 className="text-white font-semibold mb-4">Informasi Order</h2>
+                            <div className="grid grid-cols-2 gap-4">
+                                {[
+                                    { label: 'Nomor Pesanan', value: order.external_order_number ?? order.external_order_id },
+                                    { label: 'Tanggal Order', value: fmtDate(order.order_date) },
+                                    { label: 'Platform', value: MP_LABELS[order.marketplace] ?? order.marketplace },
+                                    { label: 'Akun', value: order.account.account_name },
+                                    { label: 'Status API', value: order.internal_status },
+                                    { label: 'Gudang', value: order.warehouse?.name ?? '—' },
+                                ].map(({ label, value }) => (
+                                    <div key={label}>
+                                        <p className="text-slate-500 text-xs">{label}</p>
+                                        <p className="text-white text-sm mt-0.5 capitalize">{value}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Items */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+                            <div className="px-5 py-4 border-b border-slate-800">
+                                <h2 className="text-white font-semibold">Item Order</h2>
+                            </div>
+                            <table className="w-full">
+                                <thead>
+                                    <tr className="border-b border-slate-800">
+                                        {['Produk / SKU', 'Status Mapping', 'Qty', 'Harga', 'Subtotal'].map(h => (
+                                            <th key={h} className="text-left px-5 py-3 text-slate-400 text-xs font-medium">{h}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800/50">
+                                    {order.items.map(item => (
+                                        <tr key={item.id}>
+                                            <td className="px-5 py-3">
+                                                <p className="text-white text-sm">{item.product_name}</p>
+                                                <p className="text-slate-500 text-xs font-mono">{item.external_sku ?? '—'}</p>
+                                            </td>
+                                            <td className="px-5 py-3">
+                                                {item.product ? (
+                                                    <span className="inline-block px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full text-xs">
+                                                        {item.product.sku}
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-block px-2 py-0.5 bg-rose-500/20 text-rose-400 rounded-full text-xs">
+                                                        Belum Di-map
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="px-5 py-3 text-slate-300 text-sm">{item.quantity}</td>
+                                            <td className="px-5 py-3 text-slate-300 text-sm">{fmt(item.unit_price)}</td>
+                                            <td className="px-5 py-3 text-white text-sm font-medium">{fmt(item.subtotal)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            {/* Totals */}
+                            <div className="px-5 py-4 border-t border-slate-800 space-y-1.5">
+                                {[
+                                    { label: 'Subtotal', value: order.subtotal },
+                                    { label: 'Diskon', value: `-${order.discount}` },
+                                    { label: 'Diskon Voucher', value: `-${order.voucher_discount}` },
+                                    { label: 'Ongkos Kirim', value: order.shipping_fee },
+                                    { label: 'Biaya Layanan', value: order.service_fee },
+                                    { label: 'Pajak', value: order.tax },
+                                ].map(({ label, value }) => (
+                                    <div key={label} className="flex justify-between text-sm">
+                                        <span className="text-slate-400">{label}</span>
+                                        <span className="text-slate-300">{fmt(value)}</span>
+                                    </div>
+                                ))}
+                                <div className="flex justify-between text-sm font-bold pt-2 border-t border-slate-700">
+                                    <span className="text-white">Total</span>
+                                    <span className="text-white">{fmt(order.total_amount)}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Stock Reservations */}
+                        {order.stock_reservations.length > 0 && (
+                            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+                                <div className="px-5 py-4 border-b border-slate-800">
+                                    <h2 className="text-white font-semibold">Reservasi Stok</h2>
+                                </div>
+                                <table className="w-full">
+                                    <thead>
+                                        <tr className="border-b border-slate-800">
+                                            {['Produk', 'Qty', 'Status', 'Waktu Reserved', 'Waktu Consume/Release'].map(h => (
+                                                <th key={h} className="text-left px-5 py-3 text-slate-400 text-xs font-medium">{h}</th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-800/50">
+                                        {order.stock_reservations.map(r => (
+                                            <tr key={r.id}>
+                                                <td className="px-5 py-3">
+                                                    <p className="text-white text-sm">{r.product?.name ?? '—'}</p>
+                                                    <p className="text-slate-500 text-xs">{r.product?.sku}</p>
+                                                </td>
+                                                <td className="px-5 py-3 text-slate-300 text-sm">{r.quantity}</td>
+                                                <td className="px-5 py-3">
+                                                    <span className={`text-xs font-medium capitalize ${RESERVE_STATUS_COLORS[r.status] ?? 'text-slate-400'}`}>
+                                                        {r.status}
+                                                    </span>
+                                                </td>
+                                                <td className="px-5 py-3 text-slate-400 text-xs">{fmtDate(r.reserved_at)}</td>
+                                                <td className="px-5 py-3 text-slate-400 text-xs">
+                                                    {fmtDate(r.consumed_at ?? r.released_at)}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Right Column */}
+                    <div className="space-y-5">
+                        {/* Timeline */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                            <h2 className="text-white font-semibold mb-4">Timeline Proses</h2>
+                            <ol className="relative border-l border-slate-700 pl-4 space-y-4">
+                                {timeline.map((event, i) => (
+                                    <li key={i} className="relative">
+                                        <span className={`absolute -left-[21px] top-0.5 w-3 h-3 rounded-full border-2 ${
+                                            event.done
+                                                ? 'bg-emerald-500 border-emerald-500'
+                                                : 'bg-slate-800 border-slate-600'
+                                        }`} />
+                                        <p className={`text-sm font-medium ${event.done ? 'text-white' : 'text-slate-500'}`}>
+                                            {event.label}
+                                        </p>
+                                        {event.at && event.done && (
+                                            <p className="text-xs text-slate-500">{fmtDate(event.at)}</p>
+                                        )}
+                                    </li>
+                                ))}
+                            </ol>
+                        </div>
+
+                        {/* Sales Order Traceability */}
+                        {order.sales_order && (
+                            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                                <h2 className="text-white font-semibold mb-4">Sales Order Terhubung</h2>
+                                <div className="space-y-2">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-slate-400 text-sm">Nomor SO</span>
+                                        <Link href={`/sales-orders/${order.sales_order.id}`}
+                                            className="text-violet-400 hover:text-violet-300 text-sm font-mono font-medium">
+                                            {order.sales_order.so_number}
+                                        </Link>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-slate-400 text-sm">Status SO</span>
+                                        <span className="text-slate-300 text-sm capitalize">{order.sales_order.status}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-slate-400 text-sm">Grand Total</span>
+                                        <span className="text-white text-sm font-medium">{fmt(order.sales_order.grand_total)}</span>
+                                    </div>
+                                    {order.sales_order.invoice && (
+                                        <div className="flex justify-between items-center pt-2 border-t border-slate-800">
+                                            <span className="text-slate-400 text-sm">Invoice</span>
+                                            <Link href={`/invoices/${order.sales_order.invoice.id}`}
+                                                className="text-sky-400 hover:text-sky-300 text-sm font-mono">
+                                                {order.sales_order.invoice.invoice_number}
+                                            </Link>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Pengiriman */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                            <h2 className="text-white font-semibold mb-4">Informasi Pengiriman</h2>
+                            <div className="space-y-2">
+                                {[
+                                    { label: 'No. Resi', value: order.tracking_number ?? '—' },
+                                    { label: 'Kurir', value: order.courier_name ?? '—' },
+                                    { label: 'Dikirim', value: fmtDate(order.shipped_at) },
+                                    { label: 'Selesai', value: fmtDate(order.completed_at) },
+                                ].map(({ label, value }) => (
+                                    <div key={label} className="flex justify-between">
+                                        <span className="text-slate-400 text-sm">{label}</span>
+                                        <span className="text-slate-300 text-sm font-mono">{value}</span>
+                                    </div>
+                                ))}
+                                {(order.province || order.city || order.district) && (
+                                    <div className="pt-2 border-t border-slate-800">
+                                        <p className="text-slate-400 text-xs mb-1">Alamat Pengiriman</p>
+                                        <p className="text-slate-300 text-sm">{order.shipping_address}</p>
+                                        <p className="text-slate-400 text-xs mt-1">
+                                            {[order.district, order.city, order.province, order.postal_code].filter(Boolean).join(', ')}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Customer */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                            <h2 className="text-white font-semibold mb-4">Pelanggan</h2>
+                            <div className="space-y-2">
+                                {[
+                                    { label: 'Nama', value: order.customer_name ?? '—' },
+                                    { label: 'Telepon', value: order.customer_phone ?? '—' },
+                                    { label: 'Email', value: order.customer_email ?? '—' },
+                                ].map(({ label, value }) => (
+                                    <div key={label} className="flex justify-between">
+                                        <span className="text-slate-400 text-sm">{label}</span>
+                                        <span className="text-slate-300 text-sm">{value}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </AppLayout>
+    );
+}
