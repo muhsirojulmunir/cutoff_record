@@ -3,6 +3,7 @@ import { Head, Link, useForm, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import Alert from '../../Components/Alert';
 import CurrencyInput from '../../Components/CurrencyInput';
+import DecimalInput from '../../Components/DecimalInput';
 import * as XLSX from 'xlsx';
 
 import { PageProps } from '../../Types';
@@ -486,12 +487,10 @@ export default function GrosirCreate({ products }: GrosirCreateProps) {
               {/* 10. Total Berat Barang */}
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1">10. Total Berat Barang (Kg)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
+                <DecimalInput
+                  suffix="Kg"
                   value={data.total_weight}
-                  onChange={(e) => setData('total_weight', Number(e.target.value))}
+                  onChange={(v) => setData('total_weight', v)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
                 />
               </div>
