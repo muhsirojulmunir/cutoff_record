@@ -341,4 +341,126 @@ class SalesOrderTest extends TestCase
 
         $response->assertStatus(403);
     }
+
+    /** Buat SO berstatus pending_approval berisi satu item siap disetujui. */
+    private function makePendingOrder(int $quantity = 20): SalesOrder
+    {
+        $so = SalesOrder::create([
+            'so_number'      => 'SO-202607-9001',
+            'customer_id'    => $this->customer->id,
+            'order_date'     => '2026-07-26',
+            'source'         => 'manual',
+            'sales_channel'  => 'manual',
+            'status'         => 'pending_approval',
+            'payment_status' => 'unpaid',
+            'subtotal'       => 150000,
+            'grand_total'    => 150000,
+            'created_by'     => $this->superAdmin->id,
+        ]);
+
+        $so->items()->create([
+            'product_id'   => $this->product1->id,
+            'sku'          => $this->product1->sku,
+            'product_name' => $this->product1->name,
+            'quantity'     => $quantity,
+            'unit'         => 'pcs',
+            'price'        => 150000,
+            'subtotal'     => 150000 * $quantity,
+        ]);
+
+        return $so;
+    }
+
+    private function approve(SalesOrder $so): void
+    {
+        $this->actingAs($this->superAdmin)
+            ->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class)
+            ->post("/sales-orders/{$so->id}/approve");
+    }
+
+    /**
+     * Stok fisik harus berkurang saat Sales Order disetujui — sebelumnya
+     * penjualan sama sekali tidak menyentuh stok.
+     */
+    public function test_stock_is_deducted_when_sales_order_approved(): void
+    {
+        $this->product1->update(['stock' => 100]);
+        $so = $this->makePendingOrder(20);
+
+        $this->approve($so);
+
+        $this->assertEquals('approved', $so->fresh()->status);
+        $this->assertEquals(80, $this->product1->fresh()->stock);
+        $this->assertNotNull($so->fresh()->stock_deducted_at);
+
+        $this->assertDatabaseHas('stock_movements', [
+            'product_id'     => $this->product1->id,
+            'movement_type'  => 'out',
+            'quantity'       => 20,
+            'reference_type' => 'sales_order',
+            'reference_id'   => $so->id,
+        ]);
+    }
+
+    /** Stok kurang harus menggagalkan persetujuan, bukan membuat stok minus. */
+    public function test_approval_is_blocked_when_stock_is_insufficient(): void
+    {
+        $this->product1->update(['stock' => 5]);
+        $so = $this->makePendingOrder(20);
+
+        $this->approve($so);
+
+        $this->assertEquals('pending_approval', $so->fresh()->status);
+        $this->assertEquals(5, $this->product1->fresh()->stock);
+        $this->assertNull($so->fresh()->stock_deducted_at);
+    }
+
+    /** Pembatalan mengembalikan stok yang sempat dipotong. */
+    public function test_stock_is_restored_when_approved_order_is_cancelled(): void
+    {
+        $this->product1->update(['stock' => 100]);
+        $so = $this->makePendingOrder(20);
+
+        $this->approve($so);
+        $this->assertEquals(80, $this->product1->fresh()->stock);
+
+        $this->actingAs($this->superAdmin)
+            ->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class)
+            ->post("/sales-orders/{$so->id}/cancel");
+
+        $this->assertEquals('cancelled', $so->fresh()->status);
+        $this->assertEquals(100, $this->product1->fresh()->stock);
+        $this->assertNull($so->fresh()->stock_deducted_at);
+    }
+
+    /** Membatalkan SO yang belum disetujui tidak boleh menambah stok. */
+    public function test_cancelling_draft_order_does_not_add_stock(): void
+    {
+        $this->product1->update(['stock' => 100]);
+        $so = $this->makePendingOrder(20);
+
+        $this->actingAs($this->superAdmin)
+            ->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class)
+            ->post("/sales-orders/{$so->id}/cancel");
+
+        $this->assertEquals('cancelled', $so->fresh()->status);
+        $this->assertEquals(100, $this->product1->fresh()->stock);
+    }
+
+    /**
+     * Order marketplace memotong stok lewat reservasi saat fulfillment,
+     * jadi persetujuan SO-nya tidak boleh ikut memotong (dobel).
+     */
+    public function test_marketplace_order_stock_is_not_deducted_twice(): void
+    {
+        $this->product1->update(['stock' => 100]);
+        $so = $this->makePendingOrder(20);
+        $so->update(['source' => 'marketplace', 'sales_channel' => 'shopee']);
+
+        $this->approve($so);
+
+        $this->assertEquals('approved', $so->fresh()->status);
+        $this->assertEquals(100, $this->product1->fresh()->stock);
+        $this->assertNull($so->fresh()->stock_deducted_at);
+    }
 }

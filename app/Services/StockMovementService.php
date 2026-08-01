@@ -14,7 +14,7 @@ class StockMovementService
      */
     public function recordStockIn(
         Product $product,
-        int $warehouseId,
+        ?int $warehouseId,
         int $quantity,
         ?string $refType = null,
         ?int $refId = null,
@@ -60,7 +60,7 @@ class StockMovementService
      */
     public function recordStockOut(
         Product $product,
-        int $warehouseId,
+        ?int $warehouseId,
         int $quantity,
         ?string $refType = null,
         ?int $refId = null,
@@ -110,7 +110,7 @@ class StockMovementService
      */
     public function recordAdjustment(
         Product $product,
-        int $warehouseId,
+        ?int $warehouseId,
         int $quantity, // Can be positive or negative
         string $notes,
         int $userId
