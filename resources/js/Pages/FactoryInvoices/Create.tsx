@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
+import CurrencyInput from '@/Components/CurrencyInput';
 import { PageProps } from '../../Types';
 
 interface Supplier { id: number; name: string; supplier_code: string; }
@@ -177,7 +178,7 @@ export default function Create({ suppliers, purchaseOrders, products }: { suppli
                     </div>
                     <div className="col-span-2">
                       <label className="block text-[10px] font-semibold text-slate-500 mb-1">Qty</label>
-                      <input type="number" min="1" value={item.quantity} onChange={e => updateItem(i, 'quantity', Number(e.target.value))}
+                      <CurrencyInput hidePrefix value={item.quantity} onChange={v => updateItem(i, 'quantity', v)}
                         className="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs text-right font-bold focus:ring-1 focus:ring-violet-500 focus:outline-none" />
                     </div>
                     <div className="col-span-2">
@@ -187,17 +188,17 @@ export default function Create({ suppliers, purchaseOrders, products }: { suppli
                     </div>
                     <div className="col-span-4">
                       <label className="block text-[10px] font-semibold text-slate-500 mb-1">Harga Satuan (Rp)</label>
-                      <input type="number" min="0" step="100" value={item.unit_price} onChange={e => updateItem(i, 'unit_price', Number(e.target.value))}
+                      <CurrencyInput hidePrefix value={item.unit_price} onChange={v => updateItem(i, 'unit_price', v)}
                         className="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs text-right font-bold focus:ring-1 focus:ring-violet-500 focus:outline-none" />
                     </div>
                     <div className="col-span-3">
                       <label className="block text-[10px] font-semibold text-slate-500 mb-1">Diskon Item</label>
-                      <input type="number" min="0" value={item.discount_amount} onChange={e => updateItem(i, 'discount_amount', Number(e.target.value))}
+                      <CurrencyInput hidePrefix value={item.discount_amount} onChange={v => updateItem(i, 'discount_amount', v)}
                         className="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-rose-300 text-xs text-right font-bold focus:ring-1 focus:ring-rose-500 focus:outline-none" />
                     </div>
                     <div className="col-span-3">
                       <label className="block text-[10px] font-semibold text-slate-500 mb-1">Pajak Item</label>
-                      <input type="number" min="0" value={item.tax_amount} onChange={e => updateItem(i, 'tax_amount', Number(e.target.value))}
+                      <CurrencyInput hidePrefix value={item.tax_amount} onChange={v => updateItem(i, 'tax_amount', v)}
                         className="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-emerald-300 text-xs text-right font-bold focus:ring-1 focus:ring-emerald-500 focus:outline-none" />
                     </div>
                     <div className="col-span-2 flex items-end justify-between">
@@ -232,7 +233,7 @@ export default function Create({ suppliers, purchaseOrders, products }: { suppli
               { label: 'Ongkos Kirim', val: shippingCost, set: setShippingCost, cls: 'text-slate-200' }].map(f => (
               <div key={f.label}>
                 <label className="block text-xs font-semibold text-slate-400 mb-1">{f.label} (Rp)</label>
-                <input type="number" min="0" step="100" value={f.val} onChange={e => f.set(Number(e.target.value))}
+                <CurrencyInput hidePrefix value={f.val} onChange={v => f.set(v)}
                   className={`w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 ${f.cls} text-xs text-right font-bold focus:ring-1 focus:ring-violet-500 focus:outline-none`} />
               </div>
             ))}

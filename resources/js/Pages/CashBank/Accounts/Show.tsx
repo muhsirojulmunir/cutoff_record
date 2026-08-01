@@ -1,6 +1,7 @@
 import React, { FormEvent, useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
+import CurrencyInput from '@/Components/CurrencyInput';
 import { PageProps } from '../../../Types';
 
 interface Transaction {
@@ -75,7 +76,7 @@ function AdjustModal({ accountId, onClose }: { accountId: number; onClose: () =>
                         </div>
                         <div>
                             <label className={lbl}>Nominal (Rp) <span className="text-rose-400">*</span></label>
-                            <input type="number" min="1" step="1" value={form.amount} onChange={e => setForm(f => ({...f, amount: e.target.value}))} placeholder="0" className={inputCls} />
+                            <CurrencyInput value={form.amount} onChange={v => setForm(f => ({...f, amount: String(v)}))} className={inputCls} />
                         </div>
                     </div>
                     <div>
@@ -125,7 +126,7 @@ function CashInOutModal({ accountId, type, onClose }: { accountId: number; type:
                         </div>
                         <div>
                             <label className={lbl}>Nominal (Rp) <span className="text-rose-400">*</span></label>
-                            <input type="number" min="1" step="1" value={form.amount} onChange={e => setForm(f => ({...f, amount: e.target.value}))} placeholder="0" className={inputCls} />
+                            <CurrencyInput value={form.amount} onChange={v => setForm(f => ({...f, amount: String(v)}))} className={inputCls} />
                         </div>
                     </div>
                     <div>

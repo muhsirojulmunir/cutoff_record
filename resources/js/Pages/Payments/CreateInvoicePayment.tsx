@@ -1,6 +1,7 @@
 import React from 'react';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
+import CurrencyInput from '../../Components/CurrencyInput';
 import { PageProps } from '../../Types';
 
 interface Customer {
@@ -141,20 +142,13 @@ export default function CreateInvoicePayment({ invoice, cashBankAccounts }: Crea
                 {/* Amount */}
                 <div className="space-y-1.5">
                   <label className="block text-sm font-semibold text-slate-300">Jumlah Bayar (Rupiah)</label>
-                  <div className="relative">
-                    <span className="absolute left-4 top-2.5 text-slate-500 text-sm">Rp</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      max={invoice.remaining_amount}
-                      value={data.amount}
-                      onChange={(e) => setData('amount', e.target.value)}
-                      required
-                      placeholder="0.00"
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all font-semibold"
-                    />
-                  </div>
+                  <CurrencyInput
+                    value={data.amount}
+                    onChange={(v) => setData('amount', String(v))}
+                    max={Number(invoice.remaining_amount)}
+                    required
+                    className="w-full pr-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all font-semibold"
+                  />
                   {errors.amount && <p className="text-rose-500 text-xs">{errors.amount}</p>}
                 </div>
 

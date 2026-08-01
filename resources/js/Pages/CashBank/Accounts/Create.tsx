@@ -1,6 +1,7 @@
 import React, { FormEvent } from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
+import CurrencyInput from '@/Components/CurrencyInput';
 
 interface AccountType { value: string; label: string; }
 interface Props { accountTypes: AccountType[]; }
@@ -70,7 +71,7 @@ export default function AccountsCreate({ accountTypes }: Props) {
                             </div>
                             <div>
                                 <label className={label}>Saldo Awal (Rp) <span className="text-rose-400">*</span></label>
-                                <input id="opening_balance" type="number" min="0" step="1" value={data.opening_balance} onChange={e => setData('opening_balance', e.target.value)} className={inputClass(errors.opening_balance)} />
+                                <CurrencyInput id="opening_balance" value={data.opening_balance} onChange={v => setData('opening_balance', String(v))} className={inputClass(errors.opening_balance)} />
                                 {errors.opening_balance && <p className="text-rose-400 text-xs mt-1">{errors.opening_balance}</p>}
                             </div>
                             <div className="sm:col-span-2">

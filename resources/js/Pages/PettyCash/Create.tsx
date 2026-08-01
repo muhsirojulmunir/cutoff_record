@@ -1,6 +1,7 @@
 import React, { FormEvent } from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
+import CurrencyInput from '@/Components/CurrencyInput';
 
 interface Category {
     id: number;
@@ -156,14 +157,10 @@ export default function PettyCashCreate({ categories, paymentMethods, cashBankAc
                                 <label htmlFor="amount" className={labelClass}>
                                     Jumlah (Rp) <span className="text-rose-400">*</span>
                                 </label>
-                                <input
+                                <CurrencyInput
                                     id="amount"
-                                    type="number"
-                                    min="1"
-                                    step="1"
                                     value={data.amount}
-                                    onChange={e => setData('amount', e.target.value)}
-                                    placeholder="0"
+                                    onChange={v => setData('amount', String(v))}
                                     className={inputClass(errors.amount)}
                                 />
                                 {errors.amount && <p className="text-rose-400 text-xs mt-1">{errors.amount}</p>}

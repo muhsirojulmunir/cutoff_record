@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
+import CurrencyInput from '@/Components/CurrencyInput';
 import Alert from '../../Components/Alert';
 import { PageProps } from '../../Types';
 
@@ -732,12 +733,12 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div>
                           <label className="block text-[10px] font-semibold text-slate-400 mb-1">Qty Tiba Fisik (Total) *</label>
-                          <input
-                            type="number"
+                          <CurrencyInput
+                            hidePrefix
                             min="0"
                             max={remaining}
                             value={st.received_qty}
-                            onChange={(e) => updateReceiveItemState(item.product_id, 'received_qty', Number(e.target.value))}
+                            onChange={(v) => updateReceiveItemState(item.product_id, 'received_qty', v)}
                             className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 text-xs text-right font-bold focus:ring-1 focus:ring-violet-500 focus:outline-none"
                             placeholder="Barang Tiba"
                           />
@@ -745,12 +746,12 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
 
                         <div>
                           <label className="block text-[10px] font-semibold text-rose-400 mb-1">Qty Rusak / Reject (Cacet/Pecah)</label>
-                          <input
-                            type="number"
+                          <CurrencyInput
+                            hidePrefix
                             min="0"
                             max={st.received_qty}
                             value={st.rejected_qty}
-                            onChange={(e) => updateReceiveItemState(item.product_id, 'rejected_qty', Number(e.target.value))}
+                            onChange={(v) => updateReceiveItemState(item.product_id, 'rejected_qty', v)}
                             className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-rose-300 text-xs text-right font-bold focus:ring-1 focus:ring-rose-500 focus:outline-none"
                             placeholder="0 (Jika tidak ada)"
                           />
@@ -769,12 +770,10 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-slate-800">
                           <div>
                             <label className="block text-[10px] font-semibold text-slate-400 mb-1">Harga per Unit Revisi (Rp)</label>
-                            <input
-                              type="number"
-                              min="0"
-                              step="100"
+                            <CurrencyInput
+                              hidePrefix
                               value={st.validated_unit_price}
-                              onChange={(e) => updateReceiveItemState(item.product_id, 'validated_unit_price', Number(e.target.value))}
+                              onChange={(v) => updateReceiveItemState(item.product_id, 'validated_unit_price', v)}
                               className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 text-xs text-right font-bold focus:ring-1 focus:ring-amber-500 focus:outline-none"
                             />
                           </div>
@@ -818,7 +817,7 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
 
               <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1.5">Nominal Down Payment (Rp) *</label>
-                <input type="number" min="1" step="1000" value={dpAmount} onChange={(e) => setDpAmount(e.target.value)}
+                <CurrencyInput value={dpAmount} onChange={(v) => setDpAmount(String(v))}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-sm focus:ring-1 focus:ring-amber-500 focus:outline-none"
                   placeholder="Contoh: 5000000" />
               </div>
@@ -898,18 +897,18 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                           <div className="flex gap-2 flex-1">
                             <div className="flex-1">
                               <label className="block text-[10px] font-semibold text-slate-500 mb-1">Qty Diterima</label>
-                              <input type="number" min="0" max={po_item.received_quantity}
+                              <CurrencyInput hidePrefix min="0" max={po_item.received_quantity}
                                 value={vItem.accepted_quantity}
-                                onChange={(e) => updateValidationItem(index, 'accepted_quantity', Number(e.target.value))}
+                                onChange={(v) => updateValidationItem(index, 'accepted_quantity', v)}
                                 className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs text-right font-bold focus:ring-1 focus:ring-violet-500 focus:outline-none"
                                 disabled={vItem.action === 'accepted'}
                               />
                             </div>
                             <div className="flex-1">
                               <label className="block text-[10px] font-semibold text-slate-500 mb-1">Harga/Unit Validasi</label>
-                              <input type="number" min="0" step="100"
+                              <CurrencyInput hidePrefix min="0"
                                 value={vItem.validated_unit_price}
-                                onChange={(e) => updateValidationItem(index, 'validated_unit_price', Number(e.target.value))}
+                                onChange={(v) => updateValidationItem(index, 'validated_unit_price', v)}
                                 className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs text-right font-bold focus:ring-1 focus:ring-violet-500 focus:outline-none"
                                 disabled={vItem.action === 'accepted'}
                               />
