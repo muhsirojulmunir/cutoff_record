@@ -313,21 +313,31 @@ class SalesOrderController extends Controller
             if (is_array($batchData) && count($batchData) > 0) {
                 // Impor batch bersifat semua-atau-tidak sama sekali: kalau satu
                 // baris gagal, tidak ada SO setengah jadi yang tertinggal.
-                $createdCount = 0;
+                $created = [];
 
-                \Illuminate\Support\Facades\DB::transaction(function () use ($batchData, $userId, &$createdCount) {
+                \Illuminate\Support\Facades\DB::transaction(function () use ($batchData, $userId, &$created) {
                     foreach (array_values($batchData) as $index => $row) {
                         try {
-                            $this->salesOrderService->createGrosirOrder($row, $userId);
-                            $createdCount++;
+                            $created[] = $this->salesOrderService->createGrosirOrder($row, $userId);
                         } catch (Exception $e) {
                             throw new Exception('Baris ' . ($index + 1) . ': ' . $e->getMessage());
                         }
                     }
                 });
 
-                return redirect()->route('sales-orders.index')
-                    ->with('success', "{$createdCount} pesanan Grosir dibuat sebagai Draft. Ajukan persetujuan untuk menerbitkan Invoice.");
+                // Satu baris ⇒ langsung ke detail SO-nya agar admin bisa menekan
+                // "Ajukan Approval" tanpa mencari lagi, sama seperti input manual.
+                if (count($created) === 1) {
+                    $so = $created[0];
+
+                    return redirect()->route('sales-orders.show', $so->id)
+                        ->with('success', "Sales Order Grosir {$so->so_number} dibuat sebagai Draft. Silakan Ajukan Approval.");
+                }
+
+                // Lebih dari satu SO tidak bisa dibuka sekaligus, jadi diarahkan ke
+                // daftar yang sudah tersaring Draft — antrian yang perlu diajukan.
+                return redirect()->route('sales-orders.index', ['status' => 'draft'])
+                    ->with('success', count($created) . " pesanan Grosir dibuat sebagai Draft. Ajukan Approval satu per satu dari daftar ini.");
             }
 
             // Single order creation
@@ -352,7 +362,7 @@ class SalesOrderController extends Controller
             $so = $this->salesOrderService->createGrosirOrder($validated, $userId);
 
             return redirect()->route('sales-orders.show', $so->id)
-                ->with('success', "Sales Order Grosir {$so->so_number} dibuat sebagai Draft. Invoice terbit otomatis setelah disetujui.");
+                ->with('success', "Sales Order Grosir {$so->so_number} dibuat sebagai Draft. Silakan Ajukan Approval.");
         } catch (Exception $e) {
             return back()->with('error', $e->getMessage())->withInput();
         }
