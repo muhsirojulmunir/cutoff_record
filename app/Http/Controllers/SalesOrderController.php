@@ -9,6 +9,8 @@ use App\Models\Product;
 use App\Models\Role;
 use App\Models\SalesOrder;
 use App\Services\SalesOrderService;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -32,15 +34,25 @@ class SalesOrderController extends Controller
     {
         Gate::authorize('sales_order.view');
 
-        $search = $request->input('search');
-        $status = $request->input('status');
-        $paymentStatus = $request->input('payment_status');
-        $source = $request->input('source');
-        $startDate = $request->input('start_date');
-        $endDate = $request->input('end_date');
+        $salesOrders = $this->filteredQuery($request)
+            ->with(['customer', 'creator'])
+            ->paginate(15)
+            ->withQueryString();
 
-        $salesOrders = SalesOrder::with(['customer', 'creator'])
-            ->when($search, function ($query, $search) {
+        return Inertia::render('SalesOrders/Index', [
+            'salesOrders' => $salesOrders,
+            'filters'     => $request->only(['search', 'status', 'payment_status', 'source', 'start_date', 'end_date']),
+        ]);
+    }
+
+    /**
+     * Query Sales Order dengan filter dari halaman index — dipakai bersama
+     * oleh tampilan daftar dan unduhan Excel agar hasilnya selalu sama.
+     */
+    protected function filteredQuery(Request $request): Builder
+    {
+        return SalesOrder::query()
+            ->when($request->input('search'), function ($query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('so_number', 'like', "%{$search}%")
                       ->orWhereHas('customer', function ($custQ) use ($search) {
@@ -49,28 +61,65 @@ class SalesOrderController extends Controller
                       });
                 });
             })
-            ->when($status, function ($query, $status) {
-                $query->where('status', $status);
-            })
-            ->when($paymentStatus, function ($query, $paymentStatus) {
-                $query->where('payment_status', $paymentStatus);
-            })
-            ->when($source, function ($query, $source) {
-                $query->where('source', $source);
-            })
-            ->when($startDate, function ($query, $startDate) {
-                $query->whereDate('order_date', '>=', $startDate);
-            })
-            ->when($endDate, function ($query, $endDate) {
-                $query->whereDate('order_date', '<=', $endDate);
-            })
-            ->orderBy('created_at', 'desc')
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->input('status'), fn ($query, $status) => $query->where('status', $status))
+            ->when($request->input('payment_status'), fn ($query, $paymentStatus) => $query->where('payment_status', $paymentStatus))
+            ->when($request->input('source'), fn ($query, $source) => $query->where('source', $source))
+            ->when($request->input('start_date'), fn ($query, $startDate) => $query->whereDate('order_date', '>=', $startDate))
+            ->when($request->input('end_date'), fn ($query, $endDate) => $query->whereDate('order_date', '<=', $endDate))
+            ->orderBy('created_at', 'desc');
+    }
 
-        return Inertia::render('SalesOrders/Index', [
-            'salesOrders' => $salesOrders,
-            'filters'     => $request->only(['search', 'status', 'payment_status', 'source', 'start_date', 'end_date']),
+    /**
+     * Data Sales Order (mengikuti filter aktif) untuk diunduh sebagai Excel.
+     * Pembentukan file dilakukan di sisi browser memakai SheetJS.
+     */
+    public function export(Request $request): JsonResponse
+    {
+        Gate::authorize('sales_order.view');
+
+        $salesOrders = $this->filteredQuery($request)
+            ->with(['customer', 'creator', 'items'])
+            ->get();
+
+        $orders = $salesOrders->map(fn (SalesOrder $so) => [
+            'so_number'        => $so->so_number,
+            'order_date'       => optional($so->order_date)->format('Y-m-d'),
+            'customer_code'    => $so->customer?->customer_code,
+            'customer_name'    => $so->customer?->name,
+            'recipient_name'   => $so->recipient_name,
+            'city'             => $so->city,
+            'province'         => $so->province,
+            'source'           => $so->source,
+            'sales_channel'    => $so->sales_channel,
+            'status'           => $so->status,
+            'payment_status'   => $so->payment_status,
+            'tracking_number'  => $so->tracking_number,
+            'subtotal'         => (float) $so->subtotal,
+            'discount_amount'  => (float) $so->discount_amount,
+            'tax_amount'       => (float) $so->tax_amount,
+            'shipping_cost'    => (float) $so->shipping_cost,
+            'grand_total'      => (float) $so->grand_total,
+            'total_weight'     => (float) $so->total_weight,
+            'created_by'       => $so->creator?->name,
+            'notes'            => $so->notes,
+        ]);
+
+        $items = $salesOrders->flatMap(fn (SalesOrder $so) => $so->items->map(fn ($item) => [
+            'so_number'     => $so->so_number,
+            'order_date'    => optional($so->order_date)->format('Y-m-d'),
+            'customer_name' => $so->customer?->name,
+            'sku'           => $item->sku,
+            'product_name'  => $item->product_name,
+            'quantity'      => (int) $item->quantity,
+            'price'         => (float) $item->price,
+            'discount_amount' => (float) $item->discount_amount,
+            'tax_amount'    => (float) $item->tax_amount,
+            'subtotal'      => (float) $item->subtotal,
+        ]));
+
+        return response()->json([
+            'orders' => $orders->values(),
+            'items'  => $items->values(),
         ]);
     }
 
@@ -82,7 +131,7 @@ class SalesOrderController extends Controller
         Gate::authorize('sales_order.create');
 
         $customers = Customer::where('status', 'active')->orderBy('name')->get(['id', 'customer_code', 'name']);
-        $products = Product::where('status', 'active')->orderBy('name')->get(['id', 'sku', 'name', 'selling_price', 'unit']);
+        $products = Product::where('status', 'active')->orderBy('name')->get(['id', 'sku', 'name', 'selling_price']);
 
         return Inertia::render('SalesOrders/Create', [
             'customers' => $customers,
@@ -146,7 +195,7 @@ class SalesOrderController extends Controller
 
         $salesOrder->load('items');
         $customers = Customer::where('status', 'active')->orderBy('name')->get(['id', 'customer_code', 'name']);
-        $products = Product::where('status', 'active')->orderBy('name')->get(['id', 'sku', 'name', 'selling_price', 'unit']);
+        $products = Product::where('status', 'active')->orderBy('name')->get(['id', 'sku', 'name', 'selling_price']);
 
         return Inertia::render('SalesOrders/Edit', [
             'salesOrder' => $salesOrder,
@@ -292,7 +341,7 @@ class SalesOrderController extends Controller
     {
         Gate::authorize('sales_order.create');
 
-        $products = Product::orderBy('name')->get(['id', 'name', 'sku', 'selling_price', 'unit']);
+        $products = Product::orderBy('name')->get(['id', 'name', 'sku', 'selling_price']);
 
         return Inertia::render('SalesOrders/GrosirCreate', [
             'products' => $products,

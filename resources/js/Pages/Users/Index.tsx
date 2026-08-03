@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import Pagination from '../../Components/Pagination';
@@ -35,7 +35,7 @@ interface UserIndexProps {
 }
 
 const roleBadgeColor: Record<string, string> = {
-  'Super Admin': 'bg-violet-500/15 border-violet-500/25 text-violet-300',
+  'Super Admin': 'bg-teal-500/15 border-teal-500/25 text-teal-600',
   'Admin':       'bg-blue-500/15 border-blue-500/25 text-blue-300',
   'Leader':      'bg-emerald-500/15 border-emerald-500/25 text-emerald-300',
   'Finance':     'bg-amber-500/15 border-amber-500/25 text-amber-300',
@@ -88,13 +88,13 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white">User Management</h1>
-            <p className="text-slate-400 text-xs mt-1">Pengaturan / User Management</p>
+            <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
+            <p className="text-gray-500 text-xs mt-1">Pengaturan / User Management</p>
           </div>
           {canCreate && (
             <Link
               href="/users/create"
-              className="flex items-center justify-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white font-semibold text-sm rounded-xl transition-all shadow-md shadow-violet-900/20"
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white font-semibold text-sm rounded-xl transition-all shadow-lg shadow-teal-200/40"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -105,7 +105,7 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
         </div>
 
         {/* Filter & Search */}
-        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
+        <div className="bg-white border border-gray-300 rounded-2xl p-4">
           <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1 relative">
               <input
@@ -113,9 +113,9 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Cari nama atau email..."
-                className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                className="w-full pl-10 pr-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
               />
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-slate-500 absolute left-3.5 top-3">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-gray-400 absolute left-3.5 top-3">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.637 10.637z" />
               </svg>
             </div>
@@ -123,7 +123,7 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
               <select
                 value={roleId}
                 onChange={(e) => handleFilterChange('role_id', e.target.value)}
-                className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all cursor-pointer"
+                className="px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
               >
                 <option value="">Semua Role</option>
                 {roles.map((r) => (
@@ -133,7 +133,7 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
               <select
                 value={status}
                 onChange={(e) => handleFilterChange('status', e.target.value)}
-                className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all cursor-pointer"
+                className="px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
               >
                 <option value="">Semua Status</option>
                 <option value="active">Aktif</option>
@@ -141,7 +141,7 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
               </select>
               <button
                 type="submit"
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-sm font-semibold border border-slate-700 transition-all"
+                className="px-4 py-2 bg-white hover:bg-teal-50 text-teal-700 rounded-xl text-sm font-semibold border border-teal-400 hover:border-teal-500 transition-all"
               >
                 Cari
               </button>
@@ -150,11 +150,11 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
         </div>
 
         {/* Table */}
-        <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+        <div className="bg-white border border-gray-300 rounded-2xl overflow-hidden shadow-xl">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-500 bg-slate-900/30">
+                <tr className="border-b border-gray-300 text-[11px] font-bold uppercase tracking-wider text-gray-400 bg-teal-50/60">
                   <th className="px-6 py-4">Nama</th>
                   <th className="px-6 py-4">Email</th>
                   <th className="px-6 py-4">Role</th>
@@ -162,41 +162,41 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
                   <th className="px-6 py-4 text-right">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 text-sm">
+              <tbody className="divide-y divide-gray-200/60 text-sm">
                 {users.data.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={5} className="px-6 py-12 text-center text-gray-400">
                       Tidak ada data user ditemukan.
                     </td>
                   </tr>
                 ) : (
                   users.data.map((user) => (
-                    <tr key={user.id} className="hover:bg-slate-900/20 group transition-all">
+                    <tr key={user.id} className="hover:bg-teal-50/40 group transition-all">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                             {user.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
                           </div>
-                          <span className="font-semibold text-slate-200 group-hover:text-white transition-colors">
+                          <span className="font-semibold text-gray-800 group-hover:text-gray-900 transition-colors">
                             {user.name}
                           </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-slate-400">{user.email}</td>
+                      <td className="px-6 py-4 text-gray-500">{user.email}</td>
                       <td className="px-6 py-4">
                         {user.role ? (
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${roleBadgeColor[user.role.name] ?? 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${roleBadgeColor[user.role.name] ?? 'bg-gray-100 border-gray-300 text-gray-500'}`}>
                             {user.role.name}
                           </span>
                         ) : (
-                          <span className="text-slate-500 text-xs italic">Tidak ada role</span>
+                          <span className="text-gray-400 text-xs italic">Tidak ada role</span>
                         )}
                       </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
                           user.status === 'active'
                             ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                            : 'bg-slate-800 border-slate-700 text-slate-500'
+                            : 'bg-gray-100 border-gray-300 text-gray-400'
                         }`}>
                           <span className={`h-1.5 w-1.5 rounded-full ${user.status === 'active' ? 'bg-emerald-400' : 'bg-slate-500'}`} />
                           {user.status === 'active' ? 'Aktif' : 'Nonaktif'}
@@ -207,7 +207,7 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
                           {canEdit && (
                             <Link
                               href={`/users/${user.id}/edit`}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-violet-400 hover:bg-violet-500/10 border border-transparent hover:border-violet-500/10 transition-all"
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-teal-400 hover:bg-teal-500/10 border border-transparent hover:border-teal-500/10 transition-all"
                               title="Edit"
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
@@ -218,7 +218,7 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
                           {canDelete && user.id !== auth.user?.id && (
                             <button
                               onClick={() => setDeletingUser(user)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/10 transition-all"
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/10 transition-all"
                               title="Hapus"
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
@@ -234,8 +234,8 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
               </tbody>
             </table>
           </div>
-          <div className="px-6 py-4 border-t border-slate-800/80 bg-slate-900/10 flex items-center justify-between">
-            <p className="text-xs text-slate-500">Total {users.total} user</p>
+          <div className="px-6 py-4 border-t border-gray-300/80 bg-gray-50/10 flex items-center justify-between">
+            <p className="text-xs text-gray-400">Total {users.total} user</p>
             <Pagination links={users.links} />
           </div>
         </div>
@@ -244,8 +244,8 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
       {/* Delete Confirmation */}
       {deletingUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={() => setDeletingUser(null)} />
-          <div className="relative bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+          <div className="absolute inset-0 bg-gray-50 backdrop-blur-sm" onClick={() => setDeletingUser(null)} />
+          <div className="relative bg-gray-50 border border-gray-300 rounded-2xl shadow-2xl p-6 w-full max-w-sm">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-rose-500/10 flex items-center justify-center">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-5 h-5 text-rose-400">
@@ -253,24 +253,24 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
                 </svg>
               </div>
               <div>
-                <h3 className="text-white font-semibold">Konfirmasi Hapus</h3>
-                <p className="text-slate-400 text-xs">Tindakan ini tidak dapat dibatalkan.</p>
+                <h3 className="text-gray-900 font-semibold">Konfirmasi Hapus</h3>
+                <p className="text-gray-500 text-xs">Tindakan ini tidak dapat dibatalkan.</p>
               </div>
             </div>
-            <p className="text-slate-300 text-sm mb-6">
-              Hapus user <span className="font-bold text-white">{deletingUser.name}</span>?
+            <p className="text-gray-700 text-sm mb-6">
+              Hapus user <span className="font-bold text-gray-900">{deletingUser.name}</span>?
             </p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setDeletingUser(null)}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-semibold transition-all"
+                className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-semibold transition-all"
                 disabled={deleteLoading}
               >
                 Batal
               </button>
               <button
                 onClick={() => handleDelete(deletingUser)}
-                className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-sm font-semibold transition-all"
+                className="px-4 py-2.5 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-rose-200/40"
                 disabled={deleteLoading}
               >
                 {deleteLoading ? 'Menghapus...' : 'Hapus User'}

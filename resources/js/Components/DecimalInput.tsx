@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 
 import { toDecimalDisplay, toDecimalInput } from '../Utils/number';
 
@@ -74,7 +74,7 @@ export default function DecimalInput({
         className={`${suffix ? 'pr-12 ' : ''}${className}`}
       />
       {suffix && (
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm select-none">
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm select-none">
           {suffix}
         </span>
       )}

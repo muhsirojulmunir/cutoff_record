@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import Pagination from '../../Components/Pagination';
 import Alert from '../../Components/Alert';
 import { PageProps } from '../../Types';
+import { downloadSalesOrderList } from '../../Utils/salesOrderExcel';
 
 interface Customer {
   id: number;
@@ -47,17 +48,17 @@ interface SalesOrderIndexProps {
 }
 
 const statusBadgeColor: Record<string, string> = {
-  draft:            'bg-slate-800 border-slate-700 text-slate-400',
+  draft:            'bg-gray-100 border-gray-300 text-gray-500',
   pending_approval: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
   approved:         'bg-blue-500/10 border-blue-500/20 text-blue-400',
-  processing:       'bg-indigo-500/10 border-indigo-500/20 text-indigo-400',
+  processing:       'bg-cyan-500/10 border-cyan-500/20 text-cyan-400',
   completed:        'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
   cancelled:        'bg-rose-500/10 border-rose-500/20 text-rose-400',
 };
 
 const statusLabel: Record<string, string> = {
   draft:            'Draft',
-  pending_approval: 'Pending Approval',
+  pending_approval: 'Menunggu Approval Finance',
   approved:         'Disetujui',
   processing:       'Diproses',
   completed:        'Selesai',
@@ -68,7 +69,7 @@ const paymentBadgeColor: Record<string, string> = {
   unpaid:         'bg-rose-500/10 border-rose-500/20 text-rose-400',
   partially_paid: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
   paid:           'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
-  refunded:       'bg-slate-800 border-slate-700 text-slate-500',
+  refunded:       'bg-gray-100 border-gray-300 text-gray-400',
 };
 
 const paymentLabel: Record<string, string> = {
@@ -96,12 +97,35 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
   const [startDate, setStartDate] = useState(filters.start_date ?? '');
   const [endDate, setEndDate] = useState(filters.end_date ?? '');
 
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
   const [deletingOrder, setDeletingOrder] = useState<SalesOrder | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const canCreate = permissions.includes('sales_order.create');
   const canEdit   = permissions.includes('sales_order.edit');
   const canDelete = permissions.includes('sales_order.delete');
+
+  async function handleDownloadExcel() {
+    setDownloading(true);
+    setDownloadError(null);
+
+    try {
+      await downloadSalesOrderList({
+        search,
+        status,
+        payment_status: paymentStatus,
+        source,
+        start_date: startDate,
+        end_date: endDate,
+      });
+    } catch {
+      setDownloadError('Gagal mengunduh data Sales Order. Coba ulangi beberapa saat lagi.');
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -160,41 +184,56 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
       <Head title="Sales Orders" />
       <Alert message={flash.success ?? null} type="success" />
       {flash.error && <Alert message={flash.error} type="error" />}
+      {downloadError && <Alert message={downloadError} type="error" />}
 
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white">Sales Orders</h1>
-            <p className="text-slate-400 text-xs mt-1">Transaksi / Sales Orders</p>
+            <h1 className="text-2xl font-bold text-gray-900">Sales Orders</h1>
+            <p className="text-gray-500 text-xs mt-1">Transaksi / Sales Orders</p>
           </div>
-          {canCreate && (
-            <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleDownloadExcel}
+              disabled={downloading}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-white hover:bg-teal-50 text-teal-700 font-semibold text-sm rounded-xl border border-teal-400 hover:border-teal-500 transition-all disabled:opacity-60"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              {downloading ? 'Menyiapkan...' : 'Download Excel'}
+            </button>
+
+            {canCreate && (
+              <>
               <Link
                 href="/sales-orders/grosir/create"
-                className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm rounded-xl transition-all shadow-md shadow-emerald-900/20"
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-sm rounded-xl transition-all shadow-lg shadow-emerald-200/40"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                 </svg>
-                🛒 Form Pesanan Grosir (Offline)
+                Form Pesanan Grosir (Offline)
               </Link>
               <Link
                 href="/sales-orders/create"
-                className="flex items-center justify-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white font-semibold text-sm rounded-xl transition-all shadow-md shadow-violet-900/20"
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white font-semibold text-sm rounded-xl transition-all shadow-lg shadow-teal-200/40"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                 </svg>
                 Buat Sales Order
               </Link>
-            </div>
-          )}
+              </>
+            )}
+          </div>
 
         </div>
 
         {/* Filters */}
-        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-4">
+        <div className="bg-white border border-gray-300 rounded-2xl p-4 space-y-4">
           <form onSubmit={handleSearch} className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="md:col-span-2 relative">
               <input
@@ -202,9 +241,9 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Cari nomor SO atau nama customer..."
-                className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                className="w-full pl-10 pr-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
               />
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-slate-500 absolute left-3.5 top-3">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-gray-400 absolute left-3.5 top-3">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.637 10.637z" />
               </svg>
             </div>
@@ -213,7 +252,7 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
               <select
                 value={status}
                 onChange={(e) => handleFilterChange('status', e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all cursor-pointer"
+                className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
               >
                 <option value="">Semua Status Order</option>
                 {Object.entries(statusLabel).map(([val, label]) => (
@@ -226,7 +265,7 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
               <select
                 value={paymentStatus}
                 onChange={(e) => handleFilterChange('payment_status', e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all cursor-pointer"
+                className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
               >
                 <option value="">Semua Status Bayar</option>
                 {Object.entries(paymentLabel).map(([val, label]) => (
@@ -241,14 +280,14 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
                 type="date"
                 value={startDate}
                 onChange={(e) => handleFilterChange('start_date', e.target.value)}
-                className="w-1/2 px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all cursor-pointer"
+                className="w-1/2 px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
                 title="Tanggal Mulai"
               />
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => handleFilterChange('end_date', e.target.value)}
-                className="w-1/2 px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all cursor-pointer"
+                className="w-1/2 px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
                 title="Tanggal Akhir"
               />
             </div>
@@ -257,7 +296,7 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
               <select
                 value={source}
                 onChange={(e) => handleFilterChange('source', e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all cursor-pointer"
+                className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
               >
                 <option value="">Semua Sumber Order</option>
                 {Object.entries(sourceLabel).map(([val, label]) => (
@@ -270,13 +309,13 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
               <button
                 type="button"
                 onClick={handleResetFilters}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-xl text-sm font-semibold border border-slate-800 transition-all"
+                className="px-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-800 rounded-xl text-sm font-semibold border border-gray-300 transition-all"
               >
                 Reset
               </button>
               <button
                 type="submit"
-                className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-sm font-semibold border border-slate-700 transition-all"
+                className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl text-sm font-semibold border border-gray-300 transition-all"
               >
                 Terapkan Pencarian
               </button>
@@ -285,79 +324,79 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
         </div>
 
         {/* Data Table */}
-        <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xl">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-500 bg-slate-900/30">
-                  <th className="px-6 py-4">SO Number</th>
-                  <th className="px-6 py-4">Tanggal</th>
-                  <th className="px-6 py-4">Customer</th>
-                  <th className="px-6 py-4">Sumber</th>
-                  <th className="px-6 py-4">Total</th>
-                  <th className="px-6 py-4">Status Bayar</th>
-                  <th className="px-6 py-4">Status Order</th>
-                  <th className="px-6 py-4">Pembuat</th>
-                  <th className="px-6 py-4 text-right">Aksi</th>
+                <tr className="border-b border-gray-200 text-[10px] font-bold uppercase tracking-widest text-gray-500 bg-gray-50">
+                  <th className="px-6 py-3.5">SO Number</th>
+                  <th className="px-6 py-3.5">Tanggal</th>
+                  <th className="px-6 py-3.5">Customer</th>
+                  <th className="px-6 py-3.5">Sumber</th>
+                  <th className="px-6 py-3.5 text-right">Total</th>
+                  <th className="px-6 py-3.5 text-center">Status Bayar</th>
+                  <th className="px-6 py-3.5 text-center">Status Order</th>
+                  <th className="px-6 py-3.5">Pembuat</th>
+                  <th className="px-6 py-3.5 text-right">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 text-sm">
+              <tbody className="divide-y divide-gray-100 text-sm">
                 {salesOrders.data.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={9} className="px-6 py-12 text-center text-gray-400 font-medium">
                       Tidak ada transaksi Sales Order ditemukan.
                     </td>
                   </tr>
                 ) : (
                   salesOrders.data.map((order) => (
-                    <tr key={order.id} className="hover:bg-slate-900/20 group transition-all">
-                      <td className="px-6 py-4 font-bold text-violet-400 group-hover:text-violet-300 transition-colors">
+                    <tr key={order.id} className="hover:bg-teal-50/60 group transition-all">
+                      <td className="px-6 py-3.5 font-bold text-teal-400 font-mono text-xs group-hover:text-teal-600 transition-colors">
                         <Link href={`/sales-orders/${order.id}`}>
                           {order.so_number}
                         </Link>
                       </td>
-                      <td className="px-6 py-4 text-slate-300 whitespace-nowrap">
+                      <td className="px-6 py-3.5 text-gray-700 font-mono text-xs whitespace-nowrap">
                         {new Date(order.order_date).toLocaleDateString('id-ID', {
                           day: 'numeric',
                           month: 'short',
                           year: 'numeric'
                         })}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-3.5">
                         {order.customer ? (
                           <div>
-                            <p className="font-semibold text-slate-200 group-hover:text-white transition-colors">{order.customer.name}</p>
-                            <p className="text-[10px] text-slate-500">{order.customer.customer_code}</p>
+                            <p className="font-semibold text-gray-800 group-hover:text-gray-900 transition-colors text-xs">{order.customer.name}</p>
+                            <p className="text-[10px] text-gray-400 font-mono">{order.customer.customer_code}</p>
                           </div>
                         ) : (
-                          <span className="text-slate-500 italic">Umum / Walk-in</span>
+                          <span className="text-gray-400 italic text-xs">Umum / Walk-in</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-slate-400">
+                      <td className="px-6 py-3.5 text-gray-500 text-xs">
                         {sourceLabel[order.source] ?? order.source}
                       </td>
-                      <td className="px-6 py-4 font-bold text-slate-200">
+                      <td className="px-6 py-3.5 font-bold text-gray-800 font-mono text-xs text-right whitespace-nowrap">
                         Rp {Number(order.grand_total).toLocaleString('id-ID')}
                       </td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${paymentBadgeColor[order.payment_status] ?? 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                      <td className="px-6 py-3.5 text-center whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${paymentBadgeColor[order.payment_status] ?? 'bg-gray-100 border-gray-300 text-gray-500'}`}>
                           {paymentLabel[order.payment_status] ?? order.payment_status}
                         </span>
                       </td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusBadgeColor[order.status] ?? 'bg-slate-800 border-slate-700 text-slate-400'}`}>
-                          <span className={`h-1.5 w-1.5 rounded-full ${order.status === 'completed' ? 'bg-emerald-400' : order.status === 'cancelled' ? 'bg-rose-400' : 'bg-violet-400'}`} />
+                      <td className="px-6 py-3.5 text-center whitespace-nowrap">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusBadgeColor[order.status] ?? 'bg-gray-100 border-gray-300 text-gray-500'}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${order.status === 'completed' ? 'bg-emerald-400' : order.status === 'cancelled' ? 'bg-rose-400' : 'bg-teal-400'}`} />
                           {statusLabel[order.status] ?? order.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-slate-400 text-xs">
+                      <td className="px-6 py-3.5 text-gray-500 text-xs">
                         {order.creator?.name ?? '—'}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <Link
                             href={`/sales-orders/${order.id}`}
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 border border-transparent transition-all"
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-900 hover:bg-gray-100 border border-transparent transition-all"
                             title="Detail"
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
@@ -369,7 +408,7 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
                           {canEdit && order.status === 'draft' && (
                             <Link
                               href={`/sales-orders/${order.id}/edit`}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-violet-400 hover:bg-violet-500/10 border border-transparent hover:border-violet-500/10 transition-all"
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-teal-400 hover:bg-teal-500/10 border border-transparent hover:border-teal-500/10 transition-all"
                               title="Edit"
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
@@ -385,7 +424,7 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
                                   router.delete(`/sales-orders/${order.id}`);
                                 }
                               }}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/10 transition-all"
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/10 transition-all"
                               title="Hapus Sales Order (Super Admin)"
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
@@ -401,8 +440,8 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
               </tbody>
             </table>
           </div>
-          <div className="px-6 py-4 border-t border-slate-800/80 bg-slate-900/10 flex items-center justify-between">
-            <p className="text-xs text-slate-500">Total {salesOrders.total} Sales Order</p>
+          <div className="px-6 py-4 border-t border-gray-300/80 bg-gray-50/10 flex items-center justify-between">
+            <p className="text-xs text-gray-400">Total {salesOrders.total} Sales Order</p>
             <Pagination links={salesOrders.links} />
           </div>
         </div>
@@ -411,8 +450,8 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
       {/* Delete Confirmation Modal */}
       {deletingOrder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={() => setDeletingOrder(null)} />
-          <div className="relative bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+          <div className="absolute inset-0 bg-gray-50 backdrop-blur-sm" onClick={() => setDeletingOrder(null)} />
+          <div className="relative bg-gray-50 border border-gray-300 rounded-2xl shadow-2xl p-6 w-full max-w-sm">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-rose-500/10 flex items-center justify-center">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-5 h-5 text-rose-400">
@@ -420,24 +459,24 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
                 </svg>
               </div>
               <div>
-                <h3 className="text-white font-semibold">Konfirmasi Hapus</h3>
-                <p className="text-slate-400 text-xs">Hanya bisa menghapus SO berstatus Draft.</p>
+                <h3 className="text-gray-900 font-semibold">Konfirmasi Hapus</h3>
+                <p className="text-gray-500 text-xs">Hanya bisa menghapus SO berstatus Draft.</p>
               </div>
             </div>
-            <p className="text-slate-300 text-sm mb-6">
-              Apakah Anda yakin ingin menghapus Sales Order <span className="font-bold text-white">{deletingOrder.so_number}</span>?
+            <p className="text-gray-700 text-sm mb-6">
+              Apakah Anda yakin ingin menghapus Sales Order <span className="font-bold text-gray-900">{deletingOrder.so_number}</span>?
             </p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setDeletingOrder(null)}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-semibold transition-all"
+                className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-semibold transition-all"
                 disabled={deleteLoading}
               >
                 Batal
               </button>
               <button
                 onClick={() => handleDelete(deletingOrder)}
-                className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-sm font-semibold transition-all"
+                className="px-4 py-2.5 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-rose-200/40"
                 disabled={deleteLoading}
               >
                 {deleteLoading ? 'Menghapus...' : 'Hapus SO'}

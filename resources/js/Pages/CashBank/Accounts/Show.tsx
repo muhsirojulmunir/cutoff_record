@@ -1,4 +1,4 @@
-import React, { FormEvent, useState } from 'react';
+﻿import React, { FormEvent, useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import CurrencyInput from '@/Components/CurrencyInput';
@@ -33,7 +33,7 @@ const fmt = (n: string | number) =>
 const typeBadge: Record<string, string> = {
     cash:     'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
     bank:     'bg-blue-500/10 border-blue-500/20 text-blue-400',
-    e_wallet: 'bg-violet-500/10 border-violet-500/20 text-violet-400',
+    e_wallet: 'bg-teal-500/10 border-teal-500/20 text-teal-400',
 };
 
 const dirBadge: Record<string, string> = {
@@ -41,8 +41,8 @@ const dirBadge: Record<string, string> = {
     out: 'bg-rose-500/10 border-rose-500/20 text-rose-400',
 };
 
-const inputCls = `w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none placeholder:text-slate-600 transition-all`;
-const lbl = 'block text-xs font-semibold text-slate-400 mb-1.5';
+const inputCls = `w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none placeholder:text-gray-400 transition-all`;
+const lbl = 'block text-xs font-semibold text-gray-500 mb-1.5';
 
 function AdjustModal({ accountId, onClose }: { accountId: number; onClose: () => void }) {
     const [form, setForm] = useState({ account_id: accountId, transaction_date: new Date().toISOString().slice(0,10), amount: '', direction: 'in', description: '', reference_number: '' });
@@ -56,10 +56,10 @@ function AdjustModal({ accountId, onClose }: { accountId: number; onClose: () =>
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-md mx-4">
-                <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-                    <h3 className="font-semibold text-slate-100">Adjustment Saldo</h3>
-                    <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            <div className="bg-white border border-gray-300 rounded-2xl shadow-2xl w-full max-w-md mx-4">
+                <div className="px-6 py-4 border-b border-gray-300 flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-900">Adjustment Saldo</h3>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-900 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
                 </div>
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
                     <div>
@@ -88,8 +88,8 @@ function AdjustModal({ accountId, onClose }: { accountId: number; onClose: () =>
                         <input type="text" value={form.reference_number} onChange={e => setForm(f => ({...f, reference_number: e.target.value}))} placeholder="Opsional" className={inputCls} />
                     </div>
                     <div className="flex gap-2 justify-end pt-1">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs font-semibold transition-all">Batal</button>
-                        <button type="submit" disabled={processing} className="px-5 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-semibold rounded-xl text-xs transition-all">
+                        <button type="button" onClick={onClose} className="px-4 py-2 text-gray-500 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-300 rounded-xl text-xs font-semibold transition-all">Batal</button>
+                        <button type="submit" disabled={processing} className="px-5 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 disabled:opacity-50 text-white font-semibold rounded-xl text-xs transition-all shadow-lg shadow-teal-200/40">
                             {processing ? 'Memproses...' : 'Simpan Adjustment'}
                         </button>
                     </div>
@@ -113,10 +113,10 @@ function CashInOutModal({ accountId, type, onClose }: { accountId: number; type:
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-md mx-4">
-                <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-                    <h3 className="font-semibold text-slate-100">{title}</h3>
-                    <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            <div className="bg-white border border-gray-300 rounded-2xl shadow-2xl w-full max-w-md mx-4">
+                <div className="px-6 py-4 border-b border-gray-300 flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-900">{title}</h3>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-900 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
                 </div>
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
                     <div className="grid grid-cols-2 gap-3">
@@ -138,7 +138,7 @@ function CashInOutModal({ accountId, type, onClose }: { accountId: number; type:
                         <input type="text" value={form.reference_number} onChange={e => setForm(f => ({...f, reference_number: e.target.value}))} placeholder="Opsional" className={inputCls} />
                     </div>
                     <div className="flex gap-2 justify-end pt-1">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs font-semibold transition-all">Batal</button>
+                        <button type="button" onClick={onClose} className="px-4 py-2 text-gray-500 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-300 rounded-xl text-xs font-semibold transition-all">Batal</button>
                         <button type="submit" disabled={processing} className={`px-5 py-2 disabled:opacity-50 text-white font-semibold rounded-xl text-xs transition-all ${type === 'cash-in' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'}`}>
                             {processing ? 'Memproses...' : `Simpan ${title}`}
                         </button>
@@ -152,8 +152,8 @@ function CashInOutModal({ accountId, type, onClose }: { accountId: number; type:
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
     return (
         <div>
-            <dt className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">{label}</dt>
-            <dd className="text-sm text-slate-200">{children}</dd>
+            <dt className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">{label}</dt>
+            <dd className="text-sm text-gray-800">{children}</dd>
         </div>
     );
 }
@@ -184,12 +184,12 @@ export default function AccountsShow({ account, totalIn, totalOut, txnCount, rec
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
-                        <Link href="/cash-bank/accounts" className="p-1.5 text-slate-500 hover:text-white hover:bg-slate-900 border border-transparent hover:border-slate-800 rounded-lg transition-all">
+                        <Link href="/cash-bank/accounts" className="p-1.5 text-gray-400 hover:text-gray-900 hover:bg-gray-50 border border-transparent hover:border-gray-300 rounded-lg transition-all">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
                         </Link>
                         <div>
                             <div className="flex items-center gap-2">
-                                <h1 className="text-2xl font-bold text-white tracking-tight font-mono">{account.account_code}</h1>
+                                <h1 className="text-2xl font-bold text-gray-900 tracking-tight font-mono">{account.account_code}</h1>
                                 <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 border rounded-full text-[10px] font-bold uppercase ${typeBadge[account.account_type] ?? ''}`}>
                                     {account.type_label}
                                 </span>
@@ -197,13 +197,13 @@ export default function AccountsShow({ account, totalIn, totalOut, txnCount, rec
                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-full text-[10px] font-bold uppercase">⛔ Tidak Aktif</span>
                                 )}
                             </div>
-                            <p className="text-slate-400 text-sm mt-0.5 font-semibold">{account.account_name}</p>
+                            <p className="text-gray-500 text-sm mt-0.5 font-semibold">{account.account_name}</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                         {canEdit && (
                             <Link href={`/cash-bank/accounts/${account.id}/edit`} id="btn-edit"
-                                className="px-4 py-2 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs font-semibold transition-all">Edit</Link>
+                                className="px-4 py-2 text-gray-500 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-300 rounded-xl text-xs font-semibold transition-all">Edit</Link>
                         )}
                         {account.status === 'active' && (
                             <>
@@ -219,7 +219,7 @@ export default function AccountsShow({ account, totalIn, totalOut, txnCount, rec
                         )}
                         {canDeactivate && (
                             <button id="btn-toggle-status" onClick={handleDeactivate}
-                                className="px-4 py-2 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs font-semibold transition-all">
+                                className="px-4 py-2 text-gray-500 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-300 rounded-xl text-xs font-semibold transition-all">
                                 {account.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
                             </button>
                         )}
@@ -230,12 +230,12 @@ export default function AccountsShow({ account, totalIn, totalOut, txnCount, rec
                 {flash?.error   && <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm rounded-xl px-4 py-3">{flash.error}</div>}
 
                 {/* Balance hero */}
-                <div className="bg-gradient-to-br from-violet-600 to-violet-800 rounded-2xl p-6 text-white shadow-xl shadow-violet-900/30">
-                    <p className="text-violet-200 text-xs font-semibold uppercase tracking-wider mb-1">Saldo Saat Ini</p>
+                <div className="bg-gradient-to-br from-teal-600 to-violet-800 rounded-2xl p-6 text-white shadow-xl shadow-violet-900/30">
+                    <p className="text-teal-200 text-xs font-semibold uppercase tracking-wider mb-1">Saldo Saat Ini</p>
                     <p className="text-4xl font-extrabold">{fmt(account.current_balance)}</p>
                     <div className="mt-4 grid grid-cols-3 gap-4">
                         <div>
-                            <p className="text-violet-300 text-[10px] uppercase tracking-wider">Saldo Awal</p>
+                            <p className="text-teal-600 text-[10px] uppercase tracking-wider">Saldo Awal</p>
                             <p className="text-lg font-bold">{fmt(account.opening_balance)}</p>
                         </div>
                         <div>
@@ -252,13 +252,13 @@ export default function AccountsShow({ account, totalIn, totalOut, txnCount, rec
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Account info */}
                     <div className="lg:col-span-2 space-y-5">
-                        <div className="bg-slate-950 border border-slate-900 rounded-2xl overflow-hidden shadow-xl">
-                            <div className="px-6 py-4 border-b border-slate-900 bg-slate-950/60">
-                                <h2 className="font-semibold text-slate-200 text-sm">Informasi Rekening</h2>
+                        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xl">
+                            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                                <h2 className="font-semibold text-gray-800 text-sm">Informasi Rekening</h2>
                             </div>
                             <div className="p-6">
                                 <dl className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                                    <DetailRow label="Kode Rekening"><span className="font-mono text-violet-400">{account.account_code}</span></DetailRow>
+                                    <DetailRow label="Kode Rekening"><span className="font-mono text-teal-400">{account.account_code}</span></DetailRow>
                                     <DetailRow label="Jenis">{account.type_label}</DetailRow>
                                     {account.bank_name && <DetailRow label="Bank">{account.bank_name}</DetailRow>}
                                     {account.account_number && <DetailRow label="Nomor Rekening"><span className="font-mono">{account.account_number}</span></DetailRow>}
@@ -269,15 +269,15 @@ export default function AccountsShow({ account, totalIn, totalOut, txnCount, rec
                         </div>
 
                         {/* Recent Transactions */}
-                        <div className="bg-slate-950 border border-slate-900 rounded-2xl overflow-hidden shadow-xl">
-                            <div className="px-6 py-4 border-b border-slate-900 bg-slate-950/60 flex items-center justify-between">
-                                <h2 className="font-semibold text-slate-200 text-sm">Transaksi Terbaru</h2>
-                                <Link href={`/cash-bank/transactions?account_id=${account.id}`} className="text-violet-400 hover:text-violet-300 text-xs font-semibold transition-colors">Lihat Semua →</Link>
+                        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xl">
+                            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+                                <h2 className="font-semibold text-gray-800 text-sm">Transaksi Terbaru</h2>
+                                <Link href={`/cash-bank/transactions?account_id=${account.id}`} className="text-teal-400 hover:text-teal-600 text-xs font-semibold transition-colors">Lihat Semua →</Link>
                             </div>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left border-collapse">
                                     <thead>
-                                        <tr className="border-b border-slate-900 text-slate-400 text-[10px] font-bold uppercase tracking-wider bg-slate-950/40">
+                                        <tr className="border-b border-gray-200 text-gray-500 text-[10px] font-bold uppercase tracking-wider bg-white/80">
                                             <th className="py-2.5 px-5">No. Transaksi</th>
                                             <th className="py-2.5 px-5">Tanggal</th>
                                             <th className="py-2.5 px-5">Jenis</th>
@@ -286,13 +286,13 @@ export default function AccountsShow({ account, totalIn, totalOut, txnCount, rec
                                             <th className="py-2.5 px-5 text-right">Saldo Akhir</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-900 text-xs text-slate-300">
+                                    <tbody className="divide-y divide-gray-100 text-xs text-gray-700">
                                         {recentTransactions.length === 0 ? (
-                                            <tr><td colSpan={6} className="text-center py-8 text-slate-500">Belum ada transaksi</td></tr>
+                                            <tr><td colSpan={6} className="text-center py-8 text-gray-400">Belum ada transaksi</td></tr>
                                         ) : recentTransactions.map(t => (
-                                            <tr key={t.id} className="hover:bg-slate-900/30">
-                                                <td className="py-2.5 px-5 font-mono font-bold text-violet-400">
-                                                    <Link href={`/cash-bank/transactions/${t.id}`} className="hover:text-violet-300">{t.transaction_number}</Link>
+                                            <tr key={t.id} className="hover:bg-teal-50/60">
+                                                <td className="py-2.5 px-5 font-mono font-bold text-teal-400">
+                                                    <Link href={`/cash-bank/transactions/${t.id}`} className="hover:text-teal-600">{t.transaction_number}</Link>
                                                 </td>
                                                 <td className="py-2.5 px-5">{new Date(t.transaction_date).toLocaleDateString('id-ID', {day:'2-digit', month:'short', year:'numeric'})}</td>
                                                 <td className="py-2.5 px-5">{t.type_label}</td>
@@ -304,7 +304,7 @@ export default function AccountsShow({ account, totalIn, totalOut, txnCount, rec
                                                 <td className={`py-2.5 px-5 text-right font-bold ${t.direction === 'in' ? 'text-emerald-400' : 'text-rose-400'}`}>
                                                     {t.direction === 'in' ? '+' : '-'}{fmt(t.amount)}
                                                 </td>
-                                                <td className="py-2.5 px-5 text-right font-mono text-slate-300">{fmt(t.balance_after)}</td>
+                                                <td className="py-2.5 px-5 text-right font-mono text-gray-700">{fmt(t.balance_after)}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -315,14 +315,14 @@ export default function AccountsShow({ account, totalIn, totalOut, txnCount, rec
 
                     {/* Sidebar stats */}
                     <div className="space-y-4">
-                        <div className="bg-slate-950 border border-slate-900 rounded-2xl p-5 shadow-xl">
-                            <h3 className="font-semibold text-slate-200 text-sm mb-4">Statistik</h3>
+                        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xl">
+                            <h3 className="font-semibold text-gray-800 text-sm mb-4">Statistik</h3>
                             <div className="space-y-3">
-                                <div className="flex justify-between items-center py-2 border-b border-slate-900">
-                                    <span className="text-slate-400 text-xs">Total Transaksi</span>
-                                    <span className="font-bold text-white">{txnCount}</span>
+                                <div className="flex justify-between items-center py-2 border-b border-gray-200">
+                                    <span className="text-gray-500 text-xs">Total Transaksi</span>
+                                    <span className="font-bold text-gray-900">{txnCount}</span>
                                 </div>
-                                <div className="flex justify-between items-center py-2 border-b border-slate-900">
+                                <div className="flex justify-between items-center py-2 border-b border-gray-200">
                                     <span className="text-emerald-400 text-xs">Total Masuk</span>
                                     <span className="font-bold text-emerald-400">{fmt(totalIn)}</span>
                                 </div>
@@ -332,13 +332,13 @@ export default function AccountsShow({ account, totalIn, totalOut, txnCount, rec
                                 </div>
                             </div>
                         </div>
-                        <div className="bg-slate-950 border border-slate-900 rounded-2xl p-5 shadow-xl">
-                            <h3 className="font-semibold text-slate-200 text-sm mb-3">Dibuat Oleh</h3>
+                        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xl">
+                            <h3 className="font-semibold text-gray-800 text-sm mb-3">Dibuat Oleh</h3>
                             <div className="flex items-center gap-3">
-                                <div className="w-9 h-9 rounded-full bg-violet-500/20 border border-violet-500/30 flex items-center justify-center flex-shrink-0">
-                                    <span className="text-violet-400 font-bold text-sm">{account.creator?.name?.charAt(0).toUpperCase()}</span>
+                                <div className="w-9 h-9 rounded-full bg-teal-500/20 border border-teal-500/30 flex items-center justify-center flex-shrink-0">
+                                    <span className="text-teal-400 font-bold text-sm">{account.creator?.name?.charAt(0).toUpperCase()}</span>
                                 </div>
-                                <p className="text-sm font-semibold text-slate-200">{account.creator?.name}</p>
+                                <p className="text-sm font-semibold text-gray-800">{account.creator?.name}</p>
                             </div>
                         </div>
                     </div>

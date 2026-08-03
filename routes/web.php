@@ -100,6 +100,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/sales-orders/{sales_order}/update-tracking', [SalesOrderController::class, 'updateTracking'])
         ->name('sales-orders.update-tracking');
 
+    Route::get('/sales-orders/export', [SalesOrderController::class, 'export'])
+        ->name('sales-orders.export')
+        ->middleware('can:sales_order.view');
+
     Route::post('/sales-orders/{sales_order}/submit-approval', [SalesOrderController::class, 'submitApproval'])
         ->name('sales-orders.submit-approval')
         ->middleware('can:sales_order.edit');

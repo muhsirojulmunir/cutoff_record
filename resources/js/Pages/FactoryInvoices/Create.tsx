@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import CurrencyInput from '@/Components/CurrencyInput';
@@ -6,7 +6,7 @@ import { PageProps } from '../../Types';
 
 interface Supplier { id: number; name: string; supplier_code: string; }
 interface PO { id: number; po_number: string; supplier_id: number; grand_total: string; }
-interface Product { id: number; sku: string; name: string; selling_price: string; unit: string; }
+interface Product { id: number; sku: string; name: string; selling_price: string; }
 
 interface FormItem {
   [key: string]: unknown;
@@ -63,7 +63,7 @@ export default function Create({ suppliers, purchaseOrders, products }: { suppli
       if (p) {
         updated[i].product_name = p.name;
         updated[i].product_code = p.sku;
-        updated[i].unit         = p.unit || 'pcs';
+        updated[i].unit         = 'pcs';
         updated[i].unit_price   = Number(p.selling_price);
       }
     }
@@ -102,10 +102,10 @@ export default function Create({ suppliers, purchaseOrders, products }: { suppli
     <AppLayout>
       <Head title="Buat Invoice Pabrik" />
       <div className="flex items-center gap-4 mb-6">
-        <Link href="/factory-invoices" className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 border border-transparent hover:border-slate-700 transition-all">
+        <Link href="/factory-invoices" className="p-2 rounded-xl text-gray-500 hover:text-gray-900 hover:bg-gray-100 border border-transparent hover:border-gray-300 transition-all">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>
         </Link>
-        <h1 className="text-2xl font-bold text-white">Buat Invoice Pabrik</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Buat Invoice Pabrik</h1>
       </div>
 
       {error && <div className="mb-4 p-3.5 bg-rose-500/10 border border-rose-500/25 rounded-xl text-rose-400 text-sm font-semibold">{error}</div>}
@@ -113,97 +113,97 @@ export default function Create({ suppliers, purchaseOrders, products }: { suppli
       <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left — Header */}
         <div className="lg:col-span-2 space-y-5">
-          <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-5 shadow-xl space-y-4">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Info Invoice</h3>
+          <div className="bg-white border border-gray-300/80 rounded-2xl p-5 shadow-xl space-y-4">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Info Invoice</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Referensi PO (opsional)</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">Referensi PO (opsional)</label>
                 <select value={poId} onChange={e => handlePoChange(e.target.value ? Number(e.target.value) : '')}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-1 focus:ring-violet-500 focus:outline-none">
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-teal-500 focus:outline-none">
                   <option value="">— Tanpa Referensi PO —</option>
                   {purchaseOrders.map(po => <option key={po.id} value={po.id}>{po.po_number}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Supplier / Pabrik *</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">Supplier / Pabrik *</label>
                 <select value={supplierId} onChange={e => setSupplierId(e.target.value ? Number(e.target.value) : '')}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-1 focus:ring-violet-500 focus:outline-none">
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-teal-500 focus:outline-none">
                   <option value="">— Pilih Supplier —</option>
                   {suppliers.map(s => <option key={s.id} value={s.id}>{s.name} ({s.supplier_code})</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1.5">No. Invoice dari Supplier</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">No. Invoice dari Supplier</label>
                 <input value={supplierInvNo} onChange={e => setSupplierInvNo(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-1 focus:ring-violet-500 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-teal-500 focus:outline-none"
                   placeholder="Misal: INV/PAB/2026/001" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Tgl Invoice *</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1.5">Tgl Invoice *</label>
                   <input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-1 focus:ring-violet-500 focus:outline-none" />
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-teal-500 focus:outline-none" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Jatuh Tempo</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1.5">Jatuh Tempo</label>
                   <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-1 focus:ring-violet-500 focus:outline-none" />
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-teal-500 focus:outline-none" />
                 </div>
               </div>
             </div>
           </div>
 
           {/* Items */}
-          <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-5 shadow-xl">
+          <div className="bg-white border border-gray-300/80 rounded-2xl p-5 shadow-xl">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Item / SKU</h3>
-              <button type="button" onClick={addItem} className="text-xs text-violet-400 hover:text-violet-300 font-semibold">+ Tambah Item</button>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Item / SKU</h3>
+              <button type="button" onClick={addItem} className="text-xs text-teal-400 hover:text-teal-600 font-semibold">+ Tambah Item</button>
             </div>
             <div className="space-y-3">
               {items.map((item, i) => (
-                <div key={i} className="p-3.5 bg-slate-900/60 rounded-xl border border-slate-800 space-y-3">
+                <div key={i} className="p-3.5 bg-gray-50/60 rounded-xl border border-gray-300 space-y-3">
                   <div className="grid grid-cols-12 gap-2">
                     <div className="col-span-4">
-                      <label className="block text-[10px] font-semibold text-slate-500 mb-1">Produk (opsional)</label>
+                      <label className="block text-[10px] font-semibold text-gray-400 mb-1">Produk (opsional)</label>
                       <select value={item.product_id ?? ''} onChange={e => updateItem(i, 'product_id', e.target.value ? Number(e.target.value) : null)}
-                        className="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:ring-1 focus:ring-violet-500 focus:outline-none">
+                        className="w-full px-2.5 py-2 rounded-lg bg-white border border-gray-300 text-gray-800 text-xs focus:ring-1 focus:ring-teal-500 focus:outline-none">
                         <option value="">— Produk Lainnya —</option>
                         {products.map(p => <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>)}
                       </select>
                     </div>
                     <div className="col-span-4">
-                      <label className="block text-[10px] font-semibold text-slate-500 mb-1">Nama Item *</label>
+                      <label className="block text-[10px] font-semibold text-gray-400 mb-1">Nama Item *</label>
                       <input value={item.product_name} onChange={e => updateItem(i, 'product_name', e.target.value)}
-                        className="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:ring-1 focus:ring-violet-500 focus:outline-none" />
+                        className="w-full px-2.5 py-2 rounded-lg bg-white border border-gray-300 text-gray-800 text-xs focus:ring-1 focus:ring-teal-500 focus:outline-none" />
                     </div>
                     <div className="col-span-2">
-                      <label className="block text-[10px] font-semibold text-slate-500 mb-1">Qty</label>
+                      <label className="block text-[10px] font-semibold text-gray-400 mb-1">Qty</label>
                       <CurrencyInput hidePrefix value={item.quantity} onChange={v => updateItem(i, 'quantity', v)}
-                        className="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs text-right font-bold focus:ring-1 focus:ring-violet-500 focus:outline-none" />
+                        className="w-full px-2.5 py-2 rounded-lg bg-white border border-gray-300 text-gray-800 text-xs text-right font-bold focus:ring-1 focus:ring-teal-500 focus:outline-none" />
                     </div>
                     <div className="col-span-2">
-                      <label className="block text-[10px] font-semibold text-slate-500 mb-1">Satuan</label>
+                      <label className="block text-[10px] font-semibold text-gray-400 mb-1">Satuan</label>
                       <input value={item.unit} onChange={e => updateItem(i, 'unit', e.target.value)}
-                        className="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:ring-1 focus:ring-violet-500 focus:outline-none" />
+                        className="w-full px-2.5 py-2 rounded-lg bg-white border border-gray-300 text-gray-800 text-xs focus:ring-1 focus:ring-teal-500 focus:outline-none" />
                     </div>
                     <div className="col-span-4">
-                      <label className="block text-[10px] font-semibold text-slate-500 mb-1">Harga Satuan (Rp)</label>
+                      <label className="block text-[10px] font-semibold text-gray-400 mb-1">Harga Satuan (Rp)</label>
                       <CurrencyInput hidePrefix value={item.unit_price} onChange={v => updateItem(i, 'unit_price', v)}
-                        className="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs text-right font-bold focus:ring-1 focus:ring-violet-500 focus:outline-none" />
+                        className="w-full px-2.5 py-2 rounded-lg bg-white border border-gray-300 text-gray-800 text-xs text-right font-bold focus:ring-1 focus:ring-teal-500 focus:outline-none" />
                     </div>
                     <div className="col-span-3">
-                      <label className="block text-[10px] font-semibold text-slate-500 mb-1">Diskon Item</label>
+                      <label className="block text-[10px] font-semibold text-gray-400 mb-1">Diskon Item</label>
                       <CurrencyInput hidePrefix value={item.discount_amount} onChange={v => updateItem(i, 'discount_amount', v)}
-                        className="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-rose-300 text-xs text-right font-bold focus:ring-1 focus:ring-rose-500 focus:outline-none" />
+                        className="w-full px-2.5 py-2 rounded-lg bg-white border border-gray-300 text-rose-300 text-xs text-right font-bold focus:ring-1 focus:ring-rose-500 focus:outline-none" />
                     </div>
                     <div className="col-span-3">
-                      <label className="block text-[10px] font-semibold text-slate-500 mb-1">Pajak Item</label>
+                      <label className="block text-[10px] font-semibold text-gray-400 mb-1">Pajak Item</label>
                       <CurrencyInput hidePrefix value={item.tax_amount} onChange={v => updateItem(i, 'tax_amount', v)}
-                        className="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-emerald-300 text-xs text-right font-bold focus:ring-1 focus:ring-emerald-500 focus:outline-none" />
+                        className="w-full px-2.5 py-2 rounded-lg bg-white border border-gray-300 text-emerald-300 text-xs text-right font-bold focus:ring-1 focus:ring-emerald-500 focus:outline-none" />
                     </div>
                     <div className="col-span-2 flex items-end justify-between">
                       <div>
-                        <p className="text-[10px] text-slate-500">Subtotal</p>
+                        <p className="text-[10px] text-gray-400">Subtotal</p>
                         <p className="text-xs font-extrabold text-emerald-400">Rp {fmt(itemSubtotals[i] ?? 0)}</p>
                       </div>
                       {items.length > 1 && (
@@ -217,44 +217,44 @@ export default function Create({ suppliers, purchaseOrders, products }: { suppli
           </div>
 
           {/* Notes */}
-          <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-5 shadow-xl">
-            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Catatan Internal</label>
+          <div className="bg-white border border-gray-300/80 rounded-2xl p-5 shadow-xl">
+            <label className="block text-xs font-semibold text-gray-500 mb-1.5">Catatan Internal</label>
             <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-1 focus:ring-violet-500 focus:outline-none resize-none" />
+              className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-teal-500 focus:outline-none resize-none" />
           </div>
         </div>
 
         {/* Right — Totals */}
         <div className="space-y-5">
-          <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-5 shadow-xl space-y-4">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Biaya Tambahan</h3>
+          <div className="bg-white border border-gray-300/80 rounded-2xl p-5 shadow-xl space-y-4">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Biaya Tambahan</h3>
             {[{ label: 'Diskon PO', val: discountAmount, set: setDiscountAmount, cls: 'text-rose-400' },
               { label: 'Pajak PO', val: taxAmount, set: setTaxAmount, cls: 'text-emerald-400' },
-              { label: 'Ongkos Kirim', val: shippingCost, set: setShippingCost, cls: 'text-slate-200' }].map(f => (
+              { label: 'Ongkos Kirim', val: shippingCost, set: setShippingCost, cls: 'text-gray-800' }].map(f => (
               <div key={f.label}>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">{f.label} (Rp)</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1">{f.label} (Rp)</label>
                 <CurrencyInput hidePrefix value={f.val} onChange={v => f.set(v)}
-                  className={`w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 ${f.cls} text-xs text-right font-bold focus:ring-1 focus:ring-violet-500 focus:outline-none`} />
+                  className={`w-full px-3 py-2 rounded-lg bg-gray-50 border border-gray-300 ${f.cls} text-xs text-right font-bold focus:ring-1 focus:ring-teal-500 focus:outline-none`} />
               </div>
             ))}
           </div>
 
-          <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-5 shadow-xl space-y-3">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Ringkasan</h3>
+          <div className="bg-white border border-gray-300/80 rounded-2xl p-5 shadow-xl space-y-3">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Ringkasan</h3>
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-slate-400"><span>Subtotal Item</span><span className="font-semibold text-slate-200">Rp {fmt(rawSubtotal)}</span></div>
-              <div className="flex justify-between text-slate-400"><span>Diskon PO</span><span className="font-semibold text-rose-400">-Rp {fmt(discountAmount)}</span></div>
-              <div className="flex justify-between text-slate-400"><span>Pajak PO</span><span className="font-semibold text-emerald-400">+Rp {fmt(taxAmount)}</span></div>
-              <div className="flex justify-between text-slate-400"><span>Ongkir</span><span className="font-semibold text-slate-200">Rp {fmt(shippingCost)}</span></div>
-              <div className="border-t border-slate-900 pt-2.5 flex justify-between items-center">
-                <span className="font-extrabold text-white">Total Invoice</span>
+              <div className="flex justify-between text-gray-500"><span>Subtotal Item</span><span className="font-semibold text-gray-800">Rp {fmt(rawSubtotal)}</span></div>
+              <div className="flex justify-between text-gray-500"><span>Diskon PO</span><span className="font-semibold text-rose-400">-Rp {fmt(discountAmount)}</span></div>
+              <div className="flex justify-between text-gray-500"><span>Pajak PO</span><span className="font-semibold text-emerald-400">+Rp {fmt(taxAmount)}</span></div>
+              <div className="flex justify-between text-gray-500"><span>Ongkir</span><span className="font-semibold text-gray-800">Rp {fmt(shippingCost)}</span></div>
+              <div className="border-t border-gray-200 pt-2.5 flex justify-between items-center">
+                <span className="font-extrabold text-gray-900">Total Invoice</span>
                 <span className="text-lg font-extrabold text-emerald-400">Rp {fmt(grandTotal)}</span>
               </div>
             </div>
           </div>
 
           <button type="submit" disabled={loading}
-            className="w-full px-5 py-3 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl font-semibold shadow-lg shadow-indigo-950/40 transition-all disabled:opacity-50">
+            className="w-full px-5 py-3 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white rounded-xl font-semibold shadow-lg shadow-teal-200/40 transition-all disabled:opacity-50">
             {loading ? 'Menyimpan...' : '💾 Simpan Invoice Pabrik'}
           </button>
         </div>

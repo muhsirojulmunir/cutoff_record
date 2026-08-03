@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 
@@ -25,18 +25,18 @@ export default function Create() {
       <div className="max-w-2xl mx-auto space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold text-white">Tambah Gudang Baru</h1>
-          <p className="text-slate-400 text-xs mt-1">Master Data / Gudang / Tambah</p>
+          <h1 className="text-2xl font-bold text-gray-900">Tambah Gudang Baru</h1>
+          <p className="text-gray-500 text-xs mt-1">Master Data / Gudang / Tambah</p>
         </div>
 
         {/* Form Card */}
-        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl">
+        <div className="bg-white border border-gray-300 rounded-2xl p-6 shadow-xl">
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Code */}
               <div className="space-y-1.5">
-                <label htmlFor="code" className="block text-sm font-semibold text-slate-300">
-                  Kode Gudang <span className="text-violet-400">*</span>
+                <label htmlFor="code" className="block text-sm font-semibold text-gray-700">
+                  Kode Gudang <span className="text-teal-400">*</span>
                 </label>
                 <input
                   id="code"
@@ -44,8 +44,8 @@ export default function Create() {
                   value={data.code}
                   onChange={(e) => setData('code', e.target.value)}
                   placeholder="Contoh: WH-001"
-                  className={`w-full px-4 py-2.5 rounded-xl bg-slate-900 border text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all
-                    ${errors.code ? 'border-rose-500' : 'border-slate-800 hover:border-slate-700'}`}
+                  className={`w-full px-4 py-2.5 rounded-xl bg-gray-50 border text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all
+                    ${errors.code ? 'border-rose-500' : 'border-gray-300 hover:border-gray-300'}`}
                   disabled={processing}
                 />
                 {errors.code && <p className="text-rose-400 text-xs mt-1">{errors.code}</p>}
@@ -53,8 +53,8 @@ export default function Create() {
 
               {/* Name */}
               <div className="space-y-1.5">
-                <label htmlFor="name" className="block text-sm font-semibold text-slate-300">
-                  Nama Gudang <span className="text-violet-400">*</span>
+                <label htmlFor="name" className="block text-sm font-semibold text-gray-700">
+                  Nama Gudang <span className="text-teal-400">*</span>
                 </label>
                 <input
                   id="name"
@@ -62,8 +62,8 @@ export default function Create() {
                   value={data.name}
                   onChange={(e) => setData('name', e.target.value)}
                   placeholder="Masukkan nama gudang..."
-                  className={`w-full px-4 py-2.5 rounded-xl bg-slate-900 border text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all
-                    ${errors.name ? 'border-rose-500' : 'border-slate-800 hover:border-slate-700'}`}
+                  className={`w-full px-4 py-2.5 rounded-xl bg-gray-50 border text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all
+                    ${errors.name ? 'border-rose-500' : 'border-gray-300 hover:border-gray-300'}`}
                   disabled={processing}
                 />
                 {errors.name && <p className="text-rose-400 text-xs mt-1">{errors.name}</p>}
@@ -72,7 +72,7 @@ export default function Create() {
 
             {/* Location */}
             <div className="space-y-1.5">
-              <label htmlFor="location" className="block text-sm font-semibold text-slate-300">
+              <label htmlFor="location" className="block text-sm font-semibold text-gray-700">
                 Lokasi / Alamat
               </label>
               <input
@@ -81,7 +81,7 @@ export default function Create() {
                 value={data.location}
                 onChange={(e) => setData('location', e.target.value)}
                 placeholder="Alamat lengkap lokasi gudang..."
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 hover:border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
                 disabled={processing}
               />
               {errors.location && <p className="text-rose-400 text-xs mt-1">{errors.location}</p>}
@@ -90,7 +90,7 @@ export default function Create() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* PIC */}
               <div className="space-y-1.5">
-                <label htmlFor="person_in_charge" className="block text-sm font-semibold text-slate-300">
+                <label htmlFor="person_in_charge" className="block text-sm font-semibold text-gray-700">
                   Person in Charge (PIC)
                 </label>
                 <input
@@ -99,7 +99,7 @@ export default function Create() {
                   value={data.person_in_charge}
                   onChange={(e) => setData('person_in_charge', e.target.value)}
                   placeholder="Nama penanggung jawab..."
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                  className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 hover:border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
                   disabled={processing}
                 />
                 {errors.person_in_charge && <p className="text-rose-400 text-xs mt-1">{errors.person_in_charge}</p>}
@@ -107,7 +107,7 @@ export default function Create() {
 
               {/* Phone */}
               <div className="space-y-1.5">
-                <label htmlFor="phone" className="block text-sm font-semibold text-slate-300">
+                <label htmlFor="phone" className="block text-sm font-semibold text-gray-700">
                   Nomor Telepon
                 </label>
                 <input
@@ -116,7 +116,7 @@ export default function Create() {
                   value={data.phone}
                   onChange={(e) => setData('phone', e.target.value)}
                   placeholder="Contoh: 08123456789"
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                  className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 hover:border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
                   disabled={processing}
                 />
                 {errors.phone && <p className="text-rose-400 text-xs mt-1">{errors.phone}</p>}
@@ -125,14 +125,14 @@ export default function Create() {
 
             {/* Status */}
             <div className="space-y-1.5">
-              <label htmlFor="status" className="block text-sm font-semibold text-slate-300">
+              <label htmlFor="status" className="block text-sm font-semibold text-gray-700">
                 Status
               </label>
               <select
                 id="status"
                 value={data.status}
                 onChange={(e) => setData('status', e.target.value as 'active' | 'inactive')}
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all cursor-pointer"
+                className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
                 disabled={processing}
               >
                 <option value="active">Aktif</option>
@@ -143,7 +143,7 @@ export default function Create() {
 
             {/* Notes */}
             <div className="space-y-1.5">
-              <label htmlFor="notes" className="block text-sm font-semibold text-slate-300">
+              <label htmlFor="notes" className="block text-sm font-semibold text-gray-700">
                 Catatan Tambahan
               </label>
               <textarea
@@ -152,24 +152,24 @@ export default function Create() {
                 onChange={(e) => setData('notes', e.target.value)}
                 rows={3}
                 placeholder="Tulis catatan penting tentang gudang..."
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all resize-none"
+                className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 hover:border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all resize-none"
                 disabled={processing}
               />
               {errors.notes && <p className="text-rose-400 text-xs mt-1">{errors.notes}</p>}
             </div>
 
             {/* Actions */}
-            <div className="flex justify-end gap-3 pt-4 border-t border-slate-800/80">
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-300/80">
               <Link
                 href="/warehouses"
-                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded-xl text-sm font-semibold transition-all"
+                className="px-4 py-2.5 bg-white hover:bg-teal-50 text-teal-700 border border-teal-300 hover:border-teal-400 rounded-xl text-sm font-semibold transition-all"
               >
                 Batal
               </Link>
               <button
                 type="submit"
                 disabled={processing}
-                className="px-4 py-2.5 bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white rounded-xl text-sm font-semibold shadow-md shadow-violet-900/20 transition-all flex items-center gap-2"
+                className="px-4 py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 active:scale-[0.99] text-white rounded-xl text-sm font-semibold shadow-lg shadow-teal-200/40 transition-all flex items-center gap-2"
               >
                 {processing ? 'Menyimpan...' : 'Simpan Gudang'}
               </button>

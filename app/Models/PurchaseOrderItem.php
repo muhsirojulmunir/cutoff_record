@@ -15,8 +15,6 @@ class PurchaseOrderItem extends Model
         'quantity',
         'unit',
         'unit_price',
-        'discount_amount',
-        'tax_amount',
         'subtotal',
         'received_quantity',
         // Finance validation fields
@@ -31,8 +29,6 @@ class PurchaseOrderItem extends Model
     protected $casts = [
         'quantity'              => 'integer',
         'unit_price'            => 'decimal:2',
-        'discount_amount'       => 'decimal:2',
-        'tax_amount'            => 'decimal:2',
         'subtotal'              => 'decimal:2',
         'received_quantity'     => 'integer',
         'accepted_quantity'     => 'integer',

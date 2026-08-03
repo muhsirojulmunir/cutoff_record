@@ -207,6 +207,8 @@ class RoleAndPermissionSeeder extends Seeder
         $finance->permissions()->sync(
             $allPermissions->whereIn('name', [
                 'dashboard.view',
+                // Sales Order — Finance: approval tunggal (Leader hanya melihat)
+                'sales_order.view', 'sales_order.approve',
                 'invoice.view', 'invoice.create', 'invoice.edit', 'invoice.delete', 'invoice.cancel',
                 'payment.view', 'payment.create', 'payment.cancel',
                 'factory_receivable.view', 'factory_receivable.create', 'factory_receivable.edit', 'factory_receivable.payment', 'factory_receivable.cancel',
@@ -234,8 +236,8 @@ class RoleAndPermissionSeeder extends Seeder
         $leader->permissions()->sync(
             $allPermissions->whereIn('name', [
                 'dashboard.view',
-                // Sales Order — Leader: view, create, edit, approve
-                'sales_order.view', 'sales_order.create', 'sales_order.edit', 'sales_order.approve',
+                // Sales Order — Leader: view, create, edit (approval ada di Finance)
+                'sales_order.view', 'sales_order.create', 'sales_order.edit',
                 // Purchase Order — Leader: view, create, edit, leader approve
                 'purchase_order.view', 'purchase_order.create', 'purchase_order.edit',
                 'purchase_order.leader_approve',

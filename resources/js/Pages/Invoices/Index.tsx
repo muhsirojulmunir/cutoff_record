@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import Pagination from '../../Components/Pagination';
@@ -60,7 +60,7 @@ const statusBadgeColor: Record<string, string> = {
   partially_paid: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
   paid:           'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
   overdue:        'bg-red-650/15 border-red-500/20 text-red-400 font-extrabold animate-pulse',
-  cancelled:      'bg-slate-800 border-slate-700 text-slate-400',
+  cancelled:      'bg-gray-100 border-gray-300 text-gray-500',
 };
 
 const statusLabel: Record<string, string> = {
@@ -155,17 +155,17 @@ export default function Index({ invoices, filters }: InvoiceIndexProps) {
       <div className="space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Invoice Customer</h1>
-          <p className="text-slate-400 text-xs mt-1">Penjualan / Laporan Tagihan Resmi Customer</p>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Invoice Customer</h1>
+          <p className="text-gray-500 text-xs mt-1">Penjualan / Laporan Tagihan Resmi Customer</p>
         </div>
 
         {/* Pintasan tindak lanjut penagihan untuk Finance */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-500 mr-1">Tindak Lanjut</span>
+          <span className="text-xs font-bold uppercase tracking-wider text-gray-400 mr-1">Tindak Lanjut</span>
           {[
             { key: 'overdue', label: 'Telat Bayar', active: 'bg-rose-500/15 text-rose-400 border-rose-500/30' },
             { key: 'due_soon', label: `Jatuh Tempo ≤ ${DUE_SOON_DAYS} Hari`, active: 'bg-amber-400/15 text-amber-400 border-amber-400/30' },
-            { key: 'unpaid', label: 'Semua Belum Lunas', active: 'bg-violet-500/15 text-violet-400 border-violet-500/30' },
+            { key: 'unpaid', label: 'Semua Belum Lunas', active: 'bg-teal-500/15 text-teal-400 border-teal-500/30' },
           ].map((chip) => {
             const isActive = filters.due_filter === chip.key;
             return (
@@ -174,7 +174,7 @@ export default function Index({ invoices, filters }: InvoiceIndexProps) {
                 type="button"
                 onClick={() => router.get('/invoices', isActive ? {} : { due_filter: chip.key }, { preserveState: true })}
                 className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
-                  isActive ? chip.active : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
+                  isActive ? chip.active : 'bg-gray-50 text-gray-500 border-gray-300 hover:text-gray-800 hover:border-gray-300'
                 }`}
               >
                 {chip.label}
@@ -188,21 +188,21 @@ export default function Index({ invoices, filters }: InvoiceIndexProps) {
         {flash.error && <Alert message={flash.error} type="error" />}
 
         {/* Filter Card */}
-        <div className="bg-slate-950 border border-slate-900 rounded-2xl p-5 shadow-xl">
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xl">
           <form onSubmit={handleSearch} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
               {/* Search */}
               <div className="lg:col-span-2 space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-400">Search</label>
+                <label className="block text-xs font-semibold text-gray-500">Search</label>
                 <div className="relative">
                   <input
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="No. Invoice, Customer, No. SO..."
-                    className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none transition-all placeholder:text-slate-600"
+                    className="w-full pl-9 pr-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all placeholder:text-gray-400"
                   />
-                  <div className="absolute left-3 top-2.5 text-slate-500">
+                  <div className="absolute left-3 top-2.5 text-gray-400">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.637 10.637z" />
                     </svg>
@@ -212,11 +212,11 @@ export default function Index({ invoices, filters }: InvoiceIndexProps) {
 
               {/* Status */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-400">Status</label>
+                <label className="block text-xs font-semibold text-gray-500">Status</label>
                 <select
                   value={status}
                   onChange={(e) => handleFilterChange('status', e.target.value)}
-                  className="w-full px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none transition-all cursor-pointer"
+                  className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all cursor-pointer"
                 >
                   <option value="">Semua Status</option>
                   <option value="unpaid">Belum Lunas</option>
@@ -229,34 +229,34 @@ export default function Index({ invoices, filters }: InvoiceIndexProps) {
 
               {/* Date Start */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-400">Tgl Invoice (Mulai)</label>
+                <label className="block text-xs font-semibold text-gray-500">Tgl Invoice (Mulai)</label>
                 <input
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none transition-all"
+                  className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all"
                 />
               </div>
 
               {/* Due Date Start */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-400">Tgl Jatuh Tempo (Mulai)</label>
+                <label className="block text-xs font-semibold text-gray-500">Tgl Jatuh Tempo (Mulai)</label>
                 <input
                   type="date"
                   value={dueStartDate}
                   onChange={(e) => setDueStartDate(e.target.value)}
-                  className="w-full px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none transition-all"
+                  className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all"
                 />
               </div>
 
               {/* Due Date End */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-400">Tgl Jatuh Tempo (Akhir)</label>
+                <label className="block text-xs font-semibold text-gray-500">Tgl Jatuh Tempo (Akhir)</label>
                 <input
                   type="date"
                   value={dueEndDate}
                   onChange={(e) => setDueEndDate(e.target.value)}
-                  className="w-full px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none transition-all"
+                  className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all"
                 />
               </div>
             </div>
@@ -266,13 +266,13 @@ export default function Index({ invoices, filters }: InvoiceIndexProps) {
               <button
                 type="button"
                 onClick={handleResetFilters}
-                className="px-4 py-2 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-xl text-xs font-semibold transition-all"
+                className="px-4 py-2 text-gray-500 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-300 hover:border-gray-300 rounded-xl text-xs font-semibold transition-all"
               >
                 Reset Filter
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-100 rounded-xl text-xs font-semibold border border-slate-700 hover:border-slate-600 transition-all flex items-center gap-1.5 shadow-md"
+                className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-xl text-xs font-semibold border border-gray-300 hover:border-gray-400 transition-all flex items-center gap-1.5 shadow-md"
               >
                 Cari Data
               </button>
@@ -281,67 +281,67 @@ export default function Index({ invoices, filters }: InvoiceIndexProps) {
         </div>
 
         {/* Ledger Table */}
-        <div className="bg-slate-950 border border-slate-900 rounded-2xl overflow-hidden shadow-xl">
+        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xl">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-slate-900 text-slate-400 text-[10px] font-bold uppercase tracking-wider bg-slate-950/60">
-                  <th className="py-3 px-6">No. Invoice</th>
-                  <th className="py-3 px-6">Customer</th>
-                  <th className="py-3 px-6">Sales Order</th>
-                  <th className="py-3 px-6 text-center">Tgl Invoice</th>
-                  <th className="py-3 px-6 text-center">Jatuh Tempo</th>
-                  <th className="py-3 px-6 text-right">Total Tagihan</th>
-                  <th className="py-3 px-6 text-right">Paid Amount</th>
-                  <th className="py-3 px-6 text-right">Remaining</th>
-                  <th className="py-3 px-6 text-center">Status</th>
-                  <th className="py-3 px-6 text-center">Aksi</th>
+                <tr className="border-b border-gray-200 text-gray-500 text-[10px] font-bold uppercase tracking-widest bg-gray-50">
+                  <th className="py-3.5 px-6">No. Invoice</th>
+                  <th className="py-3.5 px-6">Customer</th>
+                  <th className="py-3.5 px-6">Sales Order</th>
+                  <th className="py-3.5 px-6 text-center">Tgl Invoice</th>
+                  <th className="py-3.5 px-6 text-center">Jatuh Tempo</th>
+                  <th className="py-3.5 px-6 text-right">Total Tagihan</th>
+                  <th className="py-3.5 px-6 text-right">Paid Amount</th>
+                  <th className="py-3.5 px-6 text-right">Remaining</th>
+                  <th className="py-3.5 px-6 text-center">Status</th>
+                  <th className="py-3.5 px-6 text-center">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-900 text-sm text-slate-300">
+              <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
                 {invoices.data.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="text-center py-10 text-slate-500 font-medium">
+                    <td colSpan={10} className="text-center py-10 text-gray-400 font-medium">
                       Tidak ada data invoice customer ditemukan.
                     </td>
                   </tr>
                 ) : (
                   invoices.data.map((invoice) => (
-                    <tr key={invoice.id} className="hover:bg-slate-900/30 transition-colors">
-                      <td className="py-3.5 px-6 font-bold text-white whitespace-nowrap">
+                    <tr key={invoice.id} className="hover:bg-teal-50/60 transition-colors group">
+                      <td className="py-3.5 px-6 font-bold text-gray-900 whitespace-nowrap font-mono text-xs">
                         <Link
                           href={`/invoices/${invoice.id}`}
-                          className="text-violet-400 hover:text-violet-300 transition-colors"
+                          className="text-teal-400 hover:text-teal-600 transition-colors"
                         >
                           {invoice.invoice_number}
                         </Link>
                       </td>
                       <td className="py-3.5 px-6">
-                        <span className="font-semibold text-slate-200 block">
+                        <span className="font-semibold text-gray-800 block text-xs">
                           {invoice.customer ? invoice.customer.name : '—'}
                         </span>
-                        <span className="text-[10px] text-slate-500 mt-0.5 block">
+                        <span className="text-[10px] text-gray-400 mt-0.5 block font-mono">
                           Kode: {invoice.customer ? invoice.customer.customer_code : '—'}
                         </span>
                       </td>
-                      <td className="py-3.5 px-6 whitespace-nowrap font-medium text-slate-300 text-xs">
+                      <td className="py-3.5 px-6 whitespace-nowrap font-medium text-gray-700 text-xs font-mono">
                         {invoice.sales_order ? (
                           <Link
                             href={`/sales-orders/${invoice.sales_order_id}`}
-                            className="hover:underline text-slate-400 hover:text-slate-200"
+                            className="hover:underline text-gray-500 hover:text-gray-800"
                           >
                             {invoice.sales_order.so_number}
                           </Link>
                         ) : '—'}
                       </td>
-                      <td className="py-3.5 px-6 text-center text-xs whitespace-nowrap text-slate-400">
+                      <td className="py-3.5 px-6 text-center text-xs whitespace-nowrap text-gray-500 font-mono">
                         {new Date(invoice.invoice_date).toLocaleDateString('id-ID', {
                           day: '2-digit',
                           month: 'short',
                           year: 'numeric',
                         })}
                       </td>
-                      <td className="py-3.5 px-6 text-center text-xs whitespace-nowrap text-slate-300">
+                      <td className="py-3.5 px-6 text-center text-xs whitespace-nowrap text-gray-700 font-mono">
                         {invoice.due_date ? (
                           <>
                             {new Date(invoice.due_date).toLocaleDateString('id-ID', {
@@ -360,16 +360,16 @@ export default function Index({ invoices, filters }: InvoiceIndexProps) {
                             })()}
                           </>
                         ) : (
-                          <span className="text-slate-600">—</span>
+                          <span className="text-gray-400">—</span>
                         )}
                       </td>
-                      <td className="py-3.5 px-6 text-right font-semibold text-slate-200 whitespace-nowrap">
+                      <td className="py-3.5 px-6 text-right font-bold text-gray-800 whitespace-nowrap font-mono text-xs">
                         Rp {Number(invoice.total_amount).toLocaleString('id-ID')}
                       </td>
-                      <td className="py-3.5 px-6 text-right text-emerald-400 whitespace-nowrap text-xs">
+                      <td className="py-3.5 px-6 text-right text-emerald-400 whitespace-nowrap text-xs font-mono">
                         {Number(invoice.paid_amount) > 0 ? `Rp ${Number(invoice.paid_amount).toLocaleString('id-ID')}` : 'Rp 0'}
                       </td>
-                      <td className="py-3.5 px-6 text-right font-bold text-white whitespace-nowrap">
+                      <td className="py-3.5 px-6 text-right font-bold text-gray-900 whitespace-nowrap font-mono text-xs">
                         Rp {Number(invoice.remaining_amount).toLocaleString('id-ID')}
                       </td>
                       <td className="py-3.5 px-6 text-center whitespace-nowrap">
@@ -378,10 +378,10 @@ export default function Index({ invoices, filters }: InvoiceIndexProps) {
                         </span>
                       </td>
                       <td className="py-3.5 px-6 text-center whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-2">
+                        <div className="flex items-center justify-center gap-1.5">
                           <Link
                             href={`/invoices/${invoice.id}`}
-                            className="p-1 text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent hover:border-slate-800 rounded-lg transition-all"
+                            className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-50 border border-transparent hover:border-gray-300 rounded-lg transition-all"
                             title="Detail"
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
@@ -392,7 +392,7 @@ export default function Index({ invoices, filters }: InvoiceIndexProps) {
                           {canEdit && invoice.status === 'unpaid' && Number(invoice.paid_amount) === 0 && (
                             <Link
                               href={`/invoices/${invoice.id}/edit`}
-                              className="p-1 text-slate-400 hover:text-violet-400 hover:bg-slate-900 border border-transparent hover:border-slate-800 rounded-lg transition-all"
+                              className="p-1.5 text-gray-500 hover:text-teal-400 hover:bg-gray-50 border border-transparent hover:border-gray-300 rounded-lg transition-all"
                               title="Edit due date/notes"
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
@@ -408,7 +408,7 @@ export default function Index({ invoices, filters }: InvoiceIndexProps) {
                                   router.delete(`/invoices/${invoice.id}`);
                                 }
                               }}
-                              className="p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-900 border border-transparent hover:border-rose-900/40 rounded-lg transition-all"
+                              className="p-1.5 text-gray-500 hover:text-rose-400 hover:bg-rose-50 border border-transparent hover:border-rose-900/40 rounded-lg transition-all"
                               title="Hapus Invoice (Super Admin)"
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
@@ -427,9 +427,9 @@ export default function Index({ invoices, filters }: InvoiceIndexProps) {
           </div>
 
           {/* Pagination */}
-          <div className="p-4 border-t border-slate-900 bg-slate-950/40 flex justify-between items-center">
-            <div className="text-slate-500 text-xs font-medium">
-              Menampilkan {invoices.data.length} dari {invoices.total} invoice customer
+          <div className="p-4 border-t border-gray-200 bg-white/80 flex justify-between items-center">
+            <div className="text-gray-400 text-xs font-medium">
+              Menampilkan <span className="font-mono text-gray-700">{invoices.data.length}</span> dari <span className="font-mono text-gray-700">{invoices.total}</span> invoice customer
             </div>
             <Pagination links={invoices.links} />
           </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Head } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 
@@ -23,7 +23,7 @@ interface RoleIndexProps {
 }
 
 const roleBadgeColor: Record<string, string> = {
-  'Super Admin': 'from-violet-600 to-indigo-600',
+  'Super Admin': 'from-teal-600 to-cyan-600',
   'Admin':       'from-blue-600 to-cyan-600',
   'Leader':      'from-emerald-600 to-teal-600',
   'Finance':     'from-amber-600 to-orange-600',
@@ -85,41 +85,41 @@ export default function Index({ roles, groupedPermissions }: RoleIndexProps) {
       <div className="space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold text-white">Role & Permission</h1>
-          <p className="text-slate-400 text-xs mt-1">Pengaturan / Role & Permission</p>
+          <h1 className="text-2xl font-bold text-gray-900">Role & Permission</h1>
+          <p className="text-gray-500 text-xs mt-1">Pengaturan / Role & Permission</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left: Role List */}
           <div className="space-y-3">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 px-1">Daftar Role</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-400 px-1">Daftar Role</p>
             {roles.map((role) => (
               <button
                 key={role.id}
                 onClick={() => setSelectedRole(role)}
                 className={`w-full text-left p-4 rounded-2xl border transition-all group ${
                   selectedRole?.id === role.id
-                    ? 'bg-violet-500/10 border-violet-500/30'
-                    : 'bg-slate-950 border-slate-800 hover:border-slate-700 hover:bg-slate-900/50'
+                    ? 'bg-teal-500/10 border-teal-500/30'
+                    : 'bg-white border-gray-300 hover:border-gray-300 hover:bg-gray-50/50'
                 }`}
               >
                 <div className="flex items-center gap-3 mb-2">
                   <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${roleBadgeColor[role.name] ?? 'from-slate-600 to-slate-700'} flex items-center justify-center text-white text-xs font-bold`}>
                     {role.name.charAt(0)}
                   </div>
-                  <span className={`font-semibold text-sm ${selectedRole?.id === role.id ? 'text-violet-300' : 'text-slate-200'}`}>
+                  <span className={`font-semibold text-sm ${selectedRole?.id === role.id ? 'text-teal-600' : 'text-gray-800'}`}>
                     {role.name}
                   </span>
                 </div>
                 {role.description && (
-                  <p className="text-slate-500 text-xs leading-relaxed mb-3">{role.description}</p>
+                  <p className="text-gray-400 text-xs leading-relaxed mb-3">{role.description}</p>
                 )}
                 <div className="flex gap-3">
-                  <span className="text-xs text-slate-500">
-                    <span className="font-semibold text-slate-300">{role.user_count}</span> user
+                  <span className="text-xs text-gray-400">
+                    <span className="font-semibold text-gray-700">{role.user_count}</span> user
                   </span>
-                  <span className="text-xs text-slate-500">
-                    <span className="font-semibold text-slate-300">{role.permission_count}</span> permission
+                  <span className="text-xs text-gray-400">
+                    <span className="font-semibold text-gray-700">{role.permission_count}</span> permission
                   </span>
                 </div>
               </button>
@@ -129,7 +129,7 @@ export default function Index({ roles, groupedPermissions }: RoleIndexProps) {
           {/* Right: Permission Detail */}
           <div className="lg:col-span-2">
             {selectedRole ? (
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden">
+              <div className="bg-white border border-gray-300 rounded-2xl overflow-hidden">
                 {/* Role Header */}
                 <div className={`px-6 py-5 bg-gradient-to-r ${roleBadgeColor[selectedRole.name] ?? 'from-slate-600 to-slate-700'} bg-opacity-10`}>
                   <div className="flex items-center gap-3">
@@ -137,11 +137,11 @@ export default function Index({ roles, groupedPermissions }: RoleIndexProps) {
                       {selectedRole.name.charAt(0)}
                     </div>
                     <div>
-                      <h2 className="text-white font-bold">{selectedRole.name}</h2>
-                      <p className="text-white/60 text-xs">{selectedRole.description ?? 'Tidak ada deskripsi'}</p>
+                      <h2 className="text-gray-900 font-bold">{selectedRole.name}</h2>
+                      <p className="text-gray-900/60 text-xs">{selectedRole.description ?? 'Tidak ada deskripsi'}</p>
                     </div>
                     <div className="ml-auto text-right">
-                      <p className="text-white/80 text-xs">{selectedRole.permission_count} dari {Object.values(groupedPermissions).flat().length} akses</p>
+                      <p className="text-gray-900/80 text-xs">{selectedRole.permission_count} dari {Object.values(groupedPermissions).flat().length} akses</p>
                       <div className="h-1.5 w-24 bg-white/10 rounded-full mt-1 overflow-hidden">
                         <div
                           className="h-full bg-white/60 rounded-full transition-all"
@@ -160,12 +160,12 @@ export default function Index({ roles, groupedPermissions }: RoleIndexProps) {
                     const hasAll = modulePerms.every((p) => selectedRole.permissions.includes(p.name));
 
                     return (
-                      <div key={module} className={`rounded-xl border p-4 transition-all ${hasAny ? 'border-slate-700 bg-slate-900/30' : 'border-slate-800/50 bg-slate-950/50 opacity-50'}`}>
+                      <div key={module} className={`rounded-xl border p-4 transition-all ${hasAny ? 'border-gray-300 bg-teal-50/60' : 'border-gray-300/50 bg-white/50 opacity-50'}`}>
                         <div className="flex items-center gap-2.5 mb-3">
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-slate-400">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-gray-500">
                             <path strokeLinecap="round" strokeLinejoin="round" d={moduleIcons[module] ?? 'M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z'} />
                           </svg>
-                          <span className="text-sm font-semibold text-slate-200">
+                          <span className="text-sm font-semibold text-gray-800">
                             {moduleLabels[module] ?? module}
                           </span>
                           {hasAll && (
@@ -175,7 +175,7 @@ export default function Index({ roles, groupedPermissions }: RoleIndexProps) {
                             <span className="ml-auto text-xs text-amber-400 font-medium">Akses Sebagian</span>
                           )}
                           {!hasAny && (
-                            <span className="ml-auto text-xs text-slate-600 font-medium">Tidak Ada Akses</span>
+                            <span className="ml-auto text-xs text-gray-400 font-medium">Tidak Ada Akses</span>
                           )}
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -188,7 +188,7 @@ export default function Index({ roles, groupedPermissions }: RoleIndexProps) {
                                 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
                                   hasIt
                                     ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                                    : 'bg-slate-900 border-slate-800 text-slate-600'
+                                    : 'bg-gray-50 border-gray-300 text-gray-400'
                                 }`}
                               >
                                 {hasIt ? (
@@ -211,8 +211,8 @@ export default function Index({ roles, groupedPermissions }: RoleIndexProps) {
                 </div>
               </div>
             ) : (
-              <div className="flex items-center justify-center h-64 bg-slate-950 border border-slate-800 rounded-2xl">
-                <p className="text-slate-500 text-sm">Pilih role untuk melihat detail permission</p>
+              <div className="flex items-center justify-center h-64 bg-white border border-gray-300 rounded-2xl">
+                <p className="text-gray-400 text-sm">Pilih role untuk melihat detail permission</p>
               </div>
             )}
           </div>

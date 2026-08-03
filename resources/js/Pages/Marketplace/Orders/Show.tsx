@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 
@@ -64,10 +64,10 @@ interface Props {
 }
 
 const WORKFLOW_COLORS: Record<string, string> = {
-    pending:            'bg-slate-700/50 text-slate-400',
+    pending:            'bg-gray-200/50 text-gray-500',
     ready_to_process:   'bg-blue-500/20 text-blue-400',
-    converted_to_so:    'bg-indigo-500/20 text-indigo-400',
-    stock_reserved:     'bg-violet-500/20 text-violet-400',
+    converted_to_so:    'bg-cyan-500/20 text-cyan-400',
+    stock_reserved:     'bg-teal-500/20 text-teal-400',
     processing:         'bg-amber-500/20 text-amber-400',
     shipped:            'bg-sky-500/20 text-sky-400',
     completed:          'bg-emerald-500/20 text-emerald-400',
@@ -92,8 +92,8 @@ const WORKFLOW_LABELS: Record<string, string> = {
 };
 
 const RESERVE_STATUS_COLORS: Record<string, string> = {
-    reserved:  'text-violet-400',
-    released:  'text-slate-400',
+    reserved:  'text-teal-400',
+    released:  'text-gray-500',
     consumed:  'text-emerald-400',
     cancelled: 'text-red-400',
 };
@@ -117,30 +117,30 @@ function FulfillModal({ order, onClose }: FulfillModalProps) {
     };
     return (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md">
-                <h3 className="text-white font-semibold mb-4">Proses Fulfillment / Kirim Order</h3>
+            <div className="bg-gray-50 border border-gray-300 rounded-2xl p-6 w-full max-w-md">
+                <h3 className="text-gray-900 font-semibold mb-4">Proses Fulfillment / Kirim Order</h3>
                 <form onSubmit={submit} className="space-y-4">
                     <div>
-                        <label className="block text-slate-400 text-xs mb-1">Nomor Resi</label>
+                        <label className="block text-gray-500 text-xs mb-1">Nomor Resi</label>
                         <input type="text" value={form.tracking_number}
                             onChange={e => setForm(f => ({ ...f, tracking_number: e.target.value }))}
-                            className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-violet-500"
+                            className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-xl text-gray-900 text-sm focus:outline-none focus:border-teal-500"
                             placeholder="Masukkan nomor resi pengiriman" />
                     </div>
                     <div>
-                        <label className="block text-slate-400 text-xs mb-1">Nama Kurir</label>
+                        <label className="block text-gray-500 text-xs mb-1">Nama Kurir</label>
                         <input type="text" value={form.courier_name}
                             onChange={e => setForm(f => ({ ...f, courier_name: e.target.value }))}
-                            className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-violet-500"
+                            className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-xl text-gray-900 text-sm focus:outline-none focus:border-teal-500"
                             placeholder="JNE / J&T / SiCepat / dll" />
                     </div>
                     <div className="flex gap-3 pt-2">
                         <button type="button" onClick={onClose}
-                            className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-sm transition-colors">
+                            className="flex-1 py-2 bg-gray-200 hover:bg-slate-600 text-gray-900 rounded-xl text-sm transition-colors">
                             Batal
                         </button>
                         <button type="submit"
-                            className="flex-1 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-sm font-medium transition-colors">
+                            className="flex-1 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white rounded-xl text-sm font-medium transition-colors shadow-lg shadow-teal-200/40">
                             Kirim & Potong Stok
                         </button>
                     </div>
@@ -165,20 +165,20 @@ export default function MarketplaceOrderShow({ order, canViewPayload, timeline }
             <Head title={`Order ${order.external_order_id}`} />
             {showFulfill && <FulfillModal order={order} onClose={() => setShowFulfill(false)} />}
 
-            <div className="min-h-screen bg-slate-950 p-6">
+            <div className="min-h-screen bg-white p-6">
                 {/* Header */}
                 <div className="flex items-start justify-between mb-6">
                     <div>
-                        <Link href="/marketplace/orders" className="text-slate-500 text-sm hover:text-slate-300 transition-colors mb-1 inline-block">
+                        <Link href="/marketplace/orders" className="text-gray-400 text-sm hover:text-gray-700 transition-colors mb-1 inline-block">
                             ← Kembali ke Daftar Order
                         </Link>
-                        <h1 className="text-2xl font-bold text-white font-mono">{order.external_order_id}</h1>
+                        <h1 className="text-2xl font-bold text-gray-900 font-mono">{order.external_order_id}</h1>
                         <div className="flex items-center gap-2 mt-1">
-                            <span className="text-slate-400 text-sm">{MP_LABELS[order.marketplace] ?? order.marketplace}</span>
-                            <span className="text-slate-600">•</span>
-                            <span className="text-slate-400 text-sm">{order.account.account_name}</span>
-                            <span className="text-slate-600">•</span>
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${WORKFLOW_COLORS[order.workflow_status] ?? 'bg-slate-700 text-slate-300'}`}>
+                            <span className="text-gray-500 text-sm">{MP_LABELS[order.marketplace] ?? order.marketplace}</span>
+                            <span className="text-gray-400">•</span>
+                            <span className="text-gray-500 text-sm">{order.account.account_name}</span>
+                            <span className="text-gray-400">•</span>
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${WORKFLOW_COLORS[order.workflow_status] ?? 'bg-gray-200 text-gray-700'}`}>
                                 {WORKFLOW_LABELS[order.workflow_status] ?? order.workflow_status}
                             </span>
                         </div>
@@ -189,28 +189,28 @@ export default function MarketplaceOrderShow({ order, canViewPayload, timeline }
                         {canConvert && (
                             <button id="btn-convert-so"
                                 onClick={() => router.post(`/marketplace/orders/${order.id}/convert`, {})}
-                                className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm rounded-xl transition-colors font-medium">
+                                className="px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white text-sm rounded-xl transition-colors font-medium shadow-lg shadow-teal-200/40">
                                 Konversi ke Sales Order
                             </button>
                         )}
                         {canReserve && (
                             <button id="btn-reserve-stock"
                                 onClick={() => router.post(`/marketplace/orders/${order.id}/reserve-stock`, {})}
-                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded-xl transition-colors font-medium">
+                                className="px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white text-sm rounded-xl transition-colors font-medium shadow-lg shadow-teal-200/40">
                                 Reserve Stok
                             </button>
                         )}
                         {hasActiveRes && (
                             <button id="btn-release-stock"
                                 onClick={() => router.post(`/marketplace/orders/${order.id}/release-stock`, {})}
-                                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-xl transition-colors">
+                                className="px-4 py-2 bg-gray-200 hover:bg-slate-600 text-gray-900 text-sm rounded-xl transition-colors">
                                 Release Reservasi
                             </button>
                         )}
                         {canFulfill && (
                             <button id="btn-fulfill"
                                 onClick={() => setShowFulfill(true)}
-                                className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white text-sm rounded-xl transition-colors font-medium">
+                                className="px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white text-sm rounded-xl transition-colors font-medium shadow-lg shadow-teal-200/40">
                                 Proses Fulfillment
                             </button>
                         )}
@@ -224,8 +224,8 @@ export default function MarketplaceOrderShow({ order, canViewPayload, timeline }
                     {/* Left Column */}
                     <div className="lg:col-span-2 space-y-5">
                         {/* Order Info */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                            <h2 className="text-white font-semibold mb-4">Informasi Order</h2>
+                        <div className="bg-gray-50 border border-gray-300 rounded-2xl p-5">
+                            <h2 className="text-gray-900 font-semibold mb-4">Informasi Order</h2>
                             <div className="grid grid-cols-2 gap-4">
                                 {[
                                     { label: 'Nomor Pesanan', value: order.external_order_number ?? order.external_order_id },
@@ -236,32 +236,32 @@ export default function MarketplaceOrderShow({ order, canViewPayload, timeline }
                                     { label: 'Gudang', value: order.warehouse?.name ?? '—' },
                                 ].map(({ label, value }) => (
                                     <div key={label}>
-                                        <p className="text-slate-500 text-xs">{label}</p>
-                                        <p className="text-white text-sm mt-0.5 capitalize">{value}</p>
+                                        <p className="text-gray-400 text-xs">{label}</p>
+                                        <p className="text-gray-900 text-sm mt-0.5 capitalize">{value}</p>
                                     </div>
                                 ))}
                             </div>
                         </div>
 
                         {/* Items */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-                            <div className="px-5 py-4 border-b border-slate-800">
-                                <h2 className="text-white font-semibold">Item Order</h2>
+                        <div className="bg-gray-50 border border-gray-300 rounded-2xl overflow-hidden">
+                            <div className="px-5 py-4 border-b border-gray-300">
+                                <h2 className="text-gray-900 font-semibold">Item Order</h2>
                             </div>
                             <table className="w-full">
                                 <thead>
-                                    <tr className="border-b border-slate-800">
+                                    <tr className="border-b border-gray-300">
                                         {['Produk / SKU', 'Status Mapping', 'Qty', 'Harga', 'Subtotal'].map(h => (
-                                            <th key={h} className="text-left px-5 py-3 text-slate-400 text-xs font-medium">{h}</th>
+                                            <th key={h} className="text-left px-5 py-3 text-gray-500 text-xs font-medium">{h}</th>
                                         ))}
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-800/50">
+                                <tbody className="divide-y divide-gray-200/50">
                                     {order.items.map(item => (
                                         <tr key={item.id}>
                                             <td className="px-5 py-3">
-                                                <p className="text-white text-sm">{item.product_name}</p>
-                                                <p className="text-slate-500 text-xs font-mono">{item.external_sku ?? '—'}</p>
+                                                <p className="text-gray-900 text-sm">{item.product_name}</p>
+                                                <p className="text-gray-400 text-xs font-mono">{item.external_sku ?? '—'}</p>
                                             </td>
                                             <td className="px-5 py-3">
                                                 {item.product ? (
@@ -274,15 +274,15 @@ export default function MarketplaceOrderShow({ order, canViewPayload, timeline }
                                                     </span>
                                                 )}
                                             </td>
-                                            <td className="px-5 py-3 text-slate-300 text-sm">{item.quantity}</td>
-                                            <td className="px-5 py-3 text-slate-300 text-sm">{fmt(item.unit_price)}</td>
-                                            <td className="px-5 py-3 text-white text-sm font-medium">{fmt(item.subtotal)}</td>
+                                            <td className="px-5 py-3 text-gray-700 text-sm">{item.quantity}</td>
+                                            <td className="px-5 py-3 text-gray-700 text-sm">{fmt(item.unit_price)}</td>
+                                            <td className="px-5 py-3 text-gray-900 text-sm font-medium">{fmt(item.subtotal)}</td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
                             {/* Totals */}
-                            <div className="px-5 py-4 border-t border-slate-800 space-y-1.5">
+                            <div className="px-5 py-4 border-t border-gray-300 space-y-1.5">
                                 {[
                                     { label: 'Subtotal', value: order.subtotal },
                                     { label: 'Diskon', value: `-${order.discount}` },
@@ -292,46 +292,46 @@ export default function MarketplaceOrderShow({ order, canViewPayload, timeline }
                                     { label: 'Pajak', value: order.tax },
                                 ].map(({ label, value }) => (
                                     <div key={label} className="flex justify-between text-sm">
-                                        <span className="text-slate-400">{label}</span>
-                                        <span className="text-slate-300">{fmt(value)}</span>
+                                        <span className="text-gray-500">{label}</span>
+                                        <span className="text-gray-700">{fmt(value)}</span>
                                     </div>
                                 ))}
-                                <div className="flex justify-between text-sm font-bold pt-2 border-t border-slate-700">
-                                    <span className="text-white">Total</span>
-                                    <span className="text-white">{fmt(order.total_amount)}</span>
+                                <div className="flex justify-between text-sm font-bold pt-2 border-t border-gray-300">
+                                    <span className="text-gray-900">Total</span>
+                                    <span className="text-gray-900">{fmt(order.total_amount)}</span>
                                 </div>
                             </div>
                         </div>
 
                         {/* Stock Reservations */}
                         {order.stock_reservations.length > 0 && (
-                            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-                                <div className="px-5 py-4 border-b border-slate-800">
-                                    <h2 className="text-white font-semibold">Reservasi Stok</h2>
+                            <div className="bg-gray-50 border border-gray-300 rounded-2xl overflow-hidden">
+                                <div className="px-5 py-4 border-b border-gray-300">
+                                    <h2 className="text-gray-900 font-semibold">Reservasi Stok</h2>
                                 </div>
                                 <table className="w-full">
                                     <thead>
-                                        <tr className="border-b border-slate-800">
+                                        <tr className="border-b border-gray-300">
                                             {['Produk', 'Qty', 'Status', 'Waktu Reserved', 'Waktu Consume/Release'].map(h => (
-                                                <th key={h} className="text-left px-5 py-3 text-slate-400 text-xs font-medium">{h}</th>
+                                                <th key={h} className="text-left px-5 py-3 text-gray-500 text-xs font-medium">{h}</th>
                                             ))}
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-800/50">
+                                    <tbody className="divide-y divide-gray-200/50">
                                         {order.stock_reservations.map(r => (
                                             <tr key={r.id}>
                                                 <td className="px-5 py-3">
-                                                    <p className="text-white text-sm">{r.product?.name ?? '—'}</p>
-                                                    <p className="text-slate-500 text-xs">{r.product?.sku}</p>
+                                                    <p className="text-gray-900 text-sm">{r.product?.name ?? '—'}</p>
+                                                    <p className="text-gray-400 text-xs">{r.product?.sku}</p>
                                                 </td>
-                                                <td className="px-5 py-3 text-slate-300 text-sm">{r.quantity}</td>
+                                                <td className="px-5 py-3 text-gray-700 text-sm">{r.quantity}</td>
                                                 <td className="px-5 py-3">
-                                                    <span className={`text-xs font-medium capitalize ${RESERVE_STATUS_COLORS[r.status] ?? 'text-slate-400'}`}>
+                                                    <span className={`text-xs font-medium capitalize ${RESERVE_STATUS_COLORS[r.status] ?? 'text-gray-500'}`}>
                                                         {r.status}
                                                     </span>
                                                 </td>
-                                                <td className="px-5 py-3 text-slate-400 text-xs">{fmtDate(r.reserved_at)}</td>
-                                                <td className="px-5 py-3 text-slate-400 text-xs">
+                                                <td className="px-5 py-3 text-gray-500 text-xs">{fmtDate(r.reserved_at)}</td>
+                                                <td className="px-5 py-3 text-gray-500 text-xs">
                                                     {fmtDate(r.consumed_at ?? r.released_at)}
                                                 </td>
                                             </tr>
@@ -345,21 +345,21 @@ export default function MarketplaceOrderShow({ order, canViewPayload, timeline }
                     {/* Right Column */}
                     <div className="space-y-5">
                         {/* Timeline */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                            <h2 className="text-white font-semibold mb-4">Timeline Proses</h2>
-                            <ol className="relative border-l border-slate-700 pl-4 space-y-4">
+                        <div className="bg-gray-50 border border-gray-300 rounded-2xl p-5">
+                            <h2 className="text-gray-900 font-semibold mb-4">Timeline Proses</h2>
+                            <ol className="relative border-l border-gray-300 pl-4 space-y-4">
                                 {timeline.map((event, i) => (
                                     <li key={i} className="relative">
                                         <span className={`absolute -left-[21px] top-0.5 w-3 h-3 rounded-full border-2 ${
                                             event.done
                                                 ? 'bg-emerald-500 border-emerald-500'
-                                                : 'bg-slate-800 border-slate-600'
+                                                : 'bg-gray-100 border-gray-400'
                                         }`} />
-                                        <p className={`text-sm font-medium ${event.done ? 'text-white' : 'text-slate-500'}`}>
+                                        <p className={`text-sm font-medium ${event.done ? 'text-gray-900' : 'text-gray-400'}`}>
                                             {event.label}
                                         </p>
                                         {event.at && event.done && (
-                                            <p className="text-xs text-slate-500">{fmtDate(event.at)}</p>
+                                            <p className="text-xs text-gray-400">{fmtDate(event.at)}</p>
                                         )}
                                     </li>
                                 ))}
@@ -368,27 +368,27 @@ export default function MarketplaceOrderShow({ order, canViewPayload, timeline }
 
                         {/* Sales Order Traceability */}
                         {order.sales_order && (
-                            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                                <h2 className="text-white font-semibold mb-4">Sales Order Terhubung</h2>
+                            <div className="bg-gray-50 border border-gray-300 rounded-2xl p-5">
+                                <h2 className="text-gray-900 font-semibold mb-4">Sales Order Terhubung</h2>
                                 <div className="space-y-2">
                                     <div className="flex justify-between items-center">
-                                        <span className="text-slate-400 text-sm">Nomor SO</span>
+                                        <span className="text-gray-500 text-sm">Nomor SO</span>
                                         <Link href={`/sales-orders/${order.sales_order.id}`}
-                                            className="text-violet-400 hover:text-violet-300 text-sm font-mono font-medium">
+                                            className="text-teal-400 hover:text-teal-600 text-sm font-mono font-medium">
                                             {order.sales_order.so_number}
                                         </Link>
                                     </div>
                                     <div className="flex justify-between items-center">
-                                        <span className="text-slate-400 text-sm">Status SO</span>
-                                        <span className="text-slate-300 text-sm capitalize">{order.sales_order.status}</span>
+                                        <span className="text-gray-500 text-sm">Status SO</span>
+                                        <span className="text-gray-700 text-sm capitalize">{order.sales_order.status}</span>
                                     </div>
                                     <div className="flex justify-between items-center">
-                                        <span className="text-slate-400 text-sm">Grand Total</span>
-                                        <span className="text-white text-sm font-medium">{fmt(order.sales_order.grand_total)}</span>
+                                        <span className="text-gray-500 text-sm">Grand Total</span>
+                                        <span className="text-gray-900 text-sm font-medium">{fmt(order.sales_order.grand_total)}</span>
                                     </div>
                                     {order.sales_order.invoice && (
-                                        <div className="flex justify-between items-center pt-2 border-t border-slate-800">
-                                            <span className="text-slate-400 text-sm">Invoice</span>
+                                        <div className="flex justify-between items-center pt-2 border-t border-gray-300">
+                                            <span className="text-gray-500 text-sm">Invoice</span>
                                             <Link href={`/invoices/${order.sales_order.invoice.id}`}
                                                 className="text-sky-400 hover:text-sky-300 text-sm font-mono">
                                                 {order.sales_order.invoice.invoice_number}
@@ -400,8 +400,8 @@ export default function MarketplaceOrderShow({ order, canViewPayload, timeline }
                         )}
 
                         {/* Pengiriman */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                            <h2 className="text-white font-semibold mb-4">Informasi Pengiriman</h2>
+                        <div className="bg-gray-50 border border-gray-300 rounded-2xl p-5">
+                            <h2 className="text-gray-900 font-semibold mb-4">Informasi Pengiriman</h2>
                             <div className="space-y-2">
                                 {[
                                     { label: 'No. Resi', value: order.tracking_number ?? '—' },
@@ -410,15 +410,15 @@ export default function MarketplaceOrderShow({ order, canViewPayload, timeline }
                                     { label: 'Selesai', value: fmtDate(order.completed_at) },
                                 ].map(({ label, value }) => (
                                     <div key={label} className="flex justify-between">
-                                        <span className="text-slate-400 text-sm">{label}</span>
-                                        <span className="text-slate-300 text-sm font-mono">{value}</span>
+                                        <span className="text-gray-500 text-sm">{label}</span>
+                                        <span className="text-gray-700 text-sm font-mono">{value}</span>
                                     </div>
                                 ))}
                                 {(order.province || order.city || order.district) && (
-                                    <div className="pt-2 border-t border-slate-800">
-                                        <p className="text-slate-400 text-xs mb-1">Alamat Pengiriman</p>
-                                        <p className="text-slate-300 text-sm">{order.shipping_address}</p>
-                                        <p className="text-slate-400 text-xs mt-1">
+                                    <div className="pt-2 border-t border-gray-300">
+                                        <p className="text-gray-500 text-xs mb-1">Alamat Pengiriman</p>
+                                        <p className="text-gray-700 text-sm">{order.shipping_address}</p>
+                                        <p className="text-gray-500 text-xs mt-1">
                                             {[order.district, order.city, order.province, order.postal_code].filter(Boolean).join(', ')}
                                         </p>
                                     </div>
@@ -427,8 +427,8 @@ export default function MarketplaceOrderShow({ order, canViewPayload, timeline }
                         </div>
 
                         {/* Customer */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                            <h2 className="text-white font-semibold mb-4">Pelanggan</h2>
+                        <div className="bg-gray-50 border border-gray-300 rounded-2xl p-5">
+                            <h2 className="text-gray-900 font-semibold mb-4">Pelanggan</h2>
                             <div className="space-y-2">
                                 {[
                                     { label: 'Nama', value: order.customer_name ?? '—' },
@@ -436,8 +436,8 @@ export default function MarketplaceOrderShow({ order, canViewPayload, timeline }
                                     { label: 'Email', value: order.customer_email ?? '—' },
                                 ].map(({ label, value }) => (
                                     <div key={label} className="flex justify-between">
-                                        <span className="text-slate-400 text-sm">{label}</span>
-                                        <span className="text-slate-300 text-sm">{value}</span>
+                                        <span className="text-gray-500 text-sm">{label}</span>
+                                        <span className="text-gray-700 text-sm">{value}</span>
                                     </div>
                                 ))}
                             </div>

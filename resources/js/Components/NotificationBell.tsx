@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import { Link } from '@inertiajs/react';
 
 import { WorkQueue, WorkQueueSeverity, WorkQueueType } from '../Types';
@@ -28,7 +28,7 @@ const TYPE_ICONS: Record<WorkQueueType, string> = {
 const SEVERITY_STYLES: Record<WorkQueueSeverity, { icon: string; badge: string }> = {
   critical: { icon: 'text-rose-400 bg-rose-500/10', badge: 'bg-rose-500/15 text-rose-400 border-rose-500/30' },
   warning: { icon: 'text-amber-400 bg-amber-400/10', badge: 'bg-amber-400/15 text-amber-400 border-amber-400/30' },
-  info: { icon: 'text-violet-400 bg-violet-500/10', badge: 'bg-violet-500/15 text-violet-400 border-violet-500/30' },
+  info: { icon: 'text-teal-400 bg-teal-500/10', badge: 'bg-teal-500/15 text-teal-400 border-teal-500/30' },
 };
 
 export default function NotificationBell({ queue }: Props) {
@@ -64,8 +64,8 @@ export default function NotificationBell({ queue }: Props) {
         aria-label={`Pengingat tugas${queue.total > 0 ? `, ${queue.total} menunggu` : ''}`}
         className={`relative p-2 rounded-lg border transition-all ${
           open
-            ? 'text-violet-400 bg-violet-600/10 border-violet-500/30'
-            : 'text-slate-500 hover:text-slate-200 hover:bg-slate-800 border-slate-800 hover:border-slate-700'
+            ? 'text-teal-400 bg-teal-600/10 border-teal-500/30'
+            : 'text-gray-400 hover:text-gray-800 hover:bg-gray-100 border-gray-300 hover:border-gray-300'
         }`}
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-5 h-5">
@@ -93,11 +93,11 @@ export default function NotificationBell({ queue }: Props) {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-[340px] max-h-[70vh] flex flex-col bg-slate-950 border border-slate-800 rounded-xl overflow-hidden z-50">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 shrink-0">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Tugas Menunggu Anda</p>
+        <div className="absolute right-0 mt-2 w-[340px] max-h-[70vh] flex flex-col bg-white border border-gray-300 rounded-xl overflow-hidden z-50">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-300 shrink-0">
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Tugas Menunggu Anda</p>
             {queue.total > 0 && (
-              <span className="text-[10px] font-bold text-slate-400 bg-slate-800 rounded-full px-2 py-0.5">{queue.total}</span>
+              <span className="text-[10px] font-bold text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">{queue.total}</span>
             )}
           </div>
 
@@ -106,11 +106,11 @@ export default function NotificationBell({ queue }: Props) {
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 mx-auto text-emerald-500/60">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <p className="text-sm text-slate-400 mt-3">Tidak ada tugas tertunda</p>
-              <p className="text-xs text-slate-600 mt-1">Semua pengajuan sudah diproses.</p>
+              <p className="text-sm text-gray-500 mt-3">Tidak ada tugas tertunda</p>
+              <p className="text-xs text-gray-400 mt-1">Semua pengajuan sudah diproses.</p>
             </div>
           ) : (
-            <div className="overflow-y-auto sidebar-scroll divide-y divide-slate-900">
+            <div className="overflow-y-auto sidebar-scroll divide-y divide-gray-100">
               {queue.items.map((item) => {
                 const styles = SEVERITY_STYLES[item.severity];
                 return (
@@ -118,7 +118,7 @@ export default function NotificationBell({ queue }: Props) {
                     key={item.key}
                     href={item.href}
                     onClick={() => setOpen(false)}
-                    className="flex items-start gap-3 px-4 py-3 hover:bg-slate-900 transition-colors group"
+                    className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors group"
                   >
                     <span className={`shrink-0 p-2 rounded-lg ${styles.icon}`}>
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor" className="w-4 h-4">
@@ -127,12 +127,12 @@ export default function NotificationBell({ queue }: Props) {
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-slate-200 truncate group-hover:text-white">{item.title}</p>
+                        <p className="text-sm font-semibold text-gray-800 truncate group-hover:text-gray-900">{item.title}</p>
                         <span className={`shrink-0 text-[10px] font-bold font-mono px-1.5 py-0.5 rounded border ${styles.badge}`}>
                           {item.count}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{item.description}</p>
+                      <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{item.description}</p>
                     </div>
                   </Link>
                 );

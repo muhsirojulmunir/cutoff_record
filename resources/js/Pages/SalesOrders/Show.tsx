@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import Alert from '../../Components/Alert';
 import { PageProps } from '../../Types';
+import { downloadSingleSalesOrder } from '../../Utils/salesOrderExcel';
 
 interface Customer {
   id: number;
@@ -93,17 +94,17 @@ interface SalesOrderShowProps {
 }
 
 const statusBadgeColor: Record<string, string> = {
-  draft:            'bg-slate-800 border-slate-700 text-slate-400',
+  draft:            'bg-gray-100 border-gray-300 text-gray-500',
   pending_approval: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
   approved:         'bg-blue-500/10 border-blue-500/20 text-blue-400',
-  processing:       'bg-indigo-500/10 border-indigo-500/20 text-indigo-400',
+  processing:       'bg-cyan-500/10 border-cyan-500/20 text-cyan-400',
   completed:        'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
   cancelled:        'bg-rose-500/10 border-rose-500/20 text-rose-400',
 };
 
 const statusLabel: Record<string, string> = {
   draft:            'Draft',
-  pending_approval: 'Pending Approval',
+  pending_approval: 'Menunggu Approval Finance',
   approved:         'Disetujui',
   processing:       'Diproses',
   completed:        'Selesai',
@@ -114,7 +115,7 @@ const paymentBadgeColor: Record<string, string> = {
   unpaid:         'bg-rose-500/10 border-rose-500/20 text-rose-400',
   partially_paid: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
   paid:           'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
-  refunded:       'bg-slate-800 border-slate-700 text-slate-500',
+  refunded:       'bg-gray-100 border-gray-300 text-gray-400',
 };
 
 const paymentLabel: Record<string, string> = {
@@ -162,6 +163,45 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
   const [trackingNumber, setTrackingNumber] = useState(salesOrder.tracking_number ?? '');
   const [isEditingResi, setIsEditingResi] = useState(false);
   const [resiLoading, setResiLoading] = useState(false);
+
+  function handleDownloadExcel() {
+    downloadSingleSalesOrder(
+      {
+        so_number: salesOrder.so_number,
+        order_date: salesOrder.order_date?.split('T')[0] ?? null,
+        customer_code: salesOrder.customer?.customer_code ?? null,
+        customer_name: salesOrder.customer?.name ?? null,
+        recipient_name: salesOrder.recipient_name ?? null,
+        city: salesOrder.city ?? null,
+        province: salesOrder.province ?? null,
+        source: salesOrder.source,
+        sales_channel: salesOrder.sales_channel,
+        status: salesOrder.status,
+        payment_status: salesOrder.payment_status,
+        tracking_number: salesOrder.tracking_number ?? null,
+        subtotal: Number(salesOrder.subtotal),
+        discount_amount: Number(salesOrder.discount_amount),
+        tax_amount: Number(salesOrder.tax_amount),
+        shipping_cost: Number(salesOrder.shipping_cost),
+        grand_total: Number(salesOrder.grand_total),
+        total_weight: Number(salesOrder.total_weight ?? 0),
+        created_by: salesOrder.creator?.name ?? null,
+        notes: salesOrder.notes ?? null,
+      },
+      salesOrder.items.map((item) => ({
+        so_number: salesOrder.so_number,
+        order_date: salesOrder.order_date?.split('T')[0] ?? null,
+        customer_name: salesOrder.customer?.name ?? null,
+        sku: item.sku,
+        product_name: item.product_name,
+        quantity: item.quantity,
+        price: Number(item.price),
+        discount_amount: Number(item.discount_amount),
+        tax_amount: Number(item.tax_amount),
+        subtotal: Number(item.subtotal),
+      })),
+    );
+  }
 
   function handleSaveResi(e: React.FormEvent) {
     e.preventDefault();
@@ -291,7 +331,7 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
           <div className="flex items-center gap-4">
             <Link
               href="/sales-orders"
-              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 border border-transparent hover:border-slate-700 transition-all"
+              className="p-2 rounded-xl text-gray-500 hover:text-gray-900 hover:bg-gray-100 border border-transparent hover:border-gray-300 transition-all"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
@@ -299,23 +339,34 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
             </Link>
             <div>
               <div className="flex items-center gap-2.5">
-                <h1 className="text-2xl font-bold text-white">{salesOrder.so_number}</h1>
+                <h1 className="text-2xl font-bold text-gray-900">{salesOrder.so_number}</h1>
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusBadgeColor[salesOrder.status]}`}>
                   {statusLabel[salesOrder.status]}
                 </span>
               </div>
-              <p className="text-slate-400 text-xs mt-1">Transaksi / Sales Orders / Detail</p>
+              <p className="text-gray-500 text-xs mt-1">Transaksi / Sales Orders / Detail</p>
             </div>
           </div>
 
           {/* Contextual Action Buttons */}
           <div className="flex flex-wrap gap-2.5">
+            <button
+              type="button"
+              onClick={handleDownloadExcel}
+              className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-teal-50 text-teal-700 border border-teal-400 hover:border-teal-500 rounded-xl text-sm font-semibold transition-all"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              Download Excel
+            </button>
+
             {salesOrder.status === 'draft' && (
               <>
                 {canEdit && (
                   <Link
                     href={`/sales-orders/${salesOrder.id}/edit`}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-sm font-semibold transition-all"
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 rounded-xl text-sm font-semibold transition-all"
                   >
                     Edit Draft
                   </Link>
@@ -324,7 +375,7 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
                   <button
                     onClick={() => handleAction(`/sales-orders/${salesOrder.id}/submit-approval`)}
                     disabled={loading}
-                    className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-sm font-semibold transition-all shadow-md shadow-violet-900/20 disabled:opacity-50"
+                    className="px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-teal-200/40 disabled:opacity-50"
                   >
                     Ajukan Approval
                   </button>
@@ -347,7 +398,7 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
                   <button
                     onClick={() => handleAction(`/sales-orders/${salesOrder.id}/approve`)}
                     disabled={loading}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold transition-all shadow-md shadow-emerald-950/20 disabled:opacity-50"
+                    className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-emerald-200/40 disabled:opacity-50"
                   >
                     Setujui (Approve)
                   </button>
@@ -392,7 +443,7 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
                 canViewInvoice && (
                   <Link
                     href={`/invoices/${salesOrder.invoice!.id}`}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border border-indigo-500/20 rounded-xl text-sm font-semibold transition-all"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-cyan-600/10 hover:bg-cyan-600/20 text-cyan-400 border border-cyan-500/20 rounded-xl text-sm font-semibold transition-all"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
@@ -405,7 +456,7 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
                   <button
                     onClick={handleCreateInvoice}
                     disabled={invoiceLoading}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-sm font-semibold transition-all shadow-md shadow-violet-900/20 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-teal-200/40 disabled:opacity-50"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -420,13 +471,13 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
 
         {/* Timeline Status */}
         {salesOrder.status !== 'cancelled' && (
-          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-6">Status Timeline</h3>
+          <div className="bg-white border border-gray-300 rounded-2xl p-6">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-6">Status Timeline</h3>
             <div className="relative flex items-center justify-between">
               {/* Line in background */}
-              <div className="absolute left-0 right-0 h-1 bg-slate-800 z-0 top-3" />
+              <div className="absolute left-0 right-0 h-1 bg-gray-100 z-0 top-3" />
               <div
-                className="absolute left-0 h-1 bg-gradient-to-r from-violet-600 to-indigo-500 z-0 top-3 transition-all duration-300"
+                className="absolute left-0 h-1 bg-gradient-to-r from-teal-600 to-cyan-500 z-0 top-3 transition-all duration-300"
                 style={{ width: `${(Math.max(0, currentStepIdx) / (steps.length - 1)) * 100}%` }}
               />
 
@@ -441,19 +492,19 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
                       role="tooltip"
                       className="pointer-events-none absolute bottom-full mb-3 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-30"
                     >
-                      <div className="whitespace-nowrap rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-slate-200">
+                      <div className="whitespace-nowrap rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 text-xs text-gray-800">
                         {stepTooltip(step, isPassed)}
                       </div>
-                      <div className="mx-auto h-2 w-2 -mt-1 rotate-45 border-b border-r border-slate-700 bg-slate-800" />
+                      <div className="mx-auto h-2 w-2 -mt-1 rotate-45 border-b border-r border-gray-300 bg-gray-100" />
                     </div>
 
                     <div
                       className={`w-7 h-7 rounded-full flex items-center justify-center border-2 transition-all duration-300 cursor-help
                         ${isPassed
-                          ? 'bg-slate-950 border-violet-500 text-violet-400'
-                          : 'bg-slate-900 border-slate-800 text-slate-600'
+                          ? 'bg-white border-teal-500 text-teal-400'
+                          : 'bg-gray-50 border-gray-300 text-gray-400'
                         }
-                        ${isCurrent ? 'ring-4 ring-violet-500/20 scale-110' : ''}
+                        ${isCurrent ? 'ring-4 ring-teal-500/20 scale-110' : ''}
                       `}
                     >
                       {isPassed && idx < currentStepIdx ? (
@@ -464,7 +515,7 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
                         <span className="text-[10px] font-bold">{idx + 1}</span>
                       )}
                     </div>
-                    <span className={`text-[10px] font-bold uppercase tracking-wider mt-2.5 transition-colors duration-300 ${isPassed ? 'text-slate-200' : 'text-slate-600'}`}>
+                    <span className={`text-[10px] font-bold uppercase tracking-wider mt-2.5 transition-colors duration-300 ${isPassed ? 'text-gray-800' : 'text-gray-400'}`}>
                       {statusLabel[step]}
                     </span>
                   </div>
@@ -479,50 +530,50 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
           {/* Main Info */}
           <div className="lg:col-span-2 space-y-6">
             {/* Customer & Order details */}
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-white border border-gray-300 rounded-2xl p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Informasi Customer</h3>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Informasi Customer</h3>
                 {salesOrder.customer ? (
                   <div className="space-y-1.5">
-                    <p className="text-white font-bold text-base">{salesOrder.customer.name}</p>
-                    <p className="text-slate-400 text-xs font-mono">{salesOrder.customer.customer_code}</p>
-                    {salesOrder.customer.phone && <p className="text-slate-400 text-xs">📞 {salesOrder.customer.phone}</p>}
-                    {salesOrder.customer.email && <p className="text-slate-400 text-xs">✉️ {salesOrder.customer.email}</p>}
+                    <p className="text-gray-900 font-bold text-base">{salesOrder.customer.name}</p>
+                    <p className="text-gray-500 text-xs font-mono">{salesOrder.customer.customer_code}</p>
+                    {salesOrder.customer.phone && <p className="text-gray-500 text-xs">📞 {salesOrder.customer.phone}</p>}
+                    {salesOrder.customer.email && <p className="text-gray-500 text-xs">✉️ {salesOrder.customer.email}</p>}
                     {salesOrder.customer.address && (
-                      <p className="text-slate-400 text-xs leading-relaxed mt-2 border-t border-slate-900 pt-2">
+                      <p className="text-gray-500 text-xs leading-relaxed mt-2 border-t border-gray-200 pt-2">
                         📍 {salesOrder.customer.address}
                       </p>
                     )}
                   </div>
                 ) : (
-                  <p className="text-slate-400 text-sm italic">Customer Umum / Walk-in</p>
+                  <p className="text-gray-500 text-sm italic">Customer Umum / Walk-in</p>
                 )}
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Detail Transaksi</h3>
-                  <div className="grid grid-cols-2 gap-y-2.5 text-xs text-slate-300">
-                    <span className="text-slate-500">Tanggal Order</span>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Detail Transaksi</h3>
+                  <div className="grid grid-cols-2 gap-y-2.5 text-xs text-gray-700">
+                    <span className="text-gray-400">Tanggal Order</span>
                     <span className="font-semibold">{new Date(salesOrder.order_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
 
                     {salesOrder.payment_date && (
                       <>
-                        <span className="text-slate-500">Waktu Pembayaran</span>
+                        <span className="text-gray-400">Waktu Pembayaran</span>
                         <span className="font-semibold text-emerald-400">
                           {new Date(salesOrder.payment_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
                         </span>
                       </>
                     )}
 
-                    <span className="text-slate-500">Sumber Order</span>
+                    <span className="text-gray-400">Sumber Order</span>
                     <span className="font-semibold">{sourceLabel[salesOrder.source] ?? salesOrder.source}</span>
 
 
-                    <span className="text-slate-500">Sales Channel</span>
+                    <span className="text-gray-400">Sales Channel</span>
                     <span className="font-semibold">{channelLabel[salesOrder.sales_channel] ?? salesOrder.sales_channel}</span>
 
-                    <span className="text-slate-500">Status Bayar</span>
+                    <span className="text-gray-400">Status Bayar</span>
                     <span className="font-semibold">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${paymentBadgeColor[salesOrder.payment_status]}`}>
                         {paymentLabel[salesOrder.payment_status]}
@@ -531,22 +582,22 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
                   </div>
                 </div>
 
-                <div className="border-t border-slate-900 pt-3">
-                  <span className="text-slate-500 text-xs block mb-1">Catatan Transaksi</span>
-                  <p className="text-slate-400 text-xs leading-relaxed italic">{salesOrder.notes ?? 'Tidak ada catatan.'}</p>
+                <div className="border-t border-gray-200 pt-3">
+                  <span className="text-gray-400 text-xs block mb-1">Catatan Transaksi</span>
+                  <p className="text-gray-500 text-xs leading-relaxed italic">{salesOrder.notes ?? 'Tidak ada catatan.'}</p>
                 </div>
               </div>
             </div>
 
             {/* Items Table */}
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-              <div className="px-6 py-4 border-b border-slate-800">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">Daftar Item</h3>
+            <div className="bg-white border border-gray-300 rounded-2xl overflow-hidden shadow-xl">
+              <div className="px-6 py-4 border-b border-gray-300">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">Daftar Item</h3>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-900/30">
+                    <tr className="border-b border-gray-300 text-[10px] font-bold uppercase tracking-wider text-gray-400 bg-teal-50/60">
                       <th className="px-6 py-3">Produk</th>
                       <th className="px-6 py-3 text-right">Harga</th>
                       <th className="px-6 py-3 text-center">Qty</th>
@@ -555,23 +606,23 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
                       <th className="px-6 py-3 text-right">Subtotal</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/60 text-xs">
+                  <tbody className="divide-y divide-gray-200/60 text-xs">
                     {salesOrder.items.map((item) => (
-                      <tr key={item.id} className="hover:bg-slate-900/20 transition-all">
+                      <tr key={item.id} className="hover:bg-teal-50/40 transition-all">
                         <td className="px-6 py-4">
-                          <p className="font-bold text-slate-200">{item.product_name}</p>
-                          <p className="text-[10px] text-slate-500 font-mono mt-0.5">{item.sku}</p>
+                          <p className="font-bold text-gray-800">{item.product_name}</p>
+                          <p className="text-[10px] text-gray-400 font-mono mt-0.5">{item.sku}</p>
                         </td>
-                        <td className="px-6 py-4 text-right text-slate-300">
+                        <td className="px-6 py-4 text-right text-gray-700">
                           Rp {Number(item.price).toLocaleString('id-ID')}
                         </td>
-                        <td className="px-6 py-4 text-center text-slate-300 whitespace-nowrap">
-                          {item.quantity} <span className="text-[10px] text-slate-500 uppercase font-bold ml-0.5">{item.unit}</span>
+                        <td className="px-6 py-4 text-center text-gray-700 whitespace-nowrap">
+                          {item.quantity} <span className="text-[10px] text-gray-400 uppercase font-bold ml-0.5">{item.unit}</span>
                         </td>
                         <td className="px-6 py-4 text-right text-rose-400">
                           {Number(item.discount_amount) > 0 ? `-Rp ${Number(item.discount_amount).toLocaleString('id-ID')}` : '—'}
                         </td>
-                        <td className="px-6 py-4 text-right text-slate-300">
+                        <td className="px-6 py-4 text-right text-gray-700">
                           {Number(item.tax_amount) > 0 ? `+Rp ${Number(item.tax_amount).toLocaleString('id-ID')}` : '—'}
                         </td>
                         <td className="px-6 py-4 text-right font-bold text-emerald-400">
@@ -588,50 +639,50 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
           {/* Right Panel: Cost Summary & Audit */}
           <div className="space-y-6">
             {/* Cost Summary Card */}
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Ringkasan Biaya</h3>
+            <div className="bg-white border border-gray-300 rounded-2xl p-6 space-y-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Ringkasan Biaya</h3>
 
-              <div className="space-y-3 divide-y divide-slate-800/60 text-xs">
+              <div className="space-y-3 divide-y divide-gray-200/60 text-xs">
                 {/* Subtotal */}
                 <div className="flex justify-between items-center pb-3">
-                  <span className="text-slate-500">Subtotal Item</span>
-                  <span className="font-semibold text-slate-300">Rp {Number(salesOrder.subtotal).toLocaleString('id-ID')}</span>
+                  <span className="text-gray-400">Subtotal Item</span>
+                  <span className="font-semibold text-gray-700">Rp {Number(salesOrder.subtotal).toLocaleString('id-ID')}</span>
                 </div>
 
                 {/* Diskon */}
                 <div className="flex justify-between items-center pt-3 pb-3">
-                  <span className="text-slate-500">Diskon Transaksi</span>
+                  <span className="text-gray-400">Diskon Transaksi</span>
                   <span className="font-semibold text-rose-400">-Rp {Number(salesOrder.discount_amount).toLocaleString('id-ID')}</span>
                 </div>
 
                 {/* Pajak */}
                 <div className="flex justify-between items-center pt-3 pb-3">
-                  <span className="text-slate-500">Pajak Transaksi</span>
-                  <span className="font-semibold text-slate-300">+Rp {Number(salesOrder.tax_amount).toLocaleString('id-ID')}</span>
+                  <span className="text-gray-400">Pajak Transaksi</span>
+                  <span className="font-semibold text-gray-700">+Rp {Number(salesOrder.tax_amount).toLocaleString('id-ID')}</span>
                 </div>
 
                 {/* Ongkir */}
                 <div className="flex justify-between items-center pt-3 pb-3">
-                  <span className="text-slate-500">Biaya Pengiriman</span>
-                  <span className="font-semibold text-slate-300">+Rp {Number(salesOrder.shipping_cost).toLocaleString('id-ID')}</span>
+                  <span className="text-gray-400">Biaya Pengiriman</span>
+                  <span className="font-semibold text-gray-700">+Rp {Number(salesOrder.shipping_cost).toLocaleString('id-ID')}</span>
                 </div>
 
                 {/* Grand Total */}
                 <div className="flex justify-between items-center pt-4">
-                  <span className="text-sm font-bold text-white">Grand Total</span>
+                  <span className="text-sm font-bold text-gray-900">Grand Total</span>
                   <span className="text-base font-extrabold text-emerald-400">Rp {Number(salesOrder.grand_total).toLocaleString('id-ID')}</span>
                 </div>
               </div>
             </div>
 
             {/* Delivery Order & Tracking Resi Card */}
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4">
+            <div className="bg-white border border-gray-300 rounded-2xl p-6 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">🚚 Delivery Order & Resi/AWB</h3>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">🚚 Delivery Order & Resi/AWB</h3>
                 <button
                   type="button"
                   onClick={() => setIsEditingResi(!isEditingResi)}
-                  className="text-xs font-semibold text-violet-400 hover:text-violet-300"
+                  className="text-xs font-semibold text-teal-400 hover:text-teal-600"
                 >
                   {isEditingResi ? 'Batal' : 'Edit Resi'}
                 </button>
@@ -640,44 +691,44 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
               {isEditingResi ? (
                 <form onSubmit={handleSaveResi} className="space-y-3">
                   <div>
-                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Input No. Resi / AWB (Bukti Dikirim)</label>
+                    <label className="block text-[10px] uppercase font-bold text-gray-500 mb-1">Input No. Resi / AWB (Bukti Dikirim)</label>
                     <input
                       type="text"
                       required
                       value={trackingNumber}
                       onChange={(e) => setTrackingNumber(e.target.value)}
                       placeholder="Masukkan No. Resi..."
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500"
+                      className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-teal-500"
                     />
                   </div>
                   <button
                     type="submit"
                     disabled={resiLoading}
-                    className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+                    className="w-full py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 shadow-lg shadow-emerald-200/40"
                   >
                     {resiLoading ? 'Menyimpan...' : 'Simpan No. Resi'}
                   </button>
                 </form>
               ) : (
-                <div className="space-y-2 text-xs text-slate-300">
+                <div className="space-y-2 text-xs text-gray-700">
                   <div className="flex justify-between items-center">
-                    <span className="text-slate-500">No. Resi / AWB</span>
-                    <span className="font-mono font-bold text-violet-400">{salesOrder.tracking_number || 'Belum Diisi'}</span>
+                    <span className="text-gray-400">No. Resi / AWB</span>
+                    <span className="font-mono font-bold text-teal-400">{salesOrder.tracking_number || 'Belum Diisi'}</span>
                   </div>
                   {salesOrder.recipient_name && (
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-500">Penerima</span>
+                      <span className="text-gray-400">Penerima</span>
                       <span className="font-semibold">{salesOrder.recipient_name}</span>
                     </div>
                   )}
                   {salesOrder.customer_phone && (
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-500">No. Telp</span>
+                      <span className="text-gray-400">No. Telp</span>
                       <span className="font-mono">{salesOrder.customer_phone}</span>
                     </div>
                   )}
                   {salesOrder.shipping_address && (
-                    <div className="border-t border-slate-900 pt-2 text-slate-400 text-[11px] leading-relaxed">
+                    <div className="border-t border-gray-200 pt-2 text-gray-500 text-[11px] leading-relaxed">
                       📍 {salesOrder.shipping_address} {salesOrder.city ? `, ${salesOrder.city}` : ''} {salesOrder.province ? `, ${salesOrder.province}` : ''}
                     </div>
                   )}
@@ -686,17 +737,17 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
             </div>
 
             {/* Audit Log Card */}
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-3">
+            <div className="bg-white border border-gray-300 rounded-2xl p-6 space-y-3">
 
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Informasi Audit</h3>
-              <div className="space-y-2.5 text-xs text-slate-400">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Informasi Audit</h3>
+              <div className="space-y-2.5 text-xs text-gray-500">
                 <div className="flex justify-between">
                   <span>Dibuat Oleh</span>
-                  <span className="text-slate-200 font-medium">{salesOrder.creator?.name ?? '—'}</span>
+                  <span className="text-gray-800 font-medium">{salesOrder.creator?.name ?? '—'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Tanggal Dibuat</span>
-                  <span className="text-slate-200 font-medium">
+                  <span className="text-gray-800 font-medium">
                     {new Date(salesOrder.created_at).toLocaleString('id-ID', {
                       day: 'numeric',
                       month: 'short',
@@ -715,8 +766,8 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
       {/* Delete Confirmation Modal */}
       {deleteConfirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={() => setDeleteConfirmOpen(false)} />
-          <div className="relative bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+          <div className="absolute inset-0 bg-gray-50 backdrop-blur-sm" onClick={() => setDeleteConfirmOpen(false)} />
+          <div className="relative bg-gray-50 border border-gray-300 rounded-2xl shadow-2xl p-6 w-full max-w-sm">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-rose-500/10 flex items-center justify-center">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-5 h-5 text-rose-400">
@@ -724,24 +775,24 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
                 </svg>
               </div>
               <div>
-                <h3 className="text-white font-semibold">Konfirmasi Hapus</h3>
-                <p className="text-slate-400 text-xs">Tindakan ini tidak dapat dibatalkan.</p>
+                <h3 className="text-gray-900 font-semibold">Konfirmasi Hapus</h3>
+                <p className="text-gray-500 text-xs">Tindakan ini tidak dapat dibatalkan.</p>
               </div>
             </div>
-            <p className="text-slate-300 text-sm mb-6">
-              Hapus Sales Order <span className="font-bold text-white">{salesOrder.so_number}</span>?
+            <p className="text-gray-700 text-sm mb-6">
+              Hapus Sales Order <span className="font-bold text-gray-900">{salesOrder.so_number}</span>?
             </p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setDeleteConfirmOpen(false)}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-semibold transition-all"
+                className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-semibold transition-all"
                 disabled={loading}
               >
                 Batal
               </button>
               <button
                 onClick={handleDelete}
-                className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-sm font-semibold transition-all"
+                className="px-4 py-2.5 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-rose-200/40"
                 disabled={loading}
               >
                 {loading ? 'Menghapus...' : 'Ya, Hapus'}

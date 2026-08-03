@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import Pagination from '../../Components/Pagination';
@@ -125,13 +125,13 @@ export default function Index({ categories, filters }: CategoryIndexProps) {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white">Kategori Produk</h1>
-            <p className="text-slate-400 text-xs mt-1">Master Data / Kategori</p>
+            <h1 className="text-2xl font-bold text-gray-900">Kategori Produk</h1>
+            <p className="text-gray-500 text-xs mt-1">Master Data / Kategori</p>
           </div>
           {canCreate && (
             <button
               onClick={openCreateModal}
-              className="flex items-center justify-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white font-semibold text-sm rounded-xl transition-all shadow-md shadow-violet-900/20"
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 active:scale-[0.99] text-white font-semibold text-sm rounded-xl transition-all shadow-lg shadow-teal-200/40"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -142,7 +142,7 @@ export default function Index({ categories, filters }: CategoryIndexProps) {
         </div>
 
         {/* Filter & Search Bar */}
-        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
+        <div className="bg-white border border-gray-300 rounded-2xl p-4">
           <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1 relative">
               <input
@@ -150,9 +150,9 @@ export default function Index({ categories, filters }: CategoryIndexProps) {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Cari nama atau deskripsi kategori..."
-                className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                className="w-full pl-10 pr-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
               />
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-slate-500 absolute left-3.5 top-3">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-gray-400 absolute left-3.5 top-3">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.637 10.637z" />
               </svg>
             </div>
@@ -160,7 +160,7 @@ export default function Index({ categories, filters }: CategoryIndexProps) {
               <select
                 value={status}
                 onChange={(e) => handleFilterChange(e.target.value)}
-                className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
               >
                 <option value="">Semua Status</option>
                 <option value="active">Aktif</option>
@@ -168,7 +168,7 @@ export default function Index({ categories, filters }: CategoryIndexProps) {
               </select>
               <button
                 type="submit"
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-sm font-semibold border border-slate-700 transition-all"
+                className="px-4 py-2 bg-white hover:bg-teal-50 text-teal-700 rounded-xl text-sm font-semibold border border-teal-400 hover:border-teal-500 transition-all"
               >
                 Cari
               </button>
@@ -177,31 +177,31 @@ export default function Index({ categories, filters }: CategoryIndexProps) {
         </div>
 
         {/* Data Table */}
-        <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+        <div className="bg-white border border-gray-300 rounded-2xl overflow-hidden shadow-xl">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-500 bg-slate-900/30">
+                <tr className="border-b border-gray-300 text-[11px] font-bold uppercase tracking-wider text-gray-400 bg-teal-50/60">
                   <th className="px-6 py-4">Nama Kategori</th>
                   <th className="px-6 py-4">Deskripsi</th>
                   <th className="px-6 py-4">Status</th>
                   <th className="px-6 py-4 text-right">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 text-sm">
+              <tbody className="divide-y divide-gray-200/60 text-sm">
                 {categories.data.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={4} className="px-6 py-12 text-center text-gray-400">
                       Tidak ada data kategori ditemukan.
                     </td>
                   </tr>
                 ) : (
                   categories.data.map((category) => (
-                    <tr key={category.id} className="hover:bg-slate-900/20 group transition-all">
-                      <td className="px-6 py-4 font-semibold text-slate-200 group-hover:text-white transition-colors">
+                    <tr key={category.id} className="hover:bg-teal-50/40 group transition-all">
+                      <td className="px-6 py-4 font-semibold text-gray-800 group-hover:text-gray-900 transition-colors">
                         {category.name}
                       </td>
-                      <td className="px-6 py-4 text-slate-400 max-w-xs truncate">
+                      <td className="px-6 py-4 text-gray-500 max-w-xs truncate">
                         {category.description ?? '—'}
                       </td>
                       <td className="px-6 py-4">
@@ -209,7 +209,7 @@ export default function Index({ categories, filters }: CategoryIndexProps) {
                           className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border
                             ${category.status === 'active'
                               ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                              : 'bg-slate-800 border-slate-700 text-slate-500'
+                              : 'bg-gray-100 border-gray-300 text-gray-400'
                             }`}
                         >
                           <span className={`h-1.5 w-1.5 rounded-full ${category.status === 'active' ? 'bg-emerald-400' : 'bg-slate-500'}`} />
@@ -221,7 +221,7 @@ export default function Index({ categories, filters }: CategoryIndexProps) {
                           {canEdit && (
                             <button
                               onClick={() => openEditModal(category)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-violet-400 hover:bg-violet-500/10 border border-transparent hover:border-violet-500/10 transition-all"
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-teal-400 hover:bg-teal-500/10 border border-transparent hover:border-teal-500/10 transition-all"
                               title="Edit"
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
@@ -232,7 +232,7 @@ export default function Index({ categories, filters }: CategoryIndexProps) {
                           {canDelete && (
                             <button
                               onClick={() => openDeleteConfirm(category)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/10 transition-all"
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/10 transition-all"
                               title="Hapus"
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
@@ -248,7 +248,7 @@ export default function Index({ categories, filters }: CategoryIndexProps) {
               </tbody>
             </table>
           </div>
-          <div className="px-6 py-4 border-t border-slate-800/80 bg-slate-900/10">
+          <div className="px-6 py-4 border-t border-gray-300/80 bg-gray-50/10">
             <Pagination links={categories.links} />
           </div>
         </div>
@@ -263,12 +263,12 @@ export default function Index({ categories, filters }: CategoryIndexProps) {
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="block text-sm font-semibold text-slate-300">Nama Kategori</label>
+            <label className="block text-sm font-semibold text-gray-700">Nama Kategori</label>
             <input
               type="text"
               value={data.name}
               onChange={(e) => setData('name', e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+              className="w-full px-4 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
               placeholder="Masukkan nama kategori..."
               disabled={processing}
             />
@@ -276,12 +276,12 @@ export default function Index({ categories, filters }: CategoryIndexProps) {
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-sm font-semibold text-slate-300">Deskripsi</label>
+            <label className="block text-sm font-semibold text-gray-700">Deskripsi</label>
             <textarea
               value={data.description}
               onChange={(e) => setData('description', e.target.value)}
               rows={3}
-              className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all resize-none"
+              className="w-full px-4 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all resize-none"
               placeholder="Tulis penjelasan singkat kategori..."
               disabled={processing}
             />
@@ -289,11 +289,11 @@ export default function Index({ categories, filters }: CategoryIndexProps) {
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-sm font-semibold text-slate-300">Status</label>
+            <label className="block text-sm font-semibold text-gray-700">Status</label>
             <select
               value={data.status}
               onChange={(e) => setData('status', e.target.value as 'active' | 'inactive')}
-              className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all cursor-pointer"
+              className="w-full px-4 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
               disabled={processing}
             >
               <option value="active">Aktif</option>
@@ -302,18 +302,18 @@ export default function Index({ categories, filters }: CategoryIndexProps) {
             {errors.status && <p className="text-rose-400 text-xs mt-1">{errors.status}</p>}
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-800/80">
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-300/80">
             <button
               type="button"
               onClick={() => setModalOpen(false)}
-              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-800 text-slate-300 rounded-xl text-sm font-semibold transition-all"
+              className="px-4 py-2.5 bg-white hover:bg-teal-50 text-teal-700 rounded-xl text-sm font-semibold border border-teal-300 hover:border-teal-400 transition-all"
               disabled={processing}
             >
               Batal
             </button>
             <button
               type="submit"
-              className="px-4 py-2.5 bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white rounded-xl text-sm font-semibold shadow-md shadow-violet-900/20 transition-all"
+              className="px-4 py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 active:scale-[0.99] text-white rounded-xl text-sm font-semibold shadow-lg shadow-teal-200/40 transition-all"
               disabled={processing}
             >
               {processing ? 'Menyimpan...' : 'Simpan'}
@@ -330,21 +330,21 @@ export default function Index({ categories, filters }: CategoryIndexProps) {
         maxWidth="sm"
       >
         <div className="space-y-4">
-          <p className="text-slate-300 text-sm leading-relaxed">
-            Apakah Anda yakin ingin menghapus kategori <span className="font-bold text-white">{deletingCategory?.name}</span>? Tindakan ini tidak dapat dibatalkan jika kategori telah terikat pada produk.
+          <p className="text-gray-700 text-sm leading-relaxed">
+            Apakah Anda yakin ingin menghapus kategori <span className="font-bold text-gray-900">{deletingCategory?.name}</span>? Tindakan ini tidak dapat dibatalkan jika kategori telah terikat pada produk.
           </p>
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-800/80">
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-300/80">
             <button
               type="button"
               onClick={() => setDeleteConfirmOpen(false)}
-              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-800 text-slate-300 rounded-xl text-sm font-semibold transition-all"
+              className="px-4 py-2.5 bg-white hover:bg-teal-50 text-teal-700 rounded-xl text-sm font-semibold border border-teal-300 hover:border-teal-400 transition-all"
               disabled={processing}
             >
               Batal
             </button>
             <button
               onClick={handleDeleteSubmit}
-              className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white rounded-xl text-sm font-semibold shadow-md shadow-rose-900/20 transition-all"
+              className="px-4 py-2.5 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white rounded-xl text-sm font-semibold shadow-lg shadow-rose-200/40 transition-all"
               disabled={processing}
             >
               {processing ? 'Menghapus...' : 'Hapus Kategori'}

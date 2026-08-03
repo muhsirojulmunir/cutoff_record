@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import Pagination from '../../Components/Pagination';
@@ -26,8 +26,7 @@ interface PurchaseOrder {
   id: number;
   po_number: string;
   order_date: string;
-  expected_delivery_date: string | null;
-  source: 'manual' | 'other';
+  production_lead_time_days: number | null;
   status: 'draft' | 'pending_leader_approval' | 'pending_finance_approval' | 'approved' | 'ordered' | 'partially_received' | 'received' | 'cancelled' | 'rejected';
   payment_status: 'unpaid' | 'partially_paid' | 'paid';
   grand_total: string;
@@ -53,12 +52,12 @@ interface PurchaseOrderIndexProps {
 }
 
 const statusBadgeColor: Record<string, string> = {
-  draft:                     'bg-slate-800 border-slate-700 text-slate-400',
+  draft:                     'bg-gray-100 border-gray-300 text-gray-500',
   pending_leader_approval:   'bg-amber-500/10 border-amber-500/20 text-amber-400',
   pending_finance_approval:  'bg-orange-500/10 border-orange-500/20 text-orange-400',
   approved:                  'bg-blue-500/10 border-blue-500/20 text-blue-400',
-  ordered:                   'bg-violet-500/10 border-violet-500/20 text-violet-400',
-  partially_received:        'bg-indigo-500/10 border-indigo-500/20 text-indigo-400',
+  ordered:                   'bg-teal-500/10 border-teal-500/20 text-teal-400',
+  partially_received:        'bg-cyan-500/10 border-cyan-500/20 text-cyan-400',
   received:                  'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
   rejected:                  'bg-rose-500/10 border-rose-500/20 text-rose-400',
   cancelled:                 'bg-rose-500/10 border-rose-500/20 text-rose-400',
@@ -86,11 +85,6 @@ const paymentLabel: Record<string, string> = {
   unpaid:         'Belum Bayar',
   partially_paid: 'Sebagian',
   paid:           'Lunas',
-};
-
-const sourceLabel: Record<string, string> = {
-  manual: 'Manual',
-  other:  'Lainnya',
 };
 
 export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexProps) {
@@ -165,8 +159,8 @@ export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexPro
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Purchase Orders</h1>
-          <p className="text-sm text-slate-400 mt-1">
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Purchase Orders</h1>
+          <p className="text-sm text-gray-500 mt-1">
             Kelola permintaan pembelian barang kepada supplier/pabrik.
           </p>
         </div>
@@ -174,7 +168,7 @@ export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexPro
         {canCreate && (
           <Link
             href="/purchase-orders/create"
-            className="px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-950/40 transition-all"
+            className="px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-teal-200/40 transition-all"
           >
             Buat Purchase Order
           </Link>
@@ -186,12 +180,12 @@ export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexPro
       {flash.error && <Alert message={flash.error} type="error" />}
 
       {/* Filter Card */}
-      <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-5 mb-6 shadow-xl">
+      <div className="bg-white border border-gray-300/80 rounded-2xl p-5 mb-6 shadow-xl">
         <form onSubmit={handleSearch} className="flex flex-col gap-4">
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
             {/* Search Input */}
             <div className="relative">
-              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
@@ -201,7 +195,7 @@ export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexPro
                 placeholder="Cari No. PO / Supplier..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-800 focus:border-violet-600 rounded-xl pl-9 pr-3 py-2 text-sm text-white focus:outline-none transition-all placeholder:text-slate-500"
+                className="w-full bg-gray-50 border border-gray-300 focus:border-teal-600 rounded-xl pl-9 pr-3 py-2 text-sm text-gray-900 focus:outline-none transition-all placeholder:text-gray-400"
               />
             </div>
 
@@ -209,7 +203,7 @@ export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexPro
             <select
               value={status}
               onChange={(e) => handleFilterChange('status', e.target.value)}
-              className="bg-slate-900 border border-slate-800 focus:border-violet-600 rounded-xl px-3 py-2 text-sm text-white focus:outline-none transition-all"
+              className="bg-gray-50 border border-gray-300 focus:border-teal-600 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none transition-all"
             >
               <option value="">Semua Status PO</option>
               {Object.entries(statusLabel).map(([value, label]) => (
@@ -221,7 +215,7 @@ export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexPro
             <select
               value={paymentStatus}
               onChange={(e) => handleFilterChange('payment_status', e.target.value)}
-              className="bg-slate-900 border border-slate-800 focus:border-violet-600 rounded-xl px-3 py-2 text-sm text-white focus:outline-none transition-all"
+              className="bg-gray-50 border border-gray-300 focus:border-teal-600 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none transition-all"
             >
               <option value="">Semua Status Bayar</option>
               {Object.entries(paymentLabel).map(([value, label]) => (
@@ -234,7 +228,7 @@ export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexPro
               type="date"
               value={startDate}
               onChange={(e) => handleFilterChange('start_date', e.target.value)}
-              className="bg-slate-900 border border-slate-800 focus:border-violet-600 rounded-xl px-3 py-2 text-sm text-white focus:outline-none transition-all"
+              className="bg-gray-50 border border-gray-300 focus:border-teal-600 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none transition-all"
             />
 
             {/* End Date */}
@@ -242,7 +236,7 @@ export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexPro
               type="date"
               value={endDate}
               onChange={(e) => handleFilterChange('end_date', e.target.value)}
-              className="bg-slate-900 border border-slate-800 focus:border-violet-600 rounded-xl px-3 py-2 text-sm text-white focus:outline-none transition-all"
+              className="bg-gray-50 border border-gray-300 focus:border-teal-600 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none transition-all"
             />
           </div>
 
@@ -250,13 +244,13 @@ export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexPro
             <button
               type="button"
               onClick={handleResetFilters}
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl text-xs font-semibold transition-all"
+              className="px-4 py-2 bg-gray-50 hover:bg-gray-100 border border-gray-300 text-gray-700 rounded-xl text-xs font-semibold transition-all"
             >
               Reset Filter
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold transition-all shadow-md shadow-violet-950/40"
+              className="px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white rounded-xl text-xs font-semibold transition-all shadow-lg shadow-teal-200/40"
             >
               Cari Data
             </button>
@@ -265,74 +259,72 @@ export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexPro
       </div>
 
       {/* Table Section */}
-      <div className="bg-slate-950 border border-slate-800/80 rounded-2xl shadow-xl overflow-hidden">
+      <div className="bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-slate-800/60 text-slate-400 text-[11px] font-bold uppercase tracking-wider bg-slate-950">
-                <th className="py-4 px-5">No. PO</th>
-                <th className="py-4 px-5">Tanggal Order</th>
-                <th className="py-4 px-5">Supplier / Pabrik</th>
-                <th className="py-4 px-5">Gudang</th>
-                <th className="py-4 px-5">Estimasi Kirim</th>
-                <th className="py-4 px-5 text-right">Grand Total</th>
-                <th className="py-4 px-5 text-center">Status PO</th>
-                <th className="py-4 px-5 text-center">Status Bayar</th>
-                <th className="py-4 px-5">Dibuat Oleh</th>
-                <th className="py-4 px-5 text-right">Aksi</th>
+              <tr className="border-b border-gray-200 text-gray-500 text-[10px] font-bold uppercase tracking-widest bg-gray-50">
+                <th className="py-3.5 px-5 whitespace-nowrap">No. PO</th>
+                <th className="py-3.5 px-5 whitespace-nowrap">Tanggal Order</th>
+                <th className="py-3.5 px-5 whitespace-nowrap">Supplier / Pabrik</th>
+                <th className="py-3.5 px-5 whitespace-nowrap">Gudang</th>
+                <th className="py-3.5 px-5 whitespace-nowrap">Estimasi Pengerjaan</th>
+                <th className="py-3.5 px-5 text-right whitespace-nowrap">Grand Total</th>
+                <th className="py-3.5 px-5 text-center whitespace-nowrap">Status PO</th>
+                <th className="py-3.5 px-5 text-center whitespace-nowrap">Status Bayar</th>
+                <th className="py-3.5 px-5 whitespace-nowrap">Dibuat Oleh</th>
+                <th className="py-3.5 px-5 text-right whitespace-nowrap">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-850/60 text-sm text-slate-300">
+            <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
               {purchaseOrders.data.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-500 font-medium bg-slate-900/10">
+                  <td colSpan={10} className="py-12 text-center text-gray-400 font-medium bg-gray-50/10">
                     Tidak ada data Purchase Order ditemukan.
                   </td>
                 </tr>
               ) : (
                 purchaseOrders.data.map((order) => (
-                  <tr key={order.id} className="hover:bg-slate-900/40 transition-colors">
-                    <td className="py-4 px-5 font-bold text-white tracking-wide">
-                      <Link href={`/purchase-orders/${order.id}`} className="hover:text-violet-400 hover:underline">
+                  <tr key={order.id} className="hover:bg-teal-50/60 transition-colors group">
+                    <td className="py-3.5 px-5 font-bold text-gray-900 tracking-wide font-mono text-xs whitespace-nowrap">
+                      <Link href={`/purchase-orders/${order.id}`} className="hover:text-teal-400 hover:underline">
                         {order.po_number}
                       </Link>
                     </td>
-                    <td className="py-4 px-5">
+                    <td className="py-3.5 px-5 font-mono text-xs whitespace-nowrap text-gray-700">
                       {new Date(order.order_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
                     </td>
-                    <td className="py-4 px-5 font-medium text-slate-200">
-                      {order.supplier ? order.supplier.name : '—'}
-                      <div className="text-[10px] text-slate-500 mt-0.5">{order.supplier?.supplier_code}</div>
+                    <td className="py-3.5 px-5 font-medium text-gray-800 min-w-[160px]">
+                      <div className="font-semibold text-xs text-gray-800 group-hover:text-gray-900 transition-colors">{order.supplier ? order.supplier.name : '—'}</div>
+                      <div className="text-[10px] text-gray-400 mt-0.5 font-mono">{order.supplier?.supplier_code}</div>
                     </td>
-                    <td className="py-4 px-5">
+                    <td className="py-3.5 px-5 text-xs text-gray-700 whitespace-nowrap">
                       {order.warehouse ? order.warehouse.name : '—'}
                     </td>
-                    <td className="py-4 px-5 text-slate-400">
-                      {order.expected_delivery_date
-                        ? new Date(order.expected_delivery_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
-                        : '—'}
+                    <td className="py-3.5 px-5 text-gray-500 font-mono text-xs whitespace-nowrap">
+                      {order.production_lead_time_days ? `${order.production_lead_time_days} hari` : '—'}
                     </td>
-                    <td className="py-4 px-5 text-right font-semibold text-white">
+                    <td className="py-3.5 px-5 text-right font-bold text-gray-900 font-mono text-xs whitespace-nowrap">
                       Rp {Number(order.grand_total).toLocaleString('id-ID')}
                     </td>
-                    <td className="py-4 px-5 text-center">
+                    <td className="py-3.5 px-5 text-center whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusBadgeColor[order.status]}`}>
                         {statusLabel[order.status]}
                       </span>
                     </td>
-                    <td className="py-4 px-5 text-center">
+                    <td className="py-3.5 px-5 text-center whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${paymentBadgeColor[order.payment_status]}`}>
                         {paymentLabel[order.payment_status]}
                       </span>
                     </td>
-                    <td className="py-4 px-5 text-slate-400 text-xs">
+                    <td className="py-3.5 px-5 text-gray-500 text-xs whitespace-nowrap">
                       {order.creator ? order.creator.name : '—'}
                     </td>
-                    <td className="py-4 px-5 text-right">
-                      <div className="flex justify-end items-center gap-2">
+                    <td className="py-3.5 px-5 text-right whitespace-nowrap">
+                      <div className="flex justify-end items-center gap-1.5">
                         <Link
                           href={`/purchase-orders/${order.id}`}
-                          className="p-1.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg border border-slate-800 transition-colors"
+                          className="p-1.5 bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-900 rounded-lg border border-gray-300 transition-colors"
                           title="Lihat Detail"
                         >
                           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -344,7 +336,7 @@ export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexPro
                         {canEdit && order.status === 'draft' && (
                           <Link
                             href={`/purchase-orders/${order.id}/edit`}
-                            className="p-1.5 bg-slate-900 hover:bg-violet-950/40 text-slate-400 hover:text-violet-400 rounded-lg border border-slate-800 hover:border-violet-900/50 transition-colors"
+                            className="p-1.5 bg-gray-50 hover:bg-violet-950/40 text-gray-500 hover:text-teal-400 rounded-lg border border-gray-300 hover:border-violet-900/50 transition-colors"
                             title="Edit"
                           >
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -357,7 +349,7 @@ export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexPro
                           <button
                             type="button"
                             onClick={() => setDeletingOrder(order)}
-                            className="p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-900 border border-transparent hover:border-rose-900/40 rounded-lg transition-all"
+                            className="p-1.5 text-gray-500 hover:text-rose-400 hover:bg-rose-50 border border-transparent hover:border-rose-900/40 rounded-lg transition-all"
                             title="Hapus Purchase Order"
                           >
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -376,7 +368,7 @@ export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexPro
 
         {/* Pagination Section */}
         {purchaseOrders.data.length > 0 && (
-          <div className="p-5 border-t border-slate-800/60 bg-slate-950">
+          <div className="p-5 border-t border-gray-300/60 bg-white">
             <Pagination links={purchaseOrders.links} />
           </div>
         )}
@@ -384,11 +376,11 @@ export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexPro
 
       {/* Delete Confirmation Modal */}
       {deletingOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm transition-opacity">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 overflow-hidden">
-            <h3 className="text-lg font-bold text-white">Konfirmasi Hapus Purchase Order</h3>
-            <p className="text-sm text-slate-400 mt-2">
-              Apakah Anda yakin ingin menghapus Purchase Order <span className="font-semibold text-white">{deletingOrder.po_number}</span>?
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-50 backdrop-blur-sm transition-opacity">
+          <div className="w-full max-w-md bg-gray-50 border border-gray-300 rounded-2xl shadow-2xl p-6 overflow-hidden">
+            <h3 className="text-lg font-bold text-gray-900">Konfirmasi Hapus Purchase Order</h3>
+            <p className="text-sm text-gray-500 mt-2">
+              Apakah Anda yakin ingin menghapus Purchase Order <span className="font-semibold text-gray-900">{deletingOrder.po_number}</span>?
               {deletingOrder.status !== 'draft' && (
                 <span className="block mt-1 text-rose-400 text-xs font-semibold bg-rose-500/10 p-2 rounded-lg border border-rose-500/20">
                   ⚠️ Peringatan Super Admin: Menghapus PO ini juga akan menghapus seluruh data terkait (Invoice Pabrik, Piutang Pabrik, Items, dsb).
@@ -401,7 +393,7 @@ export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexPro
                 type="button"
                 onClick={() => setDeletingOrder(null)}
                 disabled={deleteLoading}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-800 text-slate-300 rounded-xl text-sm font-semibold transition-all border border-slate-800"
+                className="px-4 py-2.5 bg-white hover:bg-teal-50 text-teal-700 rounded-xl text-sm font-semibold border border-teal-300 hover:border-teal-400 transition-all border border-gray-300"
               >
                 Batal
               </button>
@@ -409,11 +401,11 @@ export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexPro
                 type="button"
                 onClick={() => handleDelete(deletingOrder)}
                 disabled={deleteLoading}
-                className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-rose-950/40 flex items-center gap-2"
+                className="px-4 py-2.5 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-rose-200/40 flex items-center gap-2"
               >
                 {deleteLoading ? (
                   <>
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-900" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>

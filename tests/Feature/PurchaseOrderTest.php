@@ -150,18 +150,15 @@ class PurchaseOrderTest extends TestCase
             'supplier_id'   => $this->supplier->id,
             'warehouse_id'  => $this->warehouse->id,
             'order_date'    => '2026-07-01',
-            'source'        => 'manual',
-            'discount_amount' => 0,
-            'tax_amount'    => 0,
-            'shipping_cost' => 0,
+            'production_lead_time_days' => 14,
+            'payment_terms' => 'cash_to_cash',
+            'is_free_shipping' => true,
             'notes'         => 'Test PO',
             'items'         => [
                 [
                     'product_id'      => $this->product1->id,
                     'quantity'        => 10,
                     'price'           => 80000,
-                    'discount_amount' => 0,
-                    'tax_amount'      => 0,
                 ],
             ],
         ], $override);
@@ -238,32 +235,26 @@ class PurchaseOrderTest extends TestCase
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // TC-06: Grand total dihitung dengan benar (Subtotal - Disc + Tax + Shipping)
+    // TC-06: Grand total awal = subtotal barang (ongkir menyusul saat penerimaan)
     // ─────────────────────────────────────────────────────────────────────────
 
     public function test_06_grand_total_is_calculated_correctly(): void
     {
         $data = $this->makePOData([
-            'discount_amount' => 5000,
-            'tax_amount'      => 8000,
-            'shipping_cost'   => 15000,
             'items'           => [
                 [
                     'product_id'      => $this->product1->id,
                     'quantity'        => 5,
                     'price'           => 80000,
-                    'discount_amount' => 0,
-                    'tax_amount'      => 0,
                 ],
             ],
         ]);
 
         $po = $this->poService->create($data, $this->superAdmin->id);
 
-        // subtotal = (80000 * 5) = 400000
-        // grand_total = 400000 - 5000 + 8000 + 15000 = 418000
+        // subtotal = (80000 * 5) = 400000; ongkir diisi saat penerimaan
         $this->assertEquals('400000.00', $po->subtotal);
-        $this->assertEquals('418000.00', $po->grand_total);
+        $this->assertEquals('400000.00', $po->grand_total);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -574,14 +565,14 @@ class PurchaseOrderTest extends TestCase
         $response = $this->actingAs($this->financeUser)->post("/purchase-orders/{$po->id}/pay-dp", [
             'dp_amount'            => 200000.00,
             'cash_bank_account_id' => $account->id,
-            'payment_terms'        => 'tempo_1_week',
+            'payment_terms'        => 'tempo_7_days',
         ]);
 
         $response->assertRedirect();
         $this->assertDatabaseHas('purchase_orders', [
             'id'            => $po->id,
             'dp_amount'     => 200000.00,
-            'payment_terms' => 'tempo_1_week',
+            'payment_terms' => 'tempo_7_days',
         ]);
 
         // Saldo terpotong: 10,000,000 - 200,000 = 9,800,000

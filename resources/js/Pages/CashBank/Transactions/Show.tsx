@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { Head, Link } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 
@@ -36,8 +36,8 @@ const statusBadge: Record<string, string> = {
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
     return (
         <div>
-            <dt className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">{label}</dt>
-            <dd className="text-sm text-slate-200">{children}</dd>
+            <dt className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">{label}</dt>
+            <dd className="text-sm text-gray-800">{children}</dd>
         </div>
     );
 }
@@ -50,13 +50,13 @@ function SourceInfo({ source, sourceType }: { source: any; sourceType: string | 
         const fr    = source.allocations?.[0]?.factory_receivable;
         const party = inv?.sales_order?.customer?.name ?? fr?.supplier?.name ?? '—';
         return (
-            <div className="bg-slate-950 border border-slate-900 rounded-2xl overflow-hidden shadow-xl">
-                <div className="px-6 py-4 border-b border-slate-900 bg-slate-950/60">
-                    <h2 className="font-semibold text-slate-200 text-sm">Sumber: Payment</h2>
+            <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xl">
+                <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                    <h2 className="font-semibold text-gray-800 text-sm">Sumber: Payment</h2>
                 </div>
                 <div className="p-6">
                     <dl className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                        <DetailRow label="No. Payment"><span className="font-mono text-violet-400">{source.payment_number}</span></DetailRow>
+                        <DetailRow label="No. Payment"><span className="font-mono text-teal-400">{source.payment_number}</span></DetailRow>
                         <DetailRow label="Tipe">{source.payment_type === 'customer_invoice' ? 'Pembayaran Customer' : 'Pembayaran Supplier'}</DetailRow>
                         <DetailRow label="Pihak">{party}</DetailRow>
                         {inv && <DetailRow label="Invoice"><span className="font-mono text-blue-400">{inv.invoice_number}</span></DetailRow>}
@@ -69,13 +69,13 @@ function SourceInfo({ source, sourceType }: { source: any; sourceType: string | 
 
     if (sourceType === 'App\\Models\\PettyCashTransaction') {
         return (
-            <div className="bg-slate-950 border border-slate-900 rounded-2xl overflow-hidden shadow-xl">
-                <div className="px-6 py-4 border-b border-slate-900 bg-slate-950/60">
-                    <h2 className="font-semibold text-slate-200 text-sm">Sumber: Petty Cash</h2>
+            <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xl">
+                <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                    <h2 className="font-semibold text-gray-800 text-sm">Sumber: Petty Cash</h2>
                 </div>
                 <div className="p-6">
                     <dl className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                        <DetailRow label="No. Transaksi"><span className="font-mono text-violet-400">{source.transaction_number}</span></DetailRow>
+                        <DetailRow label="No. Transaksi"><span className="font-mono text-teal-400">{source.transaction_number}</span></DetailRow>
                         <DetailRow label="Kategori">{source.category?.name ?? '—'}</DetailRow>
                         <DetailRow label="Deskripsi">{source.description}</DetailRow>
                         <DetailRow label="Dibuat Oleh">{source.creator?.name}</DetailRow>
@@ -95,12 +95,12 @@ export default function TransactionShow({ transaction, source, sourceType }: Pro
             <div className="space-y-6 max-w-4xl">
                 {/* Header */}
                 <div className="flex items-center gap-3">
-                    <Link href="/cash-bank/transactions" className="p-1.5 text-slate-500 hover:text-white hover:bg-slate-900 border border-transparent hover:border-slate-800 rounded-lg transition-all">
+                    <Link href="/cash-bank/transactions" className="p-1.5 text-gray-400 hover:text-gray-900 hover:bg-gray-50 border border-transparent hover:border-gray-300 rounded-lg transition-all">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
                     </Link>
                     <div>
                         <div className="flex items-center gap-2">
-                            <h1 className="text-2xl font-bold text-white tracking-tight font-mono">{transaction.transaction_number}</h1>
+                            <h1 className="text-2xl font-bold text-gray-900 tracking-tight font-mono">{transaction.transaction_number}</h1>
                             <span className={`inline-flex items-center px-2.5 py-0.5 border rounded-full text-[10px] font-bold uppercase ${dirBadge[transaction.direction] ?? ''}`}>
                                 {transaction.direction === 'in' ? '▲ IN' : '▼ OUT'}
                             </span>
@@ -108,7 +108,7 @@ export default function TransactionShow({ transaction, source, sourceType }: Pro
                                 {transaction.status}
                             </span>
                         </div>
-                        <p className="text-slate-400 text-xs mt-0.5">Kas & Bank / Ledger / {transaction.transaction_number}</p>
+                        <p className="text-gray-500 text-xs mt-0.5">Kas & Bank / Ledger / {transaction.transaction_number}</p>
                     </div>
                 </div>
 
@@ -136,13 +136,13 @@ export default function TransactionShow({ transaction, source, sourceType }: Pro
                 {/* Detail Grid */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="lg:col-span-2 space-y-5">
-                        <div className="bg-slate-950 border border-slate-900 rounded-2xl overflow-hidden shadow-xl">
-                            <div className="px-6 py-4 border-b border-slate-900 bg-slate-950/60">
-                                <h2 className="font-semibold text-slate-200 text-sm">Detail Transaksi</h2>
+                        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xl">
+                            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                                <h2 className="font-semibold text-gray-800 text-sm">Detail Transaksi</h2>
                             </div>
                             <div className="p-6">
                                 <dl className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                                    <DetailRow label="No. Transaksi"><span className="font-mono text-violet-400">{transaction.transaction_number}</span></DetailRow>
+                                    <DetailRow label="No. Transaksi"><span className="font-mono text-teal-400">{transaction.transaction_number}</span></DetailRow>
                                     <DetailRow label="Tanggal">{new Date(transaction.transaction_date).toLocaleDateString('id-ID', {day:'2-digit', month:'long', year:'numeric'})}</DetailRow>
                                     <DetailRow label="Jenis Transaksi">{transaction.type_label}</DetailRow>
                                     <DetailRow label="Rekening">
@@ -165,24 +165,24 @@ export default function TransactionShow({ transaction, source, sourceType }: Pro
 
                     {/* Right sidebar */}
                     <div className="space-y-4">
-                        <div className="bg-slate-950 border border-slate-900 rounded-2xl p-5 shadow-xl">
-                            <h3 className="font-semibold text-slate-200 text-sm mb-4">Informasi Teknis</h3>
+                        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xl">
+                            <h3 className="font-semibold text-gray-800 text-sm mb-4">Informasi Teknis</h3>
                             <div className="space-y-3 text-xs">
                                 <div>
-                                    <p className="text-slate-500 uppercase tracking-wider font-bold">Saldo Sebelum</p>
-                                    <p className="font-mono text-slate-300 mt-0.5">{fmt(transaction.balance_before)}</p>
+                                    <p className="text-gray-400 uppercase tracking-wider font-bold">Saldo Sebelum</p>
+                                    <p className="font-mono text-gray-700 mt-0.5">{fmt(transaction.balance_before)}</p>
                                 </div>
                                 <div>
-                                    <p className="text-slate-500 uppercase tracking-wider font-bold">Saldo Sesudah</p>
-                                    <p className="font-mono text-slate-300 mt-0.5">{fmt(transaction.balance_after)}</p>
+                                    <p className="text-gray-400 uppercase tracking-wider font-bold">Saldo Sesudah</p>
+                                    <p className="font-mono text-gray-700 mt-0.5">{fmt(transaction.balance_after)}</p>
                                 </div>
                                 <div>
-                                    <p className="text-slate-500 uppercase tracking-wider font-bold">Dibuat</p>
-                                    <p className="text-slate-300 mt-0.5">{new Date(transaction.created_at).toLocaleString('id-ID')}</p>
+                                    <p className="text-gray-400 uppercase tracking-wider font-bold">Dibuat</p>
+                                    <p className="text-gray-700 mt-0.5">{new Date(transaction.created_at).toLocaleString('id-ID')}</p>
                                 </div>
                                 <div>
-                                    <p className="text-slate-500 uppercase tracking-wider font-bold">Oleh</p>
-                                    <p className="text-slate-300 mt-0.5">{transaction.creator?.name}</p>
+                                    <p className="text-gray-400 uppercase tracking-wider font-bold">Oleh</p>
+                                    <p className="text-gray-700 mt-0.5">{transaction.creator?.name}</p>
                                 </div>
                             </div>
                         </div>

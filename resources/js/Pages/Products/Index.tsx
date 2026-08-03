@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import Pagination from '../../Components/Pagination';
@@ -17,7 +17,8 @@ interface Product {
   name: string;
   category: Category;
   brand: string | null;
-  unit: string;
+  is_box: boolean;
+  dimension_label: string | null;
   purchase_price: string;
   selling_price: string;
   minimum_stock: number;
@@ -99,13 +100,13 @@ export default function Index({ products, categories, filters }: ProductIndexPro
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white">Daftar Produk</h1>
-            <p className="text-slate-400 text-xs mt-1">Master Data / Produk</p>
+            <h1 className="text-2xl font-bold text-gray-900">Daftar Produk</h1>
+            <p className="text-gray-500 text-xs mt-1">Master Data / Produk</p>
           </div>
           {canCreate && (
             <Link
               href="/products/create"
-              className="flex items-center justify-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white font-semibold text-sm rounded-xl transition-all shadow-md shadow-violet-900/20"
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 active:scale-[0.99] text-white font-semibold text-sm rounded-xl transition-all shadow-lg shadow-teal-200/40"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -116,7 +117,7 @@ export default function Index({ products, categories, filters }: ProductIndexPro
         </div>
 
         {/* Filters & Search */}
-        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
+        <div className="bg-white border border-gray-300 rounded-2xl p-4">
           <form onSubmit={handleSearchSubmit} className="flex flex-col lg:flex-row gap-3">
             <div className="flex-1 relative">
               <input
@@ -124,9 +125,9 @@ export default function Index({ products, categories, filters }: ProductIndexPro
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Cari SKU, nama produk, atau brand..."
-                className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                className="w-full pl-10 pr-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
               />
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-slate-500 absolute left-3.5 top-3">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-gray-400 absolute left-3.5 top-3">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.637 10.637z" />
               </svg>
             </div>
@@ -134,7 +135,7 @@ export default function Index({ products, categories, filters }: ProductIndexPro
               <select
                 value={categoryId}
                 onChange={(e) => handleCategoryFilterChange(e.target.value)}
-                className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
               >
                 <option value="">Semua Kategori</option>
                 {categories.map((cat) => (
@@ -146,7 +147,7 @@ export default function Index({ products, categories, filters }: ProductIndexPro
               <select
                 value={status}
                 onChange={(e) => handleStatusFilterChange(e.target.value)}
-                className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
               >
                 <option value="">Semua Status</option>
                 <option value="active">Aktif</option>
@@ -154,7 +155,7 @@ export default function Index({ products, categories, filters }: ProductIndexPro
               </select>
               <button
                 type="submit"
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-sm font-semibold border border-slate-700 transition-all"
+                className="px-4 py-2 bg-white hover:bg-teal-50 text-teal-700 rounded-xl text-sm font-semibold border border-teal-400 hover:border-teal-500 transition-all"
               >
                 Cari
               </button>
@@ -163,66 +164,71 @@ export default function Index({ products, categories, filters }: ProductIndexPro
         </div>
 
         {/* Table */}
-        <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xl">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-500 bg-slate-900/30">
-                  <th className="px-6 py-4">SKU</th>
-                  <th className="px-6 py-4">Nama Produk</th>
-                  <th className="px-6 py-4">Kategori / Brand</th>
-                  <th className="px-6 py-4">Harga Beli / Jual</th>
-                  <th className="px-6 py-4">Min. Stok</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4 text-right">Aksi</th>
+                <tr className="border-b border-gray-200 text-[10px] font-bold uppercase tracking-widest text-gray-500 bg-gray-50">
+                  <th className="px-6 py-3.5">SKU</th>
+                  <th className="px-6 py-3.5">Nama Produk</th>
+                  <th className="px-6 py-3.5">Kategori / Brand</th>
+                  <th className="px-6 py-3.5">Ukuran</th>
+                  <th className="px-6 py-3.5">Harga Beli / Jual</th>
+                  <th className="px-6 py-3.5">Min. Stok</th>
+                  <th className="px-6 py-3.5">Status</th>
+                  <th className="px-6 py-3.5 text-right">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 text-sm">
+              <tbody className="divide-y divide-gray-100 text-sm">
                 {products.data.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={8} className="px-6 py-12 text-center text-gray-400 font-medium">
                       Tidak ada data produk ditemukan.
                     </td>
                   </tr>
                 ) : (
                   products.data.map((product) => (
-                    <tr key={product.id} className="hover:bg-slate-900/20 group transition-all">
-                      <td className="px-6 py-4 font-mono font-bold text-violet-400">
+                    <tr key={product.id} className="hover:bg-teal-50/60 group transition-all">
+                      <td className="px-6 py-3.5 font-mono font-bold text-teal-400 text-xs">
                         {product.sku}
                       </td>
-                      <td className="px-6 py-4 font-semibold text-slate-200 group-hover:text-white transition-colors">
+                      <td className="px-6 py-3.5 font-semibold text-gray-800 group-hover:text-gray-900 transition-colors text-xs">
                         <Link href={`/products/${product.id}`} className="hover:underline">
                           {product.name}
                         </Link>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="text-slate-300 font-medium">{product.category?.name}</div>
-                        <div className="text-[10px] text-slate-500 mt-0.5">{product.brand ?? 'No Brand'}</div>
+                      <td className="px-6 py-3.5">
+                        <div className="text-gray-700 font-medium text-xs">{product.category?.name}</div>
+                        <div className="text-[10px] text-gray-400 mt-0.5 font-mono">{product.brand ?? 'No Brand'}</div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="text-[11px] text-slate-500">Beli: <span className="text-slate-300 font-semibold">Rp {Number(product.purchase_price).toLocaleString('id-ID')}</span></div>
-                        <div className="text-[11px] text-slate-500 mt-0.5">Jual: <span className="text-emerald-400 font-semibold">Rp {Number(product.selling_price).toLocaleString('id-ID')}</span></div>
+                      <td className="px-6 py-3.5">
+                        <div className="font-mono text-xs text-gray-700">{product.dimension_label ?? '—'}</div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">{product.is_box ? 'P × L × T' : 'P × L'}</div>
                       </td>
-                      <td className="px-6 py-4 font-mono text-slate-300">
-                        {product.minimum_stock} {product.unit}
+                      <td className="px-6 py-3.5 font-mono">
+                        <div className="text-[11px] text-gray-400">Beli: <span className="text-gray-700 font-semibold">Rp {Number(product.purchase_price).toLocaleString('id-ID')}</span></div>
+                        <div className="text-[11px] text-gray-400 mt-0.5">Jual: <span className="text-emerald-400 font-semibold">Rp {Number(product.selling_price).toLocaleString('id-ID')}</span></div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-3.5 font-mono text-gray-700 text-xs">
+                        {product.minimum_stock}
+                      </td>
+                      <td className="px-6 py-3.5 whitespace-nowrap">
                         <span
                           className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border
                             ${product.status === 'active'
                               ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                              : 'bg-slate-800 border-slate-700 text-slate-500'
+                              : 'bg-gray-100 border-gray-300 text-gray-400'
                             }`}
                         >
                           <span className={`h-1.5 w-1.5 rounded-full ${product.status === 'active' ? 'bg-emerald-400' : 'bg-slate-500'}`} />
                           {product.status === 'active' ? 'Aktif' : 'Nonaktif'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
+                      <td className="px-6 py-3.5 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5">
                           <Link
                             href={`/products/${product.id}`}
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-slate-800 border border-transparent transition-all"
+                            className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-50 border border-transparent hover:border-gray-300 transition-all"
                             title="Detail"
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
@@ -233,7 +239,7 @@ export default function Index({ products, categories, filters }: ProductIndexPro
                           {canEdit && (
                             <Link
                               href={`/products/${product.id}/edit`}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-violet-400 hover:bg-violet-500/10 border border-transparent hover:border-violet-500/10 transition-all"
+                              className="p-1.5 rounded-lg text-gray-500 hover:text-teal-400 hover:bg-gray-50 border border-transparent hover:border-gray-300 transition-all"
                               title="Edit"
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
@@ -244,7 +250,7 @@ export default function Index({ products, categories, filters }: ProductIndexPro
                           {canDelete && (
                             <button
                               onClick={() => confirmDelete(product)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/10 transition-all"
+                              className="p-1.5 rounded-lg text-gray-500 hover:text-rose-400 hover:bg-rose-50 border border-transparent hover:border-rose-900/40 transition-all"
                               title="Hapus"
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
@@ -260,7 +266,7 @@ export default function Index({ products, categories, filters }: ProductIndexPro
               </tbody>
             </table>
           </div>
-          <div className="px-6 py-4 border-t border-slate-800/80 bg-slate-900/10">
+          <div className="px-6 py-4 border-t border-gray-200 bg-white/80">
             <Pagination links={products.links} />
           </div>
         </div>
@@ -274,21 +280,21 @@ export default function Index({ products, categories, filters }: ProductIndexPro
         maxWidth="sm"
       >
         <div className="space-y-4">
-          <p className="text-slate-300 text-sm leading-relaxed">
-            Apakah Anda yakin ingin menghapus produk <span className="font-bold text-white">{deletingProduct?.name}</span> ({deletingProduct?.sku})? Data produk akan disembunyikan (soft delete) untuk mempertahankan integritas data transaksi.
+          <p className="text-gray-700 text-sm leading-relaxed">
+            Apakah Anda yakin ingin menghapus produk <span className="font-bold text-gray-900">{deletingProduct?.name}</span> ({deletingProduct?.sku})? Data produk akan disembunyikan (soft delete) untuk mempertahankan integritas data transaksi.
           </p>
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-800/80">
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-300/80">
             <button
               type="button"
               onClick={() => setDeleteModalOpen(false)}
-              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-800 text-slate-300 rounded-xl text-sm font-semibold transition-all"
+              className="px-4 py-2.5 bg-white hover:bg-teal-50 text-teal-700 rounded-xl text-sm font-semibold border border-teal-300 hover:border-teal-400 transition-all"
               disabled={deleting}
             >
               Batal
             </button>
             <button
               onClick={handleDeleteExecute}
-              className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white rounded-xl text-sm font-semibold shadow-md shadow-rose-900/20 transition-all"
+              className="px-4 py-2.5 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white rounded-xl text-sm font-semibold shadow-lg shadow-rose-200/40 transition-all"
               disabled={deleting}
             >
               {deleting ? 'Deleting...' : 'Hapus Produk'}
