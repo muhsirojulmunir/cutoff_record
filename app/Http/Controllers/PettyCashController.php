@@ -5,7 +5,10 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StorePettyCashRequest;
 use App\Http\Requests\UpdatePettyCashRequest;
 use App\Models\ExpenseCategory;
+use App\Models\FundAllocation;
 use App\Models\PettyCashTransaction;
+use App\Services\FundAllocationService;
+use App\Services\GoogleDriveService;
 use App\Services\PettyCashService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,7 +18,34 @@ use Inertia\Response;
 
 class PettyCashController extends Controller
 {
-    public function __construct(private readonly PettyCashService $service) {}
+    public function __construct(
+        private readonly PettyCashService $service,
+        private readonly FundAllocationService $fundService,
+        private readonly GoogleDriveService $drive,
+    ) {}
+
+    /**
+     * Bukti pembayaran diunggah ke folder Google Drive minggu berjalan.
+     * Data hasil unggahan digabung ke payload transaksi.
+     */
+    private function withAttachment(array $data, Request $request): array
+    {
+        if (! $request->hasFile('attachment_file')) {
+            return $data;
+        }
+
+        $uploaded = $this->drive->uploadReceipt(
+            $request->file('attachment_file'),
+            $data['transaction_date'],
+            $data['fund_type'] ?? 'petty_cash',
+        );
+
+        $data['attachment_name'] = $uploaded['name'];
+        $data['attachment_link'] = $uploaded['link'];
+        $data['attachment'] = $uploaded['link'];
+
+        return $data;
+    }
 
     public function index(Request $request): Response
     {
@@ -35,6 +65,10 @@ class PettyCashController extends Controller
 
         if ($request->filled('category_id')) {
             $query->where('expense_category_id', $request->category_id);
+        }
+
+        if ($request->filled('fund_type')) {
+            $query->where('fund_type', $request->fund_type);
         }
 
         if ($request->filled('status')) {
@@ -59,9 +93,14 @@ class PettyCashController extends Controller
         return Inertia::render('PettyCash/Index', [
             'transactions'   => $transactions,
             'categories'     => $categories,
-            'filters'        => $request->only(['search', 'category_id', 'status', 'payment_method', 'date_from', 'date_to']),
+            'filters'        => $request->only(['search', 'category_id', 'fund_type', 'status', 'payment_method', 'date_from', 'date_to']),
             'paymentMethods' => $this->paymentMethods(),
             'statuses'       => $this->statuses(),
+            'fundTypes'      => FundAllocation::TYPES,
+            'summaries'      => [
+                'petty_cash'  => $this->fundService->summary('petty_cash'),
+                'dana_kelola' => $this->fundService->summary('dana_kelola'),
+            ],
         ]);
     }
 
@@ -75,6 +114,12 @@ class PettyCashController extends Controller
 
         return Inertia::render('PettyCash/Create', [
             'categories'       => ExpenseCategory::where('status', 'active')->orderBy('name')->get(['id', 'name', 'code']),
+            'fundTypes'        => FundAllocation::TYPES,
+            'driveEnabled'     => $this->drive->driveEnabled(),
+            'summaries'        => [
+                'petty_cash'  => $this->fundService->summary('petty_cash'),
+                'dana_kelola' => $this->fundService->summary('dana_kelola'),
+            ],
             'paymentMethods'   => $this->paymentMethods(),
             'cashBankAccounts' => $cashBankAccounts,
         ]);
@@ -84,7 +129,9 @@ class PettyCashController extends Controller
     {
         Gate::authorize('petty_cash.create');
 
-        $transaction = $this->service->create($request->validated(), auth()->id());
+        $data = $this->withAttachment($request->validated(), $request);
+
+        $transaction = $this->service->create($data, auth()->id());
 
         return redirect()
             ->route('petty-cash.show', $transaction)
@@ -138,6 +185,8 @@ class PettyCashController extends Controller
 
         return Inertia::render('PettyCash/Edit', [
             'transaction'      => $pettyCash->load('category'),
+            'fundTypes'        => FundAllocation::TYPES,
+            'driveEnabled'     => $this->drive->driveEnabled(),
             'categories'       => ExpenseCategory::where('status', 'active')->orderBy('name')->get(['id', 'name', 'code']),
             'paymentMethods'   => $this->paymentMethods(),
             'cashBankAccounts' => $cashBankAccounts,
@@ -153,7 +202,8 @@ class PettyCashController extends Controller
         }
 
         try {
-            $transaction = $this->service->update($pettyCash, $request->validated());
+            $data = $this->withAttachment($request->validated(), $request);
+            $transaction = $this->service->update($pettyCash, $data);
             return redirect()
                 ->route('petty-cash.show', $transaction)
                 ->with('success', "Transaksi {$transaction->transaction_number} berhasil diperbarui.");

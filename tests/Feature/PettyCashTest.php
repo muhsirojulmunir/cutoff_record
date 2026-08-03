@@ -123,7 +123,9 @@ class PettyCashTest extends TestCase
 
         $payload = [
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 150000.00,
             'description'         => 'Pembelian kertas HVS A4',
@@ -151,7 +153,9 @@ class PettyCashTest extends TestCase
 
         $payload = [
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 1000.00,
             'description'         => 'Test PC number generation',
@@ -171,7 +175,9 @@ class PettyCashTest extends TestCase
 
         $payload1 = [
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 1000.00,
             'description'         => 'PC 1',
@@ -179,7 +185,9 @@ class PettyCashTest extends TestCase
 
         $payload2 = [
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 2000.00,
             'description'         => 'PC 2',
@@ -202,7 +210,9 @@ class PettyCashTest extends TestCase
 
         $payload = [
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 0, // Invalid: must be > 0
             'description'         => 'Invalid amount',
@@ -218,7 +228,9 @@ class PettyCashTest extends TestCase
     {
         $transaction = $this->service->create([
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 50000.00,
             'description'         => 'Draft test',
@@ -234,7 +246,9 @@ class PettyCashTest extends TestCase
 
         $transaction = $this->service->create([
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 50000.00,
             'description'         => 'Original description',
@@ -242,7 +256,9 @@ class PettyCashTest extends TestCase
 
         $payload = [
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'bank_transfer',
             'amount'              => 75000.00,
             'description'         => 'Updated description',
@@ -264,7 +280,9 @@ class PettyCashTest extends TestCase
 
         $transaction = $this->service->create([
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 50000.00,
             'description'         => 'To submit',
@@ -286,7 +304,9 @@ class PettyCashTest extends TestCase
 
         $transaction = $this->service->create([
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 50000.00,
             'description'         => 'Original description',
@@ -296,7 +316,9 @@ class PettyCashTest extends TestCase
 
         $payload = [
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 99999.00,
             'description'         => 'Updated description',
@@ -318,7 +340,9 @@ class PettyCashTest extends TestCase
 
         $transaction = $this->service->create([
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 50000.00,
             'description'         => 'To approve',
@@ -342,7 +366,9 @@ class PettyCashTest extends TestCase
 
         $transaction = $this->service->create([
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 50000.00,
             'description'         => 'To finance approve',
@@ -367,7 +393,9 @@ class PettyCashTest extends TestCase
 
         $transaction = $this->service->create([
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 50000.00,
             'description'         => 'Approved item',
@@ -379,7 +407,9 @@ class PettyCashTest extends TestCase
 
         $payload = [
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 99999.00,
             'description'         => 'Try to edit',
@@ -401,7 +431,9 @@ class PettyCashTest extends TestCase
 
         $transaction = $this->service->create([
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 50000.00,
             'description'         => 'To reject',
@@ -428,7 +460,9 @@ class PettyCashTest extends TestCase
 
         $transaction = $this->service->create([
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 50000.00,
             'description'         => 'Reason test',
@@ -453,7 +487,9 @@ class PettyCashTest extends TestCase
 
         $transaction = $this->service->create([
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 50000.00,
             'description'         => 'To cancel',
@@ -478,7 +514,9 @@ class PettyCashTest extends TestCase
 
         $transaction = $this->service->create([
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 50000.00,
             'description'         => 'Cancel reason test',
@@ -501,7 +539,9 @@ class PettyCashTest extends TestCase
 
         $payload = [
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 50000.00,
             'description'         => 'No permission',
@@ -518,7 +558,9 @@ class PettyCashTest extends TestCase
 
         $transaction = $this->service->create([
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 50000.00,
             'description'         => 'Some draft',
@@ -526,7 +568,9 @@ class PettyCashTest extends TestCase
 
         $payload = [
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 60000.00,
             'description'         => 'Try edit draft',
@@ -543,7 +587,9 @@ class PettyCashTest extends TestCase
 
         $transaction = $this->service->create([
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 50000.00,
             'description'         => 'To submit',
@@ -560,7 +606,9 @@ class PettyCashTest extends TestCase
 
         $transaction = $this->service->create([
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 50000.00,
             'description'         => 'To approve',
@@ -579,7 +627,9 @@ class PettyCashTest extends TestCase
 
         $transaction = $this->service->create([
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 50000.00,
             'description'         => 'To reject',
@@ -600,7 +650,9 @@ class PettyCashTest extends TestCase
 
         $transaction = $this->service->create([
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 50000.00,
             'description'         => 'To cancel',
@@ -619,7 +671,9 @@ class PettyCashTest extends TestCase
 
         $transaction = $this->service->create([
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 50000.00,
             'description'         => 'Duties test',
@@ -641,7 +695,9 @@ class PettyCashTest extends TestCase
     {
         $transaction = $this->service->create([
             'transaction_date'    => '2026-07-27',
+            'fund_type'           => 'petty_cash',
             'expense_category_id' => $this->category->id,
+            'coa_code'            => '5101',
             'payment_method'      => 'cash',
             'amount'              => 50000.00,
             'description'         => 'Transition test',

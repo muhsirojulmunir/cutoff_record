@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\CashBankAccount;
 use App\Models\CashBankTransaction;
+use App\Models\FundAllocation;
 use App\Models\Payment;
 use App\Models\PettyCashTransaction;
 use App\Models\PurchaseOrder;
@@ -347,6 +348,40 @@ class CashBankService
                 'source_id'        => $lockedPc->id,
                 'description'      => "Petty Cash Approved - {$lockedPc->transaction_number}",
                 'reference_number' => $lockedPc->reference_number,
+            ], $userId);
+
+            $locked->update(['current_balance' => $balanceAfter]);
+
+            return $txn;
+        });
+    }
+
+    /**
+     * Record weekly fund hand-over to Finance (cash out).
+     * Dana ini yang kemudian dipakai untuk Petty Cash / Dana Kelola.
+     */
+    public function recordFundAllocation(FundAllocation $allocation, CashBankAccount $account, int $userId): CashBankTransaction
+    {
+        return DB::transaction(function () use ($allocation, $account, $userId) {
+            $locked = CashBankAccount::where('id', $account->id)->lockForUpdate()->firstOrFail();
+
+            $this->assertActive($locked);
+            $amount = (float) $allocation->amount;
+            $this->assertSufficientBalance($locked, $amount);
+
+            $balanceBefore = (float) $locked->current_balance;
+            $balanceAfter  = $balanceBefore - $amount;
+
+            $txn = $this->createLedgerEntry($locked, [
+                'transaction_date' => $allocation->period_start,
+                'transaction_type' => 'petty_cash',
+                'direction'        => 'out',
+                'amount'           => $amount,
+                'balance_before'   => $balanceBefore,
+                'balance_after'    => $balanceAfter,
+                'source_type'      => FundAllocation::class,
+                'source_id'        => $allocation->id,
+                'description'      => "Pengisian {$allocation->fund_type_label} periode {$allocation->period_label}",
             ], $userId);
 
             $locked->update(['current_balance' => $balanceAfter]);
