@@ -35,4 +35,15 @@ return [
         ],
     ],
 
+    /*
+    | Google Drive — penampung bukti pembayaran kas kecil.
+    | GOOGLE_DRIVE_CREDENTIALS : path absolut file JSON Service Account.
+    | GOOGLE_DRIVE_ROOT_FOLDER : ID atau link folder induk yang di-share
+    |                            ke email service account (akses Editor).
+    */
+    'google_drive' => [
+        'credentials' => env('GOOGLE_DRIVE_CREDENTIALS'),
+        'root_folder' => env('GOOGLE_DRIVE_ROOT_FOLDER'),
+    ],
+
 ];

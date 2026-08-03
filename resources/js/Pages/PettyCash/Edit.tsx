@@ -1,5 +1,5 @@
 ﻿import React, { FormEvent } from 'react';
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import CurrencyInput from '@/Components/CurrencyInput';
 
@@ -25,13 +25,17 @@ interface Transaction {
     id: number;
     transaction_number: string;
     transaction_date: string;
+    fund_type: string;
     expense_category_id: number;
+    coa_code: string | null;
     payment_method: string;
     amount: string;
     vendor_name: string | null;
     reference_number: string | null;
     description: string;
     attachment: string | null;
+    attachment_name: string | null;
+    attachment_link: string | null;
     status: string;
     category: Category;
     cash_bank_account_id: number | null;
@@ -40,6 +44,8 @@ interface Transaction {
 interface Props {
     transaction: Transaction;
     categories: Category[];
+    fundTypes: Record<string, string>;
+    driveEnabled: boolean;
     paymentMethods: PaymentMethod[];
     cashBankAccounts: CashBankAccount[];
 }
@@ -51,10 +57,12 @@ const inputClass = (error?: string) =>
 
 const labelClass = 'block text-xs font-semibold text-gray-500 mb-1.5';
 
-export default function PettyCashEdit({ transaction, categories, paymentMethods, cashBankAccounts }: Props) {
+export default function PettyCashEdit({ transaction, categories, fundTypes, driveEnabled, paymentMethods, cashBankAccounts }: Props) {
     const { data, setData, put, processing, errors } = useForm({
         transaction_date:    transaction.transaction_date,
+        fund_type:           transaction.fund_type,
         expense_category_id: String(transaction.expense_category_id),
+        coa_code:            transaction.coa_code ?? '',
         payment_method:      transaction.payment_method,
         cash_bank_account_id: transaction.cash_bank_account_id ? String(transaction.cash_bank_account_id) : '',
         amount:              transaction.amount,
@@ -62,11 +70,15 @@ export default function PettyCashEdit({ transaction, categories, paymentMethods,
         reference_number:    transaction.reference_number ?? '',
         description:         transaction.description,
         attachment:          transaction.attachment ?? '',
+        attachment_file:     null as File | null,
     });
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
-        put(`/petty-cash/${transaction.id}`);
+        router.post(`/petty-cash/${transaction.id}`, {
+            ...data,
+            _method: 'put',
+        }, { forceFormData: true });
     };
 
     return (
@@ -120,6 +132,24 @@ export default function PettyCashEdit({ transaction, categories, paymentMethods,
                                 {errors.transaction_date && <p className="text-rose-400 text-xs mt-1">{errors.transaction_date}</p>}
                             </div>
 
+                            {/* Fund Type */}
+                            <div>
+                                <label htmlFor="fund_type" className={labelClass}>
+                                    Jenis Dana <span className="text-rose-400">*</span>
+                                </label>
+                                <select
+                                    id="fund_type"
+                                    value={data.fund_type}
+                                    onChange={e => setData('fund_type', e.target.value)}
+                                    className={inputClass(errors.fund_type)}
+                                >
+                                    {Object.entries(fundTypes).map(([value, label]) => (
+                                        <option key={value} value={value}>{label}</option>
+                                    ))}
+                                </select>
+                                {errors.fund_type && <p className="text-rose-400 text-xs mt-1">{errors.fund_type}</p>}
+                            </div>
+
                             {/* Expense Category */}
                             <div>
                                 <label htmlFor="expense_category_id" className={labelClass}>
@@ -137,6 +167,22 @@ export default function PettyCashEdit({ transaction, categories, paymentMethods,
                                     ))}
                                 </select>
                                 {errors.expense_category_id && <p className="text-rose-400 text-xs mt-1">{errors.expense_category_id}</p>}
+                            </div>
+
+                            {/* Kode COA */}
+                            <div>
+                                <label htmlFor="coa_code" className={labelClass}>
+                                    Kode COA <span className="text-rose-400">*</span>
+                                </label>
+                                <input
+                                    id="coa_code"
+                                    type="text"
+                                    value={data.coa_code}
+                                    onChange={e => setData('coa_code', e.target.value)}
+                                    placeholder="Contoh: 5101"
+                                    className={`${inputClass(errors.coa_code)} font-mono`}
+                                />
+                                {errors.coa_code && <p className="text-rose-400 text-xs mt-1">{errors.coa_code}</p>}
                             </div>
 
                             {/* Payment Method */}
@@ -230,6 +276,32 @@ export default function PettyCashEdit({ transaction, categories, paymentMethods,
                                     className={`${inputClass(errors.description)} resize-none`}
                                 />
                                 {errors.description && <p className="text-rose-400 text-xs mt-1">{errors.description}</p>}
+                            </div>
+
+                            {/* Bukti Pembayaran */}
+                            <div className="sm:col-span-2">
+                                <label htmlFor="attachment_file" className={labelClass}>Bukti Pembayaran</label>
+                                {transaction.attachment_link && (
+                                    <p className="text-xs text-gray-500 mb-1.5">
+                                        Bukti saat ini:{' '}
+                                        <a href={transaction.attachment_link} target="_blank" rel="noreferrer" className="text-teal-600 font-semibold hover:underline">
+                                            {transaction.attachment_name ?? 'Lihat berkas'}
+                                        </a>
+                                    </p>
+                                )}
+                                <input
+                                    id="attachment_file"
+                                    type="file"
+                                    accept=".jpg,.jpeg,.png,.pdf"
+                                    onChange={e => setData('attachment_file', e.target.files?.[0] ?? null)}
+                                    className="w-full text-sm text-gray-600 file:mr-3 file:px-4 file:py-2 file:rounded-xl file:border-0 file:bg-teal-50 file:text-teal-700 file:text-xs file:font-semibold hover:file:bg-teal-100 cursor-pointer"
+                                />
+                                <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
+                                    {driveEnabled
+                                        ? 'Unggah berkas baru bila ingin mengganti bukti — otomatis masuk folder Google Drive minggu berjalan.'
+                                        : 'Google Drive belum dikonfigurasi — berkas sementara disimpan di server.'}
+                                </p>
+                                {errors.attachment_file && <p className="text-rose-400 text-xs mt-1">{errors.attachment_file}</p>}
                             </div>
                         </div>
                     </div>

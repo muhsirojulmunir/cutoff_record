@@ -8,6 +8,7 @@ use App\Http\Controllers\CashBankAccountController;
 use App\Http\Controllers\CashBankTransactionController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\FundAllocationController;
 use App\Http\Controllers\MarketplaceAccountController;
 use App\Http\Controllers\MarketplaceOrderController;
 use App\Http\Controllers\MarketplaceProductMappingController;
@@ -171,6 +172,11 @@ Route::middleware('auth')->group(function () {
 
     // Roles (Pengaturan - view only)
     Route::get('/roles', [RoleController::class, 'index'])->name('roles.index')->middleware('can:role.view');
+
+    // Pengisian Dana Mingguan (Petty Cash & Dana Kelola)
+    Route::get('/fund-allocations', [FundAllocationController::class, 'index'])->name('fund-allocations.index');
+    Route::post('/fund-allocations', [FundAllocationController::class, 'store'])->name('fund-allocations.store');
+    Route::delete('/fund-allocations/{fundAllocation}', [FundAllocationController::class, 'destroy'])->name('fund-allocations.destroy');
 
     // Petty Cash & Expense Management
     Route::post('/petty-cash/{pettyCash}/submit',          [PettyCashController::class, 'submit'])->name('petty-cash.submit');

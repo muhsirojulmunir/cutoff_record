@@ -27,7 +27,9 @@ class PettyCashService
             return PettyCashTransaction::create([
                 'transaction_number'  => $number,
                 'transaction_date'    => $data['transaction_date'],
+                'fund_type'           => $data['fund_type'] ?? 'petty_cash',
                 'expense_category_id' => $data['expense_category_id'],
+                'coa_code'            => $data['coa_code'] ?? null,
                 'payment_method'      => $data['payment_method'],
                 'cash_bank_account_id'=> $data['cash_bank_account_id'] ?? null,
                 'amount'              => $data['amount'],
@@ -35,6 +37,8 @@ class PettyCashService
                 'reference_number'    => $data['reference_number'] ?? null,
                 'description'         => $data['description'],
                 'attachment'          => $data['attachment'] ?? null,
+                'attachment_name'     => $data['attachment_name'] ?? null,
+                'attachment_link'     => $data['attachment_link'] ?? null,
                 'status'              => 'draft',
                 'created_by'          => $userId,
             ]);
@@ -49,7 +53,9 @@ class PettyCashService
 
         $transaction->update([
             'transaction_date'    => $data['transaction_date'],
+            'fund_type'           => $data['fund_type'] ?? $transaction->fund_type,
             'expense_category_id' => $data['expense_category_id'],
+            'coa_code'            => $data['coa_code'] ?? $transaction->coa_code,
             'payment_method'      => $data['payment_method'],
             'cash_bank_account_id'=> $data['cash_bank_account_id'] ?? null,
             'amount'              => $data['amount'],
@@ -57,6 +63,8 @@ class PettyCashService
             'reference_number'    => $data['reference_number'] ?? null,
             'description'         => $data['description'],
             'attachment'          => $data['attachment'] ?? null,
+            'attachment_name'     => $data['attachment_name'] ?? $transaction->attachment_name,
+            'attachment_link'     => $data['attachment_link'] ?? $transaction->attachment_link,
         ]);
 
         return $transaction->fresh();

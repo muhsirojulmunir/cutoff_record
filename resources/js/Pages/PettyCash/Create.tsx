@@ -21,8 +21,19 @@ interface CashBankAccount {
     account_type: string;
 }
 
+interface FundSummary {
+    period_label: string;
+    allocated: number;
+    used: number;
+    remaining: number;
+    over_budget: boolean;
+}
+
 interface Props {
     categories: Category[];
+    fundTypes: Record<string, string>;
+    driveEnabled: boolean;
+    summaries: Record<string, FundSummary>;
     paymentMethods: PaymentMethod[];
     cashBankAccounts: CashBankAccount[];
 }
@@ -34,10 +45,12 @@ const inputClass = (error?: string) =>
 
 const labelClass = 'block text-xs font-semibold text-gray-500 mb-1.5';
 
-export default function PettyCashCreate({ categories, paymentMethods, cashBankAccounts }: Props) {
+export default function PettyCashCreate({ categories, fundTypes, driveEnabled, summaries, paymentMethods, cashBankAccounts }: Props) {
     const { data, setData, post, processing, errors } = useForm({
         transaction_date:    new Date().toISOString().split('T')[0],
+        fund_type:           'petty_cash',
         expense_category_id: '',
+        coa_code:            '',
         payment_method:      '',
         cash_bank_account_id:'',
         amount:              '',
@@ -45,11 +58,14 @@ export default function PettyCashCreate({ categories, paymentMethods, cashBankAc
         reference_number:    '',
         description:         '',
         attachment:          '',
+        attachment_file:     null as File | null,
     });
+
+    const summary = summaries[data.fund_type];
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
-        post('/petty-cash');
+        post('/petty-cash', { forceFormData: true });
     };
 
     return (
@@ -95,6 +111,24 @@ export default function PettyCashCreate({ categories, paymentMethods, cashBankAc
                                 {errors.transaction_date && <p className="text-rose-400 text-xs mt-1">{errors.transaction_date}</p>}
                             </div>
 
+                            {/* Fund Type */}
+                            <div>
+                                <label htmlFor="fund_type" className={labelClass}>
+                                    Jenis Dana <span className="text-rose-400">*</span>
+                                </label>
+                                <select
+                                    id="fund_type"
+                                    value={data.fund_type}
+                                    onChange={e => setData('fund_type', e.target.value)}
+                                    className={inputClass(errors.fund_type)}
+                                >
+                                    {Object.entries(fundTypes).map(([value, label]) => (
+                                        <option key={value} value={value}>{label}</option>
+                                    ))}
+                                </select>
+                                {errors.fund_type && <p className="text-rose-400 text-xs mt-1">{errors.fund_type}</p>}
+                            </div>
+
                             {/* Expense Category */}
                             <div>
                                 <label htmlFor="expense_category_id" className={labelClass}>
@@ -112,6 +146,22 @@ export default function PettyCashCreate({ categories, paymentMethods, cashBankAc
                                     ))}
                                 </select>
                                 {errors.expense_category_id && <p className="text-rose-400 text-xs mt-1">{errors.expense_category_id}</p>}
+                            </div>
+
+                            {/* Kode COA */}
+                            <div>
+                                <label htmlFor="coa_code" className={labelClass}>
+                                    Kode COA <span className="text-rose-400">*</span>
+                                </label>
+                                <input
+                                    id="coa_code"
+                                    type="text"
+                                    value={data.coa_code}
+                                    onChange={e => setData('coa_code', e.target.value)}
+                                    placeholder="Contoh: 5101"
+                                    className={`${inputClass(errors.coa_code)} font-mono`}
+                                />
+                                {errors.coa_code && <p className="text-rose-400 text-xs mt-1">{errors.coa_code}</p>}
                             </div>
 
                             {/* Payment Method */}
@@ -207,8 +257,53 @@ export default function PettyCashCreate({ categories, paymentMethods, cashBankAc
                                 />
                                 {errors.description && <p className="text-rose-400 text-xs mt-1">{errors.description}</p>}
                             </div>
+
+                            {/* Bukti Pembayaran */}
+                            <div className="sm:col-span-2">
+                                <label htmlFor="attachment_file" className={labelClass}>Bukti Pembayaran</label>
+                                <input
+                                    id="attachment_file"
+                                    type="file"
+                                    accept=".jpg,.jpeg,.png,.pdf"
+                                    onChange={e => setData('attachment_file', e.target.files?.[0] ?? null)}
+                                    className="w-full text-sm text-gray-600 file:mr-3 file:px-4 file:py-2 file:rounded-xl file:border-0 file:bg-teal-50 file:text-teal-700 file:text-xs file:font-semibold hover:file:bg-teal-100 cursor-pointer"
+                                />
+                                <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
+                                    {driveEnabled
+                                        ? 'JPG, PNG, atau PDF maksimal 5 MB. File otomatis masuk ke folder Google Drive minggu berjalan.'
+                                        : 'JPG, PNG, atau PDF maksimal 5 MB. Google Drive belum dikonfigurasi — file sementara disimpan di server.'}
+                                </p>
+                                {errors.attachment_file && <p className="text-rose-400 text-xs mt-1">{errors.attachment_file}</p>}
+                            </div>
                         </div>
                     </div>
+
+                    {/* Sisa dana minggu berjalan */}
+                    {summary && (
+                        <div className={`rounded-2xl border p-4 ${summary.over_budget ? 'bg-rose-50 border-rose-200' : 'bg-teal-50/60 border-teal-200'}`}>
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                                        Dana {fundTypes[data.fund_type]} — {summary.period_label}
+                                    </p>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Diisi Rp {summary.allocated.toLocaleString('id-ID')} • Terpakai Rp {summary.used.toLocaleString('id-ID')}
+                                    </p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Sisa Dana</p>
+                                    <p className={`text-lg font-bold font-mono ${summary.over_budget ? 'text-rose-600' : 'text-teal-700'}`}>
+                                        Rp {summary.remaining.toLocaleString('id-ID')}
+                                    </p>
+                                </div>
+                            </div>
+                            {summary.over_budget && (
+                                <p className="text-xs text-rose-600 font-semibold mt-2">
+                                    Pengeluaran minggu ini sudah melebihi dana yang diisi.
+                                </p>
+                            )}
+                        </div>
+                    )}
 
                     {/* Actions */}
                     <div className="flex items-center justify-end gap-3">

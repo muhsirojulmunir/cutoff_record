@@ -64,6 +64,10 @@ class RoleAndPermissionSeeder extends Seeder
             'petty_cash.reject'          => 'Tolak Petty Cash',
             'petty_cash.cancel'          => 'Batalkan Petty Cash',
 
+            // Pengisian dana mingguan (Petty Cash & Dana Kelola)
+            'fund_allocation.view'       => 'Lihat Pengisian Dana Mingguan',
+            'fund_allocation.create'     => 'Catat Pengisian Dana Mingguan',
+
             // Marketplace
             'marketplace.view'               => 'Lihat Marketplace',
             'marketplace.sync'               => 'Sinkronisasi Marketplace',
@@ -186,6 +190,7 @@ class RoleAndPermissionSeeder extends Seeder
                 'payment.view', 'payment.create', 'payment.cancel',
                 // Petty Cash
                 'petty_cash.view', 'petty_cash.create', 'petty_cash.edit', 'petty_cash.submit', 'petty_cash.approve', 'petty_cash.reject', 'petty_cash.cancel',
+                'fund_allocation.view', 'fund_allocation.create',
                 // Cash & Bank
                 'cash_bank.view', 'cash_bank.create', 'cash_bank.edit', 'cash_bank.adjust', 'cash_bank.deactivate',
                 'cash_transaction.view', 'cash_transaction.create', 'cash_transaction.adjust',
@@ -217,6 +222,8 @@ class RoleAndPermissionSeeder extends Seeder
                 // Petty Cash — Finance: view, create, edit, submit, finance approve & disburse
                 'petty_cash.view', 'petty_cash.create', 'petty_cash.edit', 'petty_cash.submit',
                 'petty_cash.finance_approve', 'petty_cash.reject', 'petty_cash.cancel',
+                // Pengisian dana mingguan — Finance yang menerima & mencatat
+                'fund_allocation.view', 'fund_allocation.create',
                 'customer.view',
                 'supplier.view',
                 'product.view',
@@ -244,6 +251,7 @@ class RoleAndPermissionSeeder extends Seeder
                 // Petty Cash — Leader: view, create, edit, submit, leader approve, reject
                 'petty_cash.view', 'petty_cash.create', 'petty_cash.edit', 'petty_cash.submit',
                 'petty_cash.leader_approve', 'petty_cash.reject', 'petty_cash.cancel',
+                'fund_allocation.view',
                 // Factory Receivable — view
                 'factory_receivable.view',
                 // Master Data — view
@@ -282,6 +290,7 @@ class RoleAndPermissionSeeder extends Seeder
                 'payment.view',
                 // Petty Cash — Management: view only
                 'petty_cash.view',
+                'fund_allocation.view',
                 // Cash & Bank — Management: view only
                 'cash_bank.view',
                 'cash_transaction.view',

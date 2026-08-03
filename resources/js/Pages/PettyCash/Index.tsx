@@ -18,12 +18,15 @@ interface Transaction {
     id: number;
     transaction_number: string;
     transaction_date: string;
+    fund_type: string;
     expense_category_id: number;
+    coa_code: string | null;
     payment_method: string;
     amount: string;
     description: string;
     vendor_name: string | null;
     status: string;
+    attachment_link: string | null;
     category: Category;
     creator: Creator;
 }
@@ -39,6 +42,7 @@ interface PaginatedTransactions {
 interface Filters {
     search?: string;
     category_id?: string;
+    fund_type?: string;
     status?: string;
     payment_method?: string;
     date_from?: string;
@@ -55,8 +59,18 @@ interface Status {
     label: string;
 }
 
+interface FundSummary {
+    period_label: string;
+    allocated: number;
+    used: number;
+    remaining: number;
+    over_budget: boolean;
+}
+
 interface Props {
     transactions: PaginatedTransactions;
+    fundTypes: Record<string, string>;
+    summaries: Record<string, FundSummary>;
     categories: Category[];
     filters: Filters;
     paymentMethods: PaymentMethod[];
@@ -79,11 +93,12 @@ const formatCurrency = (amount: string | number) =>
 const formatDate = (dateStr: string) =>
     new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
 
-export default function PettyCashIndex({ transactions, categories, filters, paymentMethods, statuses }: Props) {
+export default function PettyCashIndex({ transactions, categories, fundTypes, summaries, filters, paymentMethods, statuses }: Props) {
     const { flash, auth } = usePage<PageProps>().props;
 
     const [search, setSearch]         = useState(filters.search || '');
     const [categoryId, setCategoryId] = useState(filters.category_id || '');
+    const [fundType, setFundType]     = useState(filters.fund_type || '');
     const [status, setStatus]         = useState(filters.status || '');
     const [payMethod, setPayMethod]   = useState(filters.payment_method || '');
     const [dateFrom, setDateFrom]     = useState(filters.date_from || '');
@@ -93,6 +108,7 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
         router.get('/petty-cash', {
             search:         search || undefined,
             category_id:    categoryId || undefined,
+            fund_type:      fundType || undefined,
             status:         status || undefined,
             payment_method: payMethod || undefined,
             date_from:      dateFrom || undefined,
@@ -101,7 +117,7 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
     };
 
     const resetFilters = () => {
-        setSearch(''); setCategoryId(''); setStatus(''); setPayMethod(''); setDateFrom(''); setDateTo('');
+        setSearch(''); setCategoryId(''); setFundType(''); setStatus(''); setPayMethod(''); setDateFrom(''); setDateTo('');
         router.get('/petty-cash', {}, { replace: true });
     };
 
@@ -140,6 +156,38 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                     </div>
                 )}
 
+                {/* Ringkasan dana minggu berjalan */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {Object.entries(fundTypes).map(([type, label]) => {
+                        const summary = summaries[type];
+                        if (!summary) return null;
+
+                        return (
+                            <div
+                                key={type}
+                                className={`rounded-2xl border p-5 shadow-xl ${summary.over_budget ? 'bg-rose-50 border-rose-200' : 'bg-white border-gray-200'}`}
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
+                                        <p className="text-xs text-gray-400 mt-0.5">Minggu {summary.period_label}</p>
+                                    </div>
+                                    <span className={`text-[10px] font-bold px-2 py-1 rounded-full border ${summary.over_budget ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' : 'bg-teal-500/10 border-teal-500/20 text-teal-600'}`}>
+                                        {summary.over_budget ? 'Melebihi Dana' : 'Aman'}
+                                    </span>
+                                </div>
+
+                                <p className={`text-2xl font-bold font-mono mt-3 ${summary.over_budget ? 'text-rose-600' : 'text-gray-900'}`}>
+                                    {formatCurrency(summary.remaining)}
+                                </p>
+                                <p className="text-[11px] text-gray-400 mt-1">
+                                    Diisi {formatCurrency(summary.allocated)} • Terpakai {formatCurrency(summary.used)}
+                                </p>
+                            </div>
+                        );
+                    })}
+                </div>
+
                 {/* Filter Card */}
                 <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xl">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
@@ -159,6 +207,19 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                                 </svg>
                             </div>
                         </div>
+
+                        {/* Fund Type */}
+                        <select
+                            id="filter-fund-type"
+                            value={fundType}
+                            onChange={e => setFundType(e.target.value)}
+                            className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all cursor-pointer"
+                        >
+                            <option value="">Semua Jenis Dana</option>
+                            {Object.entries(fundTypes).map(([value, label]) => (
+                                <option key={value} value={value}>{label}</option>
+                            ))}
+                        </select>
 
                         {/* Category */}
                         <select
@@ -237,11 +298,13 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                                 <tr className="border-b border-gray-200 text-gray-500 text-[10px] font-bold uppercase tracking-wider bg-gray-50">
                                     <th className="py-3 px-6">No. Transaksi</th>
                                     <th className="py-3 px-6 text-center">Tanggal</th>
-                                    <th className="py-3 px-6">Kategori</th>
+                                    <th className="py-3 px-6">Jenis Dana</th>
+                                    <th className="py-3 px-6">Kategori / COA</th>
                                     <th className="py-3 px-6">Deskripsi</th>
                                     <th className="py-3 px-6 text-right">Jumlah</th>
                                     <th className="py-3 px-6">Metode</th>
                                     <th className="py-3 px-6 text-center">Status</th>
+                                    <th className="py-3 px-6 text-center">Bukti</th>
                                     <th className="py-3 px-6">Dibuat Oleh</th>
                                     <th className="py-3 px-6 text-center">Aksi</th>
                                 </tr>
@@ -249,7 +312,7 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                             <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
                                 {transactions.data.length === 0 ? (
                                     <tr>
-                                        <td colSpan={9} className="text-center py-16 text-gray-400 font-medium">
+                                        <td colSpan={11} className="text-center py-16 text-gray-400 font-medium">
                                             <div className="flex flex-col items-center gap-3">
                                                 <svg className="w-12 h-12 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -275,8 +338,16 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                                                     {formatDate(t.transaction_date)}
                                                 </td>
                                                 <td className="py-3.5 px-6 whitespace-nowrap">
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 border rounded-full text-[10px] font-bold uppercase tracking-wider ${t.fund_type === 'dana_kelola' ? 'bg-violet-500/10 border-violet-500/20 text-violet-500' : 'bg-teal-500/10 border-teal-500/20 text-teal-600'}`}>
+                                                        {t.fund_type === 'dana_kelola' ? 'Dana Kelola' : 'Petty Cash'}
+                                                    </span>
+                                                </td>
+                                                <td className="py-3.5 px-6 whitespace-nowrap">
                                                     <span className="inline-flex items-center px-2.5 py-0.5 border rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 border-blue-500/20 text-blue-400">
                                                         {t.category?.name ?? '-'}
+                                                    </span>
+                                                    <span className="block text-[10px] text-gray-400 font-mono mt-1">
+                                                        COA {t.coa_code ?? '—'}
                                                     </span>
                                                 </td>
                                                 <td className="py-3.5 px-6 text-gray-700 max-w-xs truncate" title={t.description}>
@@ -293,6 +364,23 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                                                         <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
                                                         {s.label}
                                                     </span>
+                                                </td>
+                                                <td className="py-3.5 px-6 text-center whitespace-nowrap">
+                                                    {t.attachment_link ? (
+                                                        <a
+                                                            href={t.attachment_link}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            title="Lihat bukti pembayaran"
+                                                            className="inline-flex p-1 text-teal-600 hover:text-teal-700 hover:bg-teal-50 border border-transparent hover:border-teal-200 rounded-lg transition-all"
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+                                                            </svg>
+                                                        </a>
+                                                    ) : (
+                                                        <span className="text-gray-300 text-xs">—</span>
+                                                    )}
                                                 </td>
                                                 <td className="py-3.5 px-6 text-xs text-gray-500">
                                                     {t.creator?.name ?? '-'}

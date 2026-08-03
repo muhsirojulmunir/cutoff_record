@@ -23,12 +23,16 @@ interface Transaction {
     id: number;
     transaction_number: string;
     transaction_date: string;
+    fund_type: string;
     expense_category_id: number;
+    coa_code: string | null;
     payment_method: string;
     amount: string;
     vendor_name: string | null;
     reference_number: string | null;
     description: string;
+    attachment_name: string | null;
+    attachment_link: string | null;
     status: string;
     category: Category;
     creator: User;
@@ -389,10 +393,18 @@ export default function PettyCashShow({
                                     <DetailRow label="Tanggal Transaksi">
                                         {formatDate(transaction.transaction_date)}
                                     </DetailRow>
+                                    <DetailRow label="Jenis Dana">
+                                        <span className={`inline-flex items-center px-2.5 py-0.5 border rounded-full text-[10px] font-bold uppercase tracking-wider ${transaction.fund_type === 'dana_kelola' ? 'bg-violet-500/10 border-violet-500/20 text-violet-500' : 'bg-teal-500/10 border-teal-500/20 text-teal-600'}`}>
+                                            {transaction.fund_type === 'dana_kelola' ? 'Dana Kelola' : 'Petty Cash'}
+                                        </span>
+                                    </DetailRow>
                                     <DetailRow label="Kategori">
                                         <span className="inline-flex items-center px-2.5 py-0.5 border rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 border-blue-500/20 text-blue-400">
                                             [{transaction.category?.code}] {transaction.category?.name}
                                         </span>
+                                    </DetailRow>
+                                    <DetailRow label="Kode COA">
+                                        <span className="font-mono font-semibold text-gray-800">{transaction.coa_code ?? '—'}</span>
                                     </DetailRow>
                                     <DetailRow label="Metode Pembayaran">
                                         {methodLabel}
@@ -417,6 +429,25 @@ export default function PettyCashShow({
                                     <div className="sm:col-span-2">
                                         <DetailRow label="Deskripsi">
                                             <span className="text-gray-700 leading-relaxed">{transaction.description}</span>
+                                        </DetailRow>
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                        <DetailRow label="Bukti Pembayaran">
+                                            {transaction.attachment_link ? (
+                                                <a
+                                                    href={transaction.attachment_link}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="inline-flex items-center gap-1.5 text-teal-600 hover:text-teal-700 font-semibold hover:underline"
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                                                    </svg>
+                                                    {transaction.attachment_name ?? 'Lihat bukti di Google Drive'}
+                                                </a>
+                                            ) : (
+                                                <span className="text-gray-400">Belum ada bukti diunggah</span>
+                                            )}
                                         </DetailRow>
                                     </div>
                                 </dl>

@@ -69,7 +69,10 @@
       "Bash(grep -n 'class SalesOrderItem\\\\|protected $fillable' -A 20 app/Models/SalesOrderItem.php)",
       "PowerShell(php -l \"app/Http/Controllers/SalesOrderController.php\")",
       "PowerShell(php artisan route:list --name=sales-orders.export)",
-      "PowerShell(php artisan test --filter SalesOrderTest 2>&1)"
+      "PowerShell(php artisan test --filter SalesOrderTest 2>&1)",
+      "PowerShell(php artisan test --filter PettyCash 2>&1)",
+      "PowerShell(php artisan test --filter FundAllocationTest 2>&1)",
+      "PowerShell(php artisan route:list --path=fund-allocations)"
     ]
   }
 }
