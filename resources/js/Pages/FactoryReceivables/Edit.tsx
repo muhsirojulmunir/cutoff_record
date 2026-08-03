@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import { PageProps } from '../../Types';
@@ -53,15 +53,15 @@ export default function Edit({ factoryReceivable }: FactoryReceivableEditProps) 
         <div className="flex items-center gap-4">
           <Link
             href={`/factory-receivables/${factoryReceivable.id}`}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 border border-transparent hover:border-slate-700 transition-all"
+            className="p-2 rounded-xl text-gray-500 hover:text-gray-900 hover:bg-gray-100 border border-transparent hover:border-gray-300 transition-all"
           >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
             </svg>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-white">Edit Piutang Pabrik</h1>
-            <p className="text-slate-400 text-xs mt-0.5">
+            <h1 className="text-2xl font-bold text-gray-900">Edit Piutang Pabrik</h1>
+            <p className="text-gray-500 text-xs mt-0.5">
               No: {factoryReceivable.receivable_number} • Status: {factoryReceivable.status}
             </p>
           </div>
@@ -70,18 +70,18 @@ export default function Edit({ factoryReceivable }: FactoryReceivableEditProps) 
         <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Panel: Form Fields */}
           <div className="lg:col-span-2 space-y-6">
-            <div className="bg-slate-950 border border-slate-900 rounded-2xl p-6 space-y-4 shadow-xl">
-              <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">Informasi Tambahan</h2>
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 space-y-4 shadow-xl">
+              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Informasi Tambahan</h2>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Due Date */}
                 <div className="space-y-1.5">
-                  <label className="block text-sm font-semibold text-slate-300">Tanggal Jatuh Tempo</label>
+                  <label className="block text-sm font-semibold text-gray-700">Tanggal Jatuh Tempo</label>
                   <input
                     type="date"
                     value={data.due_date}
                     onChange={(e) => setData('due_date', e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                    className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
                   />
                   {errors.due_date && <p className="text-rose-500 text-xs">{errors.due_date}</p>}
                 </div>
@@ -89,13 +89,13 @@ export default function Edit({ factoryReceivable }: FactoryReceivableEditProps) 
 
               {/* Notes */}
               <div className="space-y-1.5 pt-2">
-                <label className="block text-sm font-semibold text-slate-300">Catatan Internal</label>
+                <label className="block text-sm font-semibold text-gray-700">Catatan Internal</label>
                 <textarea
                   rows={5}
                   value={data.notes}
                   onChange={(e) => setData('notes', e.target.value)}
                   placeholder="Catatan tambahan..."
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none transition-all placeholder:text-slate-600 resize-none"
+                  className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all placeholder:text-gray-400 resize-none"
                 />
                 {errors.notes && <p className="text-rose-500 text-xs">{errors.notes}</p>}
               </div>
@@ -104,25 +104,25 @@ export default function Edit({ factoryReceivable }: FactoryReceivableEditProps) 
 
           {/* Right Panel: Read-Only Info */}
           <div className="space-y-6">
-            <div className="bg-slate-950 border border-slate-900 rounded-2xl p-6 space-y-4 shadow-xl">
-              <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">Data Tidak Dapat Diubah</h2>
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 space-y-4 shadow-xl">
+              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Data Tidak Dapat Diubah</h2>
 
-              <div className="space-y-3.5 text-sm border-b border-slate-900 pb-4">
+              <div className="space-y-3.5 text-sm border-b border-gray-200 pb-4">
                 <div>
-                  <span className="text-slate-400 block">Supplier</span>
-                  <span className="font-semibold text-slate-200 block mt-0.5">
+                  <span className="text-gray-500 block">Supplier</span>
+                  <span className="font-semibold text-gray-800 block mt-0.5">
                     {factoryReceivable.supplier ? factoryReceivable.supplier.name : '—'}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block">Purchase Order</span>
-                  <span className="font-semibold text-slate-200 block mt-0.5">
+                  <span className="text-gray-500 block">Purchase Order</span>
+                  <span className="font-semibold text-gray-800 block mt-0.5">
                     {factoryReceivable.purchase_order ? factoryReceivable.purchase_order.po_number : '—'}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block">Original Amount</span>
-                  <span className="font-bold text-white block mt-0.5">
+                  <span className="text-gray-500 block">Original Amount</span>
+                  <span className="font-bold text-gray-900 block mt-0.5">
                     Rp {Number(factoryReceivable.original_amount).toLocaleString('id-ID')}
                   </span>
                 </div>
@@ -138,18 +138,18 @@ export default function Edit({ factoryReceivable }: FactoryReceivableEditProps) 
               <div className="flex gap-3 pt-2">
                 <Link
                   href={`/factory-receivables/${factoryReceivable.id}`}
-                  className="flex-1 text-center py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl text-sm font-semibold transition-all border border-slate-800"
+                  className="flex-1 text-center py-2.5 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold transition-all border border-gray-300"
                 >
                   Batal
                 </Link>
                 <button
                   type="submit"
                   disabled={processing}
-                  className="flex-1 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-indigo-950/40 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-teal-200/40 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                 >
                   {processing ? (
                     <>
-                      <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                      <svg className="animate-spin h-4 w-4 text-gray-900" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                       </svg>

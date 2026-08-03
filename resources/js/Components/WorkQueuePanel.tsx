@@ -1,11 +1,11 @@
-import { Link, usePage } from '@inertiajs/react';
+﻿import { Link, usePage } from '@inertiajs/react';
 
 import { PageProps, WorkQueueSeverity } from '../Types';
 
 const SEVERITY_STYLES: Record<WorkQueueSeverity, { card: string; accent: string; label: string }> = {
   critical: { card: 'border-rose-500/25 bg-rose-500/5 hover:border-rose-500/50', accent: 'text-rose-400', label: 'Perlu Approval' },
   warning: { card: 'border-amber-400/25 bg-amber-400/5 hover:border-amber-400/50', accent: 'text-amber-400', label: 'Perlu Ditindak' },
-  info: { card: 'border-slate-800 bg-slate-900 hover:border-violet-500/40', accent: 'text-violet-400', label: 'Informasi' },
+  info: { card: 'border-gray-300 bg-gray-50 hover:border-teal-500/40', accent: 'text-teal-400', label: 'Informasi' },
 };
 
 /**
@@ -18,27 +18,27 @@ export default function WorkQueuePanel() {
 
   if (queue.items.length === 0) {
     return (
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center gap-3">
+      <div className="bg-gray-50 border border-gray-300 rounded-2xl p-5 flex items-center gap-3">
         <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor" className="w-5 h-5">
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </span>
         <div>
-          <p className="text-sm font-semibold text-slate-200">Tidak ada tugas tertunda</p>
-          <p className="text-xs text-slate-500 mt-0.5">Semua pengajuan yang menjadi tanggung jawab Anda sudah diproses.</p>
+          <p className="text-sm font-semibold text-gray-800">Tidak ada tugas tertunda</p>
+          <p className="text-xs text-gray-400 mt-0.5">Semua pengajuan yang menjadi tanggung jawab Anda sudah diproses.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+    <div className="bg-gray-50 border border-gray-300 rounded-2xl p-5">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">Pengingat Kerja</h2>
-          <p className="text-sm text-slate-300 mt-1">
-            Ada <span className="font-bold text-white">{queue.total}</span> item menunggu tindakan Anda
+          <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">Pengingat Kerja</h2>
+          <p className="text-sm text-gray-700 mt-1">
+            Ada <span className="font-bold text-gray-900">{queue.total}</span> item menunggu tindakan Anda
           </p>
         </div>
         {queue.critical > 0 && (
@@ -59,12 +59,12 @@ export default function WorkQueuePanel() {
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{styles.label}</p>
-                  <p className="text-sm font-semibold text-slate-100 mt-1 truncate">{item.title}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{styles.label}</p>
+                  <p className="text-sm font-semibold text-gray-900 mt-1 truncate">{item.title}</p>
                 </div>
                 <span className={`shrink-0 text-xl font-extrabold font-mono ${styles.accent}`}>{item.count}</span>
               </div>
-              <p className="text-xs text-slate-500 mt-2 leading-relaxed">{item.description}</p>
+              <p className="text-xs text-gray-400 mt-2 leading-relaxed">{item.description}</p>
             </Link>
           );
         })}

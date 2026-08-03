@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import Alert from '../../Components/Alert';
@@ -139,7 +139,7 @@ export default function Show({ payment }: PaymentShowProps) {
         <div className="flex items-center gap-4">
           <Link
             href="/payments"
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 border border-transparent hover:border-slate-700 transition-all"
+            className="p-2 rounded-xl text-gray-500 hover:text-gray-900 hover:bg-gray-100 border border-transparent hover:border-gray-300 transition-all"
           >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
@@ -147,12 +147,12 @@ export default function Show({ payment }: PaymentShowProps) {
           </Link>
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-2xl font-bold text-white tracking-tight">{payment.payment_number}</h1>
+              <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{payment.payment_number}</h1>
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusBadgeColor[payment.status]}`}>
                 {statusLabel[payment.status]}
               </span>
             </div>
-            <p className="text-sm text-slate-400 mt-0.5">
+            <p className="text-sm text-gray-500 mt-0.5">
               Tgl Transaksi: {new Date(payment.payment_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })} • Operator: {payment.creator?.name || 'System'}
             </p>
           </div>
@@ -162,7 +162,7 @@ export default function Show({ payment }: PaymentShowProps) {
         {canCancel && payment.status === 'posted' && (
           <button
             onClick={() => setCancelModalOpen(true)}
-            className="px-4 py-2 bg-slate-900 hover:bg-rose-950/20 text-rose-500 border border-slate-800 hover:border-rose-900/50 rounded-xl text-sm font-semibold transition-all"
+            className="px-4 py-2 bg-gray-50 hover:bg-rose-50 text-rose-500 border border-gray-300 hover:border-rose-900/50 rounded-xl text-sm font-semibold transition-all"
           >
             Batalkan Pembayaran
           </button>
@@ -174,87 +174,87 @@ export default function Show({ payment }: PaymentShowProps) {
       {flash.error && <Alert message={flash.error} type="error" />}
 
       {/* Traceability Map */}
-      <div className="mb-6 bg-slate-950/40 border border-slate-900 rounded-2xl p-4 shadow-xl">
-        <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2.5">Alur Traceability</h3>
+      <div className="mb-6 bg-white/80 border border-gray-200 rounded-2xl p-4 shadow-xl">
+        <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Alur Traceability</h3>
         
         {payment.payment_type === 'customer_invoice' && allocation && allocation.invoice ? (
-          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-400">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
             <span className="font-semibold text-emerald-400">Payment: {payment.payment_number}</span>
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3 text-slate-600">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3 text-gray-400">
               <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
             </svg>
-            <Link href={`/invoices/${allocation.invoice_id}`} className="hover:underline text-slate-200 font-semibold">
+            <Link href={`/invoices/${allocation.invoice_id}`} className="hover:underline text-gray-800 font-semibold">
               Invoice: {allocation.invoice.invoice_number}
             </Link>
             {allocation.invoice.sales_order && (
               <>
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3 text-slate-600">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3 text-gray-400">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
                 </svg>
-                <Link href={`/sales-orders/${allocation.invoice.sales_order_id}`} className="hover:underline text-slate-200 font-semibold">
+                <Link href={`/sales-orders/${allocation.invoice.sales_order_id}`} className="hover:underline text-gray-800 font-semibold">
                   SO: {allocation.invoice.sales_order.so_number}
                 </Link>
               </>
             )}
             {allocation.invoice.customer && (
               <>
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3 text-slate-600">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3 text-gray-400">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
                 </svg>
-                <span className="text-slate-300">Customer: {allocation.invoice.customer.name}</span>
+                <span className="text-gray-700">Customer: {allocation.invoice.customer.name}</span>
               </>
             )}
           </div>
         ) : payment.payment_type === 'factory_receivable' && allocation && allocation.factory_receivable ? (
-          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-400">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
             <span className="font-semibold text-amber-400">Payment: {payment.payment_number}</span>
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3 text-slate-600">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3 text-gray-400">
               <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
             </svg>
-            <Link href={`/factory-receivables/${allocation.factory_receivable_id}`} className="hover:underline text-slate-200 font-semibold">
+            <Link href={`/factory-receivables/${allocation.factory_receivable_id}`} className="hover:underline text-gray-800 font-semibold">
               Piutang: {allocation.factory_receivable.receivable_number}
             </Link>
             {allocation.factory_receivable.purchase_order && (
               <>
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3 text-slate-600">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3 text-gray-400">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
                 </svg>
-                <Link href={`/purchase-orders/${allocation.factory_receivable.purchase_order_id}`} className="hover:underline text-slate-200 font-semibold">
+                <Link href={`/purchase-orders/${allocation.factory_receivable.purchase_order_id}`} className="hover:underline text-gray-800 font-semibold">
                   PO: {allocation.factory_receivable.purchase_order.po_number}
                 </Link>
               </>
             )}
             {allocation.factory_receivable.supplier && (
               <>
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3 text-slate-600">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3 text-gray-400">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
                 </svg>
-                <span className="text-slate-300">Supplier: {allocation.factory_receivable.supplier.name}</span>
+                <span className="text-gray-700">Supplier: {allocation.factory_receivable.supplier.name}</span>
               </>
             )}
           </div>
         ) : (
-          <span className="text-slate-500 font-semibold text-xs">Alur tidak terdefinisi (Alokasi Kosong)</span>
+          <span className="text-gray-400 font-semibold text-xs">Alur tidak terdefinisi (Alokasi Kosong)</span>
         )}
       </div>
 
       {/* Main Grid Info */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         {/* Detail Pembayaran */}
-        <div className="bg-slate-950 border border-slate-900 rounded-2xl p-5 shadow-xl space-y-3.5">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-slate-900 pb-2.5">Rincian Pembayaran</h3>
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xl space-y-3.5">
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-200 pb-2.5">Rincian Pembayaran</h3>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-slate-400">Tipe Transaksi</span>
-              <span className="font-semibold text-slate-200">{typeLabel[payment.payment_type]}</span>
+              <span className="text-gray-500">Tipe Transaksi</span>
+              <span className="font-semibold text-gray-800">{typeLabel[payment.payment_type]}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Metode</span>
-              <span className="font-semibold text-slate-200">{methodLabel[payment.payment_method]}</span>
+              <span className="text-gray-500">Metode</span>
+              <span className="font-semibold text-gray-800">{methodLabel[payment.payment_method]}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Nominal Transaksi</span>
-              <span className="font-bold text-white text-base">
+              <span className="text-gray-500">Nominal Transaksi</span>
+              <span className="font-bold text-gray-900 text-base">
                 Rp {Number(payment.amount).toLocaleString('id-ID')}
               </span>
             </div>
@@ -262,95 +262,95 @@ export default function Show({ payment }: PaymentShowProps) {
         </div>
 
         {/* Informasi Akun Finansial */}
-        <div className="bg-slate-950 border border-slate-900 rounded-2xl p-5 shadow-xl space-y-3.5">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-slate-900 pb-2.5">Data Akun & Ref</h3>
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xl space-y-3.5">
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-200 pb-2.5">Data Akun & Ref</h3>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-slate-400">No. Referensi / Memo</span>
-              <span className="font-semibold text-slate-200">{payment.reference_number || '—'}</span>
+              <span className="text-gray-500">No. Referensi / Memo</span>
+              <span className="font-semibold text-gray-800">{payment.reference_number || '—'}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Akun Bank</span>
-              <span className="font-semibold text-slate-200">{payment.bank_account || '—'}</span>
+              <span className="text-gray-500">Akun Bank</span>
+              <span className="font-semibold text-gray-800">{payment.bank_account || '—'}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Akun Kas / Tunai</span>
-              <span className="font-semibold text-slate-200">{payment.cash_account || '—'}</span>
+              <span className="text-gray-500">Akun Kas / Tunai</span>
+              <span className="font-semibold text-gray-800">{payment.cash_account || '—'}</span>
             </div>
           </div>
         </div>
 
         {/* Summary Dokumen Terkait */}
-        <div className="bg-slate-950 border border-slate-900 rounded-2xl p-5 shadow-xl space-y-3.5">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-slate-900 pb-2.5">Alokasi Dokumen</h3>
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xl space-y-3.5">
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-200 pb-2.5">Alokasi Dokumen</h3>
           {payment.payment_type === 'customer_invoice' && allocation && allocation.invoice ? (
             <div className="space-y-1.5 text-sm">
-              <span className="text-slate-500 text-[10px] uppercase font-bold tracking-wide">Invoice Terkait</span>
-              <h4 className="text-base font-bold text-violet-400">
+              <span className="text-gray-400 text-[10px] uppercase font-bold tracking-wide">Invoice Terkait</span>
+              <h4 className="text-base font-bold text-teal-400">
                 <Link href={`/invoices/${allocation.invoice_id}`} className="hover:underline">
                   {allocation.invoice.invoice_number}
                 </Link>
               </h4>
-              <p className="text-slate-300 text-xs mt-1">
+              <p className="text-gray-700 text-xs mt-1">
                 Customer: {allocation.invoice.customer ? allocation.invoice.customer.name : '—'}
               </p>
               {allocation.invoice.sales_order && (
-                <p className="text-slate-400 text-xs">
+                <p className="text-gray-500 text-xs">
                   Sales Order: {allocation.invoice.sales_order.so_number} ({channelLabel[allocation.invoice.sales_order.sales_channel] ?? allocation.invoice.sales_order.sales_channel})
                 </p>
               )}
             </div>
           ) : payment.payment_type === 'factory_receivable' && allocation && allocation.factory_receivable ? (
             <div className="space-y-1.5 text-sm">
-              <span className="text-slate-500 text-[10px] uppercase font-bold tracking-wide">Piutang Terkait</span>
+              <span className="text-gray-400 text-[10px] uppercase font-bold tracking-wide">Piutang Terkait</span>
               <h4 className="text-base font-bold text-amber-400">
                 <Link href={`/factory-receivables/${allocation.factory_receivable_id}`} className="hover:underline">
                   {allocation.factory_receivable.receivable_number}
                 </Link>
               </h4>
-              <p className="text-slate-300 text-xs mt-1">
+              <p className="text-gray-700 text-xs mt-1">
                 Supplier: {allocation.factory_receivable.supplier ? allocation.factory_receivable.supplier.name : '—'}
               </p>
               {allocation.factory_receivable.purchase_order && (
-                <p className="text-slate-400 text-xs">
+                <p className="text-gray-500 text-xs">
                   Purchase Order: {allocation.factory_receivable.purchase_order.po_number}
                 </p>
               )}
             </div>
           ) : (
-            <p className="text-slate-500 text-sm">—</p>
+            <p className="text-gray-400 text-sm">—</p>
           )}
         </div>
       </div>
 
       {/* Notes */}
-      <div className="bg-slate-950 border border-slate-900 rounded-2xl p-5 shadow-xl space-y-3">
-        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Catatan Transaksi</h3>
-        <div className="text-sm text-slate-300 leading-relaxed bg-slate-900/10 p-3.5 rounded-xl border border-slate-900 whitespace-pre-line">
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xl space-y-3">
+        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Catatan Transaksi</h3>
+        <div className="text-sm text-gray-700 leading-relaxed bg-gray-50/10 p-3.5 rounded-xl border border-gray-200 whitespace-pre-line">
           {payment.notes || 'Tidak ada catatan.'}
         </div>
       </div>
 
       {/* Cancel Confirmation Modal */}
       {cancelModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm transition-opacity">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 overflow-hidden">
-            <h3 className="text-lg font-bold text-white">Konfirmasi Pembatalan</h3>
-            <p className="text-sm text-slate-400 mt-2">
-              Apakah Anda yakin ingin membatalkan Pembayaran <span className="font-semibold text-white">{payment.payment_number}</span>? Nominal sebesar <span className="font-bold text-white">Rp {Number(payment.amount).toLocaleString('id-ID')}</span> akan dikembalikan ke saldo tagihan awal.
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-50 backdrop-blur-sm transition-opacity">
+          <div className="w-full max-w-md bg-gray-50 border border-gray-300 rounded-2xl shadow-2xl p-6 overflow-hidden">
+            <h3 className="text-lg font-bold text-gray-900">Konfirmasi Pembatalan</h3>
+            <p className="text-sm text-gray-500 mt-2">
+              Apakah Anda yakin ingin membatalkan Pembayaran <span className="font-semibold text-gray-900">{payment.payment_number}</span>? Nominal sebesar <span className="font-bold text-gray-900">Rp {Number(payment.amount).toLocaleString('id-ID')}</span> akan dikembalikan ke saldo tagihan awal.
             </p>
             <div className="flex justify-end gap-3 mt-6">
               <button
                 onClick={() => setCancelModalOpen(false)}
                 disabled={actionLoading}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-800 text-slate-300 rounded-xl text-sm font-semibold transition-all border border-slate-800"
+                className="px-4 py-2.5 bg-white hover:bg-teal-50 text-teal-700 rounded-xl text-sm font-semibold border border-teal-300 hover:border-teal-400 transition-all border border-gray-300"
               >
                 Batal
               </button>
               <button
                 onClick={handleCancel}
                 disabled={actionLoading}
-                className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-rose-950/40"
+                className="px-4 py-2.5 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-rose-200/40"
               >
                 {actionLoading ? 'Menyimpan...' : 'Batalkan Pembayaran'}
               </button>

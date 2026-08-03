@@ -30,20 +30,15 @@ class PurchaseOrderService
 
                 $price = $item['price'] ?? $product->purchase_price;
                 $quantity = $item['quantity'];
-                $itemDiscount = $item['discount_amount'] ?? 0;
-                $itemTax = $item['tax_amount'] ?? 0;
-
-                $itemSubtotal = ($price * $quantity) - $itemDiscount + $itemTax;
+                $itemSubtotal = $price * $quantity;
 
                 $itemsData[] = [
                     'product_id'      => $product->id,
                     'product_code'    => $product->sku, // Snapshot SKU
                     'product_name'    => $product->name, // Snapshot Name
                     'quantity'        => $quantity,
-                    'unit'            => $product->unit ?? 'pcs',
+                    'unit'            => 'pcs',
                     'unit_price'      => $price, // Snapshot Price
-                    'discount_amount' => $itemDiscount,
-                    'tax_amount'      => $itemTax,
                     'subtotal'        => $itemSubtotal,
                     'received_quantity' => 0,
                 ];
@@ -51,28 +46,25 @@ class PurchaseOrderService
                 $subtotal += $itemSubtotal;
             }
 
-            $discount = $data['discount_amount'] ?? 0;
-            $tax = $data['tax_amount'] ?? 0;
-            $shipping = $data['shipping_cost'] ?? 0;
-            $grandTotal = $subtotal - $discount + $tax + $shipping;
+            // Ongkir baru diketahui saat barang tiba, jadi grand total awal = subtotal.
+            $grandTotal = $subtotal;
 
             // Create header
             $purchaseOrder = PurchaseOrder::create([
-                'po_number'              => $poNumber,
-                'supplier_id'            => $data['supplier_id'],
-                'warehouse_id'           => $data['warehouse_id'] ?? null,
-                'order_date'             => $orderDate,
-                'expected_delivery_date' => $data['expected_delivery_date'] ?? null,
-                'source'                 => $data['source'] ?? 'manual',
-                'status'                 => 'draft',
-                'payment_status'         => 'unpaid',
-                'subtotal'               => $subtotal,
-                'discount_amount'        => $discount,
-                'tax_amount'             => $tax,
-                'shipping_cost'          => $shipping,
-                'grand_total'            => $grandTotal,
-                'notes'                  => $data['notes'] ?? null,
-                'created_by'             => $userId,
+                'po_number'                 => $poNumber,
+                'supplier_id'               => $data['supplier_id'],
+                'warehouse_id'              => $data['warehouse_id'] ?? null,
+                'order_date'                => $orderDate,
+                'production_lead_time_days' => $data['production_lead_time_days'] ?? null,
+                'payment_terms'             => $data['payment_terms'] ?? 'cash_to_cash',
+                'is_free_shipping'          => (bool) ($data['is_free_shipping'] ?? false),
+                'status'                    => 'draft',
+                'payment_status'            => 'unpaid',
+                'subtotal'                  => $subtotal,
+                'shipping_cost'             => 0,
+                'grand_total'               => $grandTotal,
+                'notes'                     => $data['notes'] ?? null,
+                'created_by'                => $userId,
             ]);
 
             // Save items
@@ -102,20 +94,15 @@ class PurchaseOrderService
 
                 $price = $item['price'] ?? $product->purchase_price;
                 $quantity = $item['quantity'];
-                $itemDiscount = $item['discount_amount'] ?? 0;
-                $itemTax = $item['tax_amount'] ?? 0;
-
-                $itemSubtotal = ($price * $quantity) - $itemDiscount + $itemTax;
+                $itemSubtotal = $price * $quantity;
 
                 $itemsData[] = [
                     'product_id'      => $product->id,
                     'product_code'    => $product->sku,
                     'product_name'    => $product->name,
                     'quantity'        => $quantity,
-                    'unit'            => $product->unit ?? 'pcs',
+                    'unit'            => 'pcs',
                     'unit_price'      => $price,
-                    'discount_amount' => $itemDiscount,
-                    'tax_amount'      => $itemTax,
                     'subtotal'        => $itemSubtotal,
                     'received_quantity' => 0,
                 ];
@@ -123,23 +110,21 @@ class PurchaseOrderService
                 $subtotal += $itemSubtotal;
             }
 
-            $discount = $data['discount_amount'] ?? 0;
-            $tax = $data['tax_amount'] ?? 0;
-            $shipping = $data['shipping_cost'] ?? 0;
-            $grandTotal = $subtotal - $discount + $tax + $shipping;
+            $isFreeShipping = (bool) ($data['is_free_shipping'] ?? $po->is_free_shipping);
+            $shipping = $isFreeShipping ? 0 : (float) $po->shipping_cost;
+            $grandTotal = $subtotal + $shipping;
 
             $po->update([
-                'supplier_id'            => $data['supplier_id'],
-                'warehouse_id'           => $data['warehouse_id'] ?? null,
-                'order_date'             => $data['order_date'],
-                'expected_delivery_date' => $data['expected_delivery_date'] ?? null,
-                'source'                 => $data['source'] ?? 'manual',
-                'subtotal'               => $subtotal,
-                'discount_amount'        => $discount,
-                'tax_amount'             => $tax,
-                'shipping_cost'          => $shipping,
-                'grand_total'            => $grandTotal,
-                'notes'                  => $data['notes'] ?? null,
+                'supplier_id'               => $data['supplier_id'],
+                'warehouse_id'              => $data['warehouse_id'] ?? null,
+                'order_date'                => $data['order_date'],
+                'production_lead_time_days' => $data['production_lead_time_days'] ?? null,
+                'payment_terms'             => $data['payment_terms'] ?? $po->payment_terms,
+                'is_free_shipping'          => $isFreeShipping,
+                'subtotal'                  => $subtotal,
+                'shipping_cost'             => $shipping,
+                'grand_total'               => $grandTotal,
+                'notes'                     => $data['notes'] ?? null,
             ]);
 
             // Recreate items
@@ -266,7 +251,7 @@ class PurchaseOrderService
                 throw new InvalidArgumentException('Nominal Down Payment tidak boleh melebihi Grand Total PO.');
             }
 
-            $paymentTerms   = $dpData['payment_terms'] ?? 'cash_on_delivery';
+            $paymentTerms   = $dpData['payment_terms'] ?? $lockedPo->payment_terms ?? 'cash_to_cash';
             $cashBankAccountId = $dpData['cash_bank_account_id'] ?? null;
 
             // Deduct from Cash/Bank Account if provided
@@ -350,11 +335,8 @@ class PurchaseOrderService
                 ]);
             }
 
-            // Calculate validated grand total (apply original PO level discount/tax/shipping)
-            $validatedGrandTotal = $validatedSubtotal
-                - (float) $lockedPo->discount_amount
-                + (float) $lockedPo->tax_amount
-                + (float) $lockedPo->shipping_cost;
+            // Ongkir hanya ikut ditagih bila PO tidak free ongkir.
+            $validatedGrandTotal = $validatedSubtotal + (float) $lockedPo->shipping_cost;
 
             $finalBill = max(0, $validatedGrandTotal - (float) $lockedPo->dp_paid_amount);
 
@@ -393,6 +375,18 @@ class PurchaseOrderService
 
             if (!in_array($lockedPo->status, ['approved', 'ordered', 'partially_received'])) {
                 throw new InvalidArgumentException('Hanya Purchase Order berstatus Approved, Ordered, atau Partially Received yang dapat menerima barang.');
+            }
+
+            // Ongkir dibayar saat barang tiba ke kurir, jadi nominalnya diinput
+            // admin di form penerimaan — kecuali PO ini free ongkir.
+            if (! $lockedPo->is_free_shipping && array_key_exists('shipping_cost', $receivingData)) {
+                $shippingCost = (float) $receivingData['shipping_cost'];
+
+                if ($shippingCost < 0) {
+                    throw new InvalidArgumentException('Ongkir tidak boleh bernilai negatif.');
+                }
+
+                $lockedPo->update(['shipping_cost' => $shippingCost]);
             }
 
             $validatedSubtotal = 0.0;
@@ -478,11 +472,8 @@ class PurchaseOrderService
                 }
             }
 
-            // Calculate validated grand total
-            $validatedGrandTotal = $validatedSubtotal
-                - (float) $lockedPo->discount_amount
-                + (float) $lockedPo->tax_amount
-                + (float) $lockedPo->shipping_cost;
+            // Calculate validated grand total (produk + ongkir yang diinput admin)
+            $validatedGrandTotal = $validatedSubtotal + (float) $lockedPo->shipping_cost;
 
             $finalBill = max(0, $validatedGrandTotal - (float) $lockedPo->dp_paid_amount);
 

@@ -21,6 +21,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        \Illuminate\Support\Facades\Schema::defaultStringLength(191);
+
         // Dynamically register a Gate for every permission stored in the database.
         // Super Admin bypasses all checks via Gate::before.
         Gate::before(function ($user) {

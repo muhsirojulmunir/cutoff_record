@@ -463,4 +463,19 @@ class SalesOrderTest extends TestCase
         $this->assertEquals(100, $this->product1->fresh()->stock);
         $this->assertNull($so->fresh()->stock_deducted_at);
     }
+
+    /**
+     * Unduhan Excel mengambil datanya dari endpoint export — pastikan
+     * strukturnya lengkap (header SO + baris item) dan terkunci permission view.
+     */
+    public function test_export_returns_orders_with_their_items(): void
+    {
+        $so = $this->makePendingOrder(3);
+
+        $response = $this->actingAs($this->superAdmin)->getJson('/sales-orders/export');
+
+        $response->assertOk();
+        $response->assertJsonPath('orders.0.so_number', $so->so_number);
+        $response->assertJsonPath('items.0.quantity', 3);
+    }
 }

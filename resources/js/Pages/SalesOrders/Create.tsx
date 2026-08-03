@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import CurrencyInput from '@/Components/CurrencyInput';
@@ -15,7 +15,6 @@ interface Product {
   sku: string;
   name: string;
   selling_price: string;
-  unit: string | null;
 }
 
 interface SalesOrderCreateProps {
@@ -88,7 +87,7 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
       if (selectedProduct) {
         item.product_id = value;
         item.sku = selectedProduct.sku;
-        item.unit = selectedProduct.unit ?? 'pcs';
+        item.unit = 'pcs';
         item.price = Number(selectedProduct.selling_price);
       } else {
         item.product_id = '';
@@ -132,15 +131,15 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
         <div className="flex items-center gap-4">
           <Link
             href="/sales-orders"
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 border border-transparent hover:border-slate-700 transition-all"
+            className="p-2 rounded-xl text-gray-500 hover:text-gray-900 hover:bg-gray-100 border border-transparent hover:border-gray-300 transition-all"
           >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
             </svg>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-white">Buat Sales Order</h1>
-            <p className="text-slate-400 text-xs mt-0.5">Transaksi / Sales Orders / Tambah</p>
+            <h1 className="text-2xl font-bold text-gray-900">Buat Sales Order</h1>
+            <p className="text-gray-500 text-xs mt-0.5">Transaksi / Sales Orders / Tambah</p>
           </div>
         </div>
 
@@ -148,17 +147,17 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
           {/* Left Panel: Header Fields & Items */}
           <div className="lg:col-span-2 space-y-6">
             {/* Header Fields Card */}
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4">
-              <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">Informasi Utama</h2>
+            <div className="bg-white border border-gray-300 rounded-2xl p-6 space-y-4">
+              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Informasi Utama</h2>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Customer */}
                 <div className="space-y-1.5">
-                  <label className="block text-sm font-semibold text-slate-300">Customer</label>
+                  <label className="block text-sm font-semibold text-gray-700">Customer</label>
                   <select
                     value={data.customer_id}
                     onChange={(e) => setData('customer_id', e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all cursor-pointer"
+                    className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
                   >
                     <option value="">Pilih customer (Walk-in / Umum)...</option>
                     {customers.map((c) => (
@@ -170,14 +169,14 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
 
                 {/* Tanggal */}
                 <div className="space-y-1.5">
-                  <label className="block text-sm font-semibold text-slate-300">
+                  <label className="block text-sm font-semibold text-gray-700">
                     Tanggal Order <span className="text-rose-400">*</span>
                   </label>
                   <input
                     type="date"
                     value={data.order_date}
                     onChange={(e) => setData('order_date', e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all cursor-pointer"
+                    className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
                     required
                   />
                   {errors.order_date && <p className="text-rose-400 text-xs mt-1">{errors.order_date}</p>}
@@ -185,13 +184,13 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
 
                 {/* Sumber */}
                 <div className="space-y-1.5">
-                  <label className="block text-sm font-semibold text-slate-300">
+                  <label className="block text-sm font-semibold text-gray-700">
                     Sumber Order <span className="text-rose-400">*</span>
                   </label>
                   <select
                     value={data.source}
                     onChange={(e) => setData('source', e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all cursor-pointer"
+                    className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
                     required
                   >
                     <option value="manual">Manual</option>
@@ -204,13 +203,13 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
 
                 {/* Channel */}
                 <div className="space-y-1.5">
-                  <label className="block text-sm font-semibold text-slate-300">
+                  <label className="block text-sm font-semibold text-gray-700">
                     Sales Channel <span className="text-rose-400">*</span>
                   </label>
                   <select
                     value={data.sales_channel}
                     onChange={(e) => setData('sales_channel', e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all cursor-pointer"
+                    className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
                     required
                   >
                     <option value="manual">Manual</option>
@@ -225,12 +224,12 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
 
               {/* Notes */}
               <div className="space-y-1.5 pt-2">
-                <label className="block text-sm font-semibold text-slate-300">Catatan</label>
+                <label className="block text-sm font-semibold text-gray-700">Catatan</label>
                 <textarea
                   value={data.notes}
                   onChange={(e) => setData('notes', e.target.value)}
                   rows={2}
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all resize-none"
+                  className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all resize-none"
                   placeholder="Masukkan instruksi pengiriman atau catatan penting..."
                 />
                 {errors.notes && <p className="text-rose-400 text-xs mt-1">{errors.notes}</p>}
@@ -238,13 +237,13 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
             </div>
 
             {/* Dynamic Items Table Card */}
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4">
+            <div className="bg-white border border-gray-300 rounded-2xl p-6 space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Item Transaksi</h2>
+                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Item Transaksi</h2>
                 <button
                   type="button"
                   onClick={handleAddItem}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600/10 hover:bg-violet-600/20 active:scale-95 text-violet-400 border border-violet-500/20 text-xs font-semibold rounded-lg transition-all"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-600/10 hover:bg-teal-600/20 active:scale-95 text-teal-400 border border-teal-500/20 text-xs font-semibold rounded-lg transition-all"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -256,12 +255,12 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
               {errors.items && <p className="text-rose-400 text-xs">{errors.items}</p>}
 
               {localItems.length === 0 ? (
-                <div className="text-center py-8 border-2 border-dashed border-slate-800 rounded-xl">
-                  <p className="text-slate-500 text-sm">Belum ada item yang ditambahkan.</p>
+                <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-xl">
+                  <p className="text-gray-400 text-sm">Belum ada item yang ditambahkan.</p>
                   <button
                     type="button"
                     onClick={handleAddItem}
-                    className="text-xs text-violet-400 font-semibold hover:underline mt-2 inline-block"
+                    className="text-xs text-teal-400 font-semibold hover:underline mt-2 inline-block"
                   >
                     Tambah item pertama Anda
                   </button>
@@ -269,15 +268,15 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
               ) : (
                 <div className="space-y-4">
                   {localItems.map((item, idx) => (
-                    <div key={idx} className="p-4 bg-slate-900/50 border border-slate-800 rounded-xl space-y-4">
+                    <div key={idx} className="p-4 bg-gray-50/50 border border-gray-300 rounded-xl space-y-4">
                       {/* Product Selector Row */}
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div className="md:col-span-2 space-y-1">
-                          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">Produk</label>
+                          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">Produk</label>
                           <select
                             value={item.product_id}
                             onChange={(e) => handleItemChange(idx, 'product_id', e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 text-xs focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all cursor-pointer"
+                            className="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
                           >
                             <option value="">Pilih Produk...</option>
                             {products.map((p) => (
@@ -289,10 +288,10 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
                           )}
                         </div>
                         <div className="space-y-1">
-                          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">SKU / Unit</label>
-                          <div className="px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-400 text-xs min-h-[34px] flex items-center justify-between">
+                          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">SKU / Unit</label>
+                          <div className="px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-500 text-xs min-h-[34px] flex items-center justify-between">
                             <span>{item.sku}</span>
-                            <span className="text-[10px] uppercase font-bold text-slate-600 bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded">
+                            <span className="text-[10px] uppercase font-bold text-gray-400 bg-gray-50 border border-gray-300 px-1.5 py-0.5 rounded">
                               {item.unit}
                             </span>
                           </div>
@@ -302,12 +301,12 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
                       {/* Calculations Row */}
                       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                         <div className="space-y-1">
-                          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">Kuantitas</label>
+                          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">Kuantitas</label>
                           <CurrencyInput
                             hidePrefix
                             value={item.quantity}
                             onChange={(v) => handleItemChange(idx, 'quantity', v)}
-                            className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 text-xs focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                            className="w-full px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
                             min="1"
                             required
                           />
@@ -317,12 +316,12 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
                         </div>
 
                         <div className="space-y-1">
-                          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">Harga Satuan</label>
+                          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">Harga Satuan</label>
                           <CurrencyInput
                             hidePrefix
                             value={item.price}
                             onChange={(v) => handleItemChange(idx, 'price', v)}
-                            className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 text-xs focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                            className="w-full px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
                             min="0"
                             required
                           />
@@ -332,38 +331,38 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
                         </div>
 
                         <div className="space-y-1">
-                          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">Diskon Item</label>
+                          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">Diskon Item</label>
                           <CurrencyInput
                             hidePrefix
                             value={item.discount_amount}
                             onChange={(v) => handleItemChange(idx, 'discount_amount', v)}
-                            className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 text-xs focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                            className="w-full px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
                             min="0"
                           />
                         </div>
 
                         <div className="space-y-1">
-                          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">Pajak Item</label>
+                          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">Pajak Item</label>
                           <CurrencyInput
                             hidePrefix
                             value={item.tax_amount}
                             onChange={(v) => handleItemChange(idx, 'tax_amount', v)}
-                            className="w-full px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 text-xs focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                            className="w-full px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
                             min="0"
                           />
                         </div>
 
                         <div className="col-span-2 md:col-span-2 flex items-end gap-2">
                           <div className="flex-1 space-y-1">
-                            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">Subtotal</label>
-                            <div className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-emerald-400 font-bold font-mono text-xs min-h-[32px] flex items-center justify-end whitespace-nowrap overflow-x-auto">
+                            <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">Subtotal</label>
+                            <div className="px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-300 text-emerald-400 font-bold font-mono text-xs min-h-[32px] flex items-center justify-end whitespace-nowrap overflow-x-auto">
                               Rp {(item.subtotal || 0).toLocaleString('id-ID')}
                             </div>
                           </div>
                           <button
                             type="button"
                             onClick={() => handleRemoveItem(idx)}
-                            className="p-2 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/10 transition-all shrink-0"
+                            className="p-2 rounded-lg text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/10 transition-all shrink-0"
                             title="Hapus baris"
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
@@ -381,26 +380,26 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
 
           {/* Right Panel: Summary & Submit */}
           <div className="space-y-6">
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4">
-              <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">Ringkasan Biaya</h2>
+            <div className="bg-white border border-gray-300 rounded-2xl p-6 space-y-4">
+              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Ringkasan Biaya</h2>
 
-              <div className="space-y-3 divide-y divide-slate-800/60 text-sm">
+              <div className="space-y-3 divide-y divide-gray-200/60 text-sm">
                 {/* Subtotal */}
                 <div className="flex justify-between items-center pb-3">
-                  <span className="text-slate-500">Subtotal Item</span>
-                  <span className="font-semibold text-slate-300">Rp {subtotal.toLocaleString('id-ID')}</span>
+                  <span className="text-gray-400">Subtotal Item</span>
+                  <span className="font-semibold text-gray-700">Rp {subtotal.toLocaleString('id-ID')}</span>
                 </div>
 
                 {/* Diskon */}
                 <div className="pt-3 space-y-1.5">
                   <div className="flex justify-between items-center">
-                    <label className="text-slate-500">Diskon Transaksi (Header)</label>
+                    <label className="text-gray-400">Diskon Transaksi (Header)</label>
                   </div>
                   <CurrencyInput
                     hidePrefix
                     value={data.discount_amount}
                     onChange={(v) => setData('discount_amount', v)}
-                    className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 text-xs focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                    className="w-full px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
                     min="0"
                   />
                   {errors.discount_amount && <p className="text-rose-400 text-xs">{errors.discount_amount}</p>}
@@ -409,13 +408,13 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
                 {/* Pajak */}
                 <div className="pt-3 space-y-1.5">
                   <div className="flex justify-between items-center">
-                    <label className="text-slate-500">Pajak Transaksi (Header)</label>
+                    <label className="text-gray-400">Pajak Transaksi (Header)</label>
                   </div>
                   <CurrencyInput
                     hidePrefix
                     value={data.tax_amount}
                     onChange={(v) => setData('tax_amount', v)}
-                    className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 text-xs focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                    className="w-full px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
                     min="0"
                   />
                   {errors.tax_amount && <p className="text-rose-400 text-xs">{errors.tax_amount}</p>}
@@ -424,13 +423,13 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
                 {/* Ongkir */}
                 <div className="pt-3 space-y-1.5">
                   <div className="flex justify-between items-center">
-                    <label className="text-slate-500">Biaya Pengiriman</label>
+                    <label className="text-gray-400">Biaya Pengiriman</label>
                   </div>
                   <CurrencyInput
                     hidePrefix
                     value={data.shipping_cost}
                     onChange={(v) => setData('shipping_cost', v)}
-                    className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 text-xs focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                    className="w-full px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
                     min="0"
                   />
                   {errors.shipping_cost && <p className="text-rose-400 text-xs">{errors.shipping_cost}</p>}
@@ -438,7 +437,7 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
 
                 {/* Grand Total */}
                 <div className="flex justify-between items-center pt-4">
-                  <span className="text-base font-bold text-white">Grand Total</span>
+                  <span className="text-base font-bold text-gray-900">Grand Total</span>
                   <span className="text-base font-extrabold text-emerald-400">Rp {grandTotal.toLocaleString('id-ID')}</span>
                 </div>
               </div>
@@ -450,17 +449,17 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
               )}
 
               {/* Submit Buttons */}
-              <div className="flex gap-3 pt-4 border-t border-slate-800/80">
+              <div className="flex gap-3 pt-4 border-t border-gray-300/80">
                 <Link
                   href="/sales-orders"
-                  className="flex-1 text-center py-2.5 bg-slate-800 hover:bg-slate-800 text-slate-300 rounded-xl text-sm font-semibold transition-all border border-slate-800"
+                  className="flex-1 text-center py-2.5 bg-white hover:bg-teal-50 text-teal-700 rounded-xl text-sm font-semibold border border-teal-300 transition-all border border-gray-300"
                 >
                   Batal
                 </Link>
                 <button
                   type="submit"
                   disabled={processing || localItems.length === 0}
-                  className="flex-2 px-6 py-2.5 bg-violet-600 hover:bg-violet-500 active:scale-95 text-white font-semibold rounded-xl text-sm shadow-md shadow-violet-900/20 transition-all disabled:opacity-50"
+                  className="flex-2 px-6 py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 active:scale-95 text-white font-semibold rounded-xl text-sm shadow-lg shadow-teal-200/40 transition-all disabled:opacity-50"
                 >
                   {processing ? 'Menyimpan...' : 'Simpan SO'}
                 </button>

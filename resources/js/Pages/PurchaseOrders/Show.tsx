@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import CurrencyInput from '@/Components/CurrencyInput';
@@ -19,8 +19,6 @@ interface DBOrderItem {
   quantity: number;
   unit: string;
   unit_price: string;
-  discount_amount: string;
-  tax_amount: string;
   subtotal: string;
   received_quantity: number;
   accepted_quantity: number;
@@ -67,13 +65,11 @@ interface DBPurchaseOrder {
   supplier_id: number;
   warehouse_id: number | null;
   order_date: string;
-  expected_delivery_date: string | null;
-  source: string;
+  production_lead_time_days: number | null;
+  is_free_shipping: boolean;
   status: string;
   payment_status: 'unpaid' | 'partially_paid' | 'paid';
   subtotal: string;
-  discount_amount: string;
-  tax_amount: string;
   shipping_cost: string;
   grand_total: string;
   notes: string | null;
@@ -113,12 +109,12 @@ interface PurchaseOrderShowProps {
 }
 
 const statusBadgeColor: Record<string, string> = {
-  draft:                     'bg-slate-800 border-slate-700 text-slate-400',
+  draft:                     'bg-gray-100 border-gray-300 text-gray-500',
   pending_leader_approval:   'bg-amber-500/10 border-amber-500/20 text-amber-400',
   pending_finance_approval:  'bg-orange-500/10 border-orange-500/20 text-orange-400',
   approved:                  'bg-blue-500/10 border-blue-500/20 text-blue-400',
-  ordered:                   'bg-violet-500/10 border-violet-500/20 text-violet-400',
-  partially_received:        'bg-indigo-500/10 border-indigo-500/20 text-indigo-400',
+  ordered:                   'bg-teal-500/10 border-teal-500/20 text-teal-400',
+  partially_received:        'bg-cyan-500/10 border-cyan-500/20 text-cyan-400',
   received:                  'bg-teal-500/10 border-teal-500/20 text-teal-400',
   finance_validated:         'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
   rejected:                  'bg-rose-500/10 border-rose-500/20 text-rose-400',
@@ -139,9 +135,8 @@ const statusLabel: Record<string, string> = {
 };
 
 const paymentTermsLabel: Record<string, string> = {
-  cash_on_delivery: 'Tunai / Hari H',
-  tempo_1_week:     'Tempo 1 Minggu (7 Hari)',
-  tempo_2_weeks:    'Tempo 2 Minggu (14 Hari)',
+  cash_to_cash: 'Cash to Cash (Langsung Bayar)',
+  tempo_7_days: 'Termin 7 Hari',
 };
 
 const accountTypeIcon: Record<string, string> = {
@@ -176,12 +171,13 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
   const [receiveModalOpen, setReceiveModalOpen] = useState(false);
   const [receiveQtys, setReceiveQtys] = useState<Record<number, number>>({});
   const [receiveError, setReceiveError] = useState<string | null>(null);
+  const [receiveShippingCost, setReceiveShippingCost] = useState<number>(Number(purchaseOrder.shipping_cost) || 0);
 
   // ── DP Modal ──────────────────────────────────────────────
   const [dpModalOpen, setDpModalOpen] = useState(false);
   const [dpAmount, setDpAmount] = useState('');
   const [dpAccountId, setDpAccountId] = useState<number | null>(null);
-  const [dpPaymentTerms, setDpPaymentTerms] = useState('cash_on_delivery');
+  const [dpPaymentTerms, setDpPaymentTerms] = useState(purchaseOrder.payment_terms ?? 'cash_to_cash');
   const [dpError, setDpError] = useState<string | null>(null);
 
   // ── Finance Validation Modal ──────────────────────────────
@@ -297,7 +293,10 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
     }
 
     setActionLoading(true);
-    router.post(`/purchase-orders/${purchaseOrder.id}/receive`, { items: itemsPayload }, {
+    router.post(`/purchase-orders/${purchaseOrder.id}/receive`, {
+      items: itemsPayload,
+      shipping_cost: purchaseOrder.is_free_shipping ? 0 : receiveShippingCost,
+    }, {
       onSuccess: () => setReceiveModalOpen(false),
       onError: (errs) => setReceiveError(Object.values(errs)[0] as string),
       onFinish: () => setActionLoading(false),
@@ -308,7 +307,7 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
   function handleOpenDpModal() {
     setDpAmount('');
     setDpAccountId(cashBankAccounts[0]?.id ?? null);
-    setDpPaymentTerms('cash_on_delivery');
+    setDpPaymentTerms(purchaseOrder.payment_terms ?? 'cash_to_cash');
     setDpError(null);
     setDpModalOpen(true);
   }
@@ -386,7 +385,7 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
         <div className="flex items-center gap-4">
           <Link
             href="/purchase-orders"
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 border border-transparent hover:border-slate-700 transition-all"
+            className="p-2 rounded-xl text-gray-500 hover:text-gray-900 hover:bg-gray-100 border border-transparent hover:border-gray-300 transition-all"
           >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
@@ -394,8 +393,8 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
           </Link>
           <div>
             <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="text-2xl font-bold text-white tracking-tight">{purchaseOrder.po_number}</h1>
-              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusBadgeColor[purchaseOrder.status] ?? 'bg-slate-800 text-slate-400 border-slate-700'}`}>
+              <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{purchaseOrder.po_number}</h1>
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusBadgeColor[purchaseOrder.status] ?? 'bg-gray-100 text-gray-500 border-gray-300'}`}>
                 {statusLabel[purchaseOrder.status] ?? purchaseOrder.status}
               </span>
               {isValidated && (
@@ -404,7 +403,7 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                 </span>
               )}
             </div>
-            <p className="text-sm text-slate-400 mt-0.5">
+            <p className="text-sm text-gray-500 mt-0.5">
               Dibuat {new Date(purchaseOrder.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })} oleh {purchaseOrder.creator?.name}
             </p>
           </div>
@@ -414,39 +413,39 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
         <div className="flex flex-wrap gap-2">
           {/* DRAFT */}
           {purchaseOrder.status === 'draft' && (<>
-            {canEdit && <Link href={`/purchase-orders/${purchaseOrder.id}/edit`} className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-800 hover:border-slate-700 rounded-xl text-sm font-semibold transition-all">Edit PO</Link>}
-            {canDelete && <button type="button" onClick={() => setDeleteModalOpen(true)} className="px-4 py-2 bg-slate-900 hover:bg-rose-950/20 text-rose-500 border border-slate-800 hover:border-rose-900/50 rounded-xl text-sm font-semibold transition-all">Hapus PO</button>}
-            {canEdit && <button type="button" onClick={() => handleAction(`/purchase-orders/${purchaseOrder.id}/submit-approval`)} disabled={actionLoading} className="px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-950/40 transition-all disabled:opacity-50">Ajukan Persetujuan</button>}
+            {canEdit && <Link href={`/purchase-orders/${purchaseOrder.id}/edit`} className="px-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-800 border border-gray-300 hover:border-gray-300 rounded-xl text-sm font-semibold transition-all">Edit PO</Link>}
+            {canDelete && <button type="button" onClick={() => setDeleteModalOpen(true)} className="px-4 py-2 bg-gray-50 hover:bg-rose-50 text-rose-500 border border-gray-300 hover:border-rose-900/50 rounded-xl text-sm font-semibold transition-all">Hapus PO</button>}
+            {canEdit && <button type="button" onClick={() => handleAction(`/purchase-orders/${purchaseOrder.id}/submit-approval`)} disabled={actionLoading} className="px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-teal-200/40 transition-all disabled:opacity-50">Ajukan Persetujuan</button>}
           </>)}
 
           {/* PENDING LEADER */}
           {purchaseOrder.status === 'pending_leader_approval' && (<>
-            {canLeaderApprove && <button type="button" onClick={() => handleAction(`/purchase-orders/${purchaseOrder.id}/leader-approve`)} disabled={actionLoading} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-emerald-950/40 transition-all disabled:opacity-50">✅ Approve (Leader)</button>}
-            {(canLeaderApprove || canFinanceApprove) && <button type="button" onClick={() => setRejectModalOpen(true)} disabled={actionLoading} className="px-4 py-2 bg-slate-900 hover:bg-rose-950/20 text-rose-400 border border-slate-800 hover:border-rose-900/50 rounded-xl text-sm font-semibold transition-all disabled:opacity-50">❌ Tolak</button>}
+            {canLeaderApprove && <button type="button" onClick={() => handleAction(`/purchase-orders/${purchaseOrder.id}/leader-approve`)} disabled={actionLoading} className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-emerald-200/40 transition-all disabled:opacity-50">✅ Approve (Leader)</button>}
+            {(canLeaderApprove || canFinanceApprove) && <button type="button" onClick={() => setRejectModalOpen(true)} disabled={actionLoading} className="px-4 py-2 bg-gray-50 hover:bg-rose-50 text-rose-400 border border-gray-300 hover:border-rose-900/50 rounded-xl text-sm font-semibold transition-all disabled:opacity-50">❌ Tolak</button>}
           </>)}
 
           {/* PENDING FINANCE */}
           {purchaseOrder.status === 'pending_finance_approval' && (<>
-            {canFinanceApprove && <button type="button" onClick={() => handleAction(`/purchase-orders/${purchaseOrder.id}/finance-approve`)} disabled={actionLoading} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-emerald-950/40 transition-all disabled:opacity-50">✅ Approve (Finance)</button>}
-            {(canLeaderApprove || canFinanceApprove) && <button type="button" onClick={() => setRejectModalOpen(true)} disabled={actionLoading} className="px-4 py-2 bg-slate-900 hover:bg-rose-950/20 text-rose-400 border border-slate-800 hover:border-rose-900/50 rounded-xl text-sm font-semibold transition-all disabled:opacity-50">❌ Tolak</button>}
+            {canFinanceApprove && <button type="button" onClick={() => handleAction(`/purchase-orders/${purchaseOrder.id}/finance-approve`)} disabled={actionLoading} className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-emerald-200/40 transition-all disabled:opacity-50">✅ Approve (Finance)</button>}
+            {(canLeaderApprove || canFinanceApprove) && <button type="button" onClick={() => setRejectModalOpen(true)} disabled={actionLoading} className="px-4 py-2 bg-gray-50 hover:bg-rose-50 text-rose-400 border border-gray-300 hover:border-rose-900/50 rounded-xl text-sm font-semibold transition-all disabled:opacity-50">❌ Tolak</button>}
           </>)}
 
           {/* APPROVED — Finance can pay DP & Admin can mark ordered / receive */}
           {purchaseOrder.status === 'approved' && (<>
-            {canPayDp && <button type="button" onClick={handleOpenDpModal} className="px-4 py-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-orange-950/40 transition-all">💳 Bayar Down Payment</button>}
-            {(canEdit || canReceive) && <button type="button" onClick={() => handleAction(`/purchase-orders/${purchaseOrder.id}/mark-ordered`)} disabled={actionLoading} className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-violet-950/40 transition-all disabled:opacity-50">📦 Tandai Dipesan</button>}
-            {(canReceive || canEdit) && <button type="button" onClick={handleOpenReceiveModal} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-950/40 transition-all">📥 Terima Barang</button>}
-            {(canEdit || canFinanceApprove) && <button type="button" onClick={() => handleAction(`/purchase-orders/${purchaseOrder.id}/cancel`)} disabled={actionLoading} className="px-4 py-2 bg-slate-900 hover:bg-rose-950/20 text-rose-500 border border-slate-800 hover:border-rose-900/50 rounded-xl text-sm font-semibold transition-all disabled:opacity-50">Batalkan</button>}
+            {canPayDp && <button type="button" onClick={handleOpenDpModal} className="px-4 py-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-gray-900 rounded-xl text-sm font-semibold shadow-lg shadow-orange-950/40 transition-all">💳 Bayar Down Payment</button>}
+            {(canEdit || canReceive) && <button type="button" onClick={() => handleAction(`/purchase-orders/${purchaseOrder.id}/mark-ordered`)} disabled={actionLoading} className="px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-teal-200/40 transition-all disabled:opacity-50">📦 Tandai Dipesan</button>}
+            {(canReceive || canEdit) && <button type="button" onClick={handleOpenReceiveModal} className="px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-teal-200/40 transition-all">📥 Terima Barang</button>}
+            {(canEdit || canFinanceApprove) && <button type="button" onClick={() => handleAction(`/purchase-orders/${purchaseOrder.id}/cancel`)} disabled={actionLoading} className="px-4 py-2 bg-gray-50 hover:bg-rose-50 text-rose-500 border border-gray-300 hover:border-rose-900/50 rounded-xl text-sm font-semibold transition-all disabled:opacity-50">Batalkan</button>}
           </>)}
 
           {/* ORDERED / PARTIALLY RECEIVED */}
           {(purchaseOrder.status === 'ordered' || purchaseOrder.status === 'partially_received') && (<>
-            {(canReceive || canEdit) && <button type="button" onClick={handleOpenReceiveModal} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-950/40 transition-all">📥 Terima Barang</button>}
+            {(canReceive || canEdit) && <button type="button" onClick={handleOpenReceiveModal} className="px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-teal-200/40 transition-all">📥 Terima Barang</button>}
           </>)}
 
           {/* RECEIVED — Finance validates */}
           {(purchaseOrder.status === 'received' || purchaseOrder.status === 'partially_received') && !isValidated && (<>
-            {canValidate && <button type="button" onClick={handleOpenValidateModal} className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-emerald-950/40 transition-all">🔍 Validasi Penerimaan (Finance)</button>}
+            {canValidate && <button type="button" onClick={handleOpenValidateModal} className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-gray-900 rounded-xl text-sm font-semibold shadow-lg shadow-emerald-950/40 transition-all">🔍 Validasi Penerimaan (Finance)</button>}
           </>)}
         </div>
       </div>
@@ -458,48 +457,48 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
       {/* ── Info Cards ──────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         {/* Supplier */}
-        <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-5 shadow-xl">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3.5">Supplier / Pabrik</h3>
+        <div className="bg-white border border-gray-300/80 rounded-2xl p-5 shadow-xl">
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3.5">Supplier / Pabrik</h3>
           {purchaseOrder.supplier ? (
             <div className="space-y-1.5">
-              <h4 className="text-base font-bold text-white">{purchaseOrder.supplier.name}</h4>
-              <p className="text-sm text-slate-400">Kode: {purchaseOrder.supplier.supplier_code}</p>
-              {purchaseOrder.supplier.phone && <p className="text-sm text-slate-400">Tlp: {purchaseOrder.supplier.phone}</p>}
-              {purchaseOrder.supplier.address && <p className="text-sm text-slate-400 line-clamp-2">{purchaseOrder.supplier.address}</p>}
+              <h4 className="text-base font-bold text-gray-900">{purchaseOrder.supplier.name}</h4>
+              <p className="text-sm text-gray-500">Kode: {purchaseOrder.supplier.supplier_code}</p>
+              {purchaseOrder.supplier.phone && <p className="text-sm text-gray-500">Tlp: {purchaseOrder.supplier.phone}</p>}
+              {purchaseOrder.supplier.address && <p className="text-sm text-gray-500 line-clamp-2">{purchaseOrder.supplier.address}</p>}
             </div>
-          ) : <p className="text-sm text-slate-500">—</p>}
+          ) : <p className="text-sm text-gray-400">—</p>}
         </div>
 
         {/* Warehouse */}
-        <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-5 shadow-xl">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3.5">Gudang Penerimaan</h3>
+        <div className="bg-white border border-gray-300/80 rounded-2xl p-5 shadow-xl">
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3.5">Gudang Penerimaan</h3>
           {purchaseOrder.warehouse ? (
             <div className="space-y-1.5">
-              <h4 className="text-base font-bold text-white">{purchaseOrder.warehouse.name}</h4>
-              <p className="text-sm text-slate-400">Kode: {purchaseOrder.warehouse.code}</p>
-              {purchaseOrder.warehouse.location && <p className="text-sm text-slate-400">{purchaseOrder.warehouse.location}</p>}
+              <h4 className="text-base font-bold text-gray-900">{purchaseOrder.warehouse.name}</h4>
+              <p className="text-sm text-gray-500">Kode: {purchaseOrder.warehouse.code}</p>
+              {purchaseOrder.warehouse.location && <p className="text-sm text-gray-500">{purchaseOrder.warehouse.location}</p>}
             </div>
-          ) : <p className="text-sm text-slate-500">Gudang tidak ditentukan</p>}
+          ) : <p className="text-sm text-gray-400">Gudang tidak ditentukan</p>}
         </div>
 
         {/* Order Detail */}
-        <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-5 shadow-xl">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3.5">Detail Order</h3>
+        <div className="bg-white border border-gray-300/80 rounded-2xl p-5 shadow-xl">
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3.5">Detail Order</h3>
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
-              <p className="text-slate-500 font-semibold text-xs">Tgl Order</p>
-              <p className="text-slate-200 font-medium mt-0.5">{new Date(purchaseOrder.order_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+              <p className="text-gray-400 font-semibold text-xs">Tgl Order</p>
+              <p className="text-gray-800 font-medium mt-0.5">{new Date(purchaseOrder.order_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
             </div>
             <div>
-              <p className="text-slate-500 font-semibold text-xs">Estimasi Kirim</p>
-              <p className="text-slate-200 font-medium mt-0.5">{purchaseOrder.expected_delivery_date ? new Date(purchaseOrder.expected_delivery_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</p>
+              <p className="text-gray-400 font-semibold text-xs">Estimasi Pengerjaan</p>
+              <p className="text-gray-800 font-medium mt-0.5">{purchaseOrder.production_lead_time_days ? `${purchaseOrder.production_lead_time_days} hari` : '—'}</p>
             </div>
             <div>
-              <p className="text-slate-500 font-semibold text-xs">Syarat Bayar</p>
-              <p className="text-slate-200 font-medium mt-0.5">{paymentTermsLabel[purchaseOrder.payment_terms ?? ''] ?? 'Belum ditentukan'}</p>
+              <p className="text-gray-400 font-semibold text-xs">Syarat Bayar</p>
+              <p className="text-gray-800 font-medium mt-0.5">{paymentTermsLabel[purchaseOrder.payment_terms ?? ''] ?? '—'}</p>
             </div>
             <div>
-              <p className="text-slate-500 font-semibold text-xs">Status Bayar</p>
+              <p className="text-gray-400 font-semibold text-xs">Status Bayar</p>
               <p className="mt-0.5">
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold border ${
                   purchaseOrder.payment_status === 'paid' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
@@ -518,15 +517,15 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Items Table */}
         <div className="lg:col-span-2 space-y-6">
-          <div className="bg-slate-950 border border-slate-800/80 rounded-2xl overflow-hidden shadow-xl">
-            <div className="px-6 py-4 border-b border-slate-900 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider">Rincian Barang</h3>
+          <div className="bg-white border border-gray-300/80 rounded-2xl overflow-hidden shadow-xl">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Rincian Barang</h3>
               {isValidated && <span className="text-xs text-emerald-400 font-semibold">✅ Sudah divalidasi Finance</span>}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
-                  <tr className="border-b border-slate-900 text-slate-400 text-[10px] font-bold uppercase tracking-wider bg-slate-950/60">
+                  <tr className="border-b border-gray-200 text-gray-500 text-[10px] font-bold uppercase tracking-wider bg-gray-50">
                     <th className="py-3 px-5">Produk</th>
                     <th className="py-3 px-4 text-center whitespace-nowrap">Dipesan</th>
                     <th className="py-3 px-4 text-center whitespace-nowrap">Diterima</th>
@@ -542,27 +541,27 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                     {isValidated && <th className="py-3 px-4 text-right whitespace-nowrap text-emerald-400">Total Tagihan</th>}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-900/60 text-sm text-slate-300">
+                <tbody className="divide-y divide-gray-100/60 text-sm text-gray-700">
                   {purchaseOrder.items.map((item) => {
                     const remaining = item.quantity - item.received_quantity;
                     const actionColor = item.action_taken === 'rejected' ? 'bg-rose-500/10 text-rose-400' : item.action_taken === 'revised' ? 'bg-amber-500/10 text-amber-400' : 'bg-emerald-500/10 text-emerald-400';
                     const actionText = item.action_taken === 'rejected' ? '❌ Ditolak' : item.action_taken === 'revised' ? '✏️ Direvisi' : '✅ Diterima';
                     return (
-                      <tr key={item.id} className="hover:bg-slate-900/30 transition-colors">
+                      <tr key={item.id} className="hover:bg-teal-50/60 transition-colors">
                         <td className="py-3.5 px-5">
-                          <span className="font-semibold text-slate-200 block">{item.product_name}</span>
-                          <span className="text-[10px] text-slate-500 block">{item.product_code}</span>
+                          <span className="font-semibold text-gray-800 block">{item.product_name}</span>
+                          <span className="text-[10px] text-gray-400 block">{item.product_code}</span>
                           {item.rejected_reason && <span className="text-[10px] text-rose-400 mt-0.5 block italic">"{item.rejected_reason}"</span>}
                         </td>
-                        <td className="py-3.5 px-4 text-center font-semibold text-slate-200 whitespace-nowrap">
-                          {item.quantity} <span className="text-[10px] text-slate-500">{item.unit}</span>
+                        <td className="py-3.5 px-4 text-center font-semibold text-gray-800 whitespace-nowrap">
+                          {item.quantity} <span className="text-[10px] text-gray-400">{item.unit}</span>
                         </td>
                         <td className="py-3.5 px-4 text-center">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${item.received_quantity === 0 ? 'bg-slate-800 text-slate-400' : item.received_quantity === item.quantity ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${item.received_quantity === 0 ? 'bg-gray-100 text-gray-500' : item.received_quantity === item.quantity ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
                             {item.received_quantity}
                           </span>
                         </td>
-                        <td className="py-3.5 px-4 text-center font-bold text-slate-400">{remaining > 0 ? remaining : 0}</td>
+                        <td className="py-3.5 px-4 text-center font-bold text-gray-500">{remaining > 0 ? remaining : 0}</td>
                         {isValidated && <>
                           <td className="py-3.5 px-4 text-center font-bold text-emerald-400">{item.accepted_quantity}</td>
                           <td className="py-3.5 px-4 text-center font-bold text-rose-400">{item.rejected_quantity > 0 ? item.rejected_quantity : '—'}</td>
@@ -572,7 +571,7 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                         </>}
                         <td className="py-3.5 px-4 text-right font-medium whitespace-nowrap">Rp {fmt(item.unit_price)}</td>
                         {isValidated && <td className="py-3.5 px-4 text-right font-medium text-amber-400 whitespace-nowrap">Rp {fmt(item.validated_unit_price)}</td>}
-                        <td className="py-3.5 px-4 text-right font-bold text-white whitespace-nowrap">Rp {fmt(item.subtotal)}</td>
+                        <td className="py-3.5 px-4 text-right font-bold text-gray-900 whitespace-nowrap">Rp {fmt(item.subtotal)}</td>
                         {isValidated && <td className="py-3.5 px-4 text-right font-bold text-emerald-400 whitespace-nowrap">Rp {fmt(item.validated_total_price)}</td>}
                       </tr>
                     );
@@ -586,15 +585,24 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
         {/* Right Side: Summary + DP Info + Bill */}
         <div className="space-y-5">
           {/* Cost Summary */}
-          <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-5 shadow-xl space-y-4">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Ringkasan Biaya PO</h3>
+          <div className="bg-white border border-gray-300/80 rounded-2xl p-5 shadow-xl space-y-4">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Ringkasan Biaya PO</h3>
             <div className="space-y-3 text-sm">
-              <div className="flex justify-between text-slate-400"><span>Subtotal</span><span className="font-semibold text-slate-200">Rp {fmt(purchaseOrder.subtotal)}</span></div>
-              <div className="flex justify-between text-slate-400"><span>Diskon PO</span><span className="font-semibold text-rose-400">{Number(purchaseOrder.discount_amount) > 0 ? `-Rp ${fmt(purchaseOrder.discount_amount)}` : 'Rp 0'}</span></div>
-              <div className="flex justify-between text-slate-400"><span>Pajak PO</span><span className="font-semibold text-emerald-400">{Number(purchaseOrder.tax_amount) > 0 ? `+Rp ${fmt(purchaseOrder.tax_amount)}` : 'Rp 0'}</span></div>
-              <div className="flex justify-between text-slate-400"><span>Ongkir</span><span className="font-semibold text-slate-200">Rp {fmt(purchaseOrder.shipping_cost)}</span></div>
-              <div className="border-t border-slate-900 pt-3 flex justify-between items-center">
-                <span className="text-base font-bold text-white">Grand Total</span>
+              <div className="flex justify-between text-gray-500"><span>Subtotal</span><span className="font-semibold text-gray-800">Rp {fmt(purchaseOrder.subtotal)}</span></div>
+              <div className="flex justify-between text-gray-500">
+                <span>Ongkir</span>
+                {purchaseOrder.is_free_shipping ? (
+                  <span className="font-semibold text-emerald-500">Free Ongkir</span>
+                ) : (
+                  <span className="font-semibold text-gray-800">
+                    {Number(purchaseOrder.shipping_cost) > 0
+                      ? `Rp ${fmt(purchaseOrder.shipping_cost)}`
+                      : 'Diisi saat barang datang'}
+                  </span>
+                )}
+              </div>
+              <div className="border-t border-gray-200 pt-3 flex justify-between items-center">
+                <span className="text-base font-bold text-gray-900">Grand Total</span>
                 <span className="text-base font-extrabold text-emerald-400">Rp {fmt(purchaseOrder.grand_total)}</span>
               </div>
             </div>
@@ -605,9 +613,9 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
             <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-5 shadow-xl space-y-3">
               <h3 className="text-xs font-bold text-amber-400 uppercase tracking-widest">💳 Down Payment</h3>
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-slate-400">Nominal DP</span><span className="font-bold text-amber-300">Rp {fmt(purchaseOrder.dp_paid_amount)}</span></div>
-                <div className="flex justify-between"><span className="text-slate-400">Tanggal DP</span><span className="text-slate-200">{purchaseOrder.dp_payment_date ? new Date(purchaseOrder.dp_payment_date).toLocaleDateString('id-ID') : '—'}</span></div>
-                <div className="flex justify-between"><span className="text-slate-400">Dari Akun</span><span className="text-slate-200 text-right">{purchaseOrder.dpCashBankAccount?.account_name ?? '—'}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Nominal DP</span><span className="font-bold text-amber-300">Rp {fmt(purchaseOrder.dp_paid_amount)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Tanggal DP</span><span className="text-gray-800">{purchaseOrder.dp_payment_date ? new Date(purchaseOrder.dp_payment_date).toLocaleDateString('id-ID') : '—'}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Dari Akun</span><span className="text-gray-800 text-right">{purchaseOrder.dpCashBankAccount?.account_name ?? '—'}</span></div>
               </div>
             </div>
           )}
@@ -617,27 +625,27 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
             <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-5 shadow-xl space-y-3">
               <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-widest">🔍 Tagihan Akhir (Tervalidasi)</h3>
               <div className="space-y-2.5 text-sm">
-                <div className="flex justify-between"><span className="text-slate-400">Subtotal Validasi</span><span className="font-semibold text-slate-200">Rp {fmt(purchaseOrder.validated_subtotal)}</span></div>
-                <div className="flex justify-between"><span className="text-slate-400">Diskon / Pajak / Ongkir</span>
-                  <span className="font-semibold text-slate-200">
+                <div className="flex justify-between"><span className="text-gray-500">Subtotal Validasi</span><span className="font-semibold text-gray-800">Rp {fmt(purchaseOrder.validated_subtotal)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Diskon / Pajak / Ongkir</span>
+                  <span className="font-semibold text-gray-800">
                     Rp {fmt((Number(purchaseOrder.validated_grand_total ?? 0) - Number(purchaseOrder.validated_subtotal ?? 0)).toString())}
                   </span>
                 </div>
-                <div className="flex justify-between border-t border-emerald-500/20 pt-2.5"><span className="font-bold text-slate-200">Grand Total Validasi</span><span className="font-bold text-emerald-400">Rp {fmt(purchaseOrder.validated_grand_total)}</span></div>
-                {hasDp && <div className="flex justify-between"><span className="text-slate-400">(-) Down Payment</span><span className="font-semibold text-amber-400">-Rp {fmt(purchaseOrder.dp_paid_amount)}</span></div>}
+                <div className="flex justify-between border-t border-emerald-500/20 pt-2.5"><span className="font-bold text-gray-800">Grand Total Validasi</span><span className="font-bold text-emerald-400">Rp {fmt(purchaseOrder.validated_grand_total)}</span></div>
+                {hasDp && <div className="flex justify-between"><span className="text-gray-500">(-) Down Payment</span><span className="font-semibold text-amber-400">-Rp {fmt(purchaseOrder.dp_paid_amount)}</span></div>}
                 <div className="flex justify-between border-t border-emerald-500/20 pt-2.5 items-center">
-                  <span className="text-base font-extrabold text-white">Sisa Tagihan</span>
+                  <span className="text-base font-extrabold text-gray-900">Sisa Tagihan</span>
                   <span className="text-base font-extrabold text-rose-400">Rp {fmt(purchaseOrder.final_bill_amount)}</span>
                 </div>
               </div>
-              <p className="text-[10px] text-slate-500 mt-1">Divalidasi oleh {purchaseOrder.financeValidator?.name ?? '—'} • {purchaseOrder.finance_validated_at ? new Date(purchaseOrder.finance_validated_at).toLocaleDateString('id-ID') : ''}</p>
+              <p className="text-[10px] text-gray-400 mt-1">Divalidasi oleh {purchaseOrder.financeValidator?.name ?? '—'} • {purchaseOrder.finance_validated_at ? new Date(purchaseOrder.finance_validated_at).toLocaleDateString('id-ID') : ''}</p>
             </div>
           )}
 
           {/* Notes */}
-          <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-5 shadow-xl space-y-3">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Catatan Internal</h3>
-            <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line bg-slate-900/20 p-3 rounded-xl border border-slate-900 min-h-[48px]">
+          <div className="bg-white border border-gray-300/80 rounded-2xl p-5 shadow-xl space-y-3">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Catatan Internal</h3>
+            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line bg-teal-50/40 p-3 rounded-xl border border-gray-200 min-h-[48px]">
               {purchaseOrder.notes || 'Tidak ada catatan.'}
             </p>
           </div>
@@ -648,13 +656,13 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
 
       {/* Delete Modal */}
       {deleteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6">
-            <h3 className="text-lg font-bold text-white">Konfirmasi Hapus</h3>
-            <p className="text-sm text-slate-400 mt-2">Hapus <span className="font-semibold text-white">{purchaseOrder.po_number}</span>? Tindakan tidak dapat dibatalkan.</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-50 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-gray-50 border border-gray-300 rounded-2xl shadow-2xl p-6">
+            <h3 className="text-lg font-bold text-gray-900">Konfirmasi Hapus</h3>
+            <p className="text-sm text-gray-500 mt-2">Hapus <span className="font-semibold text-gray-900">{purchaseOrder.po_number}</span>? Tindakan tidak dapat dibatalkan.</p>
             <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setDeleteModalOpen(false)} className="px-4 py-2.5 bg-slate-800 text-slate-300 rounded-xl text-sm font-semibold border border-slate-700">Batal</button>
-              <button onClick={handleDelete} disabled={actionLoading} className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-sm font-semibold transition-all disabled:opacity-50">{actionLoading ? 'Memproses...' : 'Hapus PO'}</button>
+              <button onClick={() => setDeleteModalOpen(false)} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold border border-gray-300">Batal</button>
+              <button onClick={handleDelete} disabled={actionLoading} className="px-4 py-2.5 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white rounded-xl text-sm font-semibold transition-all disabled:opacity-50 shadow-lg shadow-rose-200/40">{actionLoading ? 'Memproses...' : 'Hapus PO'}</button>
             </div>
           </div>
         </div>
@@ -662,23 +670,23 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
 
       {/* Reject Modal */}
       {rejectModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6">
-            <h3 className="text-lg font-bold text-white">❌ Tolak Purchase Order</h3>
-            <p className="text-sm text-slate-400 mt-1">Berikan alasan penolakan untuk PO <span className="font-semibold text-white">{purchaseOrder.po_number}</span>.</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-50 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-gray-50 border border-gray-300 rounded-2xl shadow-2xl p-6">
+            <h3 className="text-lg font-bold text-gray-900">❌ Tolak Purchase Order</h3>
+            <p className="text-sm text-gray-500 mt-1">Berikan alasan penolakan untuk PO <span className="font-semibold text-gray-900">{purchaseOrder.po_number}</span>.</p>
             <div className="mt-5">
-              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Alasan Penolakan *</label>
-              <textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} rows={3} className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-sm focus:ring-1 focus:ring-rose-500 focus:outline-none resize-none" placeholder="Tuliskan alasan penolakan..." />
+              <label className="block text-xs font-semibold text-gray-500 mb-1.5">Alasan Penolakan *</label>
+              <textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} rows={3} className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-rose-500 focus:outline-none resize-none" placeholder="Tuliskan alasan penolakan..." />
             </div>
             <div className="flex justify-end gap-3 mt-5">
-              <button onClick={() => { setRejectModalOpen(false); setRejectReason(''); }} className="px-4 py-2.5 bg-slate-800 text-slate-300 rounded-xl text-sm font-semibold border border-slate-700">Batal</button>
+              <button onClick={() => { setRejectModalOpen(false); setRejectReason(''); }} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold border border-gray-300">Batal</button>
               <button onClick={() => {
                 if (!rejectReason.trim() || rejectReason.trim().length < 5) { alert('Alasan minimal 5 karakter.'); return; }
                 setActionLoading(true);
                 router.post(`/purchase-orders/${purchaseOrder.id}/reject`, { reject_reason: rejectReason }, {
                   onFinish: () => { setActionLoading(false); setRejectModalOpen(false); setRejectReason(''); }
                 });
-              }} disabled={actionLoading} className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-sm font-semibold transition-all disabled:opacity-50">
+              }} disabled={actionLoading} className="px-4 py-2.5 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white rounded-xl text-sm font-semibold transition-all disabled:opacity-50 shadow-lg shadow-rose-200/40">
                 {actionLoading ? 'Memproses...' : 'Tolak PO'}
               </button>
             </div>
@@ -688,12 +696,12 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
 
       {/* Receive Goods & Reject/Revision Modal */}
       {receiveModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-50 backdrop-blur-sm">
+          <div className="w-full max-w-3xl bg-gray-50 border border-gray-300 rounded-2xl shadow-2xl p-6 max-h-[90vh] flex flex-col">
             <div className="mb-4 flex-shrink-0">
-              <h3 className="text-lg font-bold text-white">📥 Penerimaan Barang & Cek Kondisi Fisik</h3>
-              <p className="text-sm text-slate-400 mt-1">
-                Catat barang yang datang untuk PO <span className="font-semibold text-white">{purchaseOrder.po_number}</span>. Masukkan Qty Tiba, Qty Reject/Rusak (jika ada), dan alasan penolakan.
+              <h3 className="text-lg font-bold text-gray-900">📥 Penerimaan Barang & Cek Kondisi Fisik</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Catat barang yang datang untuk PO <span className="font-semibold text-gray-900">{purchaseOrder.po_number}</span>. Masukkan Qty Tiba, Qty Reject/Rusak (jika ada), dan alasan penolakan.
               </p>
             </div>
 
@@ -719,27 +727,27 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                   const goodQty = Math.max(0, st.received_qty - st.rejected_qty);
 
                   return (
-                    <div key={item.id} className="p-4 rounded-xl border border-slate-800 bg-slate-950/60 space-y-3">
+                    <div key={item.id} className="p-4 rounded-xl border border-gray-300 bg-gray-50 space-y-3">
                       <div className="flex justify-between items-start">
                         <div>
-                          <span className="text-sm font-bold text-slate-200 block">{item.product_name}</span>
-                          <span className="text-[10px] text-slate-500 block">{item.product_code} • Sisa Pesanan: <span className="text-slate-300 font-semibold">{remaining} {item.unit}</span></span>
+                          <span className="text-sm font-bold text-gray-800 block">{item.product_name}</span>
+                          <span className="text-[10px] text-gray-400 block">{item.product_code} • Sisa Pesanan: <span className="text-gray-700 font-semibold">{remaining} {item.unit}</span></span>
                         </div>
                         <div className="text-right">
-                          <span className="text-xs text-slate-400">Harga PO: <span className="font-semibold text-slate-200">Rp {fmt(item.unit_price)}</span></span>
+                          <span className="text-xs text-gray-500">Harga PO: <span className="font-semibold text-gray-800">Rp {fmt(item.unit_price)}</span></span>
                         </div>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div>
-                          <label className="block text-[10px] font-semibold text-slate-400 mb-1">Qty Tiba Fisik (Total) *</label>
+                          <label className="block text-[10px] font-semibold text-gray-500 mb-1">Qty Tiba Fisik (Total) *</label>
                           <CurrencyInput
                             hidePrefix
                             min="0"
                             max={remaining}
                             value={st.received_qty}
                             onChange={(v) => updateReceiveItemState(item.product_id, 'received_qty', v)}
-                            className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 text-xs text-right font-bold focus:ring-1 focus:ring-violet-500 focus:outline-none"
+                            className="w-full px-3 py-2 rounded-lg bg-gray-50 border border-gray-300 text-gray-800 text-xs text-right font-bold focus:ring-1 focus:ring-teal-500 focus:outline-none"
                             placeholder="Barang Tiba"
                           />
                         </div>
@@ -752,14 +760,14 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                             max={st.received_qty}
                             value={st.rejected_qty}
                             onChange={(v) => updateReceiveItemState(item.product_id, 'rejected_qty', v)}
-                            className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-rose-300 text-xs text-right font-bold focus:ring-1 focus:ring-rose-500 focus:outline-none"
+                            className="w-full px-3 py-2 rounded-lg bg-gray-50 border border-gray-300 text-rose-300 text-xs text-right font-bold focus:ring-1 focus:ring-rose-500 focus:outline-none"
                             placeholder="0 (Jika tidak ada)"
                           />
                         </div>
 
                         <div>
                           <label className="block text-[10px] font-semibold text-emerald-400 mb-1">Stok Masuk Gudang (Bagus)</label>
-                          <div className="w-full px-3 py-2 rounded-lg bg-slate-900/80 border border-slate-800 text-emerald-400 text-xs text-right font-extrabold">
+                          <div className="w-full px-3 py-2 rounded-lg bg-gray-50/80 border border-gray-300 text-emerald-400 text-xs text-right font-extrabold">
                             {goodQty} {item.unit}
                           </div>
                         </div>
@@ -767,14 +775,14 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
 
                       {/* Detail Revisi & Alasan Reject jika ada reject */}
                       {(st.rejected_qty > 0 || st.action_taken !== 'accepted') && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-slate-800">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-gray-300">
                           <div>
-                            <label className="block text-[10px] font-semibold text-slate-400 mb-1">Harga per Unit Revisi (Rp)</label>
+                            <label className="block text-[10px] font-semibold text-gray-500 mb-1">Harga per Unit Revisi (Rp)</label>
                             <CurrencyInput
                               hidePrefix
                               value={st.validated_unit_price}
                               onChange={(v) => updateReceiveItemState(item.product_id, 'validated_unit_price', v)}
-                              className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 text-xs text-right font-bold focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                              className="w-full px-3 py-2 rounded-lg bg-gray-50 border border-gray-300 text-amber-300 text-xs text-right font-bold focus:ring-1 focus:ring-amber-500 focus:outline-none"
                             />
                           </div>
 
@@ -784,7 +792,7 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                               type="text"
                               value={st.rejected_reason}
                               onChange={(e) => updateReceiveItemState(item.product_id, 'rejected_reason', e.target.value)}
-                              className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 text-xs focus:ring-1 focus:ring-rose-500 focus:outline-none"
+                              className="w-full px-3 py-2 rounded-lg bg-gray-50 border border-gray-300 text-gray-800 text-xs focus:ring-1 focus:ring-rose-500 focus:outline-none"
                               placeholder="Misal: Dus penyok, barang pecah..."
                             />
                           </div>
@@ -795,9 +803,33 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                 })}
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800 flex-shrink-0 mt-4">
-                <button type="button" onClick={() => setReceiveModalOpen(false)} className="px-4 py-2.5 bg-slate-800 text-slate-300 rounded-xl text-sm font-semibold border border-slate-700">Batal</button>
-                <button type="submit" disabled={actionLoading} className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-950/40 disabled:opacity-50">
+              {/* Ongkir — dibayar ke kurir saat barang datang */}
+              <div className="pt-4 border-t border-gray-300 flex-shrink-0 mt-4">
+                {purchaseOrder.is_free_shipping ? (
+                  <p className="text-xs text-emerald-600 font-semibold">
+                    PO ini Free Ongkir — tidak ada biaya kirim yang ditagihkan.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700">Ongkir (Rp)</label>
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        Nominal ongkir yang dibayarkan ke kurir saat barang tiba.
+                      </p>
+                    </div>
+                    <CurrencyInput
+                      hidePrefix
+                      value={receiveShippingCost}
+                      onChange={(v) => setReceiveShippingCost(v)}
+                      className="w-full px-3 py-2 rounded-lg bg-gray-50 border border-gray-300 text-gray-800 text-sm text-right font-mono focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-300 flex-shrink-0 mt-4">
+                <button type="button" onClick={() => setReceiveModalOpen(false)} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold border border-gray-300">Batal</button>
+                <button type="submit" disabled={actionLoading} className="px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-500 hover:to-teal-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-teal-200/40 disabled:opacity-50">
                   {actionLoading ? 'Menyimpan...' : '📥 Catat Penerimaan & Update Stok'}
                 </button>
               </div>
@@ -808,24 +840,24 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
 
       {/* Down Payment Modal */}
       {dpModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6">
-            <h3 className="text-lg font-bold text-white">💳 Bayar Down Payment PO</h3>
-            <p className="text-sm text-slate-400 mt-1">Grand Total: <span className="font-bold text-emerald-400">Rp {fmt(purchaseOrder.grand_total)}</span></p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-50 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-gray-50 border border-gray-300 rounded-2xl shadow-2xl p-6">
+            <h3 className="text-lg font-bold text-gray-900">💳 Bayar Down Payment PO</h3>
+            <p className="text-sm text-gray-500 mt-1">Grand Total: <span className="font-bold text-emerald-400">Rp {fmt(purchaseOrder.grand_total)}</span></p>
             <form onSubmit={submitDownPayment} className="space-y-4 mt-5">
               {dpError && <div className="p-3.5 bg-rose-500/10 border border-rose-500/25 rounded-xl text-rose-400 text-xs font-semibold">{dpError}</div>}
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Nominal Down Payment (Rp) *</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">Nominal Down Payment (Rp) *</label>
                 <CurrencyInput value={dpAmount} onChange={(v) => setDpAmount(String(v))}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-sm focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-amber-500 focus:outline-none"
                   placeholder="Contoh: 5000000" />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Akun Kas / Bank / Petty Cash *</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">Akun Kas / Bank / Petty Cash *</label>
                 <select value={dpAccountId ?? ''} onChange={(e) => setDpAccountId(Number(e.target.value))}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-sm focus:ring-1 focus:ring-amber-500 focus:outline-none">
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-amber-500 focus:outline-none">
                   <option value="">-- Pilih Akun --</option>
                   {cashBankAccounts.map(acc => (
                     <option key={acc.id} value={acc.id}>
@@ -836,18 +868,17 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Syarat Pembayaran Pelunasan *</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">Syarat Pembayaran Pelunasan *</label>
                 <select value={dpPaymentTerms} onChange={(e) => setDpPaymentTerms(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-sm focus:ring-1 focus:ring-amber-500 focus:outline-none">
-                  <option value="cash_on_delivery">Tunai / Hari H (saat barang tiba)</option>
-                  <option value="tempo_1_week">Tempo 1 Minggu (7 Hari)</option>
-                  <option value="tempo_2_weeks">Tempo 2 Minggu (14 Hari)</option>
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-amber-500 focus:outline-none">
+                  <option value="cash_to_cash">Cash to Cash (Langsung Bayar)</option>
+                  <option value="tempo_7_days">Termin 7 Hari</option>
                 </select>
               </div>
 
               <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setDpModalOpen(false)} className="px-4 py-2.5 bg-slate-800 text-slate-300 rounded-xl text-sm font-semibold border border-slate-700">Batal</button>
-                <button type="submit" disabled={actionLoading} className="px-4 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-orange-950/40 disabled:opacity-50">
+                <button type="button" onClick={() => setDpModalOpen(false)} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold border border-gray-300">Batal</button>
+                <button type="submit" disabled={actionLoading} className="px-4 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-gray-900 rounded-xl text-sm font-semibold shadow-lg shadow-orange-950/40 disabled:opacity-50">
                   {actionLoading ? 'Memproses...' : '💳 Bayar DP Sekarang'}
                 </button>
               </div>
@@ -858,11 +889,11 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
 
       {/* Finance Validation Modal */}
       {validateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-50 backdrop-blur-sm">
+          <div className="w-full max-w-4xl bg-gray-50 border border-gray-300 rounded-2xl shadow-2xl p-6 max-h-[90vh] flex flex-col">
             <div className="mb-4 flex-shrink-0">
-              <h3 className="text-lg font-bold text-white">🔍 Validasi Penerimaan Barang (Finance)</h3>
-              <p className="text-sm text-slate-400 mt-1">
+              <h3 className="text-lg font-bold text-gray-900">🔍 Validasi Penerimaan Barang (Finance)</h3>
+              <p className="text-sm text-gray-500 mt-1">
                 Periksa kondisi barang yang diterima. Untuk setiap SKU, pilih: <span className="text-emerald-400">Terima Full</span>, <span className="text-amber-400">Revisi Qty/Harga</span>, atau <span className="text-rose-400">Tolak (Rusak/Reject)</span>.
               </p>
             </div>
@@ -873,19 +904,19 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                   const po_item = purchaseOrder.items.find(i => i.id === vItem.item_id);
                   if (!po_item) return null;
                   return (
-                    <div key={vItem.item_id} className={`p-4 rounded-xl border ${vItem.action === 'rejected' ? 'bg-rose-500/5 border-rose-500/20' : vItem.action === 'revised' ? 'bg-amber-500/5 border-amber-500/20' : 'bg-slate-900/50 border-slate-800'}`}>
+                    <div key={vItem.item_id} className={`p-4 rounded-xl border ${vItem.action === 'rejected' ? 'bg-rose-500/5 border-rose-500/20' : vItem.action === 'revised' ? 'bg-amber-500/5 border-amber-500/20' : 'bg-gray-50/50 border-gray-300'}`}>
                       <div className="flex flex-col md:flex-row md:items-center gap-3">
                         {/* Item Info */}
                         <div className="md:w-1/3 flex-shrink-0">
-                          <p className="font-bold text-slate-200 text-sm">{po_item.product_name}</p>
-                          <p className="text-[10px] text-slate-500">{po_item.product_code} • Diterima: <span className="text-slate-300 font-semibold">{po_item.received_quantity} {po_item.unit}</span></p>
+                          <p className="font-bold text-gray-800 text-sm">{po_item.product_name}</p>
+                          <p className="text-[10px] text-gray-400">{po_item.product_code} • Diterima: <span className="text-gray-700 font-semibold">{po_item.received_quantity} {po_item.unit}</span></p>
                         </div>
 
                         {/* Action Selector */}
                         <div className="md:w-1/4 flex-shrink-0">
-                          <label className="block text-[10px] font-semibold text-slate-500 mb-1">Tindakan</label>
+                          <label className="block text-[10px] font-semibold text-gray-400 mb-1">Tindakan</label>
                           <select value={vItem.action} onChange={(e) => updateValidationItem(index, 'action', e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:ring-1 focus:ring-violet-500 focus:outline-none">
+                            className="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-800 text-xs focus:ring-1 focus:ring-teal-500 focus:outline-none">
                             <option value="accepted">✅ Terima Semua</option>
                             <option value="revised">✏️ Revisi Qty/Harga</option>
                             <option value="rejected">❌ Tolak / Reject</option>
@@ -896,20 +927,20 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                         {vItem.action !== 'rejected' && (
                           <div className="flex gap-2 flex-1">
                             <div className="flex-1">
-                              <label className="block text-[10px] font-semibold text-slate-500 mb-1">Qty Diterima</label>
+                              <label className="block text-[10px] font-semibold text-gray-400 mb-1">Qty Diterima</label>
                               <CurrencyInput hidePrefix min="0" max={po_item.received_quantity}
                                 value={vItem.accepted_quantity}
                                 onChange={(v) => updateValidationItem(index, 'accepted_quantity', v)}
-                                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs text-right font-bold focus:ring-1 focus:ring-violet-500 focus:outline-none"
+                                className="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-800 text-xs text-right font-bold focus:ring-1 focus:ring-teal-500 focus:outline-none"
                                 disabled={vItem.action === 'accepted'}
                               />
                             </div>
                             <div className="flex-1">
-                              <label className="block text-[10px] font-semibold text-slate-500 mb-1">Harga/Unit Validasi</label>
+                              <label className="block text-[10px] font-semibold text-gray-400 mb-1">Harga/Unit Validasi</label>
                               <CurrencyInput hidePrefix min="0"
                                 value={vItem.validated_unit_price}
                                 onChange={(v) => updateValidationItem(index, 'validated_unit_price', v)}
-                                className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs text-right font-bold focus:ring-1 focus:ring-violet-500 focus:outline-none"
+                                className="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-800 text-xs text-right font-bold focus:ring-1 focus:ring-teal-500 focus:outline-none"
                                 disabled={vItem.action === 'accepted'}
                               />
                             </div>
@@ -919,13 +950,13 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                         {/* Reason (if revised or rejected) */}
                         {(vItem.action === 'rejected' || vItem.action === 'revised') && (
                           <div className="flex-1">
-                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">
+                            <label className="block text-[10px] font-semibold text-gray-400 mb-1">
                               {vItem.action === 'rejected' ? 'Alasan Penolakan *' : 'Catatan Revisi'}
                             </label>
                             <input type="text"
                               value={vItem.rejected_reason}
                               onChange={(e) => updateValidationItem(index, 'rejected_reason', e.target.value)}
-                              className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 text-xs focus:ring-1 focus:ring-rose-500 focus:outline-none"
+                              className="w-full px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-800 text-xs focus:ring-1 focus:ring-rose-500 focus:outline-none"
                               placeholder={vItem.action === 'rejected' ? 'Rusak / Tidak sesuai spek...' : 'Catatan revisi...'}
                             />
                           </div>
@@ -935,7 +966,7 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                       {/* Preview total per item */}
                       {vItem.action !== 'rejected' && (
                         <div className="mt-2.5 flex justify-end">
-                          <span className="text-[11px] text-slate-500">
+                          <span className="text-[11px] text-gray-400">
                             Total: <span className="font-bold text-emerald-400">Rp {(vItem.accepted_quantity * vItem.validated_unit_price).toLocaleString('id-ID')}</span>
                           </span>
                         </div>
@@ -946,10 +977,10 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
               </div>
 
               {/* Preview Grand Total */}
-              <div className="mt-4 pt-4 border-t border-slate-800 flex-shrink-0">
-                <div className="bg-slate-950/60 rounded-xl p-4 border border-slate-800 flex justify-between items-center">
+              <div className="mt-4 pt-4 border-t border-gray-300 flex-shrink-0">
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-300 flex justify-between items-center">
                   <div>
-                    <p className="text-xs text-slate-500">Grand Total Tagihan (Estimasi)</p>
+                    <p className="text-xs text-gray-400">Grand Total Tagihan (Estimasi)</p>
                     <p className="text-xl font-extrabold text-emerald-400 mt-0.5">
                       Rp {validationItems.reduce((sum, vi) => {
                         if (vi.action === 'rejected') return sum;
@@ -957,14 +988,14 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                       }, 0).toLocaleString('id-ID')}
                     </p>
                     {hasDp && (
-                      <p className="text-xs text-slate-500 mt-0.5">(-) DP: Rp {fmt(purchaseOrder.dp_paid_amount)} → Sisa: <span className="text-rose-400 font-bold">
+                      <p className="text-xs text-gray-400 mt-0.5">(-) DP: Rp {fmt(purchaseOrder.dp_paid_amount)} → Sisa: <span className="text-rose-400 font-bold">
                         Rp {Math.max(0, validationItems.reduce((sum, vi) => vi.action === 'rejected' ? sum : sum + (vi.accepted_quantity * vi.validated_unit_price), 0) - Number(purchaseOrder.dp_paid_amount)).toLocaleString('id-ID')}
                       </span></p>
                     )}
                   </div>
                   <div className="flex gap-3">
-                    <button type="button" onClick={() => setValidateModalOpen(false)} className="px-4 py-2.5 bg-slate-800 text-slate-300 rounded-xl text-sm font-semibold border border-slate-700">Batal</button>
-                    <button type="submit" disabled={actionLoading} className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-emerald-950/40 disabled:opacity-50">
+                    <button type="button" onClick={() => setValidateModalOpen(false)} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold border border-gray-300">Batal</button>
+                    <button type="submit" disabled={actionLoading} className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-gray-900 rounded-xl text-sm font-semibold shadow-lg shadow-emerald-950/40 disabled:opacity-50">
                       {actionLoading ? 'Menyimpan...' : '✅ Simpan Validasi & Hitung Tagihan'}
                     </button>
                   </div>

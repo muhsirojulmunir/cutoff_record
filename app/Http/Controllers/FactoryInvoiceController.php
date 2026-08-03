@@ -49,7 +49,7 @@ class FactoryInvoiceController extends Controller
         $suppliers     = Supplier::where('status', 'active')->orderBy('name')->get(['id', 'name', 'supplier_code']);
         $purchaseOrders = PurchaseOrder::whereIn('status', ['received', 'finance_validated'])
             ->orderBy('po_number')->get(['id', 'po_number', 'supplier_id', 'grand_total']);
-        $products = Product::where('status', 'active')->orderBy('name')->get(['id', 'sku', 'name', 'selling_price', 'unit']);
+        $products = Product::where('status', 'active')->orderBy('name')->get(['id', 'sku', 'name', 'selling_price']);
 
         return Inertia::render('FactoryInvoices/Create', [
             'suppliers'      => $suppliers,

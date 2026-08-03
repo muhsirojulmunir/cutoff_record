@@ -46,7 +46,7 @@ class InventoryReportService
     public function getStockOverview(int $perPage = 20): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
         $products = Product::with('category:id,name')
-            ->select('id', 'sku', 'name', 'category_id', 'stock', 'minimum_stock', 'unit', 'selling_price')
+            ->select('id', 'sku', 'name', 'category_id', 'stock', 'minimum_stock', 'selling_price')
             ->orderBy('name', 'asc')
             ->paginate($perPage);
 
@@ -74,7 +74,7 @@ class InventoryReportService
                 'available_stock'=> $available,
                 'minimum_stock'  => $p->minimum_stock,
                 'status'         => $status,
-                'unit'           => $p->unit ?? 'pcs',
+                'unit'           => 'pcs',
             ];
         });
 

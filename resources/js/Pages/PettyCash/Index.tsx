@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import { PageProps } from '../../Types';
@@ -64,13 +64,13 @@ interface Props {
 }
 
 const statusConfig: Record<string, { label: string; badge: string; dot: string }> = {
-    draft:                     { label: 'Draft',                     badge: 'bg-slate-500/10 border-slate-500/20 text-slate-400',     dot: 'bg-slate-400' },
+    draft:                     { label: 'Draft',                     badge: 'bg-slate-500/10 border-slate-500/20 text-gray-500',     dot: 'bg-slate-400' },
     pending_leader_approval:   { label: '⏳ Menunggu Leader',         badge: 'bg-amber-500/10 border-amber-500/20 text-amber-400',     dot: 'bg-amber-400' },
     pending_finance_approval:  { label: '⏳ Menunggu Finance',        badge: 'bg-orange-500/10 border-orange-500/20 text-orange-400',  dot: 'bg-orange-400' },
     approved:                  { label: '✅ Disetujui (Siap Cair)',   badge: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400', dot: 'bg-emerald-400' },
     paid:                      { label: '💰 Sudah Dibayar',          badge: 'bg-teal-500/10 border-teal-500/20 text-teal-400',       dot: 'bg-teal-400' },
     rejected:                  { label: '❌ Ditolak',                badge: 'bg-rose-500/10 border-rose-500/20 text-rose-400',        dot: 'bg-rose-400' },
-    cancelled:                 { label: 'Dibatalkan',                badge: 'bg-slate-500/10 border-slate-500/20 text-slate-500',     dot: 'bg-slate-500' },
+    cancelled:                 { label: 'Dibatalkan',                badge: 'bg-slate-500/10 border-slate-500/20 text-gray-400',     dot: 'bg-slate-500' },
 };
 
 const formatCurrency = (amount: string | number) =>
@@ -113,13 +113,13 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
-                        <h1 className="text-2xl font-bold text-white tracking-tight">Petty Cash</h1>
-                        <p className="text-slate-400 text-xs mt-1">Keuangan / Pencatatan Pengeluaran Operasional</p>
+                        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Petty Cash</h1>
+                        <p className="text-gray-500 text-xs mt-1">Keuangan / Pencatatan Pengeluaran Operasional</p>
                     </div>
                     <Link
                         id="btn-create-petty-cash"
                         href="/petty-cash/create"
-                        className="inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition-all shadow-lg shadow-violet-900/30"
+                        className="inline-flex items-center gap-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition-all shadow-lg shadow-teal-200/40"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -141,7 +141,7 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                 )}
 
                 {/* Filter Card */}
-                <div className="bg-slate-950 border border-slate-900 rounded-2xl p-5 shadow-xl">
+                <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xl">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
                         {/* Search */}
                         <div className="xl:col-span-2 relative">
@@ -151,9 +151,9 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                                 onChange={e => setSearch(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && applyFilters()}
                                 placeholder="No. Transaksi / Deskripsi..."
-                                className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none transition-all placeholder:text-slate-600"
+                                className="w-full pl-9 pr-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all placeholder:text-gray-400"
                             />
-                            <div className="absolute left-3 top-2.5 text-slate-500">
+                            <div className="absolute left-3 top-2.5 text-gray-400">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.637 10.637z" />
                                 </svg>
@@ -165,7 +165,7 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                             id="filter-category"
                             value={categoryId}
                             onChange={e => setCategoryId(e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none transition-all cursor-pointer"
+                            className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all cursor-pointer"
                         >
                             <option value="">Semua Kategori</option>
                             {categories.map(c => (
@@ -178,7 +178,7 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                             id="filter-status"
                             value={status}
                             onChange={e => setStatus(e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none transition-all cursor-pointer"
+                            className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all cursor-pointer"
                         >
                             <option value="">Semua Status</option>
                             {statuses.map(s => (
@@ -191,7 +191,7 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                             id="filter-payment-method"
                             value={payMethod}
                             onChange={e => setPayMethod(e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none transition-all cursor-pointer"
+                            className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all cursor-pointer"
                         >
                             <option value="">Semua Metode</option>
                             {paymentMethods.map(m => (
@@ -205,7 +205,7 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                             type="date"
                             value={dateFrom}
                             onChange={e => setDateFrom(e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none transition-all"
+                            className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all"
                         />
                     </div>
 
@@ -214,7 +214,7 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                             id="btn-reset-filter"
                             type="button"
                             onClick={resetFilters}
-                            className="px-4 py-2 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-xl text-xs font-semibold transition-all"
+                            className="px-4 py-2 text-gray-500 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-300 hover:border-gray-300 rounded-xl text-xs font-semibold transition-all"
                         >
                             Reset Filter
                         </button>
@@ -222,7 +222,7 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                             id="btn-apply-filter"
                             type="button"
                             onClick={applyFilters}
-                            className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-100 rounded-xl text-xs font-semibold border border-slate-700 hover:border-slate-600 transition-all shadow-md"
+                            className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-xl text-xs font-semibold border border-gray-300 hover:border-gray-400 transition-all shadow-md"
                         >
                             Terapkan Pencarian
                         </button>
@@ -230,11 +230,11 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                 </div>
 
                 {/* Table */}
-                <div className="bg-slate-950 border border-slate-900 rounded-2xl overflow-hidden shadow-xl">
+                <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xl">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
-                                <tr className="border-b border-slate-900 text-slate-400 text-[10px] font-bold uppercase tracking-wider bg-slate-950/60">
+                                <tr className="border-b border-gray-200 text-gray-500 text-[10px] font-bold uppercase tracking-wider bg-gray-50">
                                     <th className="py-3 px-6">No. Transaksi</th>
                                     <th className="py-3 px-6 text-center">Tanggal</th>
                                     <th className="py-3 px-6">Kategori</th>
@@ -246,32 +246,32 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                                     <th className="py-3 px-6 text-center">Aksi</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-900 text-sm text-slate-300">
+                            <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
                                 {transactions.data.length === 0 ? (
                                     <tr>
-                                        <td colSpan={9} className="text-center py-16 text-slate-500 font-medium">
+                                        <td colSpan={9} className="text-center py-16 text-gray-400 font-medium">
                                             <div className="flex flex-col items-center gap-3">
-                                                <svg className="w-12 h-12 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <svg className="w-12 h-12 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                                 </svg>
                                                 <div>
-                                                    <p className="font-semibold text-slate-400">Belum ada transaksi petty cash</p>
-                                                    <p className="text-xs text-slate-600 mt-1">Klik "Tambah Transaksi" untuk membuat transaksi baru</p>
+                                                    <p className="font-semibold text-gray-500">Belum ada transaksi petty cash</p>
+                                                    <p className="text-xs text-gray-400 mt-1">Klik "Tambah Transaksi" untuk membuat transaksi baru</p>
                                                 </div>
                                             </div>
                                         </td>
                                     </tr>
                                 ) : (
                                     transactions.data.map(t => {
-                                        const s = statusConfig[t.status] ?? { label: t.status, badge: 'bg-slate-500/10 border-slate-500/20 text-slate-400', dot: 'bg-slate-400' };
+                                        const s = statusConfig[t.status] ?? { label: t.status, badge: 'bg-slate-500/10 border-slate-500/20 text-gray-500', dot: 'bg-slate-400' };
                                         return (
-                                            <tr key={t.id} className="hover:bg-slate-900/30 transition-colors">
+                                            <tr key={t.id} className="hover:bg-teal-50/60 transition-colors">
                                                 <td className="py-3.5 px-6 font-bold whitespace-nowrap">
-                                                    <Link href={`/petty-cash/${t.id}`} className="text-violet-400 hover:text-violet-300 transition-colors font-mono">
+                                                    <Link href={`/petty-cash/${t.id}`} className="text-teal-400 hover:text-teal-600 transition-colors font-mono">
                                                         {t.transaction_number}
                                                     </Link>
                                                 </td>
-                                                <td className="py-3.5 px-6 text-center text-xs whitespace-nowrap text-slate-400">
+                                                <td className="py-3.5 px-6 text-center text-xs whitespace-nowrap text-gray-500">
                                                     {formatDate(t.transaction_date)}
                                                 </td>
                                                 <td className="py-3.5 px-6 whitespace-nowrap">
@@ -279,13 +279,13 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                                                         {t.category?.name ?? '-'}
                                                     </span>
                                                 </td>
-                                                <td className="py-3.5 px-6 text-slate-300 max-w-xs truncate" title={t.description}>
+                                                <td className="py-3.5 px-6 text-gray-700 max-w-xs truncate" title={t.description}>
                                                     {t.description}
                                                 </td>
-                                                <td className="py-3.5 px-6 text-right font-extrabold text-white whitespace-nowrap">
+                                                <td className="py-3.5 px-6 text-right font-extrabold text-gray-900 whitespace-nowrap">
                                                     {formatCurrency(t.amount)}
                                                 </td>
-                                                <td className="py-3.5 px-6 text-xs text-slate-400 whitespace-nowrap">
+                                                <td className="py-3.5 px-6 text-xs text-gray-500 whitespace-nowrap">
                                                     {paymentMethods.find(m => m.value === t.payment_method)?.label ?? t.payment_method}
                                                 </td>
                                                 <td className="py-3.5 px-6 text-center whitespace-nowrap">
@@ -294,14 +294,14 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                                                         {s.label}
                                                     </span>
                                                 </td>
-                                                <td className="py-3.5 px-6 text-xs text-slate-400">
+                                                <td className="py-3.5 px-6 text-xs text-gray-500">
                                                     {t.creator?.name ?? '-'}
                                                 </td>
                                                 <td className="py-3.5 px-6 text-center whitespace-nowrap">
                                                     <div className="flex items-center justify-center gap-1">
                                                         <Link
                                                             href={`/petty-cash/${t.id}`}
-                                                            className="p-1 text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent hover:border-slate-800 rounded-lg transition-all inline-flex"
+                                                            className="p-1 text-gray-500 hover:text-gray-900 hover:bg-gray-50 border border-transparent hover:border-gray-300 rounded-lg transition-all inline-flex"
                                                             title="Detail"
                                                         >
                                                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
@@ -317,7 +317,7 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                                                                         router.delete(`/petty-cash/${t.id}`);
                                                                     }
                                                                 }}
-                                                                className="p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-900 border border-transparent hover:border-rose-900/50 rounded-lg transition-all inline-flex"
+                                                                className="p-1 text-gray-500 hover:text-rose-400 hover:bg-gray-50 border border-transparent hover:border-rose-900/50 rounded-lg transition-all inline-flex"
                                                                 title="Hapus Transaksi (Super Admin)"
                                                             >
                                                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
@@ -337,8 +337,8 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                     </div>
 
                     {/* Pagination */}
-                    <div className="p-4 border-t border-slate-900 bg-slate-950/40 flex justify-between items-center">
-                        <div className="text-slate-500 text-xs font-medium">
+                    <div className="p-4 border-t border-gray-200 bg-white/80 flex justify-between items-center">
+                        <div className="text-gray-400 text-xs font-medium">
                             {transactions.total > 0
                                 ? `Menampilkan ${transactions.from}–${transactions.to} dari ${transactions.total} transaksi`
                                 : 'Tidak ada data'}
@@ -353,15 +353,15 @@ export default function PettyCashIndex({ transactions, categories, filters, paym
                                             dangerouslySetInnerHTML={{ __html: link.label }}
                                             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                                                 link.active
-                                                    ? 'bg-violet-600 text-white'
-                                                    : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                                                    ? 'bg-teal-500 text-white'
+                                                    : 'bg-gray-50 border border-gray-300 text-gray-500 hover:text-gray-900 hover:border-gray-300'
                                             }`}
                                         />
                                     ) : (
                                         <span
                                             key={i}
                                             dangerouslySetInnerHTML={{ __html: link.label }}
-                                            className="px-3 py-1.5 rounded-lg text-xs text-slate-600"
+                                            className="px-3 py-1.5 rounded-lg text-xs text-gray-400"
                                         />
                                     )
                                 )}

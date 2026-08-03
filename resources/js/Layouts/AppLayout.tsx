@@ -1,4 +1,4 @@
-import { Link, router, usePage } from '@inertiajs/react';
+﻿import { Link, router, usePage } from '@inertiajs/react';
 import { ReactNode, useLayoutEffect, useRef, useState } from 'react';
 
 import NotificationBell from '../Components/NotificationBell';
@@ -328,6 +328,16 @@ export default function AppLayout({ children }: Props) {
   const navRef = useRef<HTMLElement>(null);
 
   /**
+   * Flag diset saat login berhasil. Animasi masuk aplikasi (sidebar + topbar)
+   * hanya diputar sekali, navigasi berikutnya cukup animasi konten.
+   */
+  const [justLoggedIn] = useState(() => {
+    if (sessionStorage.getItem('erp:welcome') !== '1') return false;
+    sessionStorage.removeItem('erp:welcome');
+    return true;
+  });
+
+  /**
    * AppLayout di-mount ulang setiap navigasi Inertia, sehingga scroll sidebar
    * kembali ke atas. Restore sebelum paint agar tidak terlihat "melompat".
    */
@@ -363,13 +373,13 @@ export default function AppLayout({ children }: Props) {
     .toUpperCase() ?? '?';
 
   return (
-    <div className="h-screen overflow-hidden bg-slate-900 text-slate-100 flex font-sans">
+    <div className="h-screen overflow-hidden bg-gray-50 text-gray-900 flex font-sans">
       {/* Sidebar — scroll independen dari konten halaman */}
       <aside
-        className={`${sidebarOpen ? 'w-64' : 'w-[70px]'} h-full bg-slate-950 border-r border-slate-800/70 transition-[width] duration-200 ease-in-out flex flex-col z-20 shrink-0`}
+        className={`${sidebarOpen ? 'w-64' : 'w-[70px]'} ${justLoggedIn ? 'anim-slide-left' : ''} h-full bg-teal-950 border-r border-teal-800/50 transition-[width] duration-200 ease-in-out flex flex-col z-20 shrink-0`}
       >
         {/* Logo */}
-        <div className="h-16 flex items-center gap-3 px-4 border-b border-slate-800/70 shrink-0 overflow-hidden">
+        <div className="h-16 flex items-center gap-3 px-4 border-b border-teal-800/50 shrink-0 overflow-hidden">
           <span className="font-bold text-base text-white whitespace-nowrap truncate tracking-tight">
             {sidebarOpen ? 'SISTEM ERP' : 'ERP'}
           </span>
@@ -384,7 +394,7 @@ export default function AppLayout({ children }: Props) {
             return (
               <div key={section.title || 'dashboard'}>
                 {section.title && sidebarOpen && (
-                  <p className="px-3 mb-1 text-[10px] font-bold uppercase tracking-widest text-slate-600">
+                  <p className="px-3 mb-1 text-[10px] font-bold uppercase tracking-widest text-teal-400/50">
                     {section.title}
                   </p>
                 )}
@@ -398,12 +408,12 @@ export default function AppLayout({ children }: Props) {
                         title={!sidebarOpen ? item.label : undefined}
                         className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-100 group
                           ${isActive
-                            ? 'bg-violet-600/15 text-violet-400 border border-violet-500/20'
-                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
+                            ? 'bg-white/15 text-white border border-white/20'
+                            : 'text-teal-200/70 hover:text-white hover:bg-teal-800/40 border border-transparent'
                           }`}
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor"
-                          className={`w-5 h-5 shrink-0 ${isActive ? 'text-violet-400' : 'text-slate-500 group-hover:text-slate-300'} transition-colors`}>
+                          className={`w-5 h-5 shrink-0 ${isActive ? 'text-white' : 'text-teal-400/60 group-hover:text-teal-200'} transition-colors`}>
                           <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
                         </svg>
                         {sidebarOpen && (
@@ -424,22 +434,22 @@ export default function AppLayout({ children }: Props) {
         </nav>
 
         {/* User profile */}
-        <div className="shrink-0 border-t border-slate-800/70 p-3">
+        <div className="shrink-0 border-t border-teal-800/50 p-3">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="h-9 w-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-sm font-bold text-slate-300">
+            <div className="h-9 w-9 rounded-full bg-teal-800/60 border border-teal-700/40 flex items-center justify-center shrink-0 text-sm font-bold text-teal-200">
               {initials}
             </div>
             {sidebarOpen && (
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-slate-200 truncate">{user?.name ?? '—'}</p>
-                <p className="text-xs text-slate-500 truncate">{user?.role?.name ?? 'No Role'}</p>
+                <p className="text-sm font-semibold text-white truncate">{user?.name ?? '—'}</p>
+                <p className="text-xs text-teal-300/50 truncate">{user?.role?.name ?? 'No Role'}</p>
               </div>
             )}
             {sidebarOpen && (
               <button
                 onClick={handleLogout}
                 title="Keluar"
-                className="shrink-0 p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-400/10 transition-all"
+                className="shrink-0 p-1.5 rounded-lg text-teal-400/60 hover:text-rose-400 hover:bg-rose-400/10 transition-all"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
@@ -453,10 +463,10 @@ export default function AppLayout({ children }: Props) {
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0 h-full">
         {/* Topbar */}
-        <header className="h-16 border-b border-slate-800/70 bg-slate-950/60 backdrop-blur-sm flex items-center justify-between px-6 shrink-0 z-10">
+        <header className={`${justLoggedIn ? 'anim-fade-down anim-d1' : ''} h-16 border-b border-gray-200 bg-white flex items-center justify-between px-6 shrink-0 z-10`}>
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-2 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition-all border border-slate-800 hover:border-slate-700"
+            className="p-2 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-all border border-gray-200 hover:border-gray-300"
           >
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
@@ -466,13 +476,13 @@ export default function AppLayout({ children }: Props) {
           {/* Topbar right */}
           <div className="flex items-center gap-3">
             <NotificationBell queue={queue} />
-            <span className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500 border border-slate-800 rounded-full px-3 py-1.5">
+            <span className="hidden sm:flex items-center gap-1.5 text-xs text-gray-500 border border-gray-200 rounded-full px-3 py-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
               {user?.role?.name ?? 'No Role'}
             </span>
             <button
               onClick={handleLogout}
-              className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500 hover:text-rose-400 transition-colors px-2 py-1"
+              className="hidden sm:flex items-center gap-1.5 text-xs text-gray-500 hover:text-rose-500 transition-colors px-2 py-1"
             >
               Keluar
             </button>
@@ -481,7 +491,9 @@ export default function AppLayout({ children }: Props) {
 
         {/* Page content */}
         <main className="flex-1 min-h-0 p-6 sm:p-8 overflow-y-auto sidebar-scroll">
-          {children}
+          <div key={currentPath} className={justLoggedIn ? 'anim-zoom-in anim-d2' : 'page-enter'}>
+            {children}
+          </div>
         </main>
       </div>
     </div>

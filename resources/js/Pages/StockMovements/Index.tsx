@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Head, Link, router, usePage, useForm } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import Pagination from '../../Components/Pagination';
@@ -152,14 +152,14 @@ export default function Index({ stockMovements, warehouses, products, filters }:
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Inventory Ledger</h1>
-            <p className="text-slate-400 text-xs mt-1">Laporan / Histori Pergerakan Stok</p>
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Inventory Ledger</h1>
+            <p className="text-gray-500 text-xs mt-1">Laporan / Histori Pergerakan Stok</p>
           </div>
 
           {canAdjust && (
             <button
               onClick={handleOpenAdjustModal}
-              className="px-4 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-950/40 transition-all flex items-center gap-2"
+              className="px-4 py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-teal-200/40 transition-all flex items-center gap-2"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -174,21 +174,21 @@ export default function Index({ stockMovements, warehouses, products, filters }:
         {flash.error && <Alert message={flash.error} type="error" />}
 
         {/* Filter Card */}
-        <div className="bg-slate-950 border border-slate-900 rounded-2xl p-5 shadow-xl">
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xl">
           <form onSubmit={handleSearch} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               {/* Search */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-400">Search</label>
+                <label className="block text-xs font-semibold text-gray-500">Search</label>
                 <div className="relative">
                   <input
                     type="text"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Nama produk, SKU, No Ref..."
-                    className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none transition-all placeholder:text-slate-600"
+                    className="w-full pl-9 pr-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all placeholder:text-gray-400"
                   />
-                  <div className="absolute left-3 top-2.5 text-slate-500">
+                  <div className="absolute left-3 top-2.5 text-gray-400">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.637 10.637z" />
                     </svg>
@@ -198,11 +198,11 @@ export default function Index({ stockMovements, warehouses, products, filters }:
 
               {/* Movement Type */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-400">Tipe Pergerakan</label>
+                <label className="block text-xs font-semibold text-gray-500">Tipe Pergerakan</label>
                 <select
                   value={movementType}
                   onChange={(e) => handleFilterChange('movement_type', e.target.value)}
-                  className="w-full px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none transition-all cursor-pointer"
+                  className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all cursor-pointer"
                 >
                   <option value="">Semua Tipe</option>
                   <option value="in">Masuk (IN)</option>
@@ -213,11 +213,11 @@ export default function Index({ stockMovements, warehouses, products, filters }:
 
               {/* Warehouse */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-400">Gudang</label>
+                <label className="block text-xs font-semibold text-gray-500">Gudang</label>
                 <select
                   value={warehouseId}
                   onChange={(e) => handleFilterChange('warehouse_id', e.target.value)}
-                  className="w-full px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none transition-all cursor-pointer"
+                  className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all cursor-pointer"
                 >
                   <option value="">Semua Gudang</option>
                   {warehouses.map((wh) => (
@@ -228,23 +228,23 @@ export default function Index({ stockMovements, warehouses, products, filters }:
 
               {/* Date Start */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-400">Mulai Tanggal</label>
+                <label className="block text-xs font-semibold text-gray-500">Mulai Tanggal</label>
                 <input
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none transition-all"
+                  className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all"
                 />
               </div>
 
               {/* Date End */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-400">Sampai Tanggal</label>
+                <label className="block text-xs font-semibold text-gray-500">Sampai Tanggal</label>
                 <input
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none transition-all"
+                  className="w-full px-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all"
                 />
               </div>
             </div>
@@ -254,13 +254,13 @@ export default function Index({ stockMovements, warehouses, products, filters }:
               <button
                 type="button"
                 onClick={handleResetFilters}
-                className="px-4 py-2 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-xl text-xs font-semibold transition-all"
+                className="px-4 py-2 text-gray-500 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-300 hover:border-gray-300 rounded-xl text-xs font-semibold transition-all"
               >
                 Reset Filter
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-100 rounded-xl text-xs font-semibold border border-slate-700 hover:border-slate-600 transition-all flex items-center gap-1.5 shadow-md"
+                className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-xl text-xs font-semibold border border-gray-300 hover:border-gray-400 transition-all flex items-center gap-1.5 shadow-md"
               >
                 Cari Data
               </button>
@@ -269,11 +269,11 @@ export default function Index({ stockMovements, warehouses, products, filters }:
         </div>
 
         {/* Ledger Table */}
-        <div className="bg-slate-950 border border-slate-900 rounded-2xl overflow-hidden shadow-xl">
+        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xl">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-slate-900 text-slate-400 text-[10px] font-bold uppercase tracking-wider bg-slate-950/60">
+                <tr className="border-b border-gray-200 text-gray-500 text-[10px] font-bold uppercase tracking-wider bg-gray-50">
                   <th className="py-3 px-6">Tanggal</th>
                   <th className="py-3 px-6">Produk</th>
                   <th className="py-3 px-6">Gudang</th>
@@ -286,17 +286,17 @@ export default function Index({ stockMovements, warehouses, products, filters }:
                   <th className="py-3 px-6">Operator</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-900 text-sm text-slate-300">
+              <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
                 {stockMovements.data.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="text-center py-10 text-slate-500 font-medium">
+                    <td colSpan={10} className="text-center py-10 text-gray-400 font-medium">
                       Tidak ada data pergerakan stok ditemukan.
                     </td>
                   </tr>
                 ) : (
                   stockMovements.data.map((movement) => (
-                    <tr key={movement.id} className="hover:bg-slate-900/30 transition-colors">
-                      <td className="py-3.5 px-6 whitespace-nowrap text-xs text-slate-400">
+                    <tr key={movement.id} className="hover:bg-teal-50/60 transition-colors">
+                      <td className="py-3.5 px-6 whitespace-nowrap text-xs text-gray-500">
                         {new Date(movement.created_at).toLocaleDateString('id-ID', {
                           day: '2-digit',
                           month: 'short',
@@ -306,21 +306,21 @@ export default function Index({ stockMovements, warehouses, products, filters }:
                         })}
                       </td>
                       <td className="py-3.5 px-6">
-                        <span className="font-semibold text-slate-200 block">
+                        <span className="font-semibold text-gray-800 block">
                           {movement.product ? movement.product.name : '—'}
                         </span>
-                        <span className="text-[10px] text-slate-500 mt-0.5 block">
+                        <span className="text-[10px] text-gray-400 mt-0.5 block">
                           SKU: {movement.product ? movement.product.sku : '—'}
                         </span>
                       </td>
                       <td className="py-3.5 px-6">
                         {movement.warehouse ? (
                           <>
-                            <span className="text-slate-200 block font-medium">{movement.warehouse.name}</span>
-                            <span className="text-[10px] text-slate-500 mt-0.5 block">WH: {movement.warehouse.code}</span>
+                            <span className="text-gray-800 block font-medium">{movement.warehouse.name}</span>
+                            <span className="text-[10px] text-gray-400 mt-0.5 block">WH: {movement.warehouse.code}</span>
                           </>
                         ) : (
-                          <span className="text-slate-500">—</span>
+                          <span className="text-gray-400">—</span>
                         )}
                       </td>
                       <td className="py-3.5 px-6 text-center">
@@ -328,13 +328,13 @@ export default function Index({ stockMovements, warehouses, products, filters }:
                           {typeLabel[movement.movement_type]}
                         </span>
                       </td>
-                      <td className="py-3.5 px-6 text-center font-bold text-slate-100">
+                      <td className="py-3.5 px-6 text-center font-bold text-gray-900">
                         {movement.quantity.toLocaleString('id-ID')}
                       </td>
-                      <td className="py-3.5 px-6 text-center text-slate-400">
+                      <td className="py-3.5 px-6 text-center text-gray-500">
                         {movement.stock_before.toLocaleString('id-ID')}
                       </td>
-                      <td className="py-3.5 px-6 text-center font-semibold text-slate-200">
+                      <td className="py-3.5 px-6 text-center font-semibold text-gray-800">
                         {movement.stock_after.toLocaleString('id-ID')}
                       </td>
                       <td className="py-3.5 px-6">
@@ -342,21 +342,21 @@ export default function Index({ stockMovements, warehouses, products, filters }:
                           movement.reference_type === 'purchase_order' && canViewPo ? (
                             <Link
                               href={`/purchase-orders/${movement.reference_id}`}
-                              className="text-violet-400 hover:text-violet-300 font-semibold underline underline-offset-2 decoration-violet-500/40 hover:decoration-violet-400 transition-all text-xs"
+                              className="text-teal-400 hover:text-teal-600 font-semibold underline underline-offset-2 decoration-teal-500/40 hover:decoration-teal-400 transition-all text-xs"
                             >
                               {movement.reference_number}
                             </Link>
                           ) : (
-                            <span className="text-slate-400 font-medium text-xs">{movement.reference_number}</span>
+                            <span className="text-gray-500 font-medium text-xs">{movement.reference_number}</span>
                           )
                         ) : (
-                          <span className="text-slate-500">—</span>
+                          <span className="text-gray-400">—</span>
                         )}
                       </td>
-                      <td className="py-3.5 px-6 text-slate-400 text-xs max-w-[200px] truncate" title={movement.notes ?? ''}>
+                      <td className="py-3.5 px-6 text-gray-500 text-xs max-w-[200px] truncate" title={movement.notes ?? ''}>
                         {movement.notes || '—'}
                       </td>
-                      <td className="py-3.5 px-6 text-slate-400 text-xs">
+                      <td className="py-3.5 px-6 text-gray-500 text-xs">
                         {movement.creator ? movement.creator.name : 'System'}
                       </td>
                     </tr>
@@ -367,8 +367,8 @@ export default function Index({ stockMovements, warehouses, products, filters }:
           </div>
 
           {/* Pagination */}
-          <div className="p-4 border-t border-slate-900 bg-slate-950/40 flex justify-between items-center">
-            <div className="text-slate-500 text-xs font-medium">
+          <div className="p-4 border-t border-gray-200 bg-white/80 flex justify-between items-center">
+            <div className="text-gray-400 text-xs font-medium">
               Menampilkan {stockMovements.data.length} dari {stockMovements.total} pergerakan stok
             </div>
             <Pagination links={stockMovements.links} />
@@ -378,10 +378,10 @@ export default function Index({ stockMovements, warehouses, products, filters }:
 
       {/* Stock Adjustment Modal */}
       {adjustModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm transition-opacity">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 overflow-hidden">
-            <h3 className="text-lg font-bold text-white">Stock Adjustment (Penyesuaian Stok)</h3>
-            <p className="text-sm text-slate-400 mt-1">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-50 backdrop-blur-sm transition-opacity">
+          <div className="w-full max-w-md bg-gray-50 border border-gray-300 rounded-2xl shadow-2xl p-6 overflow-hidden">
+            <h3 className="text-lg font-bold text-gray-900">Stock Adjustment (Penyesuaian Stok)</h3>
+            <p className="text-sm text-gray-500 mt-1">
               Melakukan penyesuaian stok manual pada produk dan gudang tertentu.
             </p>
 
@@ -394,11 +394,11 @@ export default function Index({ stockMovements, warehouses, products, filters }:
 
               {/* Product */}
               <div className="space-y-1.5">
-                <label className="block text-sm font-semibold text-slate-300">Produk <span className="text-rose-500">*</span></label>
+                <label className="block text-sm font-semibold text-gray-700">Produk <span className="text-rose-500">*</span></label>
                 <select
                   value={data.product_id}
                   onChange={(e) => setData('product_id', e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all cursor-pointer"
+                  className="w-full px-4 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
                 >
                   <option value="">Pilih Produk...</option>
                   {products.map((p) => (
@@ -410,11 +410,11 @@ export default function Index({ stockMovements, warehouses, products, filters }:
 
               {/* Warehouse */}
               <div className="space-y-1.5">
-                <label className="block text-sm font-semibold text-slate-300">Gudang <span className="text-rose-500">*</span></label>
+                <label className="block text-sm font-semibold text-gray-700">Gudang <span className="text-rose-500">*</span></label>
                 <select
                   value={data.warehouse_id}
                   onChange={(e) => setData('warehouse_id', e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all cursor-pointer"
+                  className="w-full px-4 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
                 >
                   <option value="">Pilih Gudang...</option>
                   {warehouses.map((w) => (
@@ -426,48 +426,48 @@ export default function Index({ stockMovements, warehouses, products, filters }:
 
               {/* Quantity */}
               <div className="space-y-1.5">
-                <label className="block text-sm font-semibold text-slate-300">Kuantitas Penyesuaian <span className="text-rose-500">*</span></label>
+                <label className="block text-sm font-semibold text-gray-700">Kuantitas Penyesuaian <span className="text-rose-500">*</span></label>
                 <input
                   type="number"
                   value={data.quantity}
                   onChange={(e) => setData('quantity', e.target.value)}
                   placeholder="Gunakan tanda minus (-) untuk mengurangi stok"
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                  className="w-full px-4 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
                 />
                 {errors.quantity && <p className="text-rose-500 text-xs">{errors.quantity}</p>}
               </div>
 
               {/* Notes */}
               <div className="space-y-1.5">
-                <label className="block text-sm font-semibold text-slate-300">Alasan & Catatan <span className="text-rose-500">*</span></label>
+                <label className="block text-sm font-semibold text-gray-700">Alasan & Catatan <span className="text-rose-500">*</span></label>
                 <textarea
                   rows={3}
                   value={data.notes}
                   onChange={(e) => setData('notes', e.target.value)}
                   placeholder="Tuliskan alasan penyesuaian stok..."
-                  className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all placeholder:text-slate-600 resize-none"
+                  className="w-full px-4 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all placeholder:text-gray-400 resize-none"
                 />
                 {errors.notes && <p className="text-rose-500 text-xs">{errors.notes}</p>}
               </div>
 
               {/* Modal Actions */}
-              <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-800">
+              <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-300">
                 <button
                   type="button"
                   onClick={() => setAdjustModalOpen(false)}
                   disabled={processing}
-                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-800 text-slate-300 rounded-xl text-sm font-semibold transition-all border border-slate-800"
+                  className="px-4 py-2.5 bg-white hover:bg-teal-50 text-teal-700 rounded-xl text-sm font-semibold border border-teal-300 hover:border-teal-400 transition-all border border-gray-300"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={processing}
-                  className="px-4 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-950/40 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  className="px-4 py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-teal-200/40 flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
                   {processing ? (
                     <>
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-900" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                       </svg>

@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { Head, useForm } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 
@@ -32,55 +32,55 @@ export default function MarketplaceAccountEdit({ account, marketplaces }: Props)
     return (
         <AppLayout>
             <Head title="Edit Akun Marketplace" />
-            <div className="min-h-screen bg-slate-950 p-6">
+            <div className="min-h-screen bg-white p-6">
                 <div className="flex items-center gap-4 mb-8">
                     <a href={`/marketplace/accounts/${account.id}`}
-                        className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
+                        className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-gray-900 transition-colors">
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                     </a>
                     <div>
-                        <h1 className="text-2xl font-bold text-white">Edit Akun Marketplace</h1>
-                        <p className="text-slate-400 text-sm">{account.account_name}</p>
+                        <h1 className="text-2xl font-bold text-gray-900">Edit Akun Marketplace</h1>
+                        <p className="text-gray-500 text-sm">{account.account_name}</p>
                     </div>
                 </div>
 
                 <div className="max-w-xl">
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                    <div className="bg-gray-50 border border-gray-300 rounded-2xl p-6">
                         {/* Platform read-only */}
-                        <div className="mb-5 p-3 bg-slate-800 rounded-xl flex items-center gap-2">
-                            <span className="text-slate-300 text-sm font-medium">
+                        <div className="mb-5 p-3 bg-gray-100 rounded-xl flex items-center gap-2">
+                            <span className="text-gray-700 text-sm font-medium">
                                 {MARKETPLACE_LABELS[account.marketplace] ?? account.marketplace}
                             </span>
-                            <span className="text-slate-500 text-xs ml-1">(tidak dapat diubah)</span>
+                            <span className="text-gray-400 text-xs ml-1">(tidak dapat diubah)</span>
                         </div>
 
                         <form onSubmit={submit} className="space-y-5">
                             <div>
-                                <label className="block text-sm text-slate-400 mb-2">Nama Akun *</label>
+                                <label className="block text-sm text-gray-500 mb-2">Nama Akun *</label>
                                 <input type="text" value={data.account_name}
                                     onChange={e => setData('account_name', e.target.value)}
-                                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-colors text-sm" />
+                                    className="w-full bg-gray-100 border border-gray-300 rounded-xl px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:border-teal-500 transition-colors text-sm" />
                                 {errors.account_name && <p className="text-red-400 text-xs mt-1">{errors.account_name}</p>}
                             </div>
                             <div>
-                                <label className="block text-sm text-slate-400 mb-2">Shop ID</label>
+                                <label className="block text-sm text-gray-500 mb-2">Shop ID</label>
                                 <input type="text" value={data.shop_id}
                                     onChange={e => setData('shop_id', e.target.value)}
-                                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-colors text-sm" />
+                                    className="w-full bg-gray-100 border border-gray-300 rounded-xl px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:border-teal-500 transition-colors text-sm" />
                             </div>
                             <div>
-                                <label className="block text-sm text-slate-400 mb-2">Nama Toko</label>
+                                <label className="block text-sm text-gray-500 mb-2">Nama Toko</label>
                                 <input type="text" value={data.shop_name}
                                     onChange={e => setData('shop_name', e.target.value)}
-                                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 transition-colors text-sm" />
+                                    className="w-full bg-gray-100 border border-gray-300 rounded-xl px-4 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:border-teal-500 transition-colors text-sm" />
                             </div>
                             <div className="flex gap-3 pt-2">
                                 <a href={`/marketplace/accounts/${account.id}`}
-                                    className="flex-1 text-center px-4 py-2.5 border border-slate-700 text-slate-400 hover:text-white rounded-xl transition-colors text-sm font-medium">
+                                    className="flex-1 text-center px-4 py-2.5 border border-gray-300 text-gray-500 hover:text-gray-900 rounded-xl transition-colors text-sm font-medium">
                                     Batal
                                 </a>
                                 <button type="submit" disabled={processing}
-                                    className="flex-1 px-4 py-2.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white rounded-xl transition-colors text-sm font-medium">
+                                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 disabled:opacity-50 text-white rounded-xl transition-colors text-sm font-medium shadow-lg shadow-teal-200/40">
                                     {processing ? 'Menyimpan...' : 'Simpan Perubahan'}
                                 </button>
                             </div>

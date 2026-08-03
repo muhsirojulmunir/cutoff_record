@@ -1,4 +1,4 @@
-import React, { FormEvent, useState } from 'react';
+﻿import React, { FormEvent, useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 
@@ -63,13 +63,13 @@ interface Props {
 }
 
 const statusConfig: Record<string, { label: string; badge: string; dot: string }> = {
-    draft:                     { label: 'Draft',                     badge: 'bg-slate-500/10 border-slate-500/20 text-slate-400',     dot: 'bg-slate-400' },
+    draft:                     { label: 'Draft',                     badge: 'bg-slate-500/10 border-slate-500/20 text-gray-500',     dot: 'bg-slate-400' },
     pending_leader_approval:   { label: '⏳ Menunggu Leader',         badge: 'bg-amber-500/10 border-amber-500/20 text-amber-400',     dot: 'bg-amber-400' },
     pending_finance_approval:  { label: '⏳ Menunggu Finance',        badge: 'bg-orange-500/10 border-orange-500/20 text-orange-400',  dot: 'bg-orange-400' },
     approved:                  { label: '✅ Disetujui (Siap Cair)',   badge: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400', dot: 'bg-emerald-400' },
     paid:                      { label: '💰 Sudah Dibayar',          badge: 'bg-teal-500/10 border-teal-500/20 text-teal-400',       dot: 'bg-teal-400' },
     rejected:                  { label: '❌ Ditolak',                badge: 'bg-rose-500/10 border-rose-500/20 text-rose-400',        dot: 'bg-rose-400' },
-    cancelled:                 { label: 'Dibatalkan',                badge: 'bg-slate-500/10 border-slate-500/20 text-slate-500',     dot: 'bg-slate-500' },
+    cancelled:                 { label: 'Dibatalkan',                badge: 'bg-slate-500/10 border-slate-500/20 text-gray-400',     dot: 'bg-slate-500' },
 };
 
 const formatCurrency = (amount: string | number) =>
@@ -91,7 +91,7 @@ function ReasonModal({
     onClose,
     processing,
     inputId,
-    confirmClass = 'bg-rose-600 hover:bg-rose-700',
+    confirmClass = 'bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400',
 }: {
     title: string;
     label: string;
@@ -115,20 +115,20 @@ function ReasonModal({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-800">
-                    <h3 className="font-semibold text-slate-100">{title}</h3>
+            <div className="bg-white border border-gray-300 rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-300">
+                    <h3 className="font-semibold text-gray-900">{title}</h3>
                 </div>
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
                     <div>
-                        <label htmlFor={inputId} className="block text-xs font-semibold text-slate-400 mb-1.5">{label}</label>
+                        <label htmlFor={inputId} className="block text-xs font-semibold text-gray-500 mb-1.5">{label}</label>
                         <textarea
                             id={inputId}
                             rows={3}
                             value={reason}
                             onChange={e => { setReason(e.target.value); setError(''); }}
                             placeholder="Masukkan alasan..."
-                            className={`w-full px-3 py-2 rounded-xl bg-slate-900 border text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none transition-all resize-none placeholder:text-slate-600 ${error ? 'border-rose-500/60' : 'border-slate-800'}`}
+                            className={`w-full px-3 py-2 rounded-xl bg-gray-50 border text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all resize-none placeholder:text-gray-400 ${error ? 'border-rose-500/60' : 'border-gray-300'}`}
                         />
                         {error && <p className="text-rose-400 text-xs mt-1">{error}</p>}
                     </div>
@@ -136,7 +136,7 @@ function ReasonModal({
                         <button
                             type="button"
                             onClick={onClose}
-                            className="px-4 py-2 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-xl text-xs font-semibold transition-all"
+                            className="px-4 py-2 text-gray-500 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-300 hover:border-gray-300 rounded-xl text-xs font-semibold transition-all"
                         >
                             Batal
                         </button>
@@ -173,9 +173,9 @@ function TimelineItem({ icon, title, user, date, color }: {
     return (
         <li className="relative">
             <div className={`absolute -left-[21px] w-3.5 h-3.5 rounded-full border-2 border-slate-950 ${timelineDot[color] ?? 'bg-slate-400'}`} />
-            <p className="text-xs font-semibold text-slate-300">{icon} {title}</p>
-            {user && <p className="text-xs text-slate-500 mt-0.5">{user}</p>}
-            <p className="text-xs text-slate-600 mt-0.5">{date}</p>
+            <p className="text-xs font-semibold text-gray-700">{icon} {title}</p>
+            {user && <p className="text-xs text-gray-400 mt-0.5">{user}</p>}
+            <p className="text-xs text-gray-400 mt-0.5">{date}</p>
         </li>
     );
 }
@@ -184,8 +184,8 @@ function TimelineItem({ icon, title, user, date, color }: {
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
     return (
         <div>
-            <dt className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">{label}</dt>
-            <dd className="text-sm text-slate-200">{children}</dd>
+            <dt className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">{label}</dt>
+            <dd className="text-sm text-gray-800">{children}</dd>
         </div>
     );
 }
@@ -204,7 +204,7 @@ export default function PettyCashShow({
     const [showCancelModal, setShowCancelModal]   = useState(false);
     const [modalProcessing, setModalProcessing]   = useState(false);
 
-    const statusInfo  = statusConfig[transaction.status] ?? { label: transaction.status, badge: 'bg-slate-500/10 border-slate-500/20 text-slate-400', dot: 'bg-slate-400' };
+    const statusInfo  = statusConfig[transaction.status] ?? { label: transaction.status, badge: 'bg-slate-500/10 border-slate-500/20 text-gray-500', dot: 'bg-slate-400' };
     const methodLabel = paymentMethods.find(m => m.value === transaction.payment_method)?.label ?? transaction.payment_method;
 
     const handleSubmit = () => {
@@ -253,7 +253,7 @@ export default function PettyCashShow({
                     onSubmit={handleReject}
                     onClose={() => setShowRejectModal(false)}
                     processing={modalProcessing}
-                    confirmClass="bg-rose-600 hover:bg-rose-700"
+                    confirmClass="bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400"
                 />
             )}
 
@@ -265,7 +265,7 @@ export default function PettyCashShow({
                     onSubmit={handleCancel}
                     onClose={() => setShowCancelModal(false)}
                     processing={modalProcessing}
-                    confirmClass="bg-slate-700 hover:bg-slate-600"
+                    confirmClass="bg-gradient-to-r from-slate-600 to-slate-500 hover:from-slate-500 hover:to-slate-400"
                 />
             )}
 
@@ -275,16 +275,16 @@ export default function PettyCashShow({
                     <div className="flex items-center gap-3">
                         <Link
                             href="/petty-cash"
-                            className="p-1.5 text-slate-500 hover:text-white hover:bg-slate-900 border border-transparent hover:border-slate-800 rounded-lg transition-all"
+                            className="p-1.5 text-gray-400 hover:text-gray-900 hover:bg-gray-50 border border-transparent hover:border-gray-300 rounded-lg transition-all"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                             </svg>
                         </Link>
                         <div>
-                            <h1 className="text-2xl font-bold text-white tracking-tight font-mono">{transaction.transaction_number}</h1>
+                            <h1 className="text-2xl font-bold text-gray-900 tracking-tight font-mono">{transaction.transaction_number}</h1>
                             <div className="flex items-center gap-2 mt-1">
-                                <p className="text-slate-400 text-xs">Keuangan / Petty Cash / Detail</p>
+                                <p className="text-gray-500 text-xs">Keuangan / Petty Cash / Detail</p>
                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 border rounded-full text-[10px] font-bold uppercase tracking-wider ${statusInfo.badge}`}>
                                     <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot}`} />
                                     {statusInfo.label}
@@ -299,7 +299,7 @@ export default function PettyCashShow({
                             <Link
                                 id="btn-edit"
                                 href={`/petty-cash/${transaction.id}/edit`}
-                                className="px-4 py-2 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-xl text-xs font-semibold transition-all"
+                                className="px-4 py-2 text-gray-500 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-300 hover:border-gray-300 rounded-xl text-xs font-semibold transition-all"
                             >
                                 Edit
                             </Link>
@@ -308,7 +308,7 @@ export default function PettyCashShow({
                             <button
                                 id="btn-submit-approval"
                                 onClick={handleSubmit}
-                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-xs transition-all shadow-lg shadow-blue-900/30"
+                                className="px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white font-semibold rounded-xl text-xs transition-all shadow-lg shadow-teal-200/40"
                             >
                                 Ajukan ke Leader
                             </button>
@@ -317,7 +317,7 @@ export default function PettyCashShow({
                             <button
                                 id="btn-leader-approve"
                                 onClick={handleLeaderApprove}
-                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs transition-all shadow-lg shadow-emerald-900/30"
+                                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold rounded-xl text-xs transition-all shadow-lg shadow-emerald-200/40"
                             >
                                 ✅ Approve (Leader)
                             </button>
@@ -326,7 +326,7 @@ export default function PettyCashShow({
                             <button
                                 id="btn-finance-approve"
                                 onClick={handleFinanceApprove}
-                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-xs transition-all shadow-lg shadow-emerald-900/30"
+                                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold rounded-xl text-xs transition-all shadow-lg shadow-emerald-200/40"
                             >
                                 ✅ Approve (Finance)
                             </button>
@@ -335,7 +335,7 @@ export default function PettyCashShow({
                             <button
                                 id="btn-disburse"
                                 onClick={handleDisburse}
-                                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-xl text-xs transition-all shadow-lg shadow-teal-900/30"
+                                className="px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white font-semibold rounded-xl text-xs transition-all shadow-lg shadow-teal-200/40"
                             >
                                 💰 Cairkan Dana
                             </button>
@@ -353,7 +353,7 @@ export default function PettyCashShow({
                             <button
                                 id="btn-cancel"
                                 onClick={() => setShowCancelModal(true)}
-                                className="px-4 py-2 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 font-semibold rounded-xl text-xs transition-all"
+                                className="px-4 py-2 text-gray-500 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-300 hover:border-gray-300 font-semibold rounded-xl text-xs transition-all"
                             >
                                 Batalkan
                             </button>
@@ -365,26 +365,26 @@ export default function PettyCashShow({
                     {/* Left Column */}
                     <div className="lg:col-span-2 space-y-5">
                         {/* Amount Summary */}
-                        <div className="bg-gradient-to-br from-violet-600 to-violet-800 rounded-2xl p-6 text-white shadow-xl shadow-violet-900/30">
-                            <p className="text-violet-200 text-xs font-semibold uppercase tracking-wider mb-1">Total Pengeluaran</p>
+                        <div className="bg-gradient-to-br from-teal-600 to-violet-800 rounded-2xl p-6 text-white shadow-xl shadow-violet-900/30">
+                            <p className="text-teal-200 text-xs font-semibold uppercase tracking-wider mb-1">Total Pengeluaran</p>
                             <p className="text-3xl font-extrabold">{formatCurrency(transaction.amount)}</p>
                             <div className="mt-4 flex items-center gap-3">
-                                <span className="bg-white/15 text-white text-xs font-semibold px-2.5 py-1 rounded-full border border-white/10">
+                                <span className="bg-white/15 text-gray-900 text-xs font-semibold px-2.5 py-1 rounded-full border border-white/10">
                                     {transaction.category?.name ?? '-'}
                                 </span>
-                                <span className="text-violet-200 text-xs">{methodLabel}</span>
+                                <span className="text-teal-200 text-xs">{methodLabel}</span>
                             </div>
                         </div>
 
                         {/* Transaction Info */}
-                        <div className="bg-slate-950 border border-slate-900 rounded-2xl overflow-hidden shadow-xl">
-                            <div className="px-6 py-4 border-b border-slate-900 bg-slate-950/60">
-                                <h2 className="font-semibold text-slate-200 text-sm">Informasi Transaksi</h2>
+                        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xl">
+                            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                                <h2 className="font-semibold text-gray-800 text-sm">Informasi Transaksi</h2>
                             </div>
                             <div className="p-6">
                                 <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
                                     <DetailRow label="Nomor Transaksi">
-                                        <span className="font-mono text-violet-400">{transaction.transaction_number}</span>
+                                        <span className="font-mono text-teal-400">{transaction.transaction_number}</span>
                                     </DetailRow>
                                     <DetailRow label="Tanggal Transaksi">
                                         {formatDate(transaction.transaction_date)}
@@ -411,12 +411,12 @@ export default function PettyCashShow({
                                     )}
                                     {transaction.reference_number && (
                                         <DetailRow label="Nomor Referensi">
-                                            <span className="font-mono text-slate-300">{transaction.reference_number}</span>
+                                            <span className="font-mono text-gray-700">{transaction.reference_number}</span>
                                         </DetailRow>
                                     )}
                                     <div className="sm:col-span-2">
                                         <DetailRow label="Deskripsi">
-                                            <span className="text-slate-300 leading-relaxed">{transaction.description}</span>
+                                            <span className="text-gray-700 leading-relaxed">{transaction.description}</span>
                                         </DetailRow>
                                     </div>
                                 </dl>
@@ -425,11 +425,11 @@ export default function PettyCashShow({
 
                         {/* Rejection / Cancellation Notes */}
                         {(transaction.rejection_reason || transaction.cancellation_reason) && (
-                            <div className={`rounded-2xl border p-5 ${transaction.rejection_reason ? 'bg-rose-500/10 border-rose-500/20' : 'bg-slate-900 border-slate-800'}`}>
-                                <h3 className={`font-semibold text-sm mb-2 ${transaction.rejection_reason ? 'text-rose-400' : 'text-slate-400'}`}>
+                            <div className={`rounded-2xl border p-5 ${transaction.rejection_reason ? 'bg-rose-500/10 border-rose-500/20' : 'bg-gray-50 border-gray-300'}`}>
+                                <h3 className={`font-semibold text-sm mb-2 ${transaction.rejection_reason ? 'text-rose-400' : 'text-gray-500'}`}>
                                     {transaction.rejection_reason ? '❌ Alasan Penolakan' : '🚫 Alasan Pembatalan'}
                                 </h3>
-                                <p className={`text-sm ${transaction.rejection_reason ? 'text-rose-300' : 'text-slate-400'}`}>
+                                <p className={`text-sm ${transaction.rejection_reason ? 'text-rose-300' : 'text-gray-500'}`}>
                                     {transaction.rejection_reason || transaction.cancellation_reason}
                                 </p>
                             </div>
@@ -439,12 +439,12 @@ export default function PettyCashShow({
                     {/* Right Column — Approval Timeline */}
                     <div className="space-y-4">
                         {/* Timeline */}
-                        <div className="bg-slate-950 border border-slate-900 rounded-2xl overflow-hidden shadow-xl">
-                            <div className="px-5 py-4 border-b border-slate-900 bg-slate-950/60">
-                                <h2 className="font-semibold text-slate-200 text-sm">Timeline Persetujuan</h2>
+                        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xl">
+                            <div className="px-5 py-4 border-b border-gray-200 bg-gray-50">
+                                <h2 className="font-semibold text-gray-800 text-sm">Timeline Persetujuan</h2>
                             </div>
                             <div className="p-5">
-                                <ol className="relative border-l border-slate-800 space-y-6 pl-5">
+                                <ol className="relative border-l border-gray-300 space-y-6 pl-5">
                                     <TimelineItem
                                         icon="✏️"
                                         title="Dibuat"
@@ -493,16 +493,16 @@ export default function PettyCashShow({
                         </div>
 
                         {/* Created By */}
-                        <div className="bg-slate-950 border border-slate-900 rounded-2xl p-5 shadow-xl">
-                            <h3 className="font-semibold text-slate-200 text-sm mb-3">Dibuat Oleh</h3>
+                        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xl">
+                            <h3 className="font-semibold text-gray-800 text-sm mb-3">Dibuat Oleh</h3>
                             <div className="flex items-center gap-3">
-                                <div className="w-9 h-9 rounded-full bg-violet-500/20 border border-violet-500/30 flex items-center justify-center flex-shrink-0">
-                                    <span className="text-violet-400 font-bold text-sm">
+                                <div className="w-9 h-9 rounded-full bg-teal-500/20 border border-teal-500/30 flex items-center justify-center flex-shrink-0">
+                                    <span className="text-teal-400 font-bold text-sm">
                                         {transaction.creator?.name?.charAt(0).toUpperCase()}
                                     </span>
                                 </div>
                                 <div>
-                                    <p className="text-sm font-semibold text-slate-200">{transaction.creator?.name}</p>
+                                    <p className="text-sm font-semibold text-gray-800">{transaction.creator?.name}</p>
                                 </div>
                             </div>
                         </div>

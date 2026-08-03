@@ -15,9 +15,11 @@ class Product extends Model
         'name',
         'category_id',
         'brand',
-        'size',
         'color',
-        'unit',
+        'is_box',
+        'length',
+        'width',
+        'height',
         'purchase_price',
         'selling_price',
         'minimum_stock',
@@ -28,11 +30,40 @@ class Product extends Model
     ];
 
     protected $casts = [
+        'is_box'         => 'boolean',
+        'length'         => 'decimal:2',
+        'width'          => 'decimal:2',
+        'height'         => 'decimal:2',
         'purchase_price' => 'decimal:2',
         'selling_price'  => 'decimal:2',
         'minimum_stock'  => 'integer',
         'stock'          => 'integer',
     ];
+
+    protected $appends = ['dimension_label'];
+
+    /**
+     * Ukuran siap tampil: "40 x 30 cm", atau "40 x 30 x 25 cm" untuk kardus.
+     */
+    public function getDimensionLabelAttribute(): ?string
+    {
+        if ($this->length === null || $this->width === null) {
+            return null;
+        }
+
+        $parts = [$this->length, $this->width];
+
+        if ($this->is_box && $this->height !== null) {
+            $parts[] = $this->height;
+        }
+
+        $numbers = array_map(
+            fn ($value) => rtrim(rtrim(number_format((float) $value, 2, ',', '.'), '0'), ','),
+            $parts
+        );
+
+        return implode(' × ', $numbers) . ' cm';
+    }
 
     /**
      * Get the category that owns the product.

@@ -23,18 +23,14 @@ class UpdatePurchaseOrderRequest extends FormRequest
             'supplier_id'             => ['required', 'exists:suppliers,id'],
             'warehouse_id'            => ['nullable', 'exists:warehouses,id'],
             'order_date'              => ['required', 'date'],
-            'expected_delivery_date'  => ['nullable', 'date', 'after_or_equal:order_date'],
-            'source'                  => ['required', 'in:manual,other'],
+            'production_lead_time_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'payment_terms'           => ['required', 'in:cash_to_cash,tempo_7_days'],
+            'is_free_shipping'        => ['required', 'boolean'],
             'notes'                   => ['nullable', 'string', 'max:1000'],
-            'discount_amount'         => ['nullable', 'numeric', 'min:0'],
-            'tax_amount'              => ['nullable', 'numeric', 'min:0'],
-            'shipping_cost'           => ['nullable', 'numeric', 'min:0'],
             'items'                   => ['required', 'array', 'min:1'],
             'items.*.product_id'      => ['required', 'exists:products,id'],
             'items.*.quantity'        => ['required', 'integer', 'min:1'],
             'items.*.price'           => ['required', 'numeric', 'min:0'],
-            'items.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
-            'items.*.tax_amount'      => ['nullable', 'numeric', 'min:0'],
         ];
     }
 
@@ -47,18 +43,14 @@ class UpdatePurchaseOrderRequest extends FormRequest
             'supplier_id'             => 'Supplier',
             'warehouse_id'            => 'Gudang',
             'order_date'              => 'Tanggal Order',
-            'expected_delivery_date'  => 'Tanggal Estimasi Pengiriman',
-            'source'                  => 'Sumber',
+            'production_lead_time_days' => 'Estimasi Pengerjaan (hari)',
+            'payment_terms'           => 'Pembayaran',
+            'is_free_shipping'        => 'Free Ongkir',
             'notes'                   => 'Catatan',
-            'discount_amount'         => 'Diskon',
-            'tax_amount'              => 'Pajak',
-            'shipping_cost'           => 'Biaya Pengiriman',
             'items'                   => 'Daftar Item',
             'items.*.product_id'      => 'Produk',
             'items.*.quantity'        => 'Jumlah Kuantitas',
             'items.*.price'           => 'Harga Satuan',
-            'items.*.discount_amount' => 'Diskon Item',
-            'items.*.tax_amount'      => 'Pajak Item',
         ];
     }
 }

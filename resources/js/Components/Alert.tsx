@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 
 interface AlertProps {
   message: string | null;
@@ -22,27 +22,27 @@ export default function Alert({ message, type = 'success' }: AlertProps) {
 
   return (
     <div
-      className={`fixed bottom-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl transition-all duration-300 animate-slide-in
+      className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl border backdrop-blur-md shadow-2xl transition-all duration-300 animate-slide-in
         ${type === 'success'
-          ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
-          : 'bg-rose-500/10 border-rose-500/25 text-rose-400'
+          ? 'bg-emerald-50 border-emerald-500/30 text-emerald-300 shadow-emerald-950/20'
+          : 'bg-rose-50 border-rose-500/30 text-rose-300 shadow-rose-950/20'
         }`}
     >
       <div className="shrink-0">
         {type === 'success' ? (
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-emerald-400">
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         ) : (
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-rose-400">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
           </svg>
         )}
       </div>
-      <p className="text-sm font-medium">{message}</p>
+      <p className="text-xs font-semibold tracking-wide">{message}</p>
       <button
         onClick={() => setVisible(false)}
-        className="ml-auto p-0.5 rounded-lg hover:bg-white/10 transition-colors"
+        className="ml-auto p-1 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-white/10 transition-colors"
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

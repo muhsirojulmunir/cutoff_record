@@ -17,14 +17,19 @@ class Supplier extends Model
         'phone',
         'email',
         'address',
-        'tax_number',
-        'bank_name',
-        'bank_account_number',
         'payment_terms',
         'status',
         'notes',
         'created_by',
     ];
+
+    /**
+     * Rekening bank pabrik — satu pabrik bisa punya banyak rekening.
+     */
+    public function bankAccounts(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(SupplierBankAccount::class);
+    }
 
     /**
      * Get the user who created the supplier.

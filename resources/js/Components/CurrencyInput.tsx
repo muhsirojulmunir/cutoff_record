@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useState } from 'react';
+﻿import React, { useLayoutEffect, useRef, useState } from 'react';
 
 import {
   caretPositionAfterDigits,
@@ -104,7 +104,7 @@ export default function CurrencyInput({
   return (
     <div className="relative">
       {!hidePrefix && (
-        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm select-none">
+        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm select-none">
           Rp
         </span>
       )}

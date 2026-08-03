@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 
@@ -29,7 +29,7 @@ const dirBadge: Record<string, string> = {
 };
 const statusBadge: Record<string, string> = {
     posted:   'bg-blue-500/10 border-blue-500/20 text-blue-400',
-    reversed: 'bg-slate-500/10 border-slate-500/20 text-slate-400',
+    reversed: 'bg-slate-500/10 border-slate-500/20 text-gray-500',
 };
 
 export default function TransactionsIndex({ transactions, accounts, filters, transactionTypes }: Props) {
@@ -59,58 +59,58 @@ export default function TransactionsIndex({ transactions, accounts, filters, tra
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
-                        <h1 className="text-2xl font-bold text-white tracking-tight">Ledger Transaksi Kas & Bank</h1>
-                        <p className="text-slate-400 text-xs mt-1">Kas & Bank / Ledger Transaksi</p>
+                        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Ledger Transaksi Kas & Bank</h1>
+                        <p className="text-gray-500 text-xs mt-1">Kas & Bank / Ledger Transaksi</p>
                     </div>
-                    <Link href="/cash-bank/accounts" className="px-4 py-2 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs font-semibold transition-all">
+                    <Link href="/cash-bank/accounts" className="px-4 py-2 text-gray-500 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-300 rounded-xl text-xs font-semibold transition-all">
                         ← Daftar Rekening
                     </Link>
                 </div>
 
                 {/* Filters */}
-                <div className="bg-slate-950 border border-slate-900 rounded-2xl p-5 shadow-xl">
+                <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xl">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         <div className="relative lg:col-span-1">
                             <input id="filter-search" value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && apply()}
                                 placeholder="Nomor / Referensi / Keterangan..."
-                                className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none placeholder:text-slate-600" />
-                            <div className="absolute left-3 top-2.5 text-slate-500">
+                                className="w-full pl-9 pr-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none placeholder:text-gray-400" />
+                            <div className="absolute left-3 top-2.5 text-gray-400">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.637 10.637z" /></svg>
                             </div>
                         </div>
                         <select id="filter-account" value={acctId} onChange={e => setAcctId(e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none cursor-pointer">
+                            className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none cursor-pointer">
                             <option value="">Semua Rekening</option>
                             {accounts.map(a => <option key={a.id} value={a.id}>{a.account_code} - {a.account_name}</option>)}
                         </select>
                         <select id="filter-type" value={type} onChange={e => setType(e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none cursor-pointer">
+                            className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none cursor-pointer">
                             <option value="">Semua Jenis</option>
                             {transactionTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                         </select>
                         <select id="filter-direction" value={dir} onChange={e => setDir(e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none cursor-pointer">
+                            className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none cursor-pointer">
                             <option value="">Semua Arah</option>
                             <option value="in">Masuk (IN)</option>
                             <option value="out">Keluar (OUT)</option>
                         </select>
                         <input id="filter-date-from" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none cursor-pointer" />
+                            className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none cursor-pointer" />
                         <input id="filter-date-to" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent focus:outline-none cursor-pointer" />
+                            className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none cursor-pointer" />
                     </div>
                     <div className="flex justify-end gap-2.5 mt-4">
-                        <button onClick={reset} className="px-4 py-2 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-xs font-semibold transition-all">Reset</button>
-                        <button id="btn-apply-filter" onClick={apply} className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-100 rounded-xl text-xs font-semibold border border-slate-700 transition-all">Terapkan</button>
+                        <button onClick={reset} className="px-4 py-2 text-gray-500 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 border border-gray-300 rounded-xl text-xs font-semibold transition-all">Reset</button>
+                        <button id="btn-apply-filter" onClick={apply} className="px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-xl text-xs font-semibold border border-gray-300 transition-all">Terapkan</button>
                     </div>
                 </div>
 
                 {/* Table */}
-                <div className="bg-slate-950 border border-slate-900 rounded-2xl overflow-hidden shadow-xl">
+                <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xl">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
-                                <tr className="border-b border-slate-900 text-slate-400 text-[10px] font-bold uppercase tracking-wider bg-slate-950/60">
+                                <tr className="border-b border-gray-200 text-gray-500 text-[10px] font-bold uppercase tracking-wider bg-gray-50">
                                     <th className="py-3 px-5">No. Transaksi</th>
                                     <th className="py-3 px-5">Tanggal</th>
                                     <th className="py-3 px-5">Rekening</th>
@@ -122,19 +122,19 @@ export default function TransactionsIndex({ transactions, accounts, filters, tra
                                     <th className="py-3 px-5 text-center">Status</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-900 text-sm text-slate-300">
+                            <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
                                 {transactions.data.length === 0 ? (
-                                    <tr><td colSpan={9} className="text-center py-16 text-slate-500">Belum ada transaksi</td></tr>
+                                    <tr><td colSpan={9} className="text-center py-16 text-gray-400">Belum ada transaksi</td></tr>
                                 ) : transactions.data.map(t => (
-                                    <tr key={t.id} className="hover:bg-slate-900/30 transition-colors">
-                                        <td className="py-3.5 px-5 font-mono font-bold text-violet-400 whitespace-nowrap">
-                                            <Link href={`/cash-bank/transactions/${t.id}`} className="hover:text-violet-300">{t.transaction_number}</Link>
+                                    <tr key={t.id} className="hover:bg-teal-50/60 transition-colors">
+                                        <td className="py-3.5 px-5 font-mono font-bold text-teal-400 whitespace-nowrap">
+                                            <Link href={`/cash-bank/transactions/${t.id}`} className="hover:text-teal-600">{t.transaction_number}</Link>
                                         </td>
                                         <td className="py-3.5 px-5 whitespace-nowrap text-xs">{new Date(t.transaction_date).toLocaleDateString('id-ID', {day:'2-digit', month:'short', year:'numeric'})}</td>
                                         <td className="py-3.5 px-5 text-xs whitespace-nowrap">
                                             <Link href={`/cash-bank/accounts/${t.account.id}`} className="text-blue-400 hover:text-blue-300 font-mono">{t.account.account_code}</Link>
                                         </td>
-                                        <td className="py-3.5 px-5 text-xs whitespace-nowrap text-slate-400">{t.type_label}</td>
+                                        <td className="py-3.5 px-5 text-xs whitespace-nowrap text-gray-500">{t.type_label}</td>
                                         <td className="py-3.5 px-5 text-center whitespace-nowrap">
                                             <span className={`inline-flex items-center px-2.5 py-0.5 border rounded-full text-[10px] font-bold ${dirBadge[t.direction]}`}>
                                                 {t.direction === 'in' ? '▲ IN' : '▼ OUT'}
@@ -143,8 +143,8 @@ export default function TransactionsIndex({ transactions, accounts, filters, tra
                                         <td className={`py-3.5 px-5 text-right font-extrabold whitespace-nowrap ${t.direction === 'in' ? 'text-emerald-400' : 'text-rose-400'}`}>
                                             {t.direction === 'in' ? '+' : '-'}{fmt(t.amount)}
                                         </td>
-                                        <td className="py-3.5 px-5 text-right font-mono text-xs text-slate-400 whitespace-nowrap">{fmt(t.balance_before)}</td>
-                                        <td className="py-3.5 px-5 text-right font-mono text-xs font-semibold text-white whitespace-nowrap">{fmt(t.balance_after)}</td>
+                                        <td className="py-3.5 px-5 text-right font-mono text-xs text-gray-500 whitespace-nowrap">{fmt(t.balance_before)}</td>
+                                        <td className="py-3.5 px-5 text-right font-mono text-xs font-semibold text-gray-900 whitespace-nowrap">{fmt(t.balance_after)}</td>
                         <td className="py-3.5 px-5 text-center whitespace-nowrap">
                                             <span className={`inline-flex items-center px-2.5 py-0.5 border rounded-full text-[10px] font-bold uppercase ${statusBadge[t.status] ?? ''}`}>
                                                 {t.status === 'posted' ? 'Posted' : 'Reversed'}
@@ -159,7 +159,7 @@ export default function TransactionsIndex({ transactions, accounts, filters, tra
                                                             router.delete(`/cash-bank/transactions/${t.id}`);
                                                         }
                                                     }}
-                                                    className="p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-900 border border-transparent hover:border-rose-900/40 rounded-lg transition-all inline-flex"
+                                                    className="p-1 text-gray-500 hover:text-rose-400 hover:bg-gray-50 border border-transparent hover:border-rose-900/40 rounded-lg transition-all inline-flex"
                                                     title="Hapus Transaksi (Super Admin)"
                                                 >
                                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
@@ -173,17 +173,17 @@ export default function TransactionsIndex({ transactions, accounts, filters, tra
                             </tbody>
                         </table>
                     </div>
-                    <div className="p-4 border-t border-slate-900 bg-slate-950/40 flex justify-between items-center">
-                        <div className="text-slate-500 text-xs font-medium">
+                    <div className="p-4 border-t border-gray-200 bg-white/80 flex justify-between items-center">
+                        <div className="text-gray-400 text-xs font-medium">
                             {transactions.total > 0 ? `Menampilkan ${transactions.from}–${transactions.to} dari ${transactions.total} transaksi` : 'Tidak ada data'}
                         </div>
                         {transactions.links.length > 3 && (
                             <div className="flex items-center gap-1">
                                 {transactions.links.map((link, i) => link.url ? (
                                     <Link key={i} href={link.url} dangerouslySetInnerHTML={{ __html: link.label }}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${link.active ? 'bg-violet-600 text-white' : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'}`} />
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${link.active ? 'bg-teal-500 text-white' : 'bg-gray-50 border border-gray-300 text-gray-500 hover:text-gray-900'}`} />
                                 ) : (
-                                    <span key={i} dangerouslySetInnerHTML={{ __html: link.label }} className="px-3 py-1.5 text-xs text-slate-600" />
+                                    <span key={i} dangerouslySetInnerHTML={{ __html: link.label }} className="px-3 py-1.5 text-xs text-gray-400" />
                                 ))}
                             </div>
                         )}

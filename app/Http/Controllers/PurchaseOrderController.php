@@ -79,7 +79,7 @@ class PurchaseOrderController extends Controller
 
         $suppliers = Supplier::where('status', 'active')->orderBy('name')->get(['id', 'supplier_code', 'name']);
         $warehouses = Warehouse::where('status', 'active')->orderBy('name')->get(['id', 'code', 'name']);
-        $products = Product::where('status', 'active')->orderBy('name')->get(['id', 'sku', 'name', 'purchase_price', 'unit']);
+        $products = Product::where('status', 'active')->orderBy('name')->get(['id', 'sku', 'name', 'purchase_price']);
 
         return Inertia::render('PurchaseOrders/Create', [
             'suppliers'  => $suppliers,
@@ -155,7 +155,7 @@ class PurchaseOrderController extends Controller
         $purchaseOrder->load('items');
         $suppliers = Supplier::where('status', 'active')->orderBy('name')->get(['id', 'supplier_code', 'name']);
         $warehouses = Warehouse::where('status', 'active')->orderBy('name')->get(['id', 'code', 'name']);
-        $products = Product::where('status', 'active')->orderBy('name')->get(['id', 'sku', 'name', 'purchase_price', 'unit']);
+        $products = Product::where('status', 'active')->orderBy('name')->get(['id', 'sku', 'name', 'purchase_price']);
 
         return Inertia::render('PurchaseOrders/Edit', [
             'purchaseOrder' => $purchaseOrder,
@@ -316,6 +316,7 @@ class PurchaseOrderController extends Controller
         }
 
         $request->validate([
+            'shipping_cost'                => ['nullable', 'numeric', 'min:0'],
             'items'                        => ['required', 'array', 'min:1'],
             'items.*.product_id'           => ['required', 'exists:products,id'],
             'items.*.received_qty'         => ['required', 'integer', 'min:0'],
@@ -326,7 +327,7 @@ class PurchaseOrderController extends Controller
         ]);
 
         try {
-            $this->poService->receiveGoods($purchaseOrder, $request->only('items'));
+            $this->poService->receiveGoods($purchaseOrder, $request->only('items', 'shipping_cost'));
             return back()->with('success', 'Penerimaan barang & kondisi fisik berhasil dicatat.');
         } catch (Exception $e) {
             return back()->with('error', $e->getMessage());
@@ -361,7 +362,7 @@ class PurchaseOrderController extends Controller
         $request->validate([
             'dp_amount'           => ['required', 'numeric', 'min:1'],
             'cash_bank_account_id'=> ['nullable', 'exists:cash_bank_accounts,id'],
-            'payment_terms'       => ['required', 'in:cash_on_delivery,tempo_1_week,tempo_2_weeks'],
+            'payment_terms'       => ['required', 'in:cash_to_cash,tempo_7_days'],
         ]);
 
         try {
