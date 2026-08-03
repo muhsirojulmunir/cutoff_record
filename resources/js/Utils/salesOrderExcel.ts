@@ -18,6 +18,8 @@ interface ExportOrder {
   tax_amount: number;
   shipping_cost: number;
   grand_total: number;
+  dp_amount: number;
+  remaining_amount: number;
   total_weight: number;
   created_by: string | null;
   notes: string | null;
@@ -97,6 +99,8 @@ function toOrderRow(order: ExportOrder) {
     'Pajak': order.tax_amount,
     'Ongkir': order.shipping_cost,
     'Grand Total': order.grand_total,
+    'DP / Uang Muka': order.dp_amount,
+    'Sisa Tagihan': order.remaining_amount,
     'Berat (Kg)': order.total_weight,
     'Dibuat Oleh': order.created_by ?? '',
     'Catatan': order.notes ?? '',

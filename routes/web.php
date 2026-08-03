@@ -105,6 +105,10 @@ Route::middleware('auth')->group(function () {
         ->name('sales-orders.export')
         ->middleware('can:sales_order.view');
 
+    Route::get('/sales-orders/{sales_order}/label', [SalesOrderController::class, 'label'])
+        ->name('sales-orders.label')
+        ->middleware('can:sales_order.view');
+
     Route::post('/sales-orders/{sales_order}/submit-approval', [SalesOrderController::class, 'submitApproval'])
         ->name('sales-orders.submit-approval')
         ->middleware('can:sales_order.edit');

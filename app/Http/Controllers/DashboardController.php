@@ -18,8 +18,9 @@ class DashboardController extends Controller
         $range = $request->get('range', 'this_month');
         $dateFrom = $request->get('date_from');
         $dateTo   = $request->get('date_to');
+        $channel  = $request->get('channel') ?: null;
 
-        $metrics = $this->dashboardService->getDashboardMetrics($range, $dateFrom, $dateTo);
+        $metrics = $this->dashboardService->getDashboardMetrics($range, $dateFrom, $dateTo, $channel);
 
         return Inertia::render('Dashboard', [
             'metrics' => $metrics,
@@ -27,6 +28,7 @@ class DashboardController extends Controller
                 'range'     => $range,
                 'date_from' => $dateFrom,
                 'date_to'   => $dateTo,
+                'channel'   => $channel,
             ],
         ]);
     }

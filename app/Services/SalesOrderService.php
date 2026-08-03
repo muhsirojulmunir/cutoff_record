@@ -344,6 +344,34 @@ class SalesOrderService
     }
 
     /**
+     * Selaraskan status bayar SO dengan uang yang sudah masuk di invoicenya.
+     * Dipanggil setiap kali pembayaran invoice berubah.
+     */
+    public function syncPaymentStatus(SalesOrder $salesOrder): SalesOrder
+    {
+        $invoice = $salesOrder->invoice;
+
+        if (! $invoice) {
+            return $salesOrder;
+        }
+
+        $paid = (float) $invoice->paid_amount;
+
+        $paymentStatus = match (true) {
+            $invoice->status === 'cancelled' => 'unpaid',
+            (float) $invoice->remaining_amount <= 0 && $paid > 0 => 'paid',
+            $paid > 0 => 'partially_paid',
+            default => 'unpaid',
+        };
+
+        if ($salesOrder->payment_status !== $paymentStatus) {
+            $salesOrder->update(['payment_status' => $paymentStatus]);
+        }
+
+        return $salesOrder->fresh();
+    }
+
+    /**
      * Sales Order dianggap lunas bila invoice-nya berstatus paid. Untuk SO Grosir
      * yang dibuat langsung lunas tanpa invoice, dipakai payment_status pada SO.
      */
@@ -487,11 +515,13 @@ class SalesOrderService
             $subtotal = $unitPrice * $qty;
             $grandTotal = max(0, $subtotal - $voucher + $tax);
 
+            // Status bayar hanya boleh ditentukan oleh uang yang benar-benar
+            // diterima. Tanggal pembayaran di form hanyalah catatan waktu, jadi
+            // tidak lagi dipakai untuk menandai lunas — dulu inilah yang membuat
+            // SO baru langsung berstatus Lunas padahal belum dibayar.
             $paymentStatus = 'unpaid';
             if ($dpAmount > 0) {
                 $paymentStatus = $dpAmount >= $grandTotal ? 'paid' : 'partially_paid';
-            } elseif ($paymentDateStr) {
-                $paymentStatus = 'paid';
             }
 
             $salesOrder = SalesOrder::create([

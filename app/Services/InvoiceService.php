@@ -140,10 +140,16 @@ class InvoiceService
 
             $freshInvoice = $lockedInvoice->fresh();
 
-            // Invoice lunas ⇒ coba tutup Sales Order-nya (baru jadi bila resi
-            // sudah terbit juga). Aman dipanggil berulang kali.
-            if ($status === 'paid' && $freshInvoice->salesOrder) {
-                app(SalesOrderService::class)->syncCompletion($freshInvoice->salesOrder);
+            if ($freshInvoice->salesOrder) {
+                // Status bayar pada SO mengikuti uang yang benar-benar masuk di
+                // invoice, supaya daftar SO tidak menampilkan status usang.
+                app(SalesOrderService::class)->syncPaymentStatus($freshInvoice->salesOrder);
+
+                // Invoice lunas ⇒ coba tutup Sales Order-nya (baru jadi bila resi
+                // sudah terbit juga). Aman dipanggil berulang kali.
+                if ($status === 'paid') {
+                    app(SalesOrderService::class)->syncCompletion($freshInvoice->salesOrder);
+                }
             }
 
             return $freshInvoice;

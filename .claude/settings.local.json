@@ -72,7 +72,8 @@
       "PowerShell(php artisan test --filter SalesOrderTest 2>&1)",
       "PowerShell(php artisan test --filter PettyCash 2>&1)",
       "PowerShell(php artisan test --filter FundAllocationTest 2>&1)",
-      "PowerShell(php artisan route:list --path=fund-allocations)"
+      "PowerShell(php artisan route:list --path=fund-allocations)",
+      "PowerShell(php artisan test --filter DashboardReportTest 2>&1)"
     ]
   }
 }

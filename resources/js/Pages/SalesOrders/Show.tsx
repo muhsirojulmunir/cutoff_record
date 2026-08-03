@@ -184,6 +184,8 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
         tax_amount: Number(salesOrder.tax_amount),
         shipping_cost: Number(salesOrder.shipping_cost),
         grand_total: Number(salesOrder.grand_total),
+        dp_amount: Number(salesOrder.dp_amount ?? 0),
+        remaining_amount: Math.max(0, Number(salesOrder.grand_total) - Number(salesOrder.dp_amount ?? 0)),
         total_weight: Number(salesOrder.total_weight ?? 0),
         created_by: salesOrder.creator?.name ?? null,
         notes: salesOrder.notes ?? null,
@@ -259,6 +261,9 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
 
   const approverRoleLabel = approverRoles.length > 0 ? approverRoles.join(' / ') : 'role berwenang';
 
+  // SO sudah disetujui tapi resinya belum diisi — inilah yang menahan tahap "Diproses".
+  const needsResi = ['approved', 'processing'].includes(salesOrder.status) && !salesOrder.tracking_number;
+
   const fmtStamp = (value: string | null) =>
     value
       ? new Date(value).toLocaleString('id-ID', {
@@ -298,7 +303,7 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
             ? `Barang dikirim — No. Resi ${salesOrder.tracking_number}`
             : 'Sedang diproses';
         }
-        return 'Menunggu pengiriman barang (No. Resi belum diisi)';
+        return 'Isi No. Resi / AWB di kartu "Delivery Order & Resi" untuk memulai tahap ini';
 
       case 'completed':
         if (isPassed) {
@@ -667,26 +672,57 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
                   <span className="font-semibold text-gray-700">+Rp {Number(salesOrder.shipping_cost).toLocaleString('id-ID')}</span>
                 </div>
 
+                {/* DP / Uang Muka — tampil di atas total agar mudah dibaca */}
+                {Number(salesOrder.dp_amount ?? 0) > 0 && (
+                  <div className="flex justify-between items-center pt-3 pb-3">
+                    <span className="text-gray-400">DP / Uang Muka</span>
+                    <span className="font-semibold text-teal-600">-Rp {Number(salesOrder.dp_amount).toLocaleString('id-ID')}</span>
+                  </div>
+                )}
+
                 {/* Grand Total */}
                 <div className="flex justify-between items-center pt-4">
                   <span className="text-sm font-bold text-gray-900">Grand Total</span>
-                  <span className="text-base font-extrabold text-emerald-400">Rp {Number(salesOrder.grand_total).toLocaleString('id-ID')}</span>
+                  <span className="text-base font-extrabold text-emerald-500">Rp {Number(salesOrder.grand_total).toLocaleString('id-ID')}</span>
                 </div>
+
+                {/* Sisa tagihan setelah DP */}
+                {Number(salesOrder.dp_amount ?? 0) > 0 && (
+                  <div className="flex justify-between items-center pt-3">
+                    <span className="text-sm font-bold text-gray-700">Sisa Tagihan</span>
+                    <span className="text-base font-extrabold text-rose-500">
+                      Rp {Math.max(0, Number(salesOrder.grand_total) - Number(salesOrder.dp_amount)).toLocaleString('id-ID')}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Delivery Order & Tracking Resi Card */}
-            <div className="bg-white border border-gray-300 rounded-2xl p-6 space-y-4">
+            <div className={`bg-white rounded-2xl p-6 space-y-4 border ${needsResi ? 'border-teal-400 ring-2 ring-teal-100' : 'border-gray-300'}`}>
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">🚚 Delivery Order & Resi/AWB</h3>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">Delivery Order &amp; Resi / AWB</h3>
                 <button
                   type="button"
                   onClick={() => setIsEditingResi(!isEditingResi)}
-                  className="text-xs font-semibold text-teal-400 hover:text-teal-600"
+                  className="text-xs font-semibold text-teal-600 hover:text-teal-700"
                 >
-                  {isEditingResi ? 'Batal' : 'Edit Resi'}
+                  {isEditingResi ? 'Batal' : salesOrder.tracking_number ? 'Ubah Resi' : 'Isi Resi'}
                 </button>
               </div>
+
+              {/* Petunjuk tahap "Diproses" — muncul selama resi belum diisi. */}
+              {needsResi && (
+                <div className="rounded-xl bg-teal-50 border border-teal-200 px-3.5 py-3 text-[11px] text-teal-800 leading-relaxed">
+                  <p className="font-bold mb-1">Cara memproses order ini (tahap 4 — Diproses)</p>
+                  <ol className="list-decimal list-inside space-y-0.5 text-teal-700">
+                    <li>Kemas barang, lalu ambil No. Resi / AWB dari kurir.</li>
+                    <li>Klik <span className="font-semibold">Isi Resi</span> di atas dan simpan nomornya.</li>
+                    <li>Status otomatis berubah ke <span className="font-semibold">Diproses</span>, dan menjadi
+                      <span className="font-semibold"> Selesai</span> begitu pembayaran lunas.</li>
+                  </ol>
+                </div>
+              )}
 
               {isEditingResi ? (
                 <form onSubmit={handleSaveResi} className="space-y-3">
@@ -713,8 +749,21 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
                 <div className="space-y-2 text-xs text-gray-700">
                   <div className="flex justify-between items-center">
                     <span className="text-gray-400">No. Resi / AWB</span>
-                    <span className="font-mono font-bold text-teal-400">{salesOrder.tracking_number || 'Belum Diisi'}</span>
+                    <span className="font-mono font-bold text-teal-600">{salesOrder.tracking_number || 'Belum Diisi'}</span>
                   </div>
+                  {salesOrder.tracking_number && (
+                    <a
+                      href={`/sales-orders/${salesOrder.id}/label`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-center gap-2 w-full py-2 rounded-xl bg-white hover:bg-teal-50 text-teal-700 border border-teal-400 hover:border-teal-500 text-xs font-bold transition-all"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659" />
+                      </svg>
+                      Cetak Label Resi / AWB
+                    </a>
+                  )}
                   {salesOrder.recipient_name && (
                     <div className="flex justify-between items-center">
                       <span className="text-gray-400">Penerima</span>

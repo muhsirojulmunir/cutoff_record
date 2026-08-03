@@ -83,8 +83,10 @@ const STATUS_LABEL: Record<string, string> = {
 function InvoiceTemplate({ invoice }: { invoice: Invoice }) {
   const subtotal  = Number(invoice.subtotal);
   const discount  = Number(invoice.discount_amount);
+  const shipping  = Number(invoice.shipping_cost ?? 0);
   const dp        = Number(invoice.sales_order?.dp_amount ?? invoice.paid_amount ?? 0);
   const total     = Number(invoice.total_amount);
+  const remaining = Math.max(0, total - dp);
   const phone     = invoice.sales_order?.customer_phone ?? invoice.customer?.phone ?? '';
 
   // Alamat pengiriman di Excel terpecah jadi Alamat / Kota / Provinsi, jadi
@@ -263,18 +265,51 @@ function InvoiceTemplate({ invoice }: { invoice: Invoice }) {
                 <td style={{ paddingBottom: 4, paddingLeft: 8 }}>{discount > 0 ? 'Rp' : ''}</td>
                 <td style={{ paddingBottom: 4, textAlign: 'right' }}>{discount > 0 ? fmt(discount) : ''}</td>
               </tr>
-              <tr>
-                <td style={{ paddingBottom: 4 }}>DP</td>
-                <td style={{ paddingBottom: 4, paddingLeft: 12 }}>:</td>
-                <td style={{ paddingBottom: 4, paddingLeft: 8 }}>{dp > 0 ? 'Rp' : ''}</td>
-                <td style={{ paddingBottom: 4, textAlign: 'right' }}>{dp > 0 ? fmt(dp) : ''}</td>
-              </tr>
+              {shipping > 0 && (
+                <tr>
+                  <td style={{ paddingBottom: 4 }}>ONGKIR</td>
+                  <td style={{ paddingBottom: 4, paddingLeft: 12 }}>:</td>
+                  <td style={{ paddingBottom: 4, paddingLeft: 8 }}>Rp</td>
+                  <td style={{ paddingBottom: 4, textAlign: 'right' }}>{fmt(shipping)}</td>
+                </tr>
+              )}
               <tr style={{ borderTop: '1px solid #ccc' }}>
                 <td style={{ paddingTop: 6, fontWeight: 900, fontSize: 13 }}>TOTAL</td>
                 <td style={{ paddingTop: 6, paddingLeft: 12, fontWeight: 900 }}>:</td>
                 <td style={{ paddingTop: 6, paddingLeft: 8, fontWeight: 900 }}>Rp</td>
                 <td style={{ paddingTop: 6, textAlign: 'right', fontWeight: 900, fontSize: 13 }}>{fmt(total)}</td>
               </tr>
+
+              {/* DP dan sisa tagihan hanya muncul bila memang ada uang muka,
+                  supaya invoice lunas/tanpa DP tetap ringkas. */}
+              {dp > 0 && (
+                <>
+                  <tr>
+                    <td style={{ paddingTop: 6, fontWeight: 700, color: '#0f766e' }}>DP / UANG MUKA</td>
+                    <td style={{ paddingTop: 6, paddingLeft: 12, color: '#0f766e' }}>:</td>
+                    <td style={{ paddingTop: 6, paddingLeft: 8, color: '#0f766e' }}>Rp</td>
+                    <td style={{ paddingTop: 6, textAlign: 'right', fontWeight: 700, color: '#0f766e' }}>-{fmt(dp)}</td>
+                  </tr>
+                  <tr>
+                    <td colSpan={4} style={{ paddingTop: 6 }}>
+                      <div style={{
+                        background: '#0f766e',
+                        color: '#fff',
+                        padding: '8px 10px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        fontSize: 13,
+                        fontWeight: 900,
+                        letterSpacing: '0.03em',
+                      }}>
+                        <span>SISA TAGIHAN</span>
+                        <span>Rp {fmt(remaining)}</span>
+                      </div>
+                    </td>
+                  </tr>
+                </>
+              )}
             </tbody>
           </table>
 
@@ -338,6 +373,7 @@ export default function InvoicePrint() {
 
   function handleDownloadExcel() {
     const wb = XLSX.utils.book_new();
+    const dpAmount = Number(invoice.sales_order?.dp_amount ?? invoice.paid_amount ?? 0);
 
     const header = [
       ['INVOICE', invoice.invoice_number],
@@ -357,8 +393,9 @@ export default function InvoicePrint() {
       [],
       ['Sub Total', '', '', Number(invoice.subtotal)],
       ['DISKON', '', '', Number(invoice.discount_amount) > 0 ? -Number(invoice.discount_amount) : ''],
-      ['DP', '', '', Number(invoice.paid_amount) > 0 ? Number(invoice.paid_amount) : ''],
       ['TOTAL', '', '', Number(invoice.total_amount)],
+      ['DP / UANG MUKA', '', '', dpAmount > 0 ? -dpAmount : ''],
+      ['SISA TAGIHAN', '', '', dpAmount > 0 ? Math.max(0, Number(invoice.total_amount) - dpAmount) : ''],
       [],
       ['PAYMENT TO:', COMPANY.bank],
       ['No. Rek:', COMPANY.account],
