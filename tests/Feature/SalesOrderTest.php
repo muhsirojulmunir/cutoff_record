@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\Role;
 use App\Models\SalesOrder;
 use App\Models\User;
+use App\Services\SalesOrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -477,5 +478,38 @@ class SalesOrderTest extends TestCase
         $response->assertOk();
         $response->assertJsonPath('orders.0.so_number', $so->so_number);
         $response->assertJsonPath('items.0.quantity', 3);
+    }
+
+    /**
+     * Tanggal pembayaran hanyalah catatan waktu, bukan bukti uang masuk —
+     * dulu kolom ini membuat SO Grosir baru langsung berstatus Lunas.
+     */
+    public function test_grosir_order_is_unpaid_even_when_payment_date_is_filled(): void
+    {
+        $so = app(SalesOrderService::class)->createGrosirOrder([
+            'recipient_name' => 'Budi',
+            'sku'            => $this->product1->sku,
+            'quantity'       => 2,
+            'unit_price'     => 50000,
+            'payment_date'   => '2026-07-27 10:00:00',
+        ], $this->superAdmin->id);
+
+        $this->assertSame('unpaid', $so->payment_status);
+    }
+
+    /** DP sebagian membuat status menjadi Sebagian, bukan Lunas. */
+    public function test_grosir_order_with_partial_dp_is_partially_paid(): void
+    {
+        $so = app(SalesOrderService::class)->createGrosirOrder([
+            'recipient_name' => 'Budi',
+            'sku'            => $this->product1->sku,
+            'quantity'       => 2,
+            'unit_price'     => 50000,
+            'dp_amount'      => 40000,
+            'payment_date'   => '2026-07-27 10:00:00',
+        ], $this->superAdmin->id);
+
+        $this->assertSame('partially_paid', $so->payment_status);
+        $this->assertEquals(40000, (float) $so->dp_amount);
     }
 }

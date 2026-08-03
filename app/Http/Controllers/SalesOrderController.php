@@ -99,6 +99,8 @@ class SalesOrderController extends Controller
             'tax_amount'       => (float) $so->tax_amount,
             'shipping_cost'    => (float) $so->shipping_cost,
             'grand_total'      => (float) $so->grand_total,
+            'dp_amount'        => (float) $so->dp_amount,
+            'remaining_amount' => max(0, (float) $so->grand_total - (float) $so->dp_amount),
             'total_weight'     => (float) $so->total_weight,
             'created_by'       => $so->creator?->name,
             'notes'            => $so->notes,
@@ -120,6 +122,20 @@ class SalesOrderController extends Controller
         return response()->json([
             'orders' => $orders->values(),
             'items'  => $items->values(),
+        ]);
+    }
+
+    /**
+     * Label pengiriman (Resi / AWB) siap cetak untuk ditempel di paket.
+     */
+    public function label(SalesOrder $salesOrder): Response
+    {
+        Gate::authorize('sales_order.view');
+
+        $salesOrder->load(['customer', 'items', 'creator']);
+
+        return Inertia::render('SalesOrders/Label', [
+            'salesOrder' => $salesOrder,
         ]);
     }
 
