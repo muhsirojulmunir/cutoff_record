@@ -61,19 +61,26 @@ class SalesOrderService
             // Grand Total = Subtotal - Discount + Tax + Shipping Cost
             $grandTotal = $subtotal - $discount + $tax + $shipping;
 
+            $dpAmount = (float) ($data['dp_amount'] ?? 0);
+            $paymentStatus = 'unpaid';
+            if ($dpAmount > 0) {
+                $paymentStatus = $dpAmount >= $grandTotal ? 'paid' : 'partially_paid';
+            }
+
             $salesOrder = SalesOrder::create([
                 'so_number'       => $soNumber,
                 'customer_id'     => $data['customer_id'] ?? null,
                 'order_date'      => $orderDate,
                 'source'          => $data['source'],
                 'sales_channel'   => $data['sales_channel'],
-                'status'          => 'draft', // Default status
-                'payment_status'  => 'unpaid', // Default payment status
+                'status'          => 'draft',
+                'payment_status'  => $paymentStatus,
                 'subtotal'        => $subtotal,
                 'discount_amount' => $discount,
                 'tax_amount'      => $tax,
                 'shipping_cost'   => $shipping,
                 'grand_total'     => $grandTotal,
+                'dp_amount'       => $dpAmount,
                 'notes'           => $data['notes'] ?? null,
                 'created_by'      => $userId,
             ]);
