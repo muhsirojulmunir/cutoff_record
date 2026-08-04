@@ -308,7 +308,7 @@ class SalesOrderController extends Controller
 
             return back()->with('success', 'Sales Order berhasil disetujui.');
         } catch (Exception $e) {
-            return back()->withErrors(['error' => $e->getMessage()]);
+            return back()->with('error', $e->getMessage())->withErrors(['error' => $e->getMessage()]);
         }
     }
 
