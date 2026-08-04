@@ -10,6 +10,7 @@ use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\FundAllocationController;
 use App\Http\Controllers\GoodsReceiptController;
+use App\Http\Controllers\WarehouseDispatchController;
 use App\Http\Controllers\MarketplaceAccountController;
 use App\Http\Controllers\MarketplaceOrderController;
 use App\Http\Controllers\MarketplaceProductMappingController;
@@ -179,6 +180,14 @@ Route::middleware('auth')->group(function () {
         ->name('goods-receipt.approve')->middleware('can:stock.receipt.approve');
     Route::post('/barang-masuk/{goodsReceipt}/reject', [GoodsReceiptController::class, 'reject'])
         ->name('goods-receipt.reject')->middleware('can:stock.receipt.approve');
+
+    // Gudang — cetak resi & validasi serah terima kurir
+    Route::get('/gudang/pengiriman', [WarehouseDispatchController::class, 'index'])
+        ->name('warehouse-dispatch.index')->middleware('can:stock.view');
+    Route::post('/gudang/pengiriman/scan', [WarehouseDispatchController::class, 'scan'])
+        ->name('warehouse-dispatch.scan')->middleware('can:dispatch.scan');
+    Route::post('/gudang/pengiriman/{salesOrder}/batal-validasi', [WarehouseDispatchController::class, 'unscan'])
+        ->name('warehouse-dispatch.unscan')->middleware('can:dispatch.scan');
 
     Route::get('/stock-movements', [StockMovementController::class, 'index'])->name('stock-movements.index');
     Route::post('/stock-movements/adjust', [StockMovementController::class, 'adjust'])->name('stock-movements.adjust');
