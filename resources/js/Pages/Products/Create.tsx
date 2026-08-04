@@ -1,7 +1,6 @@
 ﻿import React from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
-import CurrencyInput from '@/Components/CurrencyInput';
 import ProductDimensionFields from '@/Components/ProductDimensionFields';
 
 interface Category {
@@ -24,9 +23,6 @@ export default function Create({ categories }: CreateProps) {
     length: '',
     width: '',
     height: '',
-    purchase_price: '0',
-    selling_price: '0',
-    minimum_stock: '0',
     status: 'active' as 'active' | 'inactive',
     description: '',
   });
@@ -180,56 +176,6 @@ export default function Create({ categories }: CreateProps) {
               disabled={processing}
             />
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {/* Purchase Price */}
-              <div className="space-y-1.5">
-                <label htmlFor="purchase_price" className="block text-sm font-semibold text-gray-700">
-                  Harga Beli <span className="text-teal-400">*</span>
-                </label>
-                <CurrencyInput
-                  id="purchase_price"
-                  value={data.purchase_price}
-                  onChange={(v) => setData('purchase_price', String(v))}
-                  disabled={processing}
-                  className={`w-full px-4 py-2.5 rounded-xl bg-gray-50 border text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all
-                    ${errors.purchase_price ? 'border-rose-500' : 'border-gray-300 hover:border-gray-300'}`}
-                />
-                {errors.purchase_price && <p className="text-rose-400 text-xs mt-1">{errors.purchase_price}</p>}
-              </div>
-
-              {/* Selling Price */}
-              <div className="space-y-1.5">
-                <label htmlFor="selling_price" className="block text-sm font-semibold text-gray-700">
-                  Harga Jual <span className="text-teal-400">*</span>
-                </label>
-                <CurrencyInput
-                  id="selling_price"
-                  value={data.selling_price}
-                  onChange={(v) => setData('selling_price', String(v))}
-                  disabled={processing}
-                  className={`w-full px-4 py-2.5 rounded-xl bg-gray-50 border text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all
-                    ${errors.selling_price ? 'border-rose-500' : 'border-gray-300 hover:border-gray-300'}`}
-                />
-                {errors.selling_price && <p className="text-rose-400 text-xs mt-1">{errors.selling_price}</p>}
-              </div>
-
-              {/* Minimum Stock */}
-              <div className="space-y-1.5">
-                <label htmlFor="minimum_stock" className="block text-sm font-semibold text-gray-700">
-                  Minimum Stok <span className="text-teal-400">*</span>
-                </label>
-                <CurrencyInput
-                  id="minimum_stock"
-                  hidePrefix
-                  value={data.minimum_stock}
-                  onChange={(v) => setData('minimum_stock', String(v))}
-                  disabled={processing}
-                  className={`w-full px-4 py-2.5 rounded-xl bg-gray-50 border text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all
-                    ${errors.minimum_stock ? 'border-rose-500' : 'border-gray-300 hover:border-gray-300'}`}
-                />
-                {errors.minimum_stock && <p className="text-rose-400 text-xs mt-1">{errors.minimum_stock}</p>}
-              </div>
-            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Status */}

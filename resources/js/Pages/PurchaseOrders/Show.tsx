@@ -110,8 +110,8 @@ interface PurchaseOrderShowProps {
 
 const statusBadgeColor: Record<string, string> = {
   draft:                     'bg-gray-100 border-gray-300 text-gray-500',
-  pending_leader_approval:   'bg-amber-500/10 border-amber-500/20 text-amber-400',
-  pending_finance_approval:  'bg-orange-500/10 border-orange-500/20 text-orange-400',
+  pending_leader_approval:   'bg-orange-50 border-orange-200 text-orange-600',
+  pending_finance_approval:  'bg-violet-50 border-violet-200 text-violet-600',
   approved:                  'bg-blue-500/10 border-blue-500/20 text-blue-400',
   ordered:                   'bg-teal-500/10 border-teal-500/20 text-teal-400',
   partially_received:        'bg-cyan-500/10 border-cyan-500/20 text-cyan-400',
@@ -432,7 +432,7 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
 
           {/* APPROVED — Finance can pay DP & Admin can mark ordered / receive */}
           {purchaseOrder.status === 'approved' && (<>
-            {canPayDp && <button type="button" onClick={handleOpenDpModal} className="px-4 py-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-gray-900 rounded-xl text-sm font-semibold shadow-lg shadow-orange-950/40 transition-all">💳 Bayar Down Payment</button>}
+            {canPayDp && <button type="button" onClick={handleOpenDpModal} className="px-4 py-2 bg-gradient-to-r from-orange-600 to-orange-600 hover:from-orange-600 hover:to-orange-500 text-gray-900 rounded-xl text-sm font-semibold shadow-lg shadow-orange-950/40 transition-all">💳 Bayar Down Payment</button>}
             {(canEdit || canReceive) && <button type="button" onClick={() => handleAction(`/purchase-orders/${purchaseOrder.id}/mark-ordered`)} disabled={actionLoading} className="px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-teal-200/40 transition-all disabled:opacity-50">📦 Tandai Dipesan</button>}
             {(canReceive || canEdit) && <button type="button" onClick={handleOpenReceiveModal} className="px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-teal-200/40 transition-all">📥 Terima Barang</button>}
             {(canEdit || canFinanceApprove) && <button type="button" onClick={() => handleAction(`/purchase-orders/${purchaseOrder.id}/cancel`)} disabled={actionLoading} className="px-4 py-2 bg-gray-50 hover:bg-rose-50 text-rose-500 border border-gray-300 hover:border-rose-900/50 rounded-xl text-sm font-semibold transition-all disabled:opacity-50">Batalkan</button>}
@@ -502,7 +502,7 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
               <p className="mt-0.5">
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold border ${
                   purchaseOrder.payment_status === 'paid' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
-                  purchaseOrder.payment_status === 'partially_paid' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
+                  purchaseOrder.payment_status === 'partially_paid' ? 'bg-orange-50 border-orange-200 text-orange-600' :
                   'bg-rose-500/10 border-rose-500/20 text-rose-400'
                 }`}>
                   {purchaseOrder.payment_status === 'paid' ? 'Lunas' : purchaseOrder.payment_status === 'partially_paid' ? 'Sebagian' : 'Belum Bayar'}
@@ -544,7 +544,7 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                 <tbody className="divide-y divide-gray-100/60 text-sm text-gray-700">
                   {purchaseOrder.items.map((item) => {
                     const remaining = item.quantity - item.received_quantity;
-                    const actionColor = item.action_taken === 'rejected' ? 'bg-rose-500/10 text-rose-400' : item.action_taken === 'revised' ? 'bg-amber-500/10 text-amber-400' : 'bg-emerald-500/10 text-emerald-400';
+                    const actionColor = item.action_taken === 'rejected' ? 'bg-rose-500/10 text-rose-400' : item.action_taken === 'revised' ? 'bg-orange-50 text-orange-600' : 'bg-emerald-500/10 text-emerald-400';
                     const actionText = item.action_taken === 'rejected' ? '❌ Ditolak' : item.action_taken === 'revised' ? '✏️ Direvisi' : '✅ Diterima';
                     return (
                       <tr key={item.id} className="hover:bg-teal-50/60 transition-colors">
@@ -557,7 +557,7 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                           {item.quantity} <span className="text-[10px] text-gray-400">{item.unit}</span>
                         </td>
                         <td className="py-3.5 px-4 text-center">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${item.received_quantity === 0 ? 'bg-gray-100 text-gray-500' : item.received_quantity === item.quantity ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${item.received_quantity === 0 ? 'bg-gray-100 text-gray-500' : item.received_quantity === item.quantity ? 'bg-emerald-500/10 text-emerald-400' : 'bg-orange-50 text-orange-600'}`}>
                             {item.received_quantity}
                           </span>
                         </td>
@@ -570,7 +570,7 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                           </td>
                         </>}
                         <td className="py-3.5 px-4 text-right font-medium whitespace-nowrap">Rp {fmt(item.unit_price)}</td>
-                        {isValidated && <td className="py-3.5 px-4 text-right font-medium text-amber-400 whitespace-nowrap">Rp {fmt(item.validated_unit_price)}</td>}
+                        {isValidated && <td className="py-3.5 px-4 text-right font-medium text-orange-600 whitespace-nowrap">Rp {fmt(item.validated_unit_price)}</td>}
                         <td className="py-3.5 px-4 text-right font-bold text-gray-900 whitespace-nowrap">Rp {fmt(item.subtotal)}</td>
                         {isValidated && <td className="py-3.5 px-4 text-right font-bold text-emerald-400 whitespace-nowrap">Rp {fmt(item.validated_total_price)}</td>}
                       </tr>
@@ -610,10 +610,10 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
 
           {/* DP Info (shown if DP exists) */}
           {hasDp && (
-            <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-5 shadow-xl space-y-3">
-              <h3 className="text-xs font-bold text-amber-400 uppercase tracking-widest">💳 Down Payment</h3>
+            <div className="bg-orange-50 border border-orange-200 rounded-2xl p-5 shadow-xl space-y-3">
+              <h3 className="text-xs font-bold text-orange-600 uppercase tracking-widest">💳 Down Payment</h3>
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-gray-500">Nominal DP</span><span className="font-bold text-amber-300">Rp {fmt(purchaseOrder.dp_paid_amount)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Nominal DP</span><span className="font-bold text-orange-600">Rp {fmt(purchaseOrder.dp_paid_amount)}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Tanggal DP</span><span className="text-gray-800">{purchaseOrder.dp_payment_date ? new Date(purchaseOrder.dp_payment_date).toLocaleDateString('id-ID') : '—'}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Dari Akun</span><span className="text-gray-800 text-right">{purchaseOrder.dpCashBankAccount?.account_name ?? '—'}</span></div>
               </div>
@@ -632,7 +632,7 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                   </span>
                 </div>
                 <div className="flex justify-between border-t border-emerald-500/20 pt-2.5"><span className="font-bold text-gray-800">Grand Total Validasi</span><span className="font-bold text-emerald-400">Rp {fmt(purchaseOrder.validated_grand_total)}</span></div>
-                {hasDp && <div className="flex justify-between"><span className="text-gray-500">(-) Down Payment</span><span className="font-semibold text-amber-400">-Rp {fmt(purchaseOrder.dp_paid_amount)}</span></div>}
+                {hasDp && <div className="flex justify-between"><span className="text-gray-500">(-) Down Payment</span><span className="font-semibold text-orange-600">-Rp {fmt(purchaseOrder.dp_paid_amount)}</span></div>}
                 <div className="flex justify-between border-t border-emerald-500/20 pt-2.5 items-center">
                   <span className="text-base font-extrabold text-gray-900">Sisa Tagihan</span>
                   <span className="text-base font-extrabold text-rose-400">Rp {fmt(purchaseOrder.final_bill_amount)}</span>
@@ -782,7 +782,7 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                               hidePrefix
                               value={st.validated_unit_price}
                               onChange={(v) => updateReceiveItemState(item.product_id, 'validated_unit_price', v)}
-                              className="w-full px-3 py-2 rounded-lg bg-gray-50 border border-gray-300 text-amber-300 text-xs text-right font-bold focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                              className="w-full px-3 py-2 rounded-lg bg-gray-50 border border-gray-300 text-orange-600 text-xs text-right font-bold focus:ring-1 focus:ring-orange-400 focus:outline-none"
                             />
                           </div>
 
@@ -850,14 +850,14 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1.5">Nominal Down Payment (Rp) *</label>
                 <CurrencyInput value={dpAmount} onChange={(v) => setDpAmount(String(v))}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-orange-400 focus:outline-none"
                   placeholder="Contoh: 5000000" />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1.5">Akun Kas / Bank / Petty Cash *</label>
                 <select value={dpAccountId ?? ''} onChange={(e) => setDpAccountId(Number(e.target.value))}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-amber-500 focus:outline-none">
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-orange-400 focus:outline-none">
                   <option value="">-- Pilih Akun --</option>
                   {cashBankAccounts.map(acc => (
                     <option key={acc.id} value={acc.id}>
@@ -870,7 +870,7 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1.5">Syarat Pembayaran Pelunasan *</label>
                 <select value={dpPaymentTerms} onChange={(e) => setDpPaymentTerms(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-amber-500 focus:outline-none">
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-orange-400 focus:outline-none">
                   <option value="cash_to_cash">Cash to Cash (Langsung Bayar)</option>
                   <option value="tempo_7_days">Termin 7 Hari</option>
                 </select>
@@ -878,7 +878,7 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
 
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setDpModalOpen(false)} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold border border-gray-300">Batal</button>
-                <button type="submit" disabled={actionLoading} className="px-4 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-gray-900 rounded-xl text-sm font-semibold shadow-lg shadow-orange-950/40 disabled:opacity-50">
+                <button type="submit" disabled={actionLoading} className="px-4 py-2.5 bg-gradient-to-r from-orange-600 to-orange-600 hover:from-orange-600 hover:to-orange-500 text-gray-900 rounded-xl text-sm font-semibold shadow-lg shadow-orange-950/40 disabled:opacity-50">
                   {actionLoading ? 'Memproses...' : '💳 Bayar DP Sekarang'}
                 </button>
               </div>
@@ -894,7 +894,7 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
             <div className="mb-4 flex-shrink-0">
               <h3 className="text-lg font-bold text-gray-900">🔍 Validasi Penerimaan Barang (Finance)</h3>
               <p className="text-sm text-gray-500 mt-1">
-                Periksa kondisi barang yang diterima. Untuk setiap SKU, pilih: <span className="text-emerald-400">Terima Full</span>, <span className="text-amber-400">Revisi Qty/Harga</span>, atau <span className="text-rose-400">Tolak (Rusak/Reject)</span>.
+                Periksa kondisi barang yang diterima. Untuk setiap SKU, pilih: <span className="text-emerald-400">Terima Full</span>, <span className="text-orange-600">Revisi Qty/Harga</span>, atau <span className="text-rose-400">Tolak (Rusak/Reject)</span>.
               </p>
             </div>
 
@@ -904,7 +904,7 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                   const po_item = purchaseOrder.items.find(i => i.id === vItem.item_id);
                   if (!po_item) return null;
                   return (
-                    <div key={vItem.item_id} className={`p-4 rounded-xl border ${vItem.action === 'rejected' ? 'bg-rose-500/5 border-rose-500/20' : vItem.action === 'revised' ? 'bg-amber-500/5 border-amber-500/20' : 'bg-gray-50/50 border-gray-300'}`}>
+                    <div key={vItem.item_id} className={`p-4 rounded-xl border ${vItem.action === 'rejected' ? 'bg-rose-500/5 border-rose-500/20' : vItem.action === 'revised' ? 'bg-orange-50 border-orange-200' : 'bg-gray-50/50 border-gray-300'}`}>
                       <div className="flex flex-col md:flex-row md:items-center gap-3">
                         {/* Item Info */}
                         <div className="md:w-1/3 flex-shrink-0">

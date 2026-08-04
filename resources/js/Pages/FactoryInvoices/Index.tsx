@@ -22,7 +22,7 @@ interface Paginated<T> { data: T[]; current_page: number; last_page: number; tot
 
 const statusColor: Record<string, string> = {
   unpaid:         'bg-rose-500/10 border-rose-500/20 text-rose-400',
-  partially_paid: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
+  partially_paid: 'bg-orange-50 border-orange-200 text-orange-600',
   paid:           'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
   overdue:        'bg-red-600/10 border-red-600/20 text-red-400',
   cancelled:      'bg-gray-200 border-gray-400 text-gray-500',

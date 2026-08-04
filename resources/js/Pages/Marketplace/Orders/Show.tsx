@@ -68,13 +68,13 @@ const WORKFLOW_COLORS: Record<string, string> = {
     ready_to_process:   'bg-blue-500/20 text-blue-400',
     converted_to_so:    'bg-cyan-500/20 text-cyan-400',
     stock_reserved:     'bg-teal-500/20 text-teal-400',
-    processing:         'bg-amber-500/20 text-amber-400',
+    processing:         'bg-orange-50 text-orange-600',
     shipped:            'bg-sky-500/20 text-sky-400',
     completed:          'bg-emerald-500/20 text-emerald-400',
     cancelled:          'bg-red-500/20 text-red-400',
     failed:             'bg-red-700/20 text-red-500',
     stock_insufficient: 'bg-rose-500/20 text-rose-400',
-    mapping_required:   'bg-orange-500/20 text-orange-400',
+    mapping_required:   'bg-orange-50 text-orange-600',
 };
 
 const WORKFLOW_LABELS: Record<string, string> = {

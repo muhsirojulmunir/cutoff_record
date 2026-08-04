@@ -62,7 +62,7 @@ interface StockMovementIndexProps {
 const typeBadgeColor: Record<string, string> = {
   in:         'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
   out:        'bg-rose-500/10 border-rose-500/20 text-rose-400',
-  adjustment: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
+  adjustment: 'bg-orange-50 border-orange-200 text-orange-600',
 };
 
 const typeLabel: Record<string, string> = {

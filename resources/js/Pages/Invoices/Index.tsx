@@ -57,7 +57,7 @@ interface InvoiceIndexProps {
 
 const statusBadgeColor: Record<string, string> = {
   unpaid:         'bg-rose-500/10 border-rose-500/20 text-rose-400',
-  partially_paid: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
+  partially_paid: 'bg-orange-50 border-orange-200 text-orange-600',
   paid:           'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
   overdue:        'bg-red-650/15 border-red-500/20 text-red-400 font-extrabold animate-pulse',
   cancelled:      'bg-gray-100 border-gray-300 text-gray-500',
@@ -91,8 +91,8 @@ function dueMarker(invoice: Invoice): { label: string; className: string } | nul
   const days = Math.round((due.getTime() - today.getTime()) / 86_400_000);
 
   if (days < 0) return { label: `Telat ${Math.abs(days)} hari`, className: 'text-rose-400' };
-  if (days === 0) return { label: 'Jatuh tempo hari ini', className: 'text-amber-400' };
-  if (days <= DUE_SOON_DAYS) return { label: `${days} hari lagi`, className: 'text-amber-400' };
+  if (days === 0) return { label: 'Jatuh tempo hari ini', className: 'text-orange-600' };
+  if (days <= DUE_SOON_DAYS) return { label: `${days} hari lagi`, className: 'text-orange-600' };
 
   return null;
 }
@@ -164,7 +164,7 @@ export default function Index({ invoices, filters }: InvoiceIndexProps) {
           <span className="text-xs font-bold uppercase tracking-wider text-gray-400 mr-1">Tindak Lanjut</span>
           {[
             { key: 'overdue', label: 'Telat Bayar', active: 'bg-rose-500/15 text-rose-400 border-rose-500/30' },
-            { key: 'due_soon', label: `Jatuh Tempo ≤ ${DUE_SOON_DAYS} Hari`, active: 'bg-amber-400/15 text-amber-400 border-amber-400/30' },
+            { key: 'due_soon', label: `Jatuh Tempo ≤ ${DUE_SOON_DAYS} Hari`, active: 'bg-orange-50 text-orange-600 border-orange-300' },
             { key: 'unpaid', label: 'Semua Belum Lunas', active: 'bg-teal-500/15 text-teal-400 border-teal-500/30' },
           ].map((chip) => {
             const isActive = filters.due_filter === chip.key;

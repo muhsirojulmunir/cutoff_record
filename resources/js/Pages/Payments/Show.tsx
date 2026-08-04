@@ -207,7 +207,7 @@ export default function Show({ payment }: PaymentShowProps) {
           </div>
         ) : payment.payment_type === 'factory_receivable' && allocation && allocation.factory_receivable ? (
           <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
-            <span className="font-semibold text-amber-400">Payment: {payment.payment_number}</span>
+            <span className="font-semibold text-orange-600">Payment: {payment.payment_number}</span>
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3 text-gray-400">
               <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
             </svg>
@@ -303,7 +303,7 @@ export default function Show({ payment }: PaymentShowProps) {
           ) : payment.payment_type === 'factory_receivable' && allocation && allocation.factory_receivable ? (
             <div className="space-y-1.5 text-sm">
               <span className="text-gray-400 text-[10px] uppercase font-bold tracking-wide">Piutang Terkait</span>
-              <h4 className="text-base font-bold text-amber-400">
+              <h4 className="text-base font-bold text-orange-600">
                 <Link href={`/factory-receivables/${allocation.factory_receivable_id}`} className="hover:underline">
                   {allocation.factory_receivable.receivable_number}
                 </Link>

@@ -533,12 +533,12 @@ export default function GrosirCreate({ products }: GrosirCreateProps) {
 
               {/* DP Amount */}
               <div>
-                <label className="block text-xs font-medium text-amber-400 mb-1">Uang Muka / DP Dibayar (Rp)</label>
+                <label className="block text-xs font-medium text-orange-600 mb-1">Uang Muka / DP Dibayar (Rp)</label>
                 <CurrencyInput
                   value={data.dp_amount}
                   onChange={(v) => setData('dp_amount', v)}
                   placeholder="0 (Jika DP, sisa jadi Piutang)"
-                  className="w-full bg-gray-50 border border-amber-500/40 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-amber-400"
+                  className="w-full bg-gray-50 border border-orange-300 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-orange-200"
                 />
                 <p className="text-[10px] text-gray-500 mt-1">Jika diisi DP, sisa tagihan masuk ke Finance Piutang Customer.</p>
               </div>
@@ -692,7 +692,7 @@ export default function GrosirCreate({ products }: GrosirCreateProps) {
                             <td className="p-2.5 font-mono text-blue-400">{r.sku}</td>
                             <td className="p-2.5 text-center font-bold">{r.quantity}</td>
                             <td className="p-2.5 text-right">Rp {r.unit_price.toLocaleString('id-ID')}</td>
-                            <td className="p-2.5 text-right text-amber-400">Rp {r.voucher.toLocaleString('id-ID')}</td>
+                            <td className="p-2.5 text-right text-orange-600">Rp {r.voucher.toLocaleString('id-ID')}</td>
                             <td className="p-2.5 text-right text-rose-400">Rp {r.tax.toLocaleString('id-ID')}</td>
                             <td className="p-2.5 text-right font-extrabold text-emerald-400">
                               Rp {total.toLocaleString('id-ID')}

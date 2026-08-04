@@ -68,8 +68,8 @@ interface Props {
 
 const statusConfig: Record<string, { label: string; badge: string; dot: string }> = {
     draft:                     { label: 'Draft',                     badge: 'bg-slate-500/10 border-slate-500/20 text-gray-500',     dot: 'bg-slate-400' },
-    pending_leader_approval:   { label: '⏳ Menunggu Leader',         badge: 'bg-amber-500/10 border-amber-500/20 text-amber-400',     dot: 'bg-amber-400' },
-    pending_finance_approval:  { label: '⏳ Menunggu Finance',        badge: 'bg-orange-500/10 border-orange-500/20 text-orange-400',  dot: 'bg-orange-400' },
+    pending_leader_approval:   { label: '⏳ Menunggu Leader',         badge: 'bg-orange-50 border-orange-200 text-orange-600',     dot: 'bg-orange-500' },
+    pending_finance_approval:  { label: '⏳ Menunggu Finance',        badge: 'bg-violet-50 border-violet-200 text-violet-600',  dot: 'bg-violet-500' },
     approved:                  { label: '✅ Disetujui (Siap Cair)',   badge: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400', dot: 'bg-emerald-400' },
     paid:                      { label: '💰 Sudah Dibayar',          badge: 'bg-teal-500/10 border-teal-500/20 text-teal-400',       dot: 'bg-teal-400' },
     rejected:                  { label: '❌ Ditolak',                badge: 'bg-rose-500/10 border-rose-500/20 text-rose-400',        dot: 'bg-rose-400' },
@@ -161,7 +161,7 @@ function ReasonModal({
 // ─── Timeline Item ────────────────────────────────────────────────────────────
 const timelineDot: Record<string, string> = {
     blue:   'bg-blue-500',
-    yellow: 'bg-amber-400',
+    yellow: 'bg-orange-500',
     green:  'bg-emerald-500',
     red:    'bg-rose-500',
     slate:  'bg-slate-500',

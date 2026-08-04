@@ -33,7 +33,7 @@ const MARKETPLACE_LABELS: Record<string, string> = {
 };
 
 const MARKETPLACE_COLORS: Record<string, string> = {
-    shopee: 'bg-orange-500/20 text-orange-400 border border-orange-500/30',
+    shopee: 'bg-orange-50 text-orange-600 border border-orange-200',
     tiktok_shop: 'bg-sky-500/20 text-sky-400 border border-sky-500/30',
 };
 

@@ -74,6 +74,14 @@ class Product extends Model
     }
 
     /**
+     * HPP produk — diisi Finance / Leader lewat master HPP.
+     */
+    public function hpp(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(ProductHpp::class);
+    }
+
+    /**
      * Get the user who created the product.
      */
     public function creator(): BelongsTo

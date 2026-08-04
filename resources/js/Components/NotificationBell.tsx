@@ -27,7 +27,7 @@ const TYPE_ICONS: Record<WorkQueueType, string> = {
 
 const SEVERITY_STYLES: Record<WorkQueueSeverity, { icon: string; badge: string }> = {
   critical: { icon: 'text-rose-400 bg-rose-500/10', badge: 'bg-rose-500/15 text-rose-400 border-rose-500/30' },
-  warning: { icon: 'text-amber-400 bg-amber-400/10', badge: 'bg-amber-400/15 text-amber-400 border-amber-400/30' },
+  warning: { icon: 'text-orange-600 bg-orange-50', badge: 'bg-orange-50 text-orange-600 border-orange-300' },
   info: { icon: 'text-teal-400 bg-teal-500/10', badge: 'bg-teal-500/15 text-teal-400 border-teal-500/30' },
 };
 
@@ -80,7 +80,7 @@ export default function NotificationBell({ queue }: Props) {
           <>
             <span
               className={`absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full text-[10px] font-bold text-white ${
-                hasCritical ? 'bg-rose-500' : 'bg-amber-500'
+                hasCritical ? 'bg-rose-500' : 'bg-orange-500'
               }`}
             >
               {badgeLabel}

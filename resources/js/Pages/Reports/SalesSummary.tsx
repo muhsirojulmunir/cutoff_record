@@ -26,7 +26,7 @@ interface SummaryStats {
 
 const statusColor: Record<string, string> = {
   draft:              'bg-gray-100 border-gray-300 text-gray-500',
-  pending_approval:   'bg-amber-500/10 border-amber-500/20 text-amber-400',
+  pending_approval:   'bg-orange-50 border-orange-200 text-orange-600',
   approved:           'bg-blue-500/10 border-blue-500/20 text-blue-400',
   processing:         'bg-teal-500/10 border-teal-500/20 text-teal-400',
   shipped:            'bg-cyan-500/10 border-cyan-500/20 text-cyan-400',
@@ -72,8 +72,8 @@ export default function SalesSummary({
           <p className="text-2xl font-extrabold text-gray-900 mt-1">Rp {fmt(summary.total_revenue)}</p>
         </div>
         <div className="bg-white border border-gray-300/80 rounded-2xl p-4 shadow-xl">
-          <p className="text-xs font-semibold text-amber-400">Total Estimasi HPP Terjual</p>
-          <p className="text-2xl font-extrabold text-amber-400 mt-1">Rp {fmt(summary.total_hpp)}</p>
+          <p className="text-xs font-semibold text-orange-600">Total Estimasi HPP Terjual</p>
+          <p className="text-2xl font-extrabold text-orange-600 mt-1">Rp {fmt(summary.total_hpp)}</p>
         </div>
         <div className="bg-white border border-gray-300/80 rounded-2xl p-4 shadow-xl">
           <p className="text-xs font-semibold text-emerald-400">Total Keuntungan Kotor (Margin)</p>
@@ -140,7 +140,7 @@ export default function SalesSummary({
                 <th className="py-3.5 px-4">Customer</th>
                 <th className="py-3.5 px-4">Channel</th>
                 <th className="py-3.5 px-4 text-right">Omset (Revenue)</th>
-                <th className="py-3.5 px-4 text-right text-amber-400">Estimasi HPP</th>
+                <th className="py-3.5 px-4 text-right text-orange-600">Estimasi HPP</th>
                 <th className="py-3.5 px-4 text-right text-emerald-400">Margin Laba Kotor</th>
                 <th className="py-3.5 px-4 text-center">Status</th>
               </tr>
@@ -164,7 +164,7 @@ export default function SalesSummary({
                   <td className="py-3.5 px-4 font-medium text-gray-800">{item.customer?.name ?? '—'}</td>
                   <td className="py-3.5 px-4 text-gray-500 capitalize">{item.sales_channel}</td>
                   <td className="py-3.5 px-4 text-right font-bold text-gray-900">Rp {fmt(item.grand_total)}</td>
-                  <td className="py-3.5 px-4 text-right font-bold text-amber-400">Rp {fmt(item.calculated_hpp)}</td>
+                  <td className="py-3.5 px-4 text-right font-bold text-orange-600">Rp {fmt(item.calculated_hpp)}</td>
                   <td className="py-3.5 px-4 text-right">
                     <span className={`font-extrabold block ${item.calculated_margin >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                       Rp {fmt(item.calculated_margin)}

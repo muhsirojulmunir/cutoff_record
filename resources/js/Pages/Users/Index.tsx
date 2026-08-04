@@ -38,7 +38,7 @@ const roleBadgeColor: Record<string, string> = {
   'Super Admin': 'bg-teal-500/15 border-teal-500/25 text-teal-600',
   'Admin':       'bg-blue-500/15 border-blue-500/25 text-blue-300',
   'Leader':      'bg-emerald-500/15 border-emerald-500/25 text-emerald-300',
-  'Finance':     'bg-amber-500/15 border-amber-500/25 text-amber-300',
+  'Finance':     'bg-orange-50 border-orange-200 text-orange-600',
   'Management':  'bg-pink-500/15 border-pink-500/25 text-pink-300',
 };
 

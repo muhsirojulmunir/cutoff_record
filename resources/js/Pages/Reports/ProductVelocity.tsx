@@ -63,10 +63,10 @@ export default function ProductVelocity({
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div onClick={() => setActiveTab('hero')} className={`p-4 rounded-2xl border shadow-xl cursor-pointer transition-all ${activeTab === 'hero' ? 'bg-amber-500/10 border-amber-500/40 ring-1 ring-amber-500/40' : 'bg-white border-gray-300/80 hover:border-gray-300'}`}>
+        <div onClick={() => setActiveTab('hero')} className={`p-4 rounded-2xl border shadow-xl cursor-pointer transition-all ${activeTab === 'hero' ? 'bg-orange-50 border-orange-300 ring-1 ring-orange-400' : 'bg-white border-gray-300/80 hover:border-gray-300'}`}>
           <div className="flex justify-between items-center">
-            <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">🔥 Produk Hero (Terlaris)</span>
-            <span className="text-xs font-bold bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full">{summary.hero_count} Varian</span>
+            <span className="text-xs font-bold text-orange-600 uppercase tracking-wider">🔥 Produk Hero (Terlaris)</span>
+            <span className="text-xs font-bold bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full">{summary.hero_count} Varian</span>
           </div>
           <p className="text-2xl font-extrabold text-gray-900 mt-2">Top Performance</p>
           <p className="text-xs text-gray-500 mt-1">Produk dengan volume penjualan tertinggi dalam periode dipilih</p>
@@ -97,7 +97,7 @@ export default function ProductVelocity({
         <div className="flex bg-gray-50 border border-gray-300 p-1 rounded-xl">
           <button
             onClick={() => setActiveTab('hero')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'hero' ? 'bg-amber-500 text-white shadow-md' : 'text-gray-500 hover:text-gray-900'}`}
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === 'hero' ? 'bg-orange-500 text-white shadow-md' : 'text-gray-500 hover:text-gray-900'}`}
           >
             🔥 Hero (Fast Moving)
           </button>
@@ -120,7 +120,7 @@ export default function ProductVelocity({
           <select
             value={days}
             onChange={(e) => { const d = Number(e.target.value); setDays(d); applyFilter(d, categoryId); }}
-            className="px-3.5 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-xs font-bold focus:ring-1 focus:ring-amber-500 focus:outline-none"
+            className="px-3.5 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-xs font-bold focus:ring-1 focus:ring-orange-400 focus:outline-none"
           >
             <option value={30}>Periode 30 Hari Terakhir</option>
             <option value={60}>Periode 60 Hari Terakhir</option>
@@ -132,7 +132,7 @@ export default function ProductVelocity({
           <select
             value={categoryId}
             onChange={(e) => { const c = e.target.value; setCategoryId(c); applyFilter(days, c); }}
-            className="px-3.5 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-xs focus:ring-1 focus:ring-amber-500 focus:outline-none"
+            className="px-3.5 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-xs focus:ring-1 focus:ring-orange-400 focus:outline-none"
           >
             <option value="">Semua Kategori</option>
             {categories.map((cat) => (
@@ -153,7 +153,7 @@ export default function ProductVelocity({
                 <th className="py-3.5 px-4">Nama Produk</th>
                 <th className="py-3.5 px-4">Kategori</th>
                 <th className="py-3.5 px-4 text-center">Stok Fisik Gudang</th>
-                <th className="py-3.5 px-4 text-center text-amber-400">Total Qty Terjual</th>
+                <th className="py-3.5 px-4 text-center text-orange-600">Total Qty Terjual</th>
                 <th className="py-3.5 px-4 text-right text-emerald-400">Total Nilai Penjualan</th>
               </tr>
             </thead>
@@ -171,7 +171,7 @@ export default function ProductVelocity({
               {(activeTab === 'hero' ? heroProducts : activeTab === 'slow' ? slowProducts : deadStockProducts).map((item, idx) => (
                 <tr key={item.id} className="hover:bg-teal-50/60 transition-colors">
                   <td className="py-3.5 px-5 text-center font-bold text-gray-500">#{idx + 1}</td>
-                  <td className="py-3.5 px-4 font-mono text-xs font-bold text-amber-400">{item.sku}</td>
+                  <td className="py-3.5 px-4 font-mono text-xs font-bold text-orange-600">{item.sku}</td>
                   <td className="py-3.5 px-4 font-semibold text-gray-800">
                     {item.name}
                     {item.brand && <span className="text-[10px] text-gray-400 block">{item.brand}</span>}
@@ -180,7 +180,7 @@ export default function ProductVelocity({
                   <td className="py-3.5 px-4 text-center font-bold text-gray-800">
                     {fmt(item.stock)} <span className="text-[10px] text-gray-400">{item.unit || 'pcs'}</span>
                   </td>
-                  <td className="py-3.5 px-4 text-center font-extrabold text-amber-400">
+                  <td className="py-3.5 px-4 text-center font-extrabold text-orange-600">
                     {fmt(item.total_sold_qty)} {item.unit || 'pcs'}
                   </td>
                   <td className="py-3.5 px-4 text-right font-extrabold text-emerald-400">

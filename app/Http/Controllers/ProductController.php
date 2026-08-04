@@ -50,6 +50,39 @@ class ProductController extends Controller
         ]);
     }
 
+    /**
+     * Impor produk massal dari template Excel yang sudah diisi admin.
+     * Barisnya dikirim frontend dalam bentuk JSON hasil pembacaan SheetJS.
+     */
+    public function import(Request $request, ProductImportService $importService): RedirectResponse
+    {
+        Gate::authorize('product.create');
+
+        $validated = $request->validate([
+            'rows'   => ['required', 'array', 'min:1', 'max:2000'],
+            'rows.*' => ['array'],
+        ], [
+            'rows.required' => 'File Excel tidak berisi baris data yang bisa diimpor.',
+            'rows.max'      => 'Maksimal 2.000 baris per unggahan. Pecah file menjadi beberapa bagian.',
+        ]);
+
+        $result = $importService->import($validated['rows'], Auth::id());
+
+        $summary = "Impor selesai: {$result['created']} produk baru, {$result['updated']} diperbarui";
+
+        if ($result['failed'] > 0) {
+            $details = collect($result['errors'])
+                ->map(fn ($error) => "Baris {$error['row']} ({$error['sku']}): {$error['message']}")
+                ->implode(' • ');
+
+            return redirect()->route('products.index')
+                ->with('success', "{$summary}, {$result['failed']} baris gagal.")
+                ->with('error', $details);
+        }
+
+        return redirect()->route('products.index')->with('success', "{$summary}.");
+    }
+
     public function create(): Response
     {
         Gate::authorize('product.create');

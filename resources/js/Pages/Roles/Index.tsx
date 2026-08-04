@@ -26,7 +26,7 @@ const roleBadgeColor: Record<string, string> = {
   'Super Admin': 'from-teal-600 to-cyan-600',
   'Admin':       'from-blue-600 to-cyan-600',
   'Leader':      'from-emerald-600 to-teal-600',
-  'Finance':     'from-amber-600 to-orange-600',
+  'Finance':     'from-orange-600 to-orange-600',
   'Management':  'from-pink-600 to-rose-600',
 };
 
@@ -172,7 +172,7 @@ export default function Index({ roles, groupedPermissions }: RoleIndexProps) {
                             <span className="ml-auto text-xs text-emerald-400 font-medium">Akses Penuh</span>
                           )}
                           {hasAny && !hasAll && (
-                            <span className="ml-auto text-xs text-amber-400 font-medium">Akses Sebagian</span>
+                            <span className="ml-auto text-xs text-orange-600 font-medium">Akses Sebagian</span>
                           )}
                           {!hasAny && (
                             <span className="ml-auto text-xs text-gray-400 font-medium">Tidak Ada Akses</span>

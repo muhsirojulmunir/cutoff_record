@@ -15,6 +15,7 @@ use App\Http\Controllers\MarketplaceProductMappingController;
 use App\Http\Controllers\MarketplaceSyncController;
 use App\Http\Controllers\MarketplaceSyncLogController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\ProductHppController;
 use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SalesOrderController;
@@ -90,7 +91,24 @@ Route::middleware('auth')->group(function () {
     // Suppliers
     Route::resource('suppliers', SupplierController::class);
 
+    // Master HPP — hanya Finance & Leader
+    Route::get('/product-hpp', [ProductHppController::class, 'index'])
+        ->name('product-hpp.index')
+        ->middleware('can:hpp.view');
+    Route::get('/product-hpp/template', [ProductHppController::class, 'template'])
+        ->name('product-hpp.template')
+        ->middleware('can:hpp.manage');
+    Route::post('/product-hpp/import', [ProductHppController::class, 'import'])
+        ->name('product-hpp.import')
+        ->middleware('can:hpp.manage');
+    Route::post('/product-hpp/{product}', [ProductHppController::class, 'store'])
+        ->name('product-hpp.store')
+        ->middleware('can:hpp.manage');
+
     // Products
+    Route::post('/products/import', [ProductController::class, 'import'])
+        ->name('products.import')
+        ->middleware('can:product.create');
     Route::resource('products', ProductController::class);
 
     // Sales Orders Grosir Offline & Tracking Resi

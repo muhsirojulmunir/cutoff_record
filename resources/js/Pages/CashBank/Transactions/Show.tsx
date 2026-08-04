@@ -60,7 +60,7 @@ function SourceInfo({ source, sourceType }: { source: any; sourceType: string | 
                         <DetailRow label="Tipe">{source.payment_type === 'customer_invoice' ? 'Pembayaran Customer' : 'Pembayaran Supplier'}</DetailRow>
                         <DetailRow label="Pihak">{party}</DetailRow>
                         {inv && <DetailRow label="Invoice"><span className="font-mono text-blue-400">{inv.invoice_number}</span></DetailRow>}
-                        {fr  && <DetailRow label="Piutang Pabrik"><span className="font-mono text-amber-400">{fr.receivable_number}</span></DetailRow>}
+                        {fr  && <DetailRow label="Piutang Pabrik"><span className="font-mono text-orange-600">{fr.receivable_number}</span></DetailRow>}
                     </dl>
                 </div>
             </div>

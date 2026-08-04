@@ -67,8 +67,8 @@ export default function AllStock({
           <p className="text-2xl font-extrabold text-cyan-400 mt-1">{fmt(summary.total_physical_stock)}</p>
         </div>
         <div className="bg-white border border-gray-300/80 rounded-2xl p-4 shadow-xl">
-          <p className="text-xs font-semibold text-amber-400">Stok Di-Reserved (Order Pending)</p>
-          <p className="text-2xl font-extrabold text-amber-400 mt-1">{fmt(summary.total_reserved_stock)}</p>
+          <p className="text-xs font-semibold text-orange-600">Stok Di-Reserved (Order Pending)</p>
+          <p className="text-2xl font-extrabold text-orange-600 mt-1">{fmt(summary.total_reserved_stock)}</p>
         </div>
         <div className="bg-white border border-gray-300/80 rounded-2xl p-4 shadow-xl">
           <p className="text-xs font-semibold text-emerald-400">Stok Ready Siap Jual</p>
@@ -113,7 +113,7 @@ export default function AllStock({
                 <th className="py-3.5 px-4">Nama Produk</th>
                 <th className="py-3.5 px-4">Kategori</th>
                 <th className="py-3.5 px-4 text-center">Stok Fisik</th>
-                <th className="py-3.5 px-4 text-center text-amber-400">Reserved</th>
+                <th className="py-3.5 px-4 text-center text-orange-600">Reserved</th>
                 <th className="py-3.5 px-4 text-center text-emerald-400">Stok Ready</th>
                 <th className="py-3.5 px-4 text-center">Status</th>
                 <th className="py-3.5 px-4 text-right">Harga Jual</th>
@@ -140,7 +140,7 @@ export default function AllStock({
                   badgeColor = 'bg-rose-500/10 border-rose-500/20 text-rose-400';
                   badgeText  = '❌ Stok Habis';
                 } else if (readyStock <= minStock) {
-                  badgeColor = 'bg-amber-500/10 border-amber-500/20 text-amber-400';
+                  badgeColor = 'bg-orange-50 border-orange-200 text-orange-600';
                   badgeText  = '⚠️ Menipis';
                 }
 
@@ -153,7 +153,7 @@ export default function AllStock({
                     </td>
                     <td className="py-3.5 px-4 text-gray-500">{item.category?.name ?? '—'}</td>
                     <td className="py-3.5 px-4 text-center font-bold text-gray-800">{fmt(physicalStock)} <span className="text-[10px] text-gray-400">{item.unit || 'pcs'}</span></td>
-                    <td className="py-3.5 px-4 text-center font-bold text-amber-400">{reserved > 0 ? fmt(reserved) : '—'}</td>
+                    <td className="py-3.5 px-4 text-center font-bold text-orange-600">{reserved > 0 ? fmt(reserved) : '—'}</td>
                     <td className="py-3.5 px-4 text-center font-extrabold text-emerald-400 text-base">{fmt(readyStock)}</td>
                     <td className="py-3.5 px-4 text-center">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${badgeColor}`}>

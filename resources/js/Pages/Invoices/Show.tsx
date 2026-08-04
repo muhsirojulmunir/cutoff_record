@@ -73,7 +73,7 @@ interface InvoiceShowProps {
 
 const statusBadgeColor: Record<string, string> = {
   unpaid:         'bg-rose-500/10 border-rose-500/20 text-rose-400',
-  partially_paid: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
+  partially_paid: 'bg-orange-50 border-orange-200 text-orange-600',
   paid:           'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
   overdue:        'bg-red-500/10 border-red-500/20 text-red-400 animate-pulse font-bold',
   cancelled:      'bg-gray-100 border-gray-300 text-gray-500',
