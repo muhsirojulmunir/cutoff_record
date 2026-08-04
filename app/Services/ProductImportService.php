@@ -9,16 +9,18 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
 /**
- * Impor produk massal dari file Excel yang sudah diisi admin
- * memakai template unduhan di halaman daftar produk.
+ * Impor produk massal dari file Excel yang diunggah admin.
  *
- * SKU dipakai sebagai penanda: SKU baru dibuat, SKU yang sudah ada diperbarui,
- * sehingga file yang sama boleh diunggah ulang tanpa menggandakan data.
+ * Mengelola Master Data Produk (SKU dan Nama Produk).
+ * SKU dipakai sebagai kunci unik:
+ * - SKU baru akan ditambahkan sebagai produk baru.
+ * - SKU yang sudah ada akan diperbarui nama produknya.
+ * - SKU yang di-soft-delete akan di-restore dan diperbarui.
  */
 class ProductImportService
 {
     /**
-     * @param  array<int, array<string, mixed>>  $rows  Baris dari sheet Excel.
+     * @param  array<int, array<string, mixed>>  $rows  Baris data dari sheet Excel.
      * @return array{created: int, updated: int, failed: int, errors: array<int, array{row: int, sku: string, message: string}>}
      */
     public function import(array $rows, int $userId): array
@@ -31,45 +33,40 @@ class ProductImportService
 
         // FASE 1: Validasi seluruh baris terlebih dahulu (Pre-validation pass)
         foreach ($rows as $index => $row) {
-            $rowNumber  = $index + 2; // Baris Excel (baris 1 adalah header)
+            $rowNumber  = $index + 2; // Baris 1 di Excel adalah Header
             $normalised = $this->normalise($row);
 
             // Lewati baris contoh dari template
             $namaCek = strtolower((string) ($normalised['name'] ?? ''));
             $skuCek  = strtolower((string) ($normalised['sku'] ?? ''));
-            if (str_contains($namaCek, '[contoh') || str_starts_with($skuCek, '⚠')) {
+            if (str_contains($namaCek, '[contoh') || str_contains($skuCek, '[contoh') || str_starts_with($skuCek, '⚠')) {
                 continue;
             }
 
-            // Fallback nama produk & kategori bila kosong
+            // High precision fallback jika SKU kosong tapi ada nama
+            if (empty($normalised['sku']) && !empty($normalised['name'])) {
+                $normalised['sku'] = Str::upper(Str::slug($normalised['name']));
+            }
+
+            // Fallback nama produk bila kosong
             if (empty($normalised['name']) && !empty($normalised['sku'])) {
                 $normalised['name'] = strtoupper((string) $normalised['sku']);
             }
+
+            // Fallback kategori bila kosong
             if (empty($normalised['category'])) {
                 $normalised['category'] = 'Umum';
             }
 
             $validator = Validator::make($normalised, [
-                'sku'            => ['required', 'string', 'max:100'],
-                'name'           => ['required', 'string', 'max:255'],
-                'category'       => ['required', 'string', 'max:255'],
-                'brand'          => ['nullable', 'string', 'max:255'],
-                'color'          => ['nullable', 'string', 'max:100'],
-                'is_box'         => ['boolean'],
-                'length'         => ['nullable', 'numeric', 'min:0'],
-                'width'          => ['nullable', 'numeric', 'min:0'],
-                'height'         => ['nullable', 'numeric', 'min:0'],
-                'status'         => ['required', 'in:active,inactive'],
-                'description'    => ['nullable', 'string'],
+                'sku'      => ['required', 'string', 'max:100'],
+                'name'     => ['required', 'string', 'max:255'],
+                'category' => ['nullable', 'string', 'max:255'],
             ], [
-                'sku.required'      => 'Kolom SKU wajib diisi.',
-                'sku.max'           => 'SKU terlalu panjang (maks 100 karakter).',
-                'name.required'     => 'Nama Produk wajib diisi.',
-                'name.max'          => 'Nama Produk terlalu panjang (maks 255 karakter).',
-                'category.required' => 'Kolom Kategori wajib diisi.',
-                'length.numeric'    => 'Panjang (cm) harus berupa angka.',
-                'width.numeric'     => 'Lebar (cm) harus berupa angka.',
-                'height.numeric'    => 'Tinggi (cm) harus berupa angka.',
+                'sku.required'  => 'Kolom SKU wajib diisi.',
+                'sku.max'       => 'SKU terlalu panjang (maksimal 100 karakter).',
+                'name.required' => 'Nama Produk wajib diisi.',
+                'name.max'      => 'Nama Produk terlalu panjang (maksimal 255 karakter).',
             ]);
 
             if ($validator->fails()) {
@@ -82,14 +79,15 @@ class ProductImportService
             }
 
             $data = $validator->validated();
-            $skuUpper = strtoupper($data['sku']);
+            $skuUpper = strtoupper(trim($data['sku']));
+            $data['sku'] = $skuUpper;
 
             // Cek duplikasi SKU di dalam file Excel yang sama
             if (isset($seenSkus[$skuUpper])) {
                 $errors[] = [
                     'row'     => $rowNumber,
-                    'sku'     => $data['sku'],
-                    'message' => "SKU '{$data['sku']}' ganda di dalam file Excel (sudah ada di Baris {$seenSkus[$skuUpper]}).",
+                    'sku'     => $skuUpper,
+                    'message' => "SKU '{$skuUpper}' ganda di dalam file Excel (sudah ada di Baris {$seenSkus[$skuUpper]}).",
                 ];
                 continue;
             }
@@ -98,7 +96,7 @@ class ProductImportService
             $validatedRows[] = $data;
         }
 
-        // FASE 2: Jika ada 1 SAJA baris bermasalah, TOLAK SEMUA (All-or-Nothing / Rollback Total)
+        // FASE 2: Jika terdapat 1 SAJA baris bermasalah, TOLAK SEMUA (Atomic Rollback Total)
         if (count($errors) > 0) {
             return [
                 'created' => 0,
@@ -108,25 +106,13 @@ class ProductImportService
             ];
         }
 
-        // FASE 3: Jika seluruh baris valid, baru eksekusi ke database secara aman
+        // FASE 3: Eksekusi transaksi database secara atomic jika 100% valid
         DB::transaction(function () use ($validatedRows, $userId, &$created, &$updated) {
             foreach ($validatedRows as $data) {
-                $category = $this->resolveCategory($data['category']);
+                $categoryName = !empty($data['category']) ? $data['category'] : 'Umum';
+                $category = $this->resolveCategory($categoryName);
 
-                $payload = [
-                    'name'           => $data['name'],
-                    'category_id'    => $category->id,
-                    'brand'          => $data['brand'] ?? null,
-                    'color'          => $data['color'] ?? null,
-                    'is_box'         => $data['is_box'] ?? false,
-                    'length'         => $data['length'] ?? null,
-                    'width'          => $data['width'] ?? null,
-                    'height'         => ($data['is_box'] ?? false) ? ($data['height'] ?? null) : null,
-                    'status'         => $data['status'],
-                    'description'    => $data['description'] ?? null,
-                ];
-
-                // Gunakan withTrashed() agar produk yang pernah di-soft-delete terdeteksi dan di-restore
+                // Gunakan withTrashed() agar produk yang pernah dihapus terdeteksi dan bisa di-restore
                 $existing = Product::withTrashed()->where('sku', $data['sku'])->first();
 
                 if ($existing) {
@@ -134,15 +120,19 @@ class ProductImportService
                         $existing->restore();
                     }
 
-                    $existing->update($payload);
+                    $existing->update([
+                        'name'        => $data['name'],
+                        'category_id' => $category->id,
+                    ]);
                     $updated++;
                 } else {
-                    // Stok produk baru selalu mulai dari 0 — penambahannya
-                    // dilakukan lewat menu Barang Masuk agar ada jejaknya.
-                    Product::create($payload + [
-                        'sku'        => $data['sku'],
-                        'stock'      => 0,
-                        'created_by' => $userId,
+                    Product::create([
+                        'sku'         => $data['sku'],
+                        'name'        => $data['name'],
+                        'category_id' => $category->id,
+                        'stock'       => 0,
+                        'status'      => 'active',
+                        'created_by'  => $userId,
                     ]);
                     $created++;
                 }
@@ -158,8 +148,7 @@ class ProductImportService
     }
 
     /**
-     * Samakan isi kolom Excel ke bentuk yang dipahami sistem — judul kolom
-     * boleh ditulis bebas huruf besar/kecil dan bertanda baca.
+     * Normalisasi nama kolom dari sheet Excel (case-insensitive & toleran penamaan kolom).
      *
      * @param  array<string, mixed>  $row
      * @return array<string, mixed>
@@ -179,70 +168,32 @@ class ProductImportService
             return null;
         };
 
-        $boxRaw = $get(['kardus', 'produk_kardus', 'is_box']);
-        $isBox = in_array(Str::lower((string) $boxRaw), ['ya', 'y', 'yes', 'true', '1'], true);
-
-        $statusRaw = Str::lower((string) $get(['status']) ?: 'aktif');
-        $status = in_array($statusRaw, ['nonaktif', 'inactive', 'tidak aktif', '0'], true) ? 'inactive' : 'active';
-
         return [
-            'sku'            => $get(['sku', 'kode_sku', 'kode']),
-            'name'           => $get(['nama_produk', 'nama', 'name', 'produk']),
-            'category'       => $get(['kategori', 'category']),
-            'brand'          => $get(['brand', 'merek', 'brand_merek']),
-            'color'          => $get(['warna', 'color']),
-            'is_box'         => $isBox,
-            'length'         => $this->toNumber($get(['panjang_cm', 'panjang', 'length'])),
-            'width'          => $this->toNumber($get(['lebar_cm', 'lebar', 'width'])),
-            'height'         => $this->toNumber($get(['tinggi_cm', 'tinggi', 'height'])),
-            'status'         => $status,
-            'description'    => $get(['deskripsi', 'keterangan', 'description']),
+            'sku'      => $get(['sku', 'kode_sku', 'kode', 'stock_keeping_unit']),
+            'name'     => $get(['nama_produk', 'nama', 'name', 'produk', 'product_name']),
+            'category' => $get(['kategori', 'category']),
         ];
     }
 
     /**
-     * Angka dari Excel bisa berupa angka asli maupun teks bergaya Indonesia:
-     * "12.500" (ribuan) dan "30,5" (desimal) harus sama-sama terbaca benar.
-     */
-    private function toNumber(mixed $value): ?float
-    {
-        if ($value === null || $value === '') {
-            return null;
-        }
-
-        if (is_int($value) || is_float($value)) {
-            return (float) $value;
-        }
-
-        $clean = str_replace(' ', '', (string) $value);
-
-        // Pemisah ribuan: dikenali dari kelompok tiga angka, mis. 12.500 / 1.250.000.
-        if (preg_match('/^-?\d{1,3}(\.\d{3})+$/', $clean)) {
-            $clean = str_replace('.', '', $clean);
-        } elseif (preg_match('/^-?\d{1,3}(,\d{3})+$/', $clean)) {
-            $clean = str_replace(',', '', $clean);
-        } else {
-            // Sisanya: koma dianggap pemisah desimal.
-            $clean = str_replace(',', '.', $clean);
-        }
-
-        return is_numeric($clean) ? (float) $clean : null;
-    }
-
-    /**
-     * Kategori dicocokkan berdasarkan namanya; bila belum ada, dibuatkan
-     * otomatis agar impor tidak gagal hanya karena kategori baru.
+     * Cari kategori berdasarkan nama. Jika belum ada, buatkan otomatis
+     * sehingga impor tidak pernah gagal karena kategori belum terdaftar.
      */
     private function resolveCategory(string $name): Category
     {
-        $existing = Category::whereRaw('LOWER(name) = ?', [Str::lower($name)])->first();
+        $cleanName = trim($name);
+        if ($cleanName === '') {
+            $cleanName = 'Umum';
+        }
+
+        $existing = Category::whereRaw('LOWER(name) = ?', [Str::lower($cleanName)])->first();
 
         if ($existing) {
             return $existing;
         }
 
         return Category::create([
-            'name'   => $name,
+            'name'   => $cleanName,
             'status' => 'active',
         ]);
     }
