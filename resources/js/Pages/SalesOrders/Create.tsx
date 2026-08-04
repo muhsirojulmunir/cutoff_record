@@ -41,7 +41,7 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
     order_date: new Date().toISOString().split('T')[0],
     payment_terms: 'cash',
     source: 'manual',
-    sales_channel: 'manual',
+    sales_channel: 'shopee',
     notes: '',
     discount_amount: 0,
     tax_amount: 0,
@@ -225,11 +225,10 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
                     className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
                     required
                   >
-                    <option value="manual">Manual</option>
                     <option value="shopee">Shopee</option>
                     <option value="tiktok">TikTok Shop</option>
-                    <option value="website">Website</option>
-                    <option value="other">Lainnya</option>
+                    <option value="vip">VIP</option>
+                    <option value="grosir">Grosir</option>
                   </select>
                   {errors.sales_channel && <p className="text-rose-400 text-xs mt-1">{errors.sales_channel}</p>}
                 </div>

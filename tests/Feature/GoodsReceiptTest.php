@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Category;
+use App\Models\GoodsReceipt;
 use App\Models\Permission;
 use App\Models\Product;
 use App\Models\Role;
@@ -24,7 +25,7 @@ class GoodsReceiptTest extends TestCase
     {
         parent::setUp();
 
-        foreach (['stock.view', 'stock.adjust'] as $name) {
+        foreach (['stock.view', 'stock.adjust', 'stock.receipt.request', 'stock.receipt.approve'] as $name) {
             Permission::firstOrCreate(['name' => $name]);
         }
 
@@ -54,21 +55,93 @@ class GoodsReceiptTest extends TestCase
         $this->actingAs($this->admin)->get('/barang-masuk')->assertOk();
     }
 
-    public function test_stock_in_increases_product_stock(): void
+    /** Kirim pengajuan barang masuk dan kembalikan barisnya. */
+    private function submitReceipt(int $quantity = 25): GoodsReceipt
     {
         $this->actingAs($this->admin)->post('/barang-masuk', [
             'product_id'   => $this->product->id,
             'warehouse_id' => $this->warehouse->id,
-            'quantity'     => 25,
+            'quantity'     => $quantity,
             'notes'        => 'Kiriman pabrik',
         ])->assertRedirect();
 
+        return GoodsReceipt::latest('id')->firstOrFail();
+    }
+
+    /** Pengajuan saja belum boleh mengubah stok — harus menunggu PIC Gudang. */
+    public function test_request_does_not_change_stock_yet(): void
+    {
+        $receipt = $this->submitReceipt();
+
+        $this->assertEquals(GoodsReceipt::STATUS_PENDING, $receipt->status);
+        $this->assertEquals(10, $this->product->fresh()->stock);
+        $this->assertDatabaseMissing('stock_movements', [
+            'product_id'    => $this->product->id,
+            'movement_type' => 'in',
+        ]);
+    }
+
+    public function test_approval_increases_product_stock(): void
+    {
+        $receipt = $this->submitReceipt();
+
+        $this->actingAs($this->admin)
+            ->post("/barang-masuk/{$receipt->id}/approve")
+            ->assertRedirect();
+
+        $this->assertEquals(GoodsReceipt::STATUS_APPROVED, $receipt->fresh()->status);
         $this->assertEquals(35, $this->product->fresh()->stock);
+        $this->assertNotNull($receipt->fresh()->stock_movement_id);
         $this->assertDatabaseHas('stock_movements', [
             'product_id'    => $this->product->id,
             'movement_type' => 'in',
             'quantity'      => 25,
         ]);
+    }
+
+    /** Menyetujui dua kali tidak boleh menambah stok dua kali. */
+    public function test_approval_cannot_be_applied_twice(): void
+    {
+        $receipt = $this->submitReceipt();
+
+        $this->actingAs($this->admin)->post("/barang-masuk/{$receipt->id}/approve");
+        $this->actingAs($this->admin)->post("/barang-masuk/{$receipt->id}/approve");
+
+        $this->assertEquals(35, $this->product->fresh()->stock);
+    }
+
+    public function test_rejection_leaves_stock_untouched(): void
+    {
+        $receipt = $this->submitReceipt();
+
+        $this->actingAs($this->admin)
+            ->post("/barang-masuk/{$receipt->id}/reject", ['rejection_reason' => 'Jumlah tidak sesuai fisik'])
+            ->assertRedirect();
+
+        $this->assertEquals(GoodsReceipt::STATUS_REJECTED, $receipt->fresh()->status);
+        $this->assertEquals(10, $this->product->fresh()->stock);
+    }
+
+    /** Tanpa hak approve, pengajuan tidak boleh diloloskan. */
+    public function test_user_without_approve_permission_is_blocked(): void
+    {
+        $receipt = $this->submitReceipt();
+
+        $role = Role::create(['name' => 'Staff Gudang']);
+        $role->permissions()->sync(
+            Permission::whereIn('name', ['stock.view', 'stock.receipt.request'])->pluck('id')
+        );
+
+        $staff = User::create([
+            'name' => 'Staff', 'email' => 'staff@test.com',
+            'password' => Hash::make('password'), 'role_id' => $role->id, 'status' => 'active',
+        ]);
+
+        $this->actingAs($staff)
+            ->post("/barang-masuk/{$receipt->id}/approve")
+            ->assertForbidden();
+
+        $this->assertEquals(10, $this->product->fresh()->stock);
     }
 
     public function test_quantity_must_be_positive(): void

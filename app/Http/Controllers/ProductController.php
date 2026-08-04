@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Models\Category;
 use App\Http\Requests\ProductRequest;
 use App\Services\ProductImportService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -44,6 +45,28 @@ class ProductController extends Controller
             'categories' => [],
             'filters'  => $request->only(['search']),
         ]);
+    }
+
+    /**
+     * Dipakai layar pratinjau impor: menandai SKU mana yang sudah ada,
+     * supaya admin tahu baris mana yang menambah dan mana yang memperbarui.
+     */
+    public function checkSkus(Request $request): JsonResponse
+    {
+        Gate::authorize('product.create');
+
+        $validated = $request->validate([
+            'skus'   => ['required', 'array', 'max:5000'],
+            'skus.*' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $skus = collect($validated['skus'])->filter()->values();
+
+        $existing = Product::withTrashed()
+            ->whereIn('sku', $skus)
+            ->pluck('sku');
+
+        return response()->json(['existing' => $existing]);
     }
 
     /**

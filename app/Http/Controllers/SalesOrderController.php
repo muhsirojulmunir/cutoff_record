@@ -416,6 +416,7 @@ class SalesOrderController extends Controller
                 'unit_price'       => 'required|numeric|min:0',
                 'voucher'          => 'nullable|numeric|min:0',
                 'tax'              => 'nullable|numeric|min:0',
+                'shipping_cost'    => 'nullable|numeric|min:0',
                 'total_weight'     => 'nullable|numeric|min:0',
                 'shipping_address' => 'nullable|string',
                 'city'             => 'nullable|string|max:100',

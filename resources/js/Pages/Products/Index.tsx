@@ -6,6 +6,7 @@ import Alert from '../../Components/Alert';
 import Modal from '../../Components/Modal';
 import { PageProps } from '../../Types';
 import { downloadProductTemplate, readProductRows } from '../../Utils/productExcel';
+import ProductImportPreview, { PreviewRow } from '../../Components/ProductImportPreview';
 
 interface Category {
   id: number;
@@ -47,13 +48,14 @@ export default function Index({ products, categories, filters }: ProductIndexPro
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importRowErrors, setImportRowErrors] = useState<string[]>([]);
+  const [previewRows, setPreviewRows] = useState<PreviewRow[] | null>(null);
+  const [previewFileName, setPreviewFileName] = useState('');
 
   /** Baca file Excel di browser, lalu kirim barisnya ke server untuk disimpan. */
   async function handleImportFile(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setImporting(true);
     setImportError(null);
     setImportRowErrors([]);
 
@@ -65,18 +67,32 @@ export default function Index({ products, categories, filters }: ProductIndexPro
         return;
       }
 
-      router.post('/products/import', { rows } as never, {
-        preserveScroll: true,
-        onError: (errors) => setImportError(Object.values(errors)[0] as string),
-        onFinish: () => setImporting(false),
-      });
+      // File tidak langsung dikirim — admin memeriksa isinya dulu di pratinjau.
+      setPreviewFileName(file.name);
+      setPreviewRows(rows.map((row, index) => ({
+        excelRow: index + 2,
+        sku: String(row['SKU'] ?? row['sku'] ?? '').trim(),
+        name: String(row['Nama Produk'] ?? row['nama_produk'] ?? '').trim(),
+        raw: row,
+      })));
     } catch {
       setImportError('File tidak bisa dibaca. Pastikan formatnya .xlsx atau .xls sesuai template.');
     } finally {
       // Reset agar file yang sama bisa dipilih ulang setelah diperbaiki.
       event.target.value = '';
-      setImporting(false);
     }
+  }
+
+  /** Dipanggil setelah admin menekan Import di layar pratinjau. */
+  function submitImport(rows: Record<string, unknown>[]) {
+    setImporting(true);
+
+    router.post('/products/import', { rows } as never, {
+      preserveScroll: true,
+      onSuccess: () => setPreviewRows(null),
+      onError: (errors) => setImportError(Object.values(errors)[0] as string),
+      onFinish: () => setImporting(false),
+    });
   }
 
   function handleSearchSubmit(e: React.FormEvent) {
@@ -367,6 +383,15 @@ export default function Index({ products, categories, filters }: ProductIndexPro
           </div>
         </div>
       </Modal>
+      {previewRows && (
+        <ProductImportPreview
+          rows={previewRows}
+          fileName={previewFileName}
+          processing={importing}
+          onCancel={() => setPreviewRows(null)}
+          onConfirm={submitImport}
+        />
+      )}
     </AppLayout>
   );
 }

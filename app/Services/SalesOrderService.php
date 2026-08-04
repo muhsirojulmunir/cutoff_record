@@ -548,11 +548,12 @@ class SalesOrderService
             $unitPrice = (float) ($data['unit_price'] ?? $product->selling_price);
             $voucher = (float) ($data['voucher'] ?? $data['discount_amount'] ?? 0);
             $tax = (float) ($data['tax'] ?? $data['tax_amount'] ?? 0);
+            $shippingCost = (float) ($data['shipping_cost'] ?? 0);
             $totalWeight = (float) ($data['total_weight'] ?? 0);
             $dpAmount = (float) ($data['dp_amount'] ?? 0);
 
             $subtotal = $unitPrice * $qty;
-            $grandTotal = max(0, $subtotal - $voucher + $tax);
+            $grandTotal = max(0, $subtotal - $voucher + $tax + $shippingCost);
 
             // Status bayar hanya boleh ditentukan oleh uang yang benar-benar
             // diterima. Tanggal pembayaran di form hanyalah catatan waktu, jadi
@@ -584,7 +585,7 @@ class SalesOrderService
                 'subtotal'         => $subtotal,
                 'discount_amount'  => $voucher,
                 'tax_amount'       => $tax,
-                'shipping_cost'    => 0,
+                'shipping_cost'    => $shippingCost,
                 'grand_total'      => $grandTotal,
                 'total_weight'     => $totalWeight,
                 'dp_amount'        => $dpAmount,

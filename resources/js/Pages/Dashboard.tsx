@@ -99,6 +99,7 @@ const CHANNEL_LABELS: Record<string, string> = {
     grosir: 'Grosir Offline',
     shopee: 'Shopee',
     tiktok: 'TikTok Shop',
+    vip: 'VIP',
     website: 'Website',
     other: 'Lainnya',
 };

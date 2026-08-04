@@ -56,27 +56,14 @@ const statusBadgeColor: Record<string, string> = {
   cancelled:        'bg-rose-500/10 border-rose-500/20 text-rose-400',
 };
 
+/** Tahapan pengerjaan pesanan, memakai istilah yang dipakai tim gudang. */
 const statusLabel: Record<string, string> = {
   draft:            'Draft',
-  pending_approval: 'Menunggu Approval Finance',
-  approved:         'Disetujui',
-  processing:       'Diproses',
+  pending_approval: 'Menunggu ACC',
+  approved:         'Packing',
+  processing:       'DO Validate',
   completed:        'Selesai',
   cancelled:        'Dibatalkan',
-};
-
-const paymentBadgeColor: Record<string, string> = {
-  unpaid:         'bg-rose-500/10 border-rose-500/20 text-rose-400',
-  partially_paid: 'bg-orange-50 border-orange-200 text-orange-600',
-  paid:           'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
-  refunded:       'bg-gray-100 border-gray-300 text-gray-400',
-};
-
-const paymentLabel: Record<string, string> = {
-  unpaid:         'Belum Bayar',
-  partially_paid: 'Sebagian',
-  paid:           'Lunas',
-  refunded:       'Refund',
 };
 
 const sourceLabel: Record<string, string> = {
@@ -254,21 +241,8 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
                 onChange={(e) => handleFilterChange('status', e.target.value)}
                 className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
               >
-                <option value="">Semua Status Order</option>
+                <option value="">Semua Status</option>
                 {Object.entries(statusLabel).map(([val, label]) => (
-                  <option key={val} value={val}>{label}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <select
-                value={paymentStatus}
-                onChange={(e) => handleFilterChange('payment_status', e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
-              >
-                <option value="">Semua Status Bayar</option>
-                {Object.entries(paymentLabel).map(([val, label]) => (
                   <option key={val} value={val}>{label}</option>
                 ))}
               </select>
@@ -334,8 +308,8 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
                   <th className="px-6 py-3.5">Customer</th>
                   <th className="px-6 py-3.5">Sumber</th>
                   <th className="px-6 py-3.5 text-right">Total</th>
-                  <th className="px-6 py-3.5 text-center">Status Bayar</th>
-                  <th className="px-6 py-3.5 text-center">Status Order</th>
+                  <th className="px-6 py-3.5 text-center">ACC</th>
+                  <th className="px-6 py-3.5 text-center">Status</th>
                   <th className="px-6 py-3.5">Pembuat</th>
                   <th className="px-6 py-3.5 text-right">Aksi</th>
                 </tr>
@@ -379,9 +353,17 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
                         Rp {Number(order.grand_total).toLocaleString('id-ID')}
                       </td>
                       <td className="px-6 py-3.5 text-center whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${paymentBadgeColor[order.payment_status] ?? 'bg-gray-100 border-gray-300 text-gray-500'}`}>
-                          {paymentLabel[order.payment_status] ?? order.payment_status}
-                        </span>
+                        {['approved', 'processing', 'completed'].includes(order.status) ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border bg-teal-50 border-teal-200 text-teal-700">
+                            <span className="h-1.5 w-1.5 rounded-full bg-teal-500" />
+                            Sudah ACC
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border bg-gray-100 border-gray-300 text-gray-500">
+                            <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
+                            Belum ACC
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-3.5 text-center whitespace-nowrap">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusBadgeColor[order.status] ?? 'bg-gray-100 border-gray-300 text-gray-500'}`}>

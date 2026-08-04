@@ -109,79 +109,105 @@ class ReportController extends Controller
         ]);
     }
 
+    /**
+     * HPP Report — rekap barang keluar berdasarkan invoice.
+     *
+     * Dihitung dari item invoice (bukan master produk) agar terlihat berapa
+     * kuantitas tiap SKU yang benar-benar keluar pada rentang tanggal tertentu,
+     * lengkap dengan modal, penjualan, dan keuntungannya. Invoice batal tidak
+     * dihitung. Nama dan SKU diambil dari salinan di item invoice supaya baris
+     * lama tetap tampil walau produknya sudah dihapus dari master.
+     */
     public function hpp(Request $request): \Inertia\Response
     {
         Gate::authorize('reports.purchase.view');
 
-        $search     = $request->input('search');
-        $categoryId = $request->input('category_id');
+        $search   = $request->input('search');
+        $dateFrom = $request->input('date_from');
+        $dateTo   = $request->input('date_to');
 
-        // Harga tidak lagi disimpan di master produk: HPP diambil dari harga
-        // beli PO yang barangnya sudah diterima, harga jual dari item Sales Order.
         $pricing = app(\App\Services\Reports\ProductPricingService::class);
 
-        $query = \App\Models\Product::with(['category', 'hpp'])
-            ->leftJoinSub($pricing->costSubquery(), 'po_costs', function ($join) {
-                $join->on('products.id', '=', 'po_costs.product_id');
-            })
-            ->leftJoinSub($pricing->sellingSubquery(), 'so_prices', function ($join) {
-                $join->on('products.id', '=', 'so_prices.product_id');
-            })
-            ->select(
-                'products.*',
-                \Illuminate\Support\Facades\DB::raw('COALESCE(po_costs.total_qty, 0) as total_purchased_qty'),
-                \Illuminate\Support\Facades\DB::raw('COALESCE(po_costs.total_cost, 0) as total_purchased_cost'),
-                \Illuminate\Support\Facades\DB::raw('COALESCE(so_prices.avg_selling_price, 0) as avg_selling_price'),
-                \Illuminate\Support\Facades\DB::raw('COALESCE(so_prices.sold_qty, 0) as sold_qty')
-            )
-            ->orderBy('products.name');
-
-        if ($search) {
-            $query->where(function ($q) use ($search) {
-                $q->where('products.name', 'like', "%{$search}%")
-                  ->orWhere('products.sku', 'like', "%{$search}%");
+        $baseQuery = \Illuminate\Support\Facades\DB::table('invoice_items')
+            ->join('invoices', 'invoices.id', '=', 'invoice_items.invoice_id')
+            ->whereNull('invoices.deleted_at')
+            ->where('invoices.status', '!=', 'cancelled')
+            ->when($dateFrom, fn($q, $from) => $q->whereDate('invoices.invoice_date', '>=', $from))
+            ->when($dateTo, fn($q, $to) => $q->whereDate('invoices.invoice_date', '<=', $to))
+            ->when($search, function ($q, $keyword) {
+                $q->where(function ($inner) use ($keyword) {
+                    $inner->where('invoice_items.sku', 'like', "%{$keyword}%")
+                          ->orWhere('invoice_items.product_name', 'like', "%{$keyword}%");
+                });
             });
-        }
 
-        if ($categoryId) {
-            $query->where('products.category_id', $categoryId);
-        }
+        $groupedQuery = (clone $baseQuery)
+            ->leftJoinSub(
+                $pricing->effectiveCostSubquery(),
+                'costs',
+                'costs.product_id',
+                '=',
+                'invoice_items.product_id'
+            )
+            ->groupBy('invoice_items.product_id', 'invoice_items.sku', 'invoice_items.product_name')
+            ->select(
+                'invoice_items.product_id',
+                'invoice_items.sku',
+                'invoice_items.product_name',
+                \Illuminate\Support\Facades\DB::raw('SUM(invoice_items.quantity) as qty'),
+                \Illuminate\Support\Facades\DB::raw('SUM(invoice_items.subtotal) as total_sales'),
+                \Illuminate\Support\Facades\DB::raw('MAX(COALESCE(costs.avg_cost, 0)) as unit_hpp')
+            )
+            ->orderByDesc(\Illuminate\Support\Facades\DB::raw('SUM(invoice_items.subtotal)'));
 
-        $products = $query->paginate(25)->withQueryString();
+        $rows = $groupedQuery->paginate(25)->withQueryString();
 
-        // Transform results to include calculated weighted average HPP and margins
-        $products->getCollection()->transform(function ($product) {
-            $qty  = (int) $product->total_purchased_qty;
-            $cost = (float) $product->total_purchased_cost;
+        $rows->getCollection()->transform(function ($row) {
+            $qty        = (int) $row->qty;
+            $totalSales = (float) $row->total_sales;
+            $unitHpp    = (float) $row->unit_hpp;
+            $totalHpp   = $qty * $unitHpp;
 
-            // HPP yang diinput Finance / Leader dipakai lebih dulu; rata-rata
-            // pembelian PO jadi cadangan bila HPP-nya belum diisi.
-            $poAverage   = $qty > 0 ? ($cost / $qty) : 0.0;
-            $manualHpp   = $product->hpp?->hpp !== null ? (float) $product->hpp->hpp : null;
-            $hpp         = $manualHpp ?? $poAverage;
-
-            $product->po_average_cost = round($poAverage, 2);
-            $product->hpp_source      = $manualHpp !== null ? 'manual' : ($qty > 0 ? 'po' : 'none');
-            $sellingPrice = (float) $product->avg_selling_price;
-            $marginAmount = $sellingPrice - $hpp;
-            $marginPct    = $sellingPrice > 0 ? (($marginAmount / $sellingPrice) * 100) : 0;
-
-            $product->hpp_weighted_average = round($hpp, 2);
-            $product->selling_price        = round($sellingPrice, 2);
-            $product->margin_amount        = round($marginAmount, 2);
-            $product->margin_percentage    = round($marginPct, 1);
-            $product->has_price_data       = $qty > 0 || $sellingPrice > 0;
-            return $product;
+            return [
+                'product_id'    => $row->product_id,
+                'sku'           => $row->sku,
+                'product_name'  => $row->product_name,
+                'qty'           => $qty,
+                'unit_hpp'      => round($unitHpp, 2),
+                // Harga jual rata-rata yang benar-benar tertagih di invoice.
+                'unit_price'    => $qty > 0 ? round($totalSales / $qty, 2) : 0.0,
+                'total_hpp'     => round($totalHpp, 2),
+                'total_sales'   => round($totalSales, 2),
+                'margin'        => round($totalSales - $totalHpp, 2),
+            ];
         });
 
-        $categories = \App\Models\Category::orderBy('name')->get(['id', 'name']);
+        // Grand total dihitung atas seluruh hasil filter, bukan hanya halaman ini.
+        $totals = \Illuminate\Support\Facades\DB::query()
+            ->fromSub($groupedQuery->reorder(), 'summary')
+            ->selectRaw('COALESCE(SUM(qty), 0) as qty')
+            ->selectRaw('COALESCE(SUM(total_sales), 0) as total_sales')
+            ->selectRaw('COALESCE(SUM(qty * unit_hpp), 0) as total_hpp')
+            ->first();
+
+        $grandSales = (float) ($totals->total_sales ?? 0);
+        $grandHpp   = (float) ($totals->total_hpp ?? 0);
 
         return Inertia::render('Reports/Hpp', [
-            'products'   => $products,
-            'categories' => $categories,
-            'filters'    => $request->only('search', 'category_id'),
+            'rows'    => $rows,
+            'filters' => $request->only('search', 'date_from', 'date_to'),
+            'summary' => [
+                'qty'         => (int) ($totals->qty ?? 0),
+                'total_hpp'   => round($grandHpp, 2),
+                'total_sales' => round($grandSales, 2),
+                'margin'      => round($grandSales - $grandHpp, 2),
+                'margin_percentage' => $grandSales > 0
+                    ? round((($grandSales - $grandHpp) / $grandSales) * 100, 1)
+                    : 0.0,
+            ],
         ]);
     }
+
 
     public function salesSummary(Request $request): \Inertia\Response
     {
