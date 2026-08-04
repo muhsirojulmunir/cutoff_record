@@ -51,6 +51,8 @@ class SalesOrder extends Model
         'completed_by',
         'completed_at',
         'stock_deducted_at',
+        'resi_scanned_at',
+        'resi_scanned_by',
     ];
 
     protected $casts = [
@@ -61,6 +63,7 @@ class SalesOrder extends Model
         'approved_at'       => 'datetime',
         'completed_at'      => 'datetime',
         'stock_deducted_at' => 'datetime',
+        'resi_scanned_at'   => 'datetime',
         'subtotal'        => 'decimal:2',
         'discount_amount' => 'decimal:2',
         'tax_amount'      => 'decimal:2',
@@ -109,6 +112,12 @@ class SalesOrder extends Model
     public function completer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'completed_by')->withTrashed();
+    }
+
+    /** Petugas gudang yang memvalidasi scan resi. */
+    public function resiScanner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'resi_scanned_by')->withTrashed();
     }
 
     public function items(): HasMany

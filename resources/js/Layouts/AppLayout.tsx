@@ -277,6 +277,13 @@ const navSections: NavSection[] = [
         icon: 'M12 4.5v15m0 0l6.75-6.75M12 19.5l-6.75-6.75M3 3h18',
       },
       {
+        label: 'Gudang — Pengiriman',
+        href: '/gudang/pengiriman',
+        permission: 'stock.view',
+        matchPrefix: true,
+        icon: 'M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h.375c.621 0 1.125-.504 1.125-1.125V11.25c0-.621-.504-1.125-1.125-1.125h-1.5M14.25 5.25v9.75m0 0h-6',
+      },
+      {
         label: 'Inventory Ledger',
         href: '/stock-movements',
         permission: 'stock.view',
