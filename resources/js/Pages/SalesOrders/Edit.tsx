@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import CurrencyInput from '@/Components/CurrencyInput';
@@ -33,6 +33,7 @@ interface DBSalesOrder {
   so_number: string;
   customer_id: number | null;
   order_date: string;
+  payment_terms?: string;
   source: string;
   sales_channel: string;
   notes: string | null;
@@ -40,6 +41,7 @@ interface DBSalesOrder {
   tax_amount: string;
   shipping_cost: string;
   grand_total: string;
+  dp_amount?: string;
   items: DBOrderItem[];
 }
 
@@ -78,12 +80,14 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
   const { data, setData, put, processing, errors } = useForm({
     customer_id: salesOrder.customer_id?.toString() ?? '',
     order_date: salesOrder.order_date.split('T')[0],
+    payment_terms: salesOrder.payment_terms ?? 'cash',
     source: salesOrder.source,
     sales_channel: salesOrder.sales_channel,
     notes: salesOrder.notes ?? '',
-    discount_amount: Number(salesOrder.discount_amount),
-    tax_amount: Number(salesOrder.tax_amount),
+    discount_amount: 0,
+    tax_amount: 0,
     shipping_cost: Number(salesOrder.shipping_cost),
+    dp_amount: Number(salesOrder.dp_amount ?? 0),
     items: initialItems,
   });
 
@@ -141,20 +145,18 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
     // Recalculate item subtotal
     const price = Number(item.price) || 0;
     const qty = Number(item.quantity) || 0;
-    const discount = Number(item.discount_amount) || 0;
-    const tax = Number(item.tax_amount) || 0;
-    item.subtotal = (price * qty) - discount + tax;
+    item.subtotal = price * qty;
 
     updated[index] = item;
     setLocalItems(updated);
   }
 
-  // Calculate live summary
+  // Calculate live summary (identical to Create.tsx)
   const subtotal = localItems.reduce((sum, item) => sum + (item.subtotal || 0), 0);
-  const discountHeader = Number(data.discount_amount) || 0;
-  const taxHeader = Number(data.tax_amount) || 0;
-  const shippingHeader = Number(data.shipping_cost) || 0;
-  const grandTotal = subtotal - discountHeader + taxHeader + shippingHeader;
+  const shippingCost = Number(data.shipping_cost) || 0;
+  const grandTotal = subtotal + shippingCost;
+  const dpAmount = Number(data.dp_amount) || 0;
+  const sisaTagihan = Math.max(0, grandTotal - dpAmount);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -178,7 +180,7 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
           </Link>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Edit Sales Order</h1>
-            <p className="text-gray-500 text-xs mt-0.5">Transaksi / Sales Orders / {salesOrder.so_number} / Edit</p>
+            <p className="text-gray-500 text-xs mt-0.5">Edit — {salesOrder.so_number}</p>
           </div>
         </div>
 
@@ -187,12 +189,7 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
           <div className="lg:col-span-2 space-y-6">
             {/* Header Fields Card */}
             <div className="bg-white border border-gray-300 rounded-2xl p-6 space-y-4">
-              <div className="flex items-center justify-between border-b border-gray-300 pb-3 mb-2">
-                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Informasi Utama</h2>
-                <span className="text-xs font-mono font-bold px-2.5 py-1 bg-teal-600/10 text-teal-400 border border-teal-500/20 rounded-lg">
-                  {salesOrder.so_number}
-                </span>
-              </div>
+              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Informasi Utama</h2>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Customer */}
@@ -264,6 +261,29 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
                   </select>
                   {errors.sales_channel && <p className="text-rose-400 text-xs mt-1">{errors.sales_channel}</p>}
                 </div>
+
+                {/* Tempo Pembayaran */}
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-semibold text-gray-700">
+                    Tempo Pembayaran
+                  </label>
+                  <select
+                    value={data.payment_terms}
+                    onChange={(e) => setData('payment_terms', e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
+                  >
+                    <option value="cash">Cash (Langsung Lunas)</option>
+                    <option value="cod">COD (Bayar di Tempat)</option>
+                    <option value="tempo_7">Tempo 7 Hari</option>
+                    <option value="tempo_14">Tempo 14 Hari</option>
+                    <option value="tempo_30">Tempo 30 Hari</option>
+                  </select>
+                  {data.payment_terms !== 'cash' && data.payment_terms !== '' && (
+                    <p className="text-xs text-amber-600">
+                      ⚠️ Tagihan piutang customer akan dicatat dan dimonitor Finance.
+                    </p>
+                  )}
+                </div>
               </div>
 
               {/* Notes */}
@@ -287,7 +307,7 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
                 <button
                   type="button"
                   onClick={handleAddItem}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-600/10 hover:bg-teal-600/20 active:scale-95 text-teal-400 border border-teal-500/20 text-xs font-semibold rounded-lg transition-all"
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-semibold rounded-xl transition-all shadow-sm shadow-blue-500/20"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -304,7 +324,7 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
                   <button
                     type="button"
                     onClick={handleAddItem}
-                    className="text-xs text-teal-400 font-semibold hover:underline mt-2 inline-block"
+                    className="text-xs text-blue-400 font-semibold hover:underline mt-2 inline-block"
                   >
                     Tambah item pertama Anda
                   </button>
@@ -343,7 +363,7 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
                       </div>
 
                       {/* Calculations Row */}
-                      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <div className="space-y-1">
                           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">Kuantitas</label>
                           <CurrencyInput
@@ -374,29 +394,7 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
                           )}
                         </div>
 
-                        <div className="space-y-1">
-                          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">Diskon Item</label>
-                          <CurrencyInput
-                            hidePrefix
-                            value={item.discount_amount}
-                            onChange={(v) => handleItemChange(idx, 'discount_amount', v)}
-                            className="w-full px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                            min="0"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">Pajak Item</label>
-                          <CurrencyInput
-                            hidePrefix
-                            value={item.tax_amount}
-                            onChange={(v) => handleItemChange(idx, 'tax_amount', v)}
-                            className="w-full px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                            min="0"
-                          />
-                        </div>
-
-                        <div className="col-span-2 md:col-span-2 flex items-end gap-2">
+                        <div className="col-span-2 flex items-end gap-2">
                           <div className="flex-1 space-y-1">
                             <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">Subtotal</label>
                             <div className="px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-300 text-emerald-400 font-bold font-mono text-xs min-h-[32px] flex items-center justify-end whitespace-nowrap overflow-x-auto">
@@ -434,41 +432,9 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
                   <span className="font-semibold text-gray-700">Rp {subtotal.toLocaleString('id-ID')}</span>
                 </div>
 
-                {/* Diskon */}
+                {/* Ongkir — Opsional */}
                 <div className="pt-3 space-y-1.5">
-                  <div className="flex justify-between items-center">
-                    <label className="text-gray-400">Diskon Transaksi (Header)</label>
-                  </div>
-                  <CurrencyInput
-                    hidePrefix
-                    value={data.discount_amount}
-                    onChange={(v) => setData('discount_amount', v)}
-                    className="w-full px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                    min="0"
-                  />
-                  {errors.discount_amount && <p className="text-rose-400 text-xs">{errors.discount_amount}</p>}
-                </div>
-
-                {/* Pajak */}
-                <div className="pt-3 space-y-1.5">
-                  <div className="flex justify-between items-center">
-                    <label className="text-gray-400">Pajak Transaksi (Header)</label>
-                  </div>
-                  <CurrencyInput
-                    hidePrefix
-                    value={data.tax_amount}
-                    onChange={(v) => setData('tax_amount', v)}
-                    className="w-full px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                    min="0"
-                  />
-                  {errors.tax_amount && <p className="text-rose-400 text-xs">{errors.tax_amount}</p>}
-                </div>
-
-                {/* Ongkir */}
-                <div className="pt-3 space-y-1.5">
-                  <div className="flex justify-between items-center">
-                    <label className="text-gray-400">Biaya Pengiriman</label>
-                  </div>
+                  <label className="text-gray-400">Biaya Pengiriman <span className="text-gray-300 text-[10px]">(opsional)</span></label>
                   <CurrencyInput
                     hidePrefix
                     value={data.shipping_cost}
@@ -484,6 +450,29 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
                   <span className="text-base font-bold text-gray-900">Grand Total</span>
                   <span className="text-base font-extrabold text-emerald-400">Rp {grandTotal.toLocaleString('id-ID')}</span>
                 </div>
+
+                {/* DP / Uang Muka */}
+                <div className="pt-3 space-y-1.5 border-t border-gray-200/60">
+                  <div className="flex justify-between items-center">
+                    <label className="text-gray-500 font-semibold text-sm">DP / Uang Muka</label>
+                  </div>
+                  <CurrencyInput
+                    hidePrefix
+                    value={data.dp_amount}
+                    onChange={(v) => setData('dp_amount', v)}
+                    className="w-full px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+                    min="0"
+                  />
+                  {errors.dp_amount && <p className="text-rose-400 text-xs">{errors.dp_amount}</p>}
+                </div>
+
+                {/* Sisa Tagihan */}
+                {dpAmount > 0 && (
+                  <div className="flex justify-between items-center p-3 rounded-xl bg-teal-50 border border-teal-200">
+                    <span className="text-teal-700 font-bold text-sm">Sisa Tagihan</span>
+                    <span className="text-teal-700 font-extrabold text-sm">Rp {sisaTagihan.toLocaleString('id-ID')}</span>
+                  </div>
+                )}
               </div>
 
               {flash.error && (
@@ -496,7 +485,7 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
               <div className="flex gap-3 pt-4 border-t border-gray-300/80">
                 <Link
                   href={`/sales-orders/${salesOrder.id}`}
-                  className="flex-1 text-center py-2.5 bg-white hover:bg-teal-50 text-teal-700 rounded-xl text-sm font-semibold border border-teal-300 transition-all border border-gray-300"
+                  className="flex-1 text-center py-2.5 bg-white hover:bg-teal-50 text-teal-700 rounded-xl text-sm font-semibold border border-gray-300 transition-all"
                 >
                   Batal
                 </Link>
