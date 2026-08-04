@@ -23,14 +23,14 @@ export default function Create({ categories }: CreateProps) {
     length: '',
     width: '',
     height: '',
-    stock: '0',
     status: 'active' as 'active' | 'inactive',
     description: '',
+    photo: null as File | null,
   });
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    post('/products');
+    post('/products', { forceFormData: true });
   }
 
   return (
@@ -197,23 +197,21 @@ export default function Create({ categories }: CreateProps) {
                 {errors.status && <p className="text-rose-400 text-xs mt-1">{errors.status}</p>}
               </div>
 
-              {/* Stok Awal */}
-              <div className="space-y-1.5">
-                <label htmlFor="stock" className="block text-sm font-semibold text-gray-700">
-                  Stok Awal
-                  <span className="ml-1 text-xs font-normal text-gray-400">(pcs)</span>
-                </label>
-                <input
-                  id="stock"
-                  type="number"
-                  min="0"
-                  value={data.stock}
-                  onChange={(e) => setData('stock', e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 hover:border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                  disabled={processing}
-                />
-                {errors.stock && <p className="text-rose-400 text-xs mt-1">{errors.stock}</p>}
-              </div>
+            </div>
+
+            {/* Foto Produk */}
+            <div className="space-y-1.5">
+              <label htmlFor="photo" className="block text-sm font-semibold text-gray-700">Foto Produk</label>
+              <input
+                id="photo"
+                type="file"
+                accept=".jpg,.jpeg,.png,.webp"
+                onChange={(e) => setData('photo', e.target.files?.[0] ?? null)}
+                disabled={processing}
+                className="w-full text-sm text-gray-600 file:mr-3 file:px-4 file:py-2 file:rounded-xl file:border-0 file:bg-teal-50 file:text-teal-700 file:text-xs file:font-semibold hover:file:bg-teal-100 cursor-pointer"
+              />
+              <p className="text-[11px] text-gray-400">JPG, PNG, atau WEBP maksimal 2 MB.</p>
+              {errors.photo && <p className="text-rose-400 text-xs mt-1">{errors.photo}</p>}
             </div>
 
             {/* Description */}

@@ -16,14 +16,7 @@ interface Product {
   id: number;
   sku: string;
   name: string;
-  category: Category;
-  brand: string | null;
-  is_box: boolean;
-  dimension_label: string | null;
-  purchase_price: string;
-  selling_price: string;
-  stock: number;
-  status: 'active' | 'inactive';
+  photo_url: string | null;
 }
 
 interface ProductIndexProps {
@@ -45,8 +38,6 @@ export default function Index({ products, categories, filters }: ProductIndexPro
   const permissions = auth.user?.permissions ?? [];
 
   const [search, setSearch] = useState(filters.search ?? '');
-  const [categoryId, setCategoryId] = useState(filters.category_id ?? '');
-  const [status, setStatus] = useState(filters.status ?? '');
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
@@ -90,17 +81,7 @@ export default function Index({ products, categories, filters }: ProductIndexPro
 
   function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
-    router.get('/products', { search, category_id: categoryId, status }, { preserveState: true });
-  }
-
-  function handleCategoryFilterChange(newCatId: string) {
-    setCategoryId(newCatId);
-    router.get('/products', { search, category_id: newCatId, status }, { preserveState: true });
-  }
-
-  function handleStatusFilterChange(newStatus: string) {
-    setStatus(newStatus);
-    router.get('/products', { search, category_id: categoryId, status: newStatus }, { preserveState: true });
+    router.get('/products', { search }, { preserveState: true });
   }
 
   function confirmDelete(product: Product) {
@@ -214,50 +195,27 @@ export default function Index({ products, categories, filters }: ProductIndexPro
           </div>
         </div>
 
-        {/* Filters & Search */}
+        {/* Search */}
         <div className="bg-white border border-gray-300 rounded-2xl p-4">
-          <form onSubmit={handleSearchSubmit} className="flex flex-col lg:flex-row gap-3">
+          <form onSubmit={handleSearchSubmit} className="flex gap-3">
             <div className="flex-1 relative">
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Cari SKU, nama produk, atau brand..."
+                placeholder="Cari SKU atau nama produk..."
                 className="w-full pl-10 pr-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
               />
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-gray-400 absolute left-3.5 top-3">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.637 10.637z" />
               </svg>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <select
-                value={categoryId}
-                onChange={(e) => handleCategoryFilterChange(e.target.value)}
-                className="px-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
-              >
-                <option value="">Semua Kategori</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={status}
-                onChange={(e) => handleStatusFilterChange(e.target.value)}
-                className="px-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
-              >
-                <option value="">Semua Status</option>
-                <option value="active">Aktif</option>
-                <option value="inactive">Nonaktif</option>
-              </select>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-white hover:bg-teal-50 text-teal-700 rounded-xl text-sm font-semibold border border-teal-400 hover:border-teal-500 transition-all"
-              >
-                Cari
-              </button>
-            </div>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-white hover:bg-teal-50 text-teal-700 rounded-xl text-sm font-semibold border border-teal-400 hover:border-teal-500 transition-all"
+            >
+              Cari
+            </button>
           </form>
         </div>
 
@@ -267,56 +225,52 @@ export default function Index({ products, categories, filters }: ProductIndexPro
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-gray-200 text-[10px] font-bold uppercase tracking-widest text-gray-500 bg-gray-50">
+                  <th className="px-6 py-3.5">Produk</th>
                   <th className="px-6 py-3.5">SKU</th>
-                  <th className="px-6 py-3.5">Nama Produk</th>
-                  <th className="px-6 py-3.5">Kategori / Brand</th>
-                  <th className="px-6 py-3.5">Ukuran</th>
-                  <th className="px-6 py-3.5 text-center">Stok</th>
-                  <th className="px-6 py-3.5">Status</th>
                   <th className="px-6 py-3.5 text-right">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-sm">
                 {products.data.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-gray-400 font-medium">
+                    <td colSpan={3} className="px-6 py-12 text-center text-gray-400 font-medium">
                       Tidak ada data produk ditemukan.
                     </td>
                   </tr>
                 ) : (
                   products.data.map((product) => (
                     <tr key={product.id} className="hover:bg-teal-50/60 group transition-all">
-                      <td className="px-6 py-3.5 font-mono font-bold text-teal-400 text-xs">
-                        {product.sku}
-                      </td>
-                      <td className="px-6 py-3.5 font-semibold text-gray-800 group-hover:text-gray-900 transition-colors text-xs max-w-xs break-words">
-                        <Link href={`/products/${product.id}`} className="hover:underline">
-                          {product.name}
-                        </Link>
-                      </td>
+                      {/* Foto + nama jadi satu kolom, seperti tampilan katalog */}
                       <td className="px-6 py-3.5">
-                        <div className="text-gray-700 font-medium text-xs">{product.category?.name}</div>
-                        <div className="text-[10px] text-gray-400 mt-0.5 font-mono">{product.brand ?? 'No Brand'}</div>
+                        <div className="flex items-center gap-3.5">
+                          {product.photo_url ? (
+                            <img
+                              src={product.photo_url}
+                              alt={product.name}
+                              loading="lazy"
+                              className="w-11 h-11 rounded-xl object-cover border border-gray-200 shrink-0 group-hover:border-teal-300 transition-colors"
+                            />
+                          ) : (
+                            <div className="w-11 h-11 rounded-xl border border-dashed border-gray-300 bg-gray-50 flex items-center justify-center shrink-0">
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-gray-300">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                              </svg>
+                            </div>
+                          )}
+
+                          <Link
+                            href={`/products/${product.id}`}
+                            className="min-w-0 text-sm font-semibold text-gray-800 group-hover:text-teal-700 transition-colors line-clamp-2 leading-snug"
+                            title={product.name}
+                          >
+                            {product.name}
+                          </Link>
+                        </div>
                       </td>
+
                       <td className="px-6 py-3.5">
-                        <div className="font-mono text-xs text-gray-700">{product.dimension_label ?? '—'}</div>
-                        <div className="text-[10px] text-gray-400 mt-0.5">{product.is_box ? 'P × L × T' : 'P × L'}</div>
-                      </td>
-                      <td className="px-6 py-3.5 text-center">
-                        <span className="inline-flex items-center justify-center min-w-[3rem] px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 border border-slate-300 text-slate-700">
-                          {product.stock ?? 0}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3.5 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border
-                            ${product.status === 'active'
-                              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                              : 'bg-gray-100 border-gray-300 text-gray-400'
-                            }`}
-                        >
-                          <span className={`h-1.5 w-1.5 rounded-full ${product.status === 'active' ? 'bg-emerald-400' : 'bg-slate-500'}`} />
-                          {product.status === 'active' ? 'Aktif' : 'Nonaktif'}
+                        <span className="inline-flex items-center px-3 py-1 rounded-full bg-gray-100 group-hover:bg-teal-50 border border-gray-200 group-hover:border-teal-200 text-gray-600 group-hover:text-teal-700 text-xs font-mono font-semibold whitespace-nowrap transition-colors">
+                          {product.sku}
                         </span>
                       </td>
                       <td className="px-6 py-3.5 text-right whitespace-nowrap">

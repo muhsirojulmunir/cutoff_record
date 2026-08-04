@@ -142,7 +142,7 @@ export default function Index({ customers, filters }: CustomerIndexProps) {
                 <tr className="border-b border-gray-300 text-[11px] font-bold uppercase tracking-wider text-gray-400 bg-teal-50/60">
                   <th className="px-6 py-4">Kode</th>
                   <th className="px-6 py-4">Nama Customer</th>
-                  <th className="px-6 py-4">Kontak</th>
+                  <th className="px-6 py-4">Telepon</th>
                   <th className="px-6 py-4">Alamat</th>
                   <th className="px-6 py-4">Status</th>
                   <th className="px-6 py-4 text-right">Aksi</th>
@@ -168,7 +168,6 @@ export default function Index({ customers, filters }: CustomerIndexProps) {
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-gray-700 font-medium">{customer.phone ?? '—'}</div>
-                        <div className="text-[10px] text-gray-400 mt-0.5">{customer.email ?? '—'}</div>
                       </td>
                       <td className="px-6 py-4 text-gray-500 max-w-xs truncate">
                         {customer.address ?? '—'}

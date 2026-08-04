@@ -13,6 +13,7 @@ class Product extends Model
     protected $fillable = [
         'sku',
         'name',
+        'photo_path',
         'category_id',
         'brand',
         'color',
@@ -40,7 +41,15 @@ class Product extends Model
         'stock'          => 'integer',
     ];
 
-    protected $appends = ['dimension_label'];
+    protected $appends = ['dimension_label', 'photo_url'];
+
+    /** Tautan foto siap pakai di frontend; null bila produk belum berfoto. */
+    public function getPhotoUrlAttribute(): ?string
+    {
+        return $this->photo_path
+            ? \Illuminate\Support\Facades\Storage::disk('public')->url($this->photo_path)
+            : null;
+    }
 
     /**
      * Ukuran siap tampil: "40 x 30 cm", atau "40 x 30 x 25 cm" untuk kardus.

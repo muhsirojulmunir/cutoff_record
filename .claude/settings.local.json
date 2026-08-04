@@ -82,7 +82,11 @@
       "Bash(php -l app/Http/Controllers/ProductHppController.php)",
       "PowerShell(php artisan test --filter ProductHppTest 2>&1)",
       "Bash(php -l tests/Feature/ProductHppTest.php)",
-      "PowerShell(php artisan test --filter InvoiceTest 2>&1)"
+      "PowerShell(php artisan test --filter InvoiceTest 2>&1)",
+      "Bash(php -l app/Http/Controllers/ProductController.php)",
+      "PowerShell(php artisan view:clear)",
+      "PowerShell(php artisan optimize:clear)",
+      "PowerShell(php artisan test --filter GoodsReceiptTest 2>&1)"
     ]
   }
 }

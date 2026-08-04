@@ -270,6 +270,13 @@ const navSections: NavSection[] = [
     title: 'Laporan Center',
     items: [
       {
+        label: 'Barang Masuk',
+        href: '/barang-masuk',
+        permission: 'stock.view',
+        matchPrefix: true,
+        icon: 'M12 4.5v15m0 0l6.75-6.75M12 19.5l-6.75-6.75M3 3h18',
+      },
+      {
         label: 'Inventory Ledger',
         href: '/stock-movements',
         permission: 'stock.view',

@@ -10,6 +10,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -20,34 +21,28 @@ class ProductController extends Controller
         Gate::authorize('product.view');
 
         $search = $request->input('search');
-        $categoryId = $request->input('category_id');
-        $status = $request->input('status');
 
         $products = Product::query()
-            ->with('category')
             ->when($search, function ($query, $search) {
-                $query->where(function($q) use ($search) {
+                $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('sku', 'like', "%{$search}%")
-                      ->orWhere('brand', 'like', "%{$search}%");
+                      ->orWhere('sku', 'like', "%{$search}%");
                 });
             })
-            ->when($categoryId, function ($query, $categoryId) {
-                $query->where('category_id', $categoryId);
-            })
-            ->when($status, function ($query, $status) {
-                $query->where('status', $status);
-            })
             ->orderBy('sku')
-            ->paginate(10)
-            ->withQueryString();
-
-        $categories = Category::where('status', 'active')->orderBy('name')->get(['id', 'name']);
+            ->paginate(20)
+            ->withQueryString()
+            ->through(fn ($p) => [
+                'id'        => $p->id,
+                'sku'       => $p->sku,
+                'name'      => $p->name,
+                'photo_url' => $p->photo_url ?? null,
+            ]);
 
         return Inertia::render('Products/Index', [
-            'products'   => $products,
-            'categories' => $categories,
-            'filters'    => $request->only(['search', 'category_id', 'status']),
+            'products' => $products,
+            'categories' => [],
+            'filters'  => $request->only(['search']),
         ]);
     }
 
@@ -96,11 +91,32 @@ class ProductController extends Controller
         ]);
     }
 
+    /**
+     * Foto produk disimpan di storage publik. Saat diganti, berkas lama
+     * dihapus supaya tidak menumpuk di hosting.
+     */
+    private function withPhoto(array $data, Request $request, ?Product $product = null): array
+    {
+        unset($data['photo']);
+
+        if (! $request->hasFile('photo')) {
+            return $data;
+        }
+
+        if ($product?->photo_path) {
+            Storage::disk('public')->delete($product->photo_path);
+        }
+
+        $data['photo_path'] = $request->file('photo')->store('produk', 'public');
+
+        return $data;
+    }
+
     public function store(ProductRequest $request): RedirectResponse
     {
         Gate::authorize('product.create');
 
-        $data = $request->validated();
+        $data = $this->withPhoto($request->validated(), $request);
         $data['created_by'] = Auth::id();
 
         Product::create($data);
@@ -136,7 +152,7 @@ class ProductController extends Controller
     {
         Gate::authorize('product.edit');
 
-        $product->update($request->validated());
+        $product->update($this->withPhoto($request->validated(), $request, $product));
 
         return redirect()->route('products.index')
             ->with('success', 'Produk berhasil diperbarui.');
