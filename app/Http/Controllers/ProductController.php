@@ -75,12 +75,11 @@ class ProductController extends Controller
 
         if ($result['failed'] > 0) {
             $details = collect($result['errors'])
-                ->map(fn ($error) => "Baris {$error['row']} ({$error['sku']}): {$error['message']}")
+                ->map(fn ($error) => "Baris {$error['row']} (SKU: {$error['sku']}): {$error['message']}")
                 ->implode(' • ');
 
             return redirect()->route('products.index')
-                ->with('success', "{$summary} ({$result['failed']} baris gagal).")
-                ->with('error', $details);
+                ->with('error', "Impor Gagal Total (0 data disimpan)! Terdapat {$result['failed']} baris bermasalah dalam file Excel Anda • {$details}");
         }
 
         return redirect()->route('products.index')->with('success', "{$summary}.");
