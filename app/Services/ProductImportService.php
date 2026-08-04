@@ -23,10 +23,11 @@ class ProductImportService
      */
     public function import(array $rows, int $userId): array
     {
-        $created   = 0;
-        $updated   = 0;
-        $errors    = [];
+        $created       = 0;
+        $updated       = 0;
+        $errors        = [];
         $validatedRows = [];
+        $seenSkus      = []; // Untuk melacak duplikasi SKU di dalam file Excel yang sama
 
         // FASE 1: Validasi seluruh baris terlebih dahulu (Pre-validation pass)
         foreach ($rows as $index => $row) {
@@ -80,9 +81,24 @@ class ProductImportService
                     'sku'     => (string) ($normalised['sku'] ?? '—'),
                     'message' => $validator->errors()->first(),
                 ];
-            } else {
-                $validatedRows[] = $validator->validated();
+                continue;
             }
+
+            $data = $validator->validated();
+            $skuUpper = strtoupper($data['sku']);
+
+            // Cek duplikasi SKU di dalam file Excel yang sama
+            if (isset($seenSkus[$skuUpper])) {
+                $errors[] = [
+                    'row'     => $rowNumber,
+                    'sku'     => $data['sku'],
+                    'message' => "SKU '{$data['sku']}' ganda di dalam file Excel (sudah ada di Baris {$seenSkus[$skuUpper]}).",
+                ];
+                continue;
+            }
+            $seenSkus[$skuUpper] = $rowNumber;
+
+            $validatedRows[] = $data;
         }
 
         // FASE 2: Jika ada 1 SAJA baris bermasalah, TOLAK SEMUA (All-or-Nothing / Rollback Total)
@@ -113,9 +129,14 @@ class ProductImportService
                     'description'    => $data['description'] ?? null,
                 ];
 
-                $existing = Product::where('sku', $data['sku'])->first();
+                // Gunakan withTrashed() agar produk yang pernah di-soft-delete terdeteksi dan di-restore
+                $existing = Product::withTrashed()->where('sku', $data['sku'])->first();
 
                 if ($existing) {
+                    if ($existing->trashed()) {
+                        $existing->restore();
+                    }
+
                     if (array_key_exists('stock', $data) && $data['stock'] !== null) {
                         $payload['stock'] = $data['stock'];
                     }
