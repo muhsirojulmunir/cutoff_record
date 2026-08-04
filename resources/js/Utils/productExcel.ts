@@ -1,59 +1,40 @@
 import * as XLSX from 'xlsx';
 
-/** Judul kolom template — dibaca kembali saat impor, jadi harus persis. */
+/** Judul kolom template Excel resmi — disesuaikan dengan Master Data Produk (SKU & Nama Produk). */
 export const PRODUCT_TEMPLATE_HEADERS = [
   'SKU',
   'Nama Produk',
-  'Kategori',
-  'Brand',
-  'Warna',
-  'Kardus',
-  'Panjang (cm)',
-  'Lebar (cm)',
-  'Tinggi (cm)',
-  'Status',
-  'Deskripsi',
 ] as const;
 
 /**
  * Baris contoh di sheet Produk.
  * Diberi keterangan [CONTOH] agar admin sadar ini bukan data nyata.
- * Kolom pertama diberi prefix supaya filter contoh bisa membuang baris ini saat impor.
  */
 const EXAMPLE_ROWS = [
   // Baris peringatan
-  ['⚠ PERHATIAN: Baris contoh di bawah ini BUKAN stok nyata. Hapus baris ini sebelum mengisi data produk Anda.'],
-  // Baris contoh 1 — produk kardus
-  ['KRD-30X20X15', 'Kardus Polos 30x20x15 [CONTOH — HAPUS]', 'Kardus', 'Tanpa Merek', 'Coklat', 'Ya', 30, 20, 15, 'Aktif', 'Contoh: kardus single wall'],
-  // Baris contoh 2 — produk biasa
-  ['PLS-40X30', 'Plastik Packing 40x30 [CONTOH — HAPUS]', 'Plastik', 'Tanpa Merek', 'Putih', 'Tidak', 40, 30, '', 'Aktif', ''],
+  ['⚠ PERHATIAN: Baris contoh di bawah ini BUKAN data nyata. Hapus baris ini sebelum mengunggah.'],
+  // Baris contoh
+  ['KRD-30X20X15', 'Kardus Polos 30x20x15 [CONTOH — HAPUS]'],
+  ['PLS-40X30', 'Plastik Packing 40x30 [CONTOH — HAPUS]'],
 ];
 
 const GUIDE_ROWS = [
-  ['PETUNJUK PENGISIAN TEMPLATE IMPORT PRODUK'],
+  ['PETUNJUK PENGISIAN TEMPLATE IMPORT PRODUK (MASTER DATA)'],
   [],
   ['⚠ PENTING:', '', ''],
   ['1.', 'Isi data produk Anda HANYA di sheet "Produk"', ''],
-  ['2.', 'HAPUS baris contoh (bertanda [CONTOH — HAPUS]) sebelum mengisi data Anda', ''],
-  ['3.', 'Stok TIDAK diisi lewat file ini — tambahkan stok lewat menu Barang Masuk', ''],
-  ['4.', 'Jika ada baris yang salah saat upload, sistem akan memberi tahu nomor baris & penyebabnya', ''],
+  ['2.', 'HAPUS baris contoh (bertanda [CONTOH — HAPUS]) sebelum mengunggah file Anda', ''],
+  ['3.', 'File ini HANYA mengelola Master Data Produk (SKU & Nama Produk)', ''],
+  ['4.', 'Pengelolaan Stok dilakukan secara terpisah melalui menu Barang Masuk', ''],
+  ['5.', 'Jika SKU sudah ada di sistem, data Nama Produk akan diperbarui secara otomatis', ''],
   [],
   ['Kolom', 'Wajib', 'Keterangan'],
-  ['SKU', '✅ WAJIB', 'Kode unik produk. SKU yang sudah ada akan DIPERBARUI, bukan digandakan.'],
-  ['Nama Produk', '⚠ Disarankan', 'Nama produk. Jika dikosongkan, otomatis menggunakan SKU sebagai nama.'],
-  ['Kategori', '⚠ Disarankan', 'Nama kategori. Bila kategori belum ada di sistem, otomatis dibuatkan.'],
-  ['Brand', 'Opsional', 'Merek produk. Boleh dikosongkan.'],
-  ['Warna', 'Opsional', 'Warna produk. Boleh dikosongkan.'],
-  ['Kardus', 'Opsional', 'Isi "Ya" bila produk kardus (memakai kolom Tinggi). Selain itu isi "Tidak" atau kosongkan.'],
-  ['Panjang (cm)', 'Opsional', 'Angka saja, contoh: 30 atau 30,5.'],
-  ['Lebar (cm)', 'Opsional', 'Angka saja.'],
-  ['Tinggi (cm)', 'Opsional', 'Hanya diisi bila kolom Kardus = "Ya".'],
-  ['Status', 'Opsional', 'Isi "Aktif" atau "Nonaktif". Kosong dianggap Aktif.'],
-  ['Deskripsi', 'Opsional', 'Keterangan tambahan produk.'],
+  ['SKU', '✅ WAJIB', 'Kode unik produk. Karakter bebas (huruf/angka/tanda hubung).'],
+  ['Nama Produk', '⚠ Disarankan', 'Nama lengkap produk. Jika dikosongkan, otomatis menggunakan nilai SKU.'],
   [],
   ['Contoh Pesan Error Saat Upload', '', ''],
-  ['Baris 3 (SKU: XYZ): SKU wajib diisi', '', '→ Kolom SKU di baris tersebut masih kosong'],
-  ['Baris 5 (SKU: ABC-01): Kategori terlalu panjang', '', '→ Isi kolom Kategori melebihi 255 karakter'],
+  ['Baris 3 (SKU: XYZ): Kolom SKU wajib diisi', '', '→ Kolom SKU di baris tersebut masih kosong'],
+  ['Baris 5 (SKU: ABC-01): SKU ganda di dalam file Excel', '', '→ Terdapat 2 baris dengan SKU yang sama persis dalam 1 file'],
 ];
 
 /** Unduh template Excel berisi sheet Produk (dengan contoh) dan sheet Petunjuk. */
@@ -61,9 +42,10 @@ export function downloadProductTemplate(): void {
   const workbook = XLSX.utils.book_new();
 
   const productSheet = XLSX.utils.aoa_to_sheet([[...PRODUCT_TEMPLATE_HEADERS], ...EXAMPLE_ROWS]);
-  productSheet['!cols'] = PRODUCT_TEMPLATE_HEADERS.map((header) => ({
-    wch: Math.max(14, header.length + 6),
-  }));
+  productSheet['!cols'] = [
+    { wch: 20 },
+    { wch: 45 },
+  ];
   XLSX.utils.book_append_sheet(workbook, productSheet, 'Produk');
 
   const guideSheet = XLSX.utils.aoa_to_sheet(GUIDE_ROWS);
@@ -74,7 +56,7 @@ export function downloadProductTemplate(): void {
 }
 
 /**
- * Baca file Excel yang diisi admin menjadi baris siap kirim ke server.
+ * Baca file Excel yang diunggah admin menjadi baris siap kirim ke server.
  * Sheet pertama yang bernama "Produk" dipakai; bila tidak ada, sheet pertama.
  * Baris peringatan/contoh (seluruh kolom kosong atau SKU mengandung "⚠") dibuang.
  */
@@ -98,13 +80,18 @@ export async function readProductRows(file: File): Promise<Record<string, unknow
   // 2. Baris peringatan (diawali dengan ⚠ di kolom pertama / SKU berisi [CONTOH]).
   return rows.filter((row) => {
     const allValues = Object.values(row);
-    const hasAnyValue = allValues.some((value) => String(value ?? '').trim() !== '');
-    if (!hasAnyValue) return false;
+    const isEmpty = allValues.every((val) => val === '' || val === null || val === undefined);
+    if (isEmpty) return false;
 
-    // Buang baris peringatan dan contoh
-    const skuVal = String(row['SKU'] ?? row['sku'] ?? '').trim();
-    const namaVal = String(row['Nama Produk'] ?? row['nama_produk'] ?? '').trim();
-    if (skuVal.startsWith('⚠') || namaVal.includes('[CONTOH')) return false;
+    const firstVal = String(allValues[0] ?? '').trim();
+    if (firstVal.startsWith('⚠') || firstVal.toLowerCase().includes('perhatian')) return false;
+
+    const skuVal = String(row['SKU'] ?? row['sku'] ?? firstVal).trim();
+    const nameVal = String(row['Nama Produk'] ?? row['nama_produk'] ?? '').trim();
+
+    if (skuVal.toLowerCase().includes('[contoh') || nameVal.toLowerCase().includes('[contoh')) {
+      return false;
+    }
 
     return true;
   });
