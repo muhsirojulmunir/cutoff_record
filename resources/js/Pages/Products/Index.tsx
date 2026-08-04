@@ -55,6 +55,7 @@ export default function Index({ products, categories, filters }: ProductIndexPro
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [importRowErrors, setImportRowErrors] = useState<string[]>([]);
 
   /** Baca file Excel di browser, lalu kirim barisnya ke server untuk disimpan. */
   async function handleImportFile(event: React.ChangeEvent<HTMLInputElement>) {
@@ -63,12 +64,13 @@ export default function Index({ products, categories, filters }: ProductIndexPro
 
     setImporting(true);
     setImportError(null);
+    setImportRowErrors([]);
 
     try {
       const rows = await readProductRows(file);
 
       if (rows.length === 0) {
-        setImportError('File Excel tidak berisi baris produk. Pastikan data diisi di sheet "Produk".');
+        setImportError('File Excel tidak berisi baris produk yang valid. Pastikan data diisi di sheet "Produk" dan baris contoh sudah dihapus.');
         return;
       }
 
@@ -130,8 +132,30 @@ export default function Index({ products, categories, filters }: ProductIndexPro
     <AppLayout>
       <Head title="Master Produk" />
       <Alert message={flash.success ?? null} type="success" />
-      {flash.error && <Alert message={flash.error} type="error" />}
+
+      {/* Error global impor (validasi server) */}
       {importError && <Alert message={importError} type="error" />}
+
+      {/* Error detail per baris */}
+      {flash.error && (
+        <div className="bg-rose-50 border border-rose-300 rounded-2xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-rose-500 shrink-0">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+            <p className="text-rose-700 font-bold text-sm">Beberapa baris gagal diimpor:</p>
+          </div>
+          <ul className="space-y-1.5 max-h-60 overflow-y-auto">
+            {flash.error.split(' • ').map((errMsg, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs text-rose-600">
+                <span className="mt-0.5 shrink-0 inline-block w-4 h-4 rounded-full bg-rose-200 text-rose-700 text-[10px] font-bold flex items-center justify-center">{i + 1}</span>
+                <span>{errMsg}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-xs text-rose-500">Perbaiki baris tersebut di file Excel Anda, lalu unggah ulang.</p>
+        </div>
+      )}
 
       <div className="space-y-6">
         {/* Header */}

@@ -33,6 +33,23 @@ class ProductImportService
                 $rowNumber = $index + 2;
                 $normalised = $this->normalise($row);
 
+                // Lewati baris contoh dari template (ditandai [CONTOH] di nama produk)
+                $namaCek = strtolower((string) ($normalised['name'] ?? ''));
+                $skuCek  = strtolower((string) ($normalised['sku'] ?? ''));
+                if (str_contains($namaCek, '[contoh') || str_starts_with($skuCek, '⚠')) {
+                    continue;
+                }
+
+                // Jika nama produk kosong, otomatis gunakan SKU sebagai nama
+                if (empty($normalised['name']) && !empty($normalised['sku'])) {
+                    $normalised['name'] = strtoupper((string) $normalised['sku']);
+                }
+
+                // Jika kategori kosong, gunakan "Umum" sebagai default
+                if (empty($normalised['category'])) {
+                    $normalised['category'] = 'Umum';
+                }
+
                 $validator = Validator::make($normalised, [
                     'sku'            => ['required', 'string', 'max:100'],
                     'name'           => ['required', 'string', 'max:255'],
@@ -46,6 +63,17 @@ class ProductImportService
                     'stock'          => ['nullable', 'integer', 'min:0'],
                     'status'         => ['required', 'in:active,inactive'],
                     'description'    => ['nullable', 'string'],
+                ], [
+                    'sku.required'    => 'Kolom SKU wajib diisi.',
+                    'sku.max'         => 'SKU terlalu panjang (maks 100 karakter).',
+                    'name.required'   => 'Nama Produk wajib diisi.',
+                    'name.max'        => 'Nama Produk terlalu panjang (maks 255 karakter).',
+                    'category.required' => 'Kolom Kategori wajib diisi.',
+                    'length.numeric'  => 'Panjang (cm) harus berupa angka.',
+                    'width.numeric'   => 'Lebar (cm) harus berupa angka.',
+                    'height.numeric'  => 'Tinggi (cm) harus berupa angka.',
+                    'stock.integer'   => 'Stok Awal harus berupa bilangan bulat.',
+                    'stock.min'       => 'Stok Awal tidak boleh negatif.',
                 ]);
 
                 if ($validator->fails()) {
