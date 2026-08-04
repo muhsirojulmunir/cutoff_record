@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface AlertProps {
   message: string | null;
@@ -22,10 +22,10 @@ export default function Alert({ message, type = 'success' }: AlertProps) {
 
   return (
     <div
-      className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl border backdrop-blur-md shadow-2xl transition-all duration-300 animate-slide-in
+      className={`fixed top-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-2xl border backdrop-blur-md shadow-2xl transition-all duration-300 animate-slide-in
         ${type === 'success'
-          ? 'bg-emerald-50 border-emerald-500/30 text-emerald-300 shadow-emerald-950/20'
-          : 'bg-rose-50 border-rose-500/30 text-rose-300 shadow-rose-950/20'
+          ? 'bg-emerald-900/90 border-emerald-500/40 text-emerald-100 shadow-emerald-950/40'
+          : 'bg-rose-900/90 border-rose-500/40 text-rose-100 shadow-rose-950/40'
         }`}
     >
       <div className="shrink-0">
