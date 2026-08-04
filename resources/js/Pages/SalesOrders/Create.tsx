@@ -49,7 +49,18 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
     items: [] as OrderItemInput[],
   });
 
-  const [localItems, setLocalItems] = useState<OrderItemInput[]>([]);
+  const [localItems, setLocalItems] = useState<OrderItemInput[]>([
+    {
+      product_id: '',
+      sku: '—',
+      unit: 'pcs',
+      price: 0,
+      quantity: 1,
+      discount_amount: 0,
+      tax_amount: 0,
+      subtotal: 0,
+    },
+  ]);
 
   // Sync local items with useForm items
   useEffect(() => {
@@ -244,7 +255,7 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
                 <button
                   type="button"
                   onClick={handleAddItem}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-600/10 hover:bg-teal-600/20 active:scale-95 text-teal-400 border border-teal-500/20 text-xs font-semibold rounded-lg transition-all"
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-semibold rounded-xl transition-all shadow-sm shadow-blue-500/20"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -261,7 +272,7 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
                   <button
                     type="button"
                     onClick={handleAddItem}
-                    className="text-xs text-teal-400 font-semibold hover:underline mt-2 inline-block"
+                    className="text-xs text-blue-400 font-semibold hover:underline mt-2 inline-block"
                   >
                     Tambah item pertama Anda
                   </button>
