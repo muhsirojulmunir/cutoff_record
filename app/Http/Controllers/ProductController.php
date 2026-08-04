@@ -69,7 +69,9 @@ class ProductController extends Controller
 
         $result = $importService->import($validated['rows'], Auth::id());
 
-        $summary = "Impor selesai: {$result['created']} produk baru, {$result['updated']} diperbarui";
+        $createdStr = "{$result['created']} produk baru ditambahkan";
+        $updatedStr = "{$result['updated']} produk diperbarui";
+        $summary = "Berhasil mengimpor: {$createdStr} dan {$updatedStr}";
 
         if ($result['failed'] > 0) {
             $details = collect($result['errors'])
@@ -77,7 +79,7 @@ class ProductController extends Controller
                 ->implode(' • ');
 
             return redirect()->route('products.index')
-                ->with('success', "{$summary}, {$result['failed']} baris gagal.")
+                ->with('success', "{$summary} ({$result['failed']} baris gagal).")
                 ->with('error', $details);
         }
 
