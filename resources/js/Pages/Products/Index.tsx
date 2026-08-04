@@ -371,28 +371,44 @@ export default function Index({ products, categories, filters }: ProductIndexPro
       <Modal
         show={deleteModalOpen}
         onClose={() => setDeleteModalOpen(false)}
-        title="Konfirmasi Hapus Produk"
-        maxWidth="sm"
+        title="Hapus Produk"
+        maxWidth="md"
       >
-        <div className="space-y-4">
-          <p className="text-gray-700 text-sm leading-relaxed">
-            Apakah Anda yakin ingin menghapus produk <span className="font-bold text-gray-900">{deletingProduct?.name}</span> ({deletingProduct?.sku})?
-          </p>
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-300/80">
+        <div className="space-y-5">
+          <div className="flex items-start gap-4 p-4 rounded-2xl bg-rose-50/80 border border-rose-200/80">
+            <div className="p-2.5 rounded-xl bg-rose-100 text-rose-600 shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-6 h-6">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+              </svg>
+            </div>
+            <div className="space-y-2 min-w-0 flex-1">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-rose-600">Konfirmasi Penghapusan</p>
+              <p className="text-xs text-gray-700 leading-relaxed">
+                Apakah Anda yakin ingin menghapus produk ini dari master data?
+              </p>
+              <div className="p-3 bg-white rounded-xl border border-rose-200/80 shadow-sm space-y-1 mt-1">
+                <div className="font-bold text-gray-900 text-xs break-words">{deletingProduct?.name}</div>
+                <div className="text-[11px] font-mono text-teal-600 font-bold">SKU: {deletingProduct?.sku}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
             <button
               type="button"
               onClick={() => setDeleteModalOpen(false)}
-              className="px-4 py-2.5 bg-white hover:bg-teal-50 text-teal-700 rounded-xl text-sm font-semibold border border-teal-300 hover:border-teal-400 transition-all"
+              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-semibold transition-all"
               disabled={deleting}
             >
               Batal
             </button>
             <button
+              type="button"
               onClick={handleDeleteExecute}
-              className="px-4 py-2.5 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white rounded-xl text-sm font-semibold shadow-lg shadow-rose-200/40 transition-all"
+              className="px-5 py-2 bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 active:scale-95 text-white rounded-xl text-xs font-semibold shadow-md shadow-rose-200/50 transition-all disabled:opacity-50"
               disabled={deleting}
             >
-              {deleting ? 'Deleting...' : 'Hapus Produk'}
+              {deleting ? 'Menghapus...' : 'Ya, Hapus Produk'}
             </button>
           </div>
         </div>
