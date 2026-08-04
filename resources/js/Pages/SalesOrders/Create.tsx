@@ -369,41 +369,9 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
                   <span className="font-semibold text-gray-700">Rp {subtotal.toLocaleString('id-ID')}</span>
                 </div>
 
-                {/* Diskon */}
+                {/* Ongkir — Opsional */}
                 <div className="pt-3 space-y-1.5">
-                  <div className="flex justify-between items-center">
-                    <label className="text-gray-400">Diskon Transaksi (Header)</label>
-                  </div>
-                  <CurrencyInput
-                    hidePrefix
-                    value={data.discount_amount}
-                    onChange={(v) => setData('discount_amount', v)}
-                    className="w-full px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                    min="0"
-                  />
-                  {errors.discount_amount && <p className="text-rose-400 text-xs">{errors.discount_amount}</p>}
-                </div>
-
-                {/* Pajak */}
-                <div className="pt-3 space-y-1.5">
-                  <div className="flex justify-between items-center">
-                    <label className="text-gray-400">Pajak Transaksi (Header)</label>
-                  </div>
-                  <CurrencyInput
-                    hidePrefix
-                    value={data.tax_amount}
-                    onChange={(v) => setData('tax_amount', v)}
-                    className="w-full px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                    min="0"
-                  />
-                  {errors.tax_amount && <p className="text-rose-400 text-xs">{errors.tax_amount}</p>}
-                </div>
-
-                {/* Ongkir */}
-                <div className="pt-3 space-y-1.5">
-                  <div className="flex justify-between items-center">
-                    <label className="text-gray-400">Biaya Pengiriman</label>
-                  </div>
+                  <label className="text-gray-400">Biaya Pengiriman <span className="text-gray-300 text-[10px]">(opsional)</span></label>
                   <CurrencyInput
                     hidePrefix
                     value={data.shipping_cost}
