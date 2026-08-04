@@ -177,6 +177,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('factory-receivables', FactoryReceivableController::class)->except(['create', 'store', 'destroy']);
 
     // Invoices (Invoice Customer)
+    Route::get('/piutang-customer', [InvoiceController::class, 'customerReceivables'])->name('invoices.customer-receivables')->middleware('can:invoice.view');
     Route::get('/invoices/{invoice}/print', [InvoiceController::class, 'printView'])->name('invoices.print');
     Route::post('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])->name('invoices.cancel');
     Route::delete('/invoices/{invoice}', [InvoiceController::class, 'destroy'])->name('invoices.destroy');

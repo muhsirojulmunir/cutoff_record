@@ -243,4 +243,74 @@ class InvoiceController extends Controller
             return back()->with('error', $e->getMessage());
         }
     }
+
+    /**
+     * Halaman Piutang Customer — daftar semua invoice yang belum lunas,
+     * dikelompokkan per customer, disertai total piutang dan jatuh tempo.
+     */
+    public function customerReceivables(Request $request): Response
+    {
+        Gate::authorize('invoice.view');
+
+        $search = $request->input('search');
+        $status = $request->input('status'); // overdue | due_soon | unpaid | partially_paid | all
+
+        // Auto update overdue status
+        $unpaidOrOverdue = \App\Models\Invoice::whereIn('status', ['unpaid', 'overdue'])->get();
+        foreach ($unpaidOrOverdue as $inv) {
+            $this->invoiceService->markAsOverdue($inv);
+        }
+
+        $query = \App\Models\Invoice::with(['customer', 'salesOrder'])
+            ->whereNotIn('status', ['paid', 'cancelled'])
+            ->whereColumn('paid_amount', '<', 'total_amount');
+
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('invoice_number', 'like', "%{$search}%")
+                  ->orWhereHas('customer', fn ($sq) => $sq->where('name', 'like', "%{$search}%"))
+                  ->orWhereHas('salesOrder', fn ($sq) => $sq->where('so_number', 'like', "%{$search}%"));
+            });
+        }
+
+        if ($status && $status !== 'all') {
+            $today    = now()->toDateString();
+            $dueLimit = now()->addDays(\App\Services\WorkQueueService::DUE_SOON_DAYS)->toDateString();
+
+            if ($status === 'overdue') {
+                $query->whereNotNull('due_date')->whereDate('due_date', '<', $today);
+            } elseif ($status === 'due_soon') {
+                $query->whereNotNull('due_date')
+                    ->whereDate('due_date', '>=', $today)
+                    ->whereDate('due_date', '<=', $dueLimit);
+            } elseif (in_array($status, ['unpaid', 'partially_paid'])) {
+                $query->where('status', $status);
+            }
+        }
+
+        $invoices = $query->orderByRaw("CASE WHEN status='overdue' THEN 0 WHEN due_date IS NOT NULL THEN 1 ELSE 2 END")
+            ->orderBy('due_date', 'asc')
+            ->get();
+
+        // Summary stats
+        $totalReceivable    = $invoices->sum(fn ($inv) => (float) $inv->remaining_amount);
+        $totalOverdue       = $invoices->where('status', 'overdue')->sum(fn ($inv) => (float) $inv->remaining_amount);
+        $totalUnpaid        = $invoices->where('status', 'unpaid')->sum(fn ($inv) => (float) $inv->remaining_amount);
+        $totalPartiallyPaid = $invoices->where('status', 'partially_paid')->sum(fn ($inv) => (float) $inv->remaining_amount);
+        $countCustomers     = $invoices->pluck('customer_id')->filter()->unique()->count();
+
+        return Inertia::render('Invoices/CustomerReceivables', [
+            'invoices'    => $invoices,
+            'filters'     => $request->only(['search', 'status']),
+            'summary'     => [
+                'total_receivable'    => $totalReceivable,
+                'total_overdue'       => $totalOverdue,
+                'total_unpaid'        => $totalUnpaid,
+                'total_partially_paid' => $totalPartiallyPaid,
+                'count_invoices'      => $invoices->count(),
+                'count_customers'     => $countCustomers,
+            ],
+        ]);
+    }
 }
+
