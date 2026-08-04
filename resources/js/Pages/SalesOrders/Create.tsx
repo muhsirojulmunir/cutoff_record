@@ -39,6 +39,7 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
   const { data, setData, post, processing, errors } = useForm({
     customer_id: '',
     order_date: new Date().toISOString().split('T')[0],
+    payment_terms: 'cash',
     source: 'manual',
     sales_channel: 'manual',
     notes: '',
@@ -231,6 +232,29 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
                     <option value="other">Lainnya</option>
                   </select>
                   {errors.sales_channel && <p className="text-rose-400 text-xs mt-1">{errors.sales_channel}</p>}
+                </div>
+
+                {/* Tempo Pembayaran */}
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-semibold text-gray-700">
+                    Tempo Pembayaran
+                  </label>
+                  <select
+                    value={data.payment_terms}
+                    onChange={(e) => setData('payment_terms', e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
+                  >
+                    <option value="cash">Cash (Langsung Lunas)</option>
+                    <option value="cod">COD (Bayar di Tempat)</option>
+                    <option value="tempo_7">Tempo 7 Hari</option>
+                    <option value="tempo_14">Tempo 14 Hari</option>
+                    <option value="tempo_30">Tempo 30 Hari</option>
+                  </select>
+                  {data.payment_terms !== 'cash' && data.payment_terms !== '' && (
+                    <p className="text-xs text-amber-600">
+                      ⚠️ Tagihan piutang customer akan dicatat dan dimonitor Finance.
+                    </p>
+                  )}
                 </div>
               </div>
 

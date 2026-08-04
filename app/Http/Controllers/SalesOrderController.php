@@ -179,6 +179,8 @@ class SalesOrderController extends Controller
     {
         Gate::authorize('sales_order.view');
 
+        $salesOrder = $this->salesOrderService->syncPaymentStatus($salesOrder);
+
         $salesOrder->load([
             'customer', 'creator', 'items.product', 'invoice',
             'submitter:id,name,role_id', 'submitter.role:id,name',

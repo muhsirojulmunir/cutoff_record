@@ -1,4 +1,4 @@
-﻿import React, { useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import Pagination from '../../Components/Pagination';
@@ -22,7 +22,7 @@ interface Product {
   dimension_label: string | null;
   purchase_price: string;
   selling_price: string;
-  minimum_stock: number;
+  stock: number;
   status: 'active' | 'inactive';
 }
 
@@ -247,6 +247,7 @@ export default function Index({ products, categories, filters }: ProductIndexPro
                   <th className="px-6 py-3.5">Nama Produk</th>
                   <th className="px-6 py-3.5">Kategori / Brand</th>
                   <th className="px-6 py-3.5">Ukuran</th>
+                  <th className="px-6 py-3.5 text-center">Stok</th>
                   <th className="px-6 py-3.5">Status</th>
                   <th className="px-6 py-3.5 text-right">Aksi</th>
                 </tr>
@@ -254,7 +255,7 @@ export default function Index({ products, categories, filters }: ProductIndexPro
               <tbody className="divide-y divide-gray-100 text-sm">
                 {products.data.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-gray-400 font-medium">
+                    <td colSpan={7} className="px-6 py-12 text-center text-gray-400 font-medium">
                       Tidak ada data produk ditemukan.
                     </td>
                   </tr>
@@ -276,6 +277,11 @@ export default function Index({ products, categories, filters }: ProductIndexPro
                       <td className="px-6 py-3.5">
                         <div className="font-mono text-xs text-gray-700">{product.dimension_label ?? '—'}</div>
                         <div className="text-[10px] text-gray-400 mt-0.5">{product.is_box ? 'P × L × T' : 'P × L'}</div>
+                      </td>
+                      <td className="px-6 py-3.5 text-center">
+                        <span className="inline-flex items-center justify-center min-w-[3rem] px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 border border-slate-300 text-slate-700">
+                          {product.stock ?? 0}
+                        </span>
                       </td>
                       <td className="px-6 py-3.5 whitespace-nowrap">
                         <span

@@ -22,6 +22,7 @@ class StoreSalesOrderRequest extends FormRequest
         return [
             'customer_id'            => ['nullable', 'exists:customers,id'],
             'order_date'             => ['required', 'date'],
+            'payment_terms'          => ['nullable', 'string', 'in:cash,cod,tempo_7,tempo_14,tempo_30'],
             'source'                 => ['required', 'in:manual,marketplace,website,other'],
             'sales_channel'          => ['required', 'in:manual,shopee,tiktok,website,other'],
             'notes'                  => ['nullable', 'string', 'max:1000'],

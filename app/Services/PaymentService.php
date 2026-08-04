@@ -265,6 +265,16 @@ class PaymentService
                 'status'           => $status,
             ]);
 
+            if ($sourceModel->sales_order_id) {
+                $so = \App\Models\SalesOrder::find($sourceModel->sales_order_id);
+                if ($so) {
+                    app(\App\Services\SalesOrderService::class)->syncPaymentStatus($so);
+                    if ($status === 'paid') {
+                        app(\App\Services\SalesOrderService::class)->syncCompletion($so);
+                    }
+                }
+            }
+
         } elseif ($type === 'factory_receivable') {
             $total     = (float) $sourceModel->original_amount;
             $paid      = (float) $sourceModel->paid_amount;
