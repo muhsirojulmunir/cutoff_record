@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { usePage } from '@inertiajs/react';
 
 interface AlertProps {
   message: string | null;
@@ -7,16 +8,28 @@ interface AlertProps {
 
 export default function Alert({ message, type = 'success' }: AlertProps) {
   const [visible, setVisible] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const page = usePage();
 
   useEffect(() => {
     if (message) {
       setVisible(true);
-      const timer = setTimeout(() => {
+
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+
+      timerRef.current = setTimeout(() => {
         setVisible(false);
       }, 5000); // Auto hide after 5 seconds
-      return () => clearTimeout(timer);
+
+      return () => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+      };
+    } else {
+      setVisible(false);
     }
-  }, [message]);
+  }, [message, type, page.props]);
 
   if (!visible || !message) return null;
 
