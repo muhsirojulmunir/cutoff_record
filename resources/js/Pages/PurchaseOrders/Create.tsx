@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import CurrencyInput from '@/Components/CurrencyInput';
@@ -52,7 +52,16 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
     items: [] as OrderItemInput[],
   });
 
-  const [localItems, setLocalItems] = useState<OrderItemInput[]>([]);
+  const [localItems, setLocalItems] = useState<OrderItemInput[]>([
+    {
+      product_id: '',
+      sku: '—',
+      unit: 'pcs',
+      price: 0,
+      quantity: 1,
+      subtotal: 0,
+    },
+  ]);
 
   // Sync local items with useForm items
   useEffect(() => {
@@ -233,7 +242,7 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
                 <button
                   type="button"
                   onClick={handleAddItem}
-                  className="px-3.5 py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-300 text-gray-800 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all"
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-semibold rounded-xl transition-all shadow-sm shadow-blue-500/20"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
