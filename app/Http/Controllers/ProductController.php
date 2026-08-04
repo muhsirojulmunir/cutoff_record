@@ -149,6 +149,6 @@ class ProductController extends Controller
         $product->delete();
 
         return redirect()->route('products.index')
-            ->with('success', 'Produk berhasil dihapus (soft delete).');
+            ->with('success', 'Produk berhasil dihapus.');
     }
 }

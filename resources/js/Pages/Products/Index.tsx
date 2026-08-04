@@ -371,12 +371,12 @@ export default function Index({ products, categories, filters }: ProductIndexPro
       <Modal
         show={deleteModalOpen}
         onClose={() => setDeleteModalOpen(false)}
-        title="Konfirmasi Hapus (Soft Delete)"
+        title="Konfirmasi Hapus Produk"
         maxWidth="sm"
       >
         <div className="space-y-4">
           <p className="text-gray-700 text-sm leading-relaxed">
-            Apakah Anda yakin ingin menghapus produk <span className="font-bold text-gray-900">{deletingProduct?.name}</span> ({deletingProduct?.sku})? Data produk akan disembunyikan (soft delete) untuk mempertahankan integritas data transaksi.
+            Apakah Anda yakin ingin menghapus produk <span className="font-bold text-gray-900">{deletingProduct?.name}</span> ({deletingProduct?.sku})?
           </p>
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-300/80">
             <button
