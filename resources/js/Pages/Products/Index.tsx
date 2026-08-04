@@ -265,7 +265,7 @@ export default function Index({ products, categories, filters }: ProductIndexPro
                       <td className="px-6 py-3.5 font-mono font-bold text-teal-400 text-xs">
                         {product.sku}
                       </td>
-                      <td className="px-6 py-3.5 font-semibold text-gray-800 group-hover:text-gray-900 transition-colors text-xs">
+                      <td className="px-6 py-3.5 font-semibold text-gray-800 group-hover:text-gray-900 transition-colors text-xs max-w-xs break-words">
                         <Link href={`/products/${product.id}`} className="hover:underline">
                           {product.name}
                         </Link>
