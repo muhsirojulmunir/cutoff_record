@@ -47,11 +47,37 @@ class InvoiceService
                 }
             }
 
+            // Resolusi customer_id: jika SO belum memiliki customer_id, buat atau cari customer fallback
+            $customerId = $lockedSo->customer_id;
+            if (!$customerId) {
+                $recipientName = $lockedSo->recipient_name ?: 'Customer General';
+                $customerPhone = $lockedSo->customer_phone ?: null;
+
+                $customer = \App\Models\Customer::when($customerPhone, fn ($q) => $q->where('phone', $customerPhone))
+                    ->orWhere('name', $recipientName)
+                    ->first();
+
+                if (!$customer) {
+                    $customerCode = 'CUST-GEN-' . strtoupper(\Illuminate\Support\Str::random(5));
+                    $customer = \App\Models\Customer::create([
+                        'customer_code' => $customerCode,
+                        'name'          => $recipientName,
+                        'phone'         => $customerPhone,
+                        'address'       => $lockedSo->shipping_address,
+                        'city'          => $lockedSo->city,
+                        'province'      => $lockedSo->province,
+                    ]);
+                }
+
+                $customerId = $customer->id;
+                $lockedSo->update(['customer_id' => $customerId]);
+            }
+
             // Create Invoice Header
             $invoice = Invoice::create([
                 'invoice_number'   => $invoiceNumber,
                 'sales_order_id'   => $lockedSo->id,
-                'customer_id'      => $lockedSo->customer_id,
+                'customer_id'      => $customerId,
                 'invoice_date'     => now()->format('Y-m-d'),
                 'due_date'         => $dueDate,
                 'subtotal'         => $lockedSo->subtotal,
