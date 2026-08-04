@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import CurrencyInput from '@/Components/CurrencyInput';
@@ -45,6 +45,7 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
     discount_amount: 0,
     tax_amount: 0,
     shipping_cost: 0,
+    dp_amount: 0,
     items: [] as OrderItemInput[],
   });
 
@@ -99,12 +100,10 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
       (item as any)[key] = value;
     }
 
-    // Calculate subtotal for preview: (Price * Qty) - Discount + Tax
+    // Calculate subtotal for preview: Price * Qty only (no per-item discount/tax)
     const price = Number(item.price) || 0;
     const qty = Number(item.quantity) || 0;
-    const discount = Number(item.discount_amount) || 0;
-    const tax = Number(item.tax_amount) || 0;
-    item.subtotal = (price * qty) - discount + tax;
+    item.subtotal = price * qty;
 
     updated[index] = item;
     setLocalItems(updated);
@@ -115,7 +114,9 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
   const discountHeader = Number(data.discount_amount) || 0;
   const taxHeader = Number(data.tax_amount) || 0;
   const shippingHeader = Number(data.shipping_cost) || 0;
+  const dpAmount = Number(data.dp_amount) || 0;
   const grandTotal = subtotal - discountHeader + taxHeader + shippingHeader;
+  const sisaTagihan = Math.max(0, grandTotal - dpAmount);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -298,8 +299,8 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
                         </div>
                       </div>
 
-                      {/* Calculations Row */}
-                      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                      {/* Calculations Row — no per-item discount/tax */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <div className="space-y-1">
                           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">Kuantitas</label>
                           <CurrencyInput
@@ -330,29 +331,7 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
                           )}
                         </div>
 
-                        <div className="space-y-1">
-                          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">Diskon Item</label>
-                          <CurrencyInput
-                            hidePrefix
-                            value={item.discount_amount}
-                            onChange={(v) => handleItemChange(idx, 'discount_amount', v)}
-                            className="w-full px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                            min="0"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">Pajak Item</label>
-                          <CurrencyInput
-                            hidePrefix
-                            value={item.tax_amount}
-                            onChange={(v) => handleItemChange(idx, 'tax_amount', v)}
-                            className="w-full px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                            min="0"
-                          />
-                        </div>
-
-                        <div className="col-span-2 md:col-span-2 flex items-end gap-2">
+                        <div className="col-span-2 flex items-end gap-2">
                           <div className="flex-1 space-y-1">
                             <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-400">Subtotal</label>
                             <div className="px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-300 text-emerald-400 font-bold font-mono text-xs min-h-[32px] flex items-center justify-end whitespace-nowrap overflow-x-auto">
@@ -440,6 +419,29 @@ export default function Create({ customers, products }: SalesOrderCreateProps) {
                   <span className="text-base font-bold text-gray-900">Grand Total</span>
                   <span className="text-base font-extrabold text-emerald-400">Rp {grandTotal.toLocaleString('id-ID')}</span>
                 </div>
+
+                {/* DP / Uang Muka */}
+                <div className="pt-3 space-y-1.5 border-t border-gray-200/60">
+                  <div className="flex justify-between items-center">
+                    <label className="text-gray-500 font-semibold text-sm">DP / Uang Muka</label>
+                  </div>
+                  <CurrencyInput
+                    hidePrefix
+                    value={data.dp_amount}
+                    onChange={(v) => setData('dp_amount', v)}
+                    className="w-full px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+                    min="0"
+                  />
+                  {errors.dp_amount && <p className="text-rose-400 text-xs">{errors.dp_amount}</p>}
+                </div>
+
+                {/* Sisa Tagihan */}
+                {dpAmount > 0 && (
+                  <div className="flex justify-between items-center p-3 rounded-xl bg-teal-50 border border-teal-200">
+                    <span className="text-teal-700 font-bold text-sm">Sisa Tagihan</span>
+                    <span className="text-teal-700 font-extrabold text-sm">Rp {sisaTagihan.toLocaleString('id-ID')}</span>
+                  </div>
+                )}
               </div>
 
               {flash.error && (
