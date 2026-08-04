@@ -1,6 +1,7 @@
 ﻿import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
+import { PO_PAYMENT_TERMS, poPaymentTermLabel } from '@/Constants/purchaseOrder';
 import CurrencyInput from '@/Components/CurrencyInput';
 import Alert from '../../Components/Alert';
 import { PageProps } from '../../Types';
@@ -132,11 +133,6 @@ const statusLabel: Record<string, string> = {
   finance_validated:         '✅ Tervalidasi Finance',
   rejected:                  '❌ Ditolak',
   cancelled:                 '🚫 Dibatalkan',
-};
-
-const paymentTermsLabel: Record<string, string> = {
-  cash_to_cash: 'Cash to Cash (Langsung Bayar)',
-  tempo_7_days: 'Termin 7 Hari',
 };
 
 const accountTypeIcon: Record<string, string> = {
@@ -490,12 +486,8 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
               <p className="text-gray-800 font-medium mt-0.5">{new Date(purchaseOrder.order_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
             </div>
             <div>
-              <p className="text-gray-400 font-semibold text-xs">Estimasi Pengerjaan</p>
-              <p className="text-gray-800 font-medium mt-0.5">{purchaseOrder.production_lead_time_days ? `${purchaseOrder.production_lead_time_days} hari` : '—'}</p>
-            </div>
-            <div>
               <p className="text-gray-400 font-semibold text-xs">Syarat Bayar</p>
-              <p className="text-gray-800 font-medium mt-0.5">{paymentTermsLabel[purchaseOrder.payment_terms ?? ''] ?? '—'}</p>
+              <p className="text-gray-800 font-medium mt-0.5">{poPaymentTermLabel(purchaseOrder.payment_terms)}</p>
             </div>
             <div>
               <p className="text-gray-400 font-semibold text-xs">Status Bayar</p>
@@ -871,8 +863,9 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                 <label className="block text-xs font-semibold text-gray-500 mb-1.5">Syarat Pembayaran Pelunasan *</label>
                 <select value={dpPaymentTerms} onChange={(e) => setDpPaymentTerms(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-orange-400 focus:outline-none">
-                  <option value="cash_to_cash">Cash to Cash (Langsung Bayar)</option>
-                  <option value="tempo_7_days">Termin 7 Hari</option>
+                  {PO_PAYMENT_TERMS.map((term) => (
+                    <option key={term.value} value={term.value}>{term.label}</option>
+                  ))}
                 </select>
               </div>
 

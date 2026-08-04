@@ -268,7 +268,6 @@ export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexPro
                 <th className="py-3.5 px-5 whitespace-nowrap">Tanggal Order</th>
                 <th className="py-3.5 px-5 whitespace-nowrap">Supplier / Pabrik</th>
                 <th className="py-3.5 px-5 whitespace-nowrap">Gudang</th>
-                <th className="py-3.5 px-5 whitespace-nowrap">Estimasi Pengerjaan</th>
                 <th className="py-3.5 px-5 text-right whitespace-nowrap">Grand Total</th>
                 <th className="py-3.5 px-5 text-center whitespace-nowrap">Status PO</th>
                 <th className="py-3.5 px-5 text-center whitespace-nowrap">Status Bayar</th>
@@ -279,7 +278,7 @@ export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexPro
             <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
               {purchaseOrders.data.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-gray-400 font-medium bg-gray-50/10">
+                  <td colSpan={9} className="py-12 text-center text-gray-400 font-medium bg-gray-50/10">
                     Tidak ada data Purchase Order ditemukan.
                   </td>
                 </tr>
@@ -300,9 +299,6 @@ export default function Index({ purchaseOrders, filters }: PurchaseOrderIndexPro
                     </td>
                     <td className="py-3.5 px-5 text-xs text-gray-700 whitespace-nowrap">
                       {order.warehouse ? order.warehouse.name : '—'}
-                    </td>
-                    <td className="py-3.5 px-5 text-gray-500 font-mono text-xs whitespace-nowrap">
-                      {order.production_lead_time_days ? `${order.production_lead_time_days} hari` : '—'}
                     </td>
                     <td className="py-3.5 px-5 text-right font-bold text-gray-900 font-mono text-xs whitespace-nowrap">
                       Rp {Number(order.grand_total).toLocaleString('id-ID')}

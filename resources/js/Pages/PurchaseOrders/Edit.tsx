@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
+import { PO_PAYMENT_TERMS } from '@/Constants/purchaseOrder';
 import CurrencyInput from '@/Components/CurrencyInput';
 import { PageProps } from '../../Types';
 
@@ -82,7 +83,6 @@ export default function Edit({ purchaseOrder, suppliers, warehouses, products }:
     supplier_id: purchaseOrder.supplier_id.toString(),
     warehouse_id: purchaseOrder.warehouse_id?.toString() ?? '',
     order_date: purchaseOrder.order_date.split('T')[0],
-    production_lead_time_days: purchaseOrder.production_lead_time_days?.toString() ?? '',
     payment_terms: purchaseOrder.payment_terms,
     is_free_shipping: purchaseOrder.is_free_shipping,
     notes: purchaseOrder.notes ?? '',
@@ -229,24 +229,6 @@ export default function Edit({ purchaseOrder, suppliers, warehouses, products }:
                   {errors.order_date && <p className="text-rose-500 text-xs">{errors.order_date}</p>}
                 </div>
 
-                {/* Lead Time Produksi */}
-                <div className="space-y-1.5">
-                  <label className="block text-sm font-semibold text-gray-700">Estimasi Pengerjaan (Lead Time Produksi)</label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      min={0}
-                      max={365}
-                      value={data.production_lead_time_days}
-                      onChange={(e) => setData('production_lead_time_days', e.target.value)}
-                      placeholder="Contoh: 14"
-                      className="w-full pl-4 pr-14 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                    />
-                    <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm">hari</span>
-                  </div>
-                  {errors.production_lead_time_days && <p className="text-rose-500 text-xs">{errors.production_lead_time_days}</p>}
-                </div>
-
                 {/* Pembayaran */}
                 <div className="space-y-1.5">
                   <label className="block text-sm font-semibold text-gray-700">Pembayaran <span className="text-rose-500">*</span></label>
@@ -255,8 +237,9 @@ export default function Edit({ purchaseOrder, suppliers, warehouses, products }:
                     onChange={(e) => setData('payment_terms', e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
                   >
-                    <option value="cash_to_cash">Cash to Cash (Langsung Bayar)</option>
-                    <option value="tempo_7_days">Termin 7 Hari</option>
+                    {PO_PAYMENT_TERMS.map((term) => (
+                      <option key={term.value} value={term.value}>{term.label}</option>
+                    ))}
                   </select>
                   {errors.payment_terms && <p className="text-rose-500 text-xs">{errors.payment_terms}</p>}
                 </div>

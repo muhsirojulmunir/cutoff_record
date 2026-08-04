@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import CurrencyInput from '@/Components/CurrencyInput';
+import * as XLSX from 'xlsx';
+import { DP_50_RATIO, PO_PAYMENT_TERMS } from '@/Constants/purchaseOrder';
 import { PageProps } from '../../Types';
 
 interface Supplier {
@@ -45,23 +47,32 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
     supplier_id: '',
     warehouse_id: '',
     order_date: new Date().toISOString().split('T')[0],
-    production_lead_time_days: '',
-    payment_terms: 'cash_to_cash',
+    payment_terms: 'cash',
     is_free_shipping: true,
     notes: '',
     items: [] as OrderItemInput[],
   });
 
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importInfo, setImportInfo] = useState<string | null>(null);
+
   const [localItems, setLocalItems] = useState<OrderItemInput[]>([
     {
       product_id: '',
-      sku: '—',
+      sku: '',
       unit: 'pcs',
       price: 0,
       quantity: 1,
       subtotal: 0,
     },
   ]);
+
+  /** Cocokkan SKU tanpa peduli huruf besar/kecil maupun spasi berlebih. */
+  function findProductBySku(sku: string): Product | undefined {
+    const needle = String(sku ?? '').trim().toLowerCase();
+    if (needle === '') return undefined;
+    return products.find((p) => p.sku.trim().toLowerCase() === needle);
+  }
 
   // Sync local items with useForm items
   useEffect(() => {
@@ -73,13 +84,98 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
       ...localItems,
       {
         product_id: '',
-        sku: '—',
+        sku: '',
         unit: 'pcs',
         price: 0,
         quantity: 1,
         subtotal: 0,
       },
     ]);
+  }
+
+  /** Unduh template Excel: SKU, QTY, HARGA. */
+  function handleDownloadTemplate() {
+    const rows = [
+      ['SKU', 'QTY', 'HARGA'],
+      ...products.slice(0, 3).map((p) => [p.sku, 1, Number(p.purchase_price) || 0]),
+    ];
+
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    worksheet['!cols'] = [{ wch: 24 }, { wch: 10 }, { wch: 16 }];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Item PO');
+    XLSX.writeFile(workbook, 'Template_Item_PO.xlsx');
+  }
+
+  /** Baca file Excel dan isi daftar barang. Baris tanpa SKU dilewati. */
+  function handleImportExcel(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImportError(null);
+    setImportInfo(null);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const workbook = XLSX.read(event.target?.result, { type: 'binary' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const raw: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        if (!raw || raw.length === 0) {
+          setImportError('File Excel kosong atau tidak dapat dibaca.');
+          return;
+        }
+
+        // Lewati baris header bila kolom pertama bertuliskan "sku".
+        const startIndex = String(raw[0]?.[0] ?? '').trim().toLowerCase() === 'sku' ? 1 : 0;
+
+        const parsed: OrderItemInput[] = [];
+        const unknown: string[] = [];
+
+        for (let i = startIndex; i < raw.length; i++) {
+          const cols = raw[i];
+          const sku = String(cols?.[0] ?? '').trim();
+          if (sku === '') continue;
+
+          const product = findProductBySku(sku);
+          if (!product) unknown.push(sku);
+
+          const quantity = Math.max(1, parseInt(String(cols?.[1] ?? 1), 10) || 1);
+          const priceRaw = String(cols?.[2] ?? '').replace(/[^0-9]/g, '');
+          const price = priceRaw === ''
+            ? Number(product?.purchase_price) || 0
+            : Number(priceRaw);
+
+          parsed.push({
+            product_id: product ? String(product.id) : '',
+            sku,
+            unit: 'pcs',
+            price,
+            quantity,
+            subtotal: price * quantity,
+          });
+        }
+
+        if (parsed.length === 0) {
+          setImportError('Tidak ada baris berisi SKU pada file ini.');
+          return;
+        }
+
+        setLocalItems(parsed);
+        setImportInfo(
+          unknown.length > 0
+            ? `${parsed.length} baris dimuat. SKU tidak dikenal: ${unknown.join(', ')} — perbaiki dulu sebelum menyimpan.`
+            : `${parsed.length} baris berhasil dimuat dari Excel.`
+        );
+      } catch (err: any) {
+        setImportError('Gagal membaca file Excel: ' + (err?.message ?? err));
+      }
+    };
+
+    reader.readAsBinaryString(file);
+    e.target.value = '';
   }
 
   function handleRemoveItem(index: number) {
@@ -92,7 +188,22 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
     const updated = [...localItems];
     const item = { ...updated[index] };
 
-    if (key === 'product_id') {
+    if (key === 'sku') {
+      // SKU boleh diketik atau ditempel; produk dicocokkan otomatis.
+      const typed = String(value);
+      const selectedProduct = findProductBySku(typed);
+
+      item.sku = typed;
+      item.unit = 'pcs';
+
+      if (selectedProduct) {
+        item.product_id = String(selectedProduct.id);
+        // Harga beli terakhir jadi usulan, tapi tetap bisa diubah manual.
+        if (!item.price) item.price = Number(selectedProduct.purchase_price) || 0;
+      } else {
+        item.product_id = '';
+      }
+    } else if (key === 'product_id') {
       const prodId = Number(value);
       const selectedProduct = products.find((p) => p.id === prodId);
       if (selectedProduct) {
@@ -102,7 +213,7 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
         item.price = Number(selectedProduct.purchase_price);
       } else {
         item.product_id = '';
-        item.sku = '—';
+        item.sku = '';
         item.unit = 'pcs';
         item.price = 0;
       }
@@ -201,24 +312,6 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
                   {errors.order_date && <p className="text-rose-500 text-xs">{errors.order_date}</p>}
                 </div>
 
-                {/* Lead Time Produksi */}
-                <div className="space-y-1.5">
-                  <label className="block text-sm font-semibold text-gray-700">Estimasi Pengerjaan (Lead Time Produksi)</label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      min={0}
-                      max={365}
-                      value={data.production_lead_time_days}
-                      onChange={(e) => setData('production_lead_time_days', e.target.value)}
-                      placeholder="Contoh: 14"
-                      className="w-full pl-4 pr-14 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                    />
-                    <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm">hari</span>
-                  </div>
-                  {errors.production_lead_time_days && <p className="text-rose-500 text-xs">{errors.production_lead_time_days}</p>}
-                </div>
-
                 {/* Pembayaran */}
                 <div className="space-y-1.5">
                   <label className="block text-sm font-semibold text-gray-700">Pembayaran <span className="text-rose-500">*</span></label>
@@ -227,9 +320,18 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
                     onChange={(e) => setData('payment_terms', e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
                   >
-                    <option value="cash_to_cash">Cash to Cash (Langsung Bayar)</option>
-                    <option value="tempo_7_days">Termin 7 Hari</option>
+                    {PO_PAYMENT_TERMS.map((term) => (
+                      <option key={term.value} value={term.value}>{term.label}</option>
+                    ))}
                   </select>
+                  {data.payment_terms === 'dp_50' && grandTotal > 0 && (
+                    <p className="text-[11px] text-gray-500">
+                      Uang muka 50% ={' '}
+                      <span className="font-mono font-bold text-gray-700">
+                        Rp {Math.round(grandTotal * DP_50_RATIO).toLocaleString('id-ID')}
+                      </span>
+                    </p>
+                  )}
                   {errors.payment_terms && <p className="text-rose-500 text-xs">{errors.payment_terms}</p>}
                 </div>
               </div>
@@ -237,8 +339,27 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
 
             {/* Items Table Card */}
             <div className="bg-white border border-gray-300 rounded-2xl p-6 space-y-4 shadow-xl">
-              <div className="flex justify-between items-center mb-2">
+              {/* Daftar SKU untuk autocomplete saat mengetik */}
+              <datalist id="po-sku-options">
+                {products.map((p) => (
+                  <option key={p.id} value={p.sku}>{p.name}</option>
+                ))}
+              </datalist>
+
+              <div className="flex flex-wrap justify-between items-center gap-2 mb-2">
                 <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Daftar Barang (Items)</h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleDownloadTemplate}
+                    className="px-3.5 py-2 bg-white hover:bg-gray-50 text-gray-700 text-xs font-semibold rounded-xl border border-gray-300 transition-all"
+                  >
+                    Unduh Template
+                  </button>
+                  <label className="px-3.5 py-2 bg-white hover:bg-teal-50 text-teal-700 text-xs font-semibold rounded-xl border border-teal-300 transition-all cursor-pointer">
+                    Import Excel
+                    <input type="file" accept=".xlsx,.xls" onChange={handleImportExcel} className="hidden" />
+                  </label>
                 <button
                   type="button"
                   onClick={handleAddItem}
@@ -249,7 +370,15 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
                   </svg>
                   Tambah Barang
                 </button>
+                </div>
               </div>
+
+              {importError && (
+                <p className="text-rose-600 text-xs font-semibold bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">{importError}</p>
+              )}
+              {importInfo && (
+                <p className="text-gray-600 text-xs bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">{importInfo}</p>
+              )}
 
               {errors.items && <p className="text-rose-500 text-xs font-semibold">{errors.items}</p>}
 
@@ -261,35 +390,46 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
                 <div className="space-y-3">
                   {/* Table Header (Desktop) */}
                   <div className="hidden md:grid grid-cols-12 gap-2.5 text-[11px] font-bold text-gray-500 uppercase tracking-wider px-3.5 py-2.5 bg-gray-50/80 border border-gray-300/80 rounded-xl">
-                    <div className="col-span-5">Produk</div>
+                    <div className="col-span-3">SKU</div>
+                    <div className="col-span-3">Nama Produk</div>
                     <div className="col-span-2">Qty</div>
-                    <div className="col-span-2">Harga Satuan</div>
-                    <div className="col-span-3 text-right">Subtotal &amp; Aksi</div>
+                    <div className="col-span-2">Harga</div>
+                    <div className="col-span-2 text-right">Aksi</div>
                   </div>
 
                   {localItems.map((item, index) => {
-                    const displayUnit = item.unit && isNaN(Number(item.unit)) ? item.unit : 'pcs';
+                    const matched = findProductBySku(item.sku);
                     return (
                       <div key={index} className="p-3.5 bg-gray-50 border border-gray-300/80 rounded-xl space-y-3 md:space-y-0">
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center">
-                          {/* Product Selector */}
-                          <div className="md:col-span-5 space-y-1">
-                            <label className="block md:hidden text-xs font-semibold text-gray-500">Produk</label>
-                            <select
-                              value={item.product_id}
-                              onChange={(e) => handleItemChange(index, 'product_id', e.target.value)}
-                              className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300/80 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer truncate"
-                            >
-                              <option value="">Pilih Produk...</option>
-                              {products.map((p) => (
-                                <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>
-                              ))}
-                            </select>
-                            <div className="text-[10px] text-gray-500 font-mono px-1 flex justify-between">
-                              <span className="truncate">SKU: <strong className="text-gray-700">{item.sku}</strong></span>
-                              <span className="shrink-0 ml-1">Satuan: <strong className="text-gray-700">{displayUnit}</strong></span>
-                            </div>
+                          {/* SKU — boleh diketik atau tempel langsung */}
+                          <div className="md:col-span-3 space-y-1">
+                            <label className="block md:hidden text-xs font-semibold text-gray-500">SKU</label>
+                            <input
+                              list="po-sku-options"
+                              value={item.sku}
+                              onChange={(e) => handleItemChange(index, 'sku', e.target.value)}
+                              placeholder="Ketik / tempel SKU"
+                              autoComplete="off"
+                              className="w-full px-3 py-2 rounded-xl bg-white border border-gray-300/80 text-gray-800 text-xs font-mono focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+                            />
                             {errors[`items.${index}.product_id`] && <p className="text-rose-400 text-[10px]">{errors[`items.${index}.product_id`]}</p>}
+                          </div>
+
+                          {/* Nama produk terisi otomatis dari SKU */}
+                          <div className="md:col-span-3 space-y-1">
+                            <label className="block md:hidden text-xs font-semibold text-gray-500">Nama Produk</label>
+                            <div className={`px-3 py-2 rounded-xl border text-xs truncate ${
+                              matched
+                                ? 'bg-gray-50 border-gray-300/80 text-gray-800'
+                                : 'bg-rose-50 border-rose-200 text-rose-600'
+                            }`}
+                              title={matched?.name ?? 'SKU tidak ditemukan'}
+                            >
+                              {item.sku.trim() === ''
+                                ? <span className="text-gray-400">Menunggu SKU…</span>
+                                : (matched?.name ?? 'SKU tidak ditemukan')}
+                            </div>
                           </div>
 
                           {/* Quantity */}
@@ -322,7 +462,7 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
                           </div>
 
                           {/* Subtotal & Delete Action */}
-                          <div className="md:col-span-3 flex items-center justify-between md:justify-end gap-2 pt-2 md:pt-0 border-t md:border-t-0 border-gray-300">
+                          <div className="md:col-span-2 flex items-center justify-between md:justify-end gap-2 pt-2 md:pt-0 border-t md:border-t-0 border-gray-300">
                             <div className="text-left md:text-right overflow-hidden">
                               <span className="block md:hidden text-[10px] uppercase font-bold text-gray-400">Subtotal</span>
                               <span className="text-xs font-extrabold text-emerald-400 font-mono block truncate" title={`Rp ${item.subtotal.toLocaleString('id-ID')}`}>
