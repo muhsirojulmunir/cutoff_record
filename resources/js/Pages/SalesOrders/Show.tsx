@@ -321,36 +321,15 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
     }
   };
 
+  const activeMessage = flash.success || flash.error || errors?.error || null;
+  const activeType = flash.success ? 'success' : 'error';
+
   return (
     <AppLayout>
       <Head title={`Detail Sales Order — ${salesOrder.so_number}`} />
-      <Alert message={flash.success ?? null} type="success" />
-      {/* Aksi approve/cancel mengembalikan pesan lewat withErrors, bukan flash.
-          Tanpa baris errors.error di bawah, kegagalan approve tidak terlihat
-          sama sekali dan tombolnya seolah tidak berfungsi. */}
-      {flash.error && <Alert message={flash.error} type="error" />}
-      {errors?.error && <Alert message={errors.error} type="error" />}
+      <Alert message={activeMessage} type={activeType} />
 
       <div className="space-y-6">
-        {/* Prominent Top Error Banner */}
-        {(flash.error || errors?.error) && (
-          <div className="p-5 bg-rose-50 border-2 border-rose-500 rounded-2xl flex items-start gap-4 shadow-xl shadow-rose-500/10 transition-all animate-shake">
-            <div className="p-2.5 bg-rose-600 text-white rounded-xl shrink-0 mt-0.5 shadow-md">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-              </svg>
-            </div>
-            <div className="flex-1 space-y-1">
-              <h3 className="text-sm font-extrabold text-rose-800 uppercase tracking-wide flex items-center gap-2">
-                <span>⚠️ PERHATIAN: PROSES TIDAK DAPAT DILANJUTKAN</span>
-              </h3>
-              <p className="text-xs text-rose-700 font-semibold leading-relaxed">
-                {flash.error || errors?.error}
-              </p>
-            </div>
-          </div>
-        )}
-
         {/* Header Section */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-4">
@@ -626,8 +605,6 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
                       <th className="px-6 py-3">Produk</th>
                       <th className="px-6 py-3 text-right">Harga</th>
                       <th className="px-6 py-3 text-center">Qty</th>
-                      <th className="px-6 py-3 text-right">Diskon</th>
-                      <th className="px-6 py-3 text-right">Pajak</th>
                       <th className="px-6 py-3 text-right">Subtotal</th>
                     </tr>
                   </thead>
@@ -670,12 +647,6 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
                               {item.quantity} <span className="text-[10px] text-gray-400 uppercase font-bold ml-0.5">{item.unit}</span>
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-right text-rose-400">
-                            {Number(item.discount_amount) > 0 ? `-Rp ${Number(item.discount_amount).toLocaleString('id-ID')}` : '—'}
-                          </td>
-                          <td className="px-6 py-4 text-right text-gray-700">
-                            {Number(item.tax_amount) > 0 ? `+Rp ${Number(item.tax_amount).toLocaleString('id-ID')}` : '—'}
-                          </td>
                           <td className="px-6 py-4 text-right font-bold text-emerald-400">
                             Rp {Number(item.subtotal).toLocaleString('id-ID')}
                           </td>
@@ -701,25 +672,15 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
                   <span className="font-semibold text-gray-700">Rp {Number(salesOrder.subtotal).toLocaleString('id-ID')}</span>
                 </div>
 
-                {/* Diskon */}
-                <div className="flex justify-between items-center pt-3 pb-3">
-                  <span className="text-gray-400">Diskon Transaksi</span>
-                  <span className="font-semibold text-rose-400">-Rp {Number(salesOrder.discount_amount).toLocaleString('id-ID')}</span>
-                </div>
+                {/* Ongkir (jika ada) */}
+                {Number(salesOrder.shipping_cost) > 0 && (
+                  <div className="flex justify-between items-center pt-3 pb-3">
+                    <span className="text-gray-400">Biaya Pengiriman</span>
+                    <span className="font-semibold text-gray-700">+Rp {Number(salesOrder.shipping_cost).toLocaleString('id-ID')}</span>
+                  </div>
+                )}
 
-                {/* Pajak */}
-                <div className="flex justify-between items-center pt-3 pb-3">
-                  <span className="text-gray-400">Pajak Transaksi</span>
-                  <span className="font-semibold text-gray-700">+Rp {Number(salesOrder.tax_amount).toLocaleString('id-ID')}</span>
-                </div>
-
-                {/* Ongkir */}
-                <div className="flex justify-between items-center pt-3 pb-3">
-                  <span className="text-gray-400">Biaya Pengiriman</span>
-                  <span className="font-semibold text-gray-700">+Rp {Number(salesOrder.shipping_cost).toLocaleString('id-ID')}</span>
-                </div>
-
-                {/* DP / Uang Muka — tampil di atas total agar mudah dibaca */}
+                {/* DP / Uang Muka (jika ada) */}
                 {Number(salesOrder.dp_amount ?? 0) > 0 && (
                   <div className="flex justify-between items-center pt-3 pb-3">
                     <span className="text-gray-400">DP / Uang Muka</span>
@@ -738,7 +699,7 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
                   <div className="flex justify-between items-center pt-3">
                     <span className="text-sm font-bold text-gray-700">Sisa Tagihan</span>
                     <span className="text-base font-extrabold text-rose-500">
-                      Rp {Math.max(0, Number(salesOrder.grand_total) - Number(salesOrder.dp_amount)).toLocaleString('id-ID')}
+                      Rp {Math.max(0, Number(salesOrder.grand_total) - Number(salesOrder.dp_amount ?? 0)).toLocaleString('id-ID')}
                     </span>
                   </div>
                 )}

@@ -22,10 +22,10 @@ export default function Alert({ message, type = 'success' }: AlertProps) {
 
   return (
     <div
-      className={`fixed top-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-2xl border backdrop-blur-md shadow-2xl transition-all duration-300 animate-slide-in
+      className={`fixed top-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl border backdrop-blur-md shadow-xl transition-all duration-300 animate-slide-in max-w-md
         ${type === 'success'
-          ? 'bg-emerald-900/90 border-emerald-500/40 text-emerald-100 shadow-emerald-950/40'
-          : 'bg-rose-900/90 border-rose-500/40 text-rose-100 shadow-rose-950/40'
+          ? 'bg-slate-900 border-emerald-500/50 text-emerald-200'
+          : 'bg-slate-900 border-rose-500/50 text-rose-200'
         }`}
     >
       <div className="shrink-0">
@@ -39,10 +39,10 @@ export default function Alert({ message, type = 'success' }: AlertProps) {
           </svg>
         )}
       </div>
-      <p className="text-xs font-semibold tracking-wide">{message}</p>
+      <p className="text-xs font-semibold leading-snug">{message}</p>
       <button
         onClick={() => setVisible(false)}
-        className="ml-auto p-1 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-white/10 transition-colors"
+        className="ml-auto p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
