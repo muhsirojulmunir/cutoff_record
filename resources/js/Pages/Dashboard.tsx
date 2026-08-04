@@ -22,7 +22,6 @@ interface Props {
         date_to: string;
         channel: string | null;
         channels: string[];
-        generated_at: string;
         sales: {
             total_orders: number; total_revenue: number;
             today_orders: number; today_revenue: number;
@@ -249,11 +248,6 @@ export default function Dashboard({ metrics, filters }: Props) {
                                 </button>
                             ))}
                         </div>
-
-                        <span className="hidden lg:inline-flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-white border border-gray-200 text-[11px] text-gray-400 font-mono shadow-sm">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                            {metrics.generated_at}
-                        </span>
 
                         <button
                             onClick={refresh}

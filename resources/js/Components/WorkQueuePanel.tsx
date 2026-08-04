@@ -4,7 +4,7 @@ import { PageProps, WorkQueueSeverity } from '../Types';
 
 const SEVERITY_STYLES: Record<WorkQueueSeverity, { card: string; accent: string; label: string }> = {
   critical: { card: 'border-rose-500/25 bg-rose-500/5 hover:border-rose-500/50', accent: 'text-rose-400', label: 'Perlu Approval' },
-  warning: { card: 'border-amber-400/25 bg-amber-400/5 hover:border-amber-400/50', accent: 'text-amber-400', label: 'Perlu Ditindak' },
+  warning: { card: 'border-orange-200 bg-orange-50 hover:border-orange-300', accent: 'text-orange-600', label: 'Perlu Ditindak' },
   info: { card: 'border-gray-300 bg-gray-50 hover:border-teal-500/40', accent: 'text-teal-400', label: 'Informasi' },
 };
 

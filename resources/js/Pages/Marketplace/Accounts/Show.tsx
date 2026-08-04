@@ -44,7 +44,7 @@ const MP_LABELS: Record<string, string> = { shopee: 'Shopee', tiktok_shop: 'TikT
 const CONN_STATUS_COLORS: Record<string, string> = {
     connected:    'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
     disconnected: 'bg-slate-500/20 text-gray-500 border border-slate-500/30',
-    expired:      'bg-amber-500/20 text-amber-400 border border-amber-500/30',
+    expired:      'bg-orange-50 text-orange-600 border border-orange-300',
     error:        'bg-red-500/20 text-red-400 border border-red-500/30',
 };
 

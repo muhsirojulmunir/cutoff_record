@@ -116,25 +116,23 @@ class ReportController extends Controller
         $search     = $request->input('search');
         $categoryId = $request->input('category_id');
 
-        // Calculate weighted average HPP from received PO items
-        $poItemsSubquery = \App\Models\PurchaseOrderItem::select(
-                'product_id',
-                \Illuminate\Support\Facades\DB::raw('SUM(COALESCE(NULLIF(accepted_quantity, 0), received_quantity, quantity)) as total_qty'),
-                \Illuminate\Support\Facades\DB::raw('SUM(COALESCE(NULLIF(accepted_quantity, 0), received_quantity, quantity) * COALESCE(validated_unit_price, unit_price)) as total_cost')
-            )
-            ->whereHas('purchaseOrder', function ($q) {
-                $q->whereIn('status', ['received', 'finance_validated', 'partially_received']);
-            })
-            ->groupBy('product_id');
+        // Harga tidak lagi disimpan di master produk: HPP diambil dari harga
+        // beli PO yang barangnya sudah diterima, harga jual dari item Sales Order.
+        $pricing = app(\App\Services\Reports\ProductPricingService::class);
 
-        $query = \App\Models\Product::with('category')
-            ->leftJoinSub($poItemsSubquery, 'po_costs', function ($join) {
+        $query = \App\Models\Product::with(['category', 'hpp'])
+            ->leftJoinSub($pricing->costSubquery(), 'po_costs', function ($join) {
                 $join->on('products.id', '=', 'po_costs.product_id');
+            })
+            ->leftJoinSub($pricing->sellingSubquery(), 'so_prices', function ($join) {
+                $join->on('products.id', '=', 'so_prices.product_id');
             })
             ->select(
                 'products.*',
                 \Illuminate\Support\Facades\DB::raw('COALESCE(po_costs.total_qty, 0) as total_purchased_qty'),
-                \Illuminate\Support\Facades\DB::raw('COALESCE(po_costs.total_cost, 0) as total_purchased_cost')
+                \Illuminate\Support\Facades\DB::raw('COALESCE(po_costs.total_cost, 0) as total_purchased_cost'),
+                \Illuminate\Support\Facades\DB::raw('COALESCE(so_prices.avg_selling_price, 0) as avg_selling_price'),
+                \Illuminate\Support\Facades\DB::raw('COALESCE(so_prices.sold_qty, 0) as sold_qty')
             )
             ->orderBy('products.name');
 
@@ -156,15 +154,23 @@ class ReportController extends Controller
             $qty  = (int) $product->total_purchased_qty;
             $cost = (float) $product->total_purchased_cost;
 
-            // Weighted average HPP: if PO items exist, use average cost; otherwise fallback to master purchase_price
-            $hpp = $qty > 0 ? ($cost / $qty) : (float) $product->purchase_price;
-            $sellingPrice = (float) $product->selling_price;
+            // HPP yang diinput Finance / Leader dipakai lebih dulu; rata-rata
+            // pembelian PO jadi cadangan bila HPP-nya belum diisi.
+            $poAverage   = $qty > 0 ? ($cost / $qty) : 0.0;
+            $manualHpp   = $product->hpp?->hpp !== null ? (float) $product->hpp->hpp : null;
+            $hpp         = $manualHpp ?? $poAverage;
+
+            $product->po_average_cost = round($poAverage, 2);
+            $product->hpp_source      = $manualHpp !== null ? 'manual' : ($qty > 0 ? 'po' : 'none');
+            $sellingPrice = (float) $product->avg_selling_price;
             $marginAmount = $sellingPrice - $hpp;
             $marginPct    = $sellingPrice > 0 ? (($marginAmount / $sellingPrice) * 100) : 0;
 
             $product->hpp_weighted_average = round($hpp, 2);
+            $product->selling_price        = round($sellingPrice, 2);
             $product->margin_amount        = round($marginAmount, 2);
             $product->margin_percentage    = round($marginPct, 1);
+            $product->has_price_data       = $qty > 0 || $sellingPrice > 0;
             return $product;
         });
 

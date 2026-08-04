@@ -9,8 +9,11 @@ interface HppProductItem {
   name: string;
   brand: string | null;
   unit: string;
-  purchase_price: string;
   selling_price: string;
+  sold_qty: number;
+  po_average_cost: number;
+  hpp_source: 'manual' | 'po' | 'none';
+  has_price_data: boolean;
   total_purchased_qty: number;
   hpp_weighted_average: number;
   margin_amount: number;
@@ -56,12 +59,12 @@ export default function Hpp({
           onChange={(e) => setSearch(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && applyFilter()}
           placeholder="Cari SKU / Nama Produk..."
-          className="px-3.5 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-amber-500 focus:outline-none w-72"
+          className="px-3.5 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-orange-400 focus:outline-none w-72"
         />
         <select
           value={categoryId}
           onChange={(e) => setCategoryId(e.target.value)}
-          className="px-3.5 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-amber-500 focus:outline-none"
+          className="px-3.5 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-orange-400 focus:outline-none"
         >
           <option value="">Semua Kategori</option>
           {categories.map((cat) => (
@@ -86,16 +89,15 @@ export default function Hpp({
                 <th className="py-3.5 px-4">Nama Produk</th>
                 <th className="py-3.5 px-4">Kategori</th>
                 <th className="py-3.5 px-4 text-center">Qty Pembelian PO</th>
-                <th className="py-3.5 px-4 text-right text-gray-500">Harga Master</th>
-                <th className="py-3.5 px-4 text-right text-amber-400">HPP Weighted Avg</th>
-                <th className="py-3.5 px-4 text-right">Harga Jual</th>
+                <th className="py-3.5 px-4 text-right text-orange-600">HPP Weighted Avg</th>
+                <th className="py-3.5 px-4 text-right">Harga Jual Rata-rata</th>
                 <th className="py-3.5 px-4 text-right text-emerald-400">Potensi Margin</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100/60 text-sm text-gray-700">
               {products.data.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-gray-400">
+                  <td colSpan={7} className="py-12 text-center text-gray-400">
                     Belum ada data produk untuk laporan HPP.
                   </td>
                 </tr>
@@ -104,7 +106,7 @@ export default function Hpp({
                 const isPoBased = item.total_purchased_qty > 0;
                 return (
                   <tr key={item.id} className="hover:bg-teal-50/60 transition-colors">
-                    <td className="py-3.5 px-5 font-mono text-xs font-bold text-amber-400">{item.sku}</td>
+                    <td className="py-3.5 px-5 font-mono text-xs font-bold text-orange-600">{item.sku}</td>
                     <td className="py-3.5 px-4 font-semibold text-gray-800">
                       {item.name}
                       {item.brand && <span className="text-[10px] text-gray-400 block">{item.brand}</span>}
@@ -112,21 +114,29 @@ export default function Hpp({
                     <td className="py-3.5 px-4 text-gray-500">{item.category?.name ?? '—'}</td>
                     <td className="py-3.5 px-4 text-center font-bold text-gray-700">
                       {item.total_purchased_qty > 0 ? (
-                        <span className="text-amber-400 font-extrabold">{fmt(item.total_purchased_qty)} {item.unit}</span>
+                        <span className="text-orange-600 font-extrabold">{fmt(item.total_purchased_qty)} {item.unit}</span>
                       ) : (
-                        <span className="text-gray-400 text-xs">— (Master)</span>
+                        <span className="text-gray-400 text-xs">Belum ada PO</span>
                       )}
                     </td>
-                    <td className="py-3.5 px-4 text-right text-gray-500 text-xs">Rp {fmt(item.purchase_price)}</td>
-                    <td className="py-3.5 px-4 text-right font-extrabold text-amber-300">
+                    <td className="py-3.5 px-4 text-right font-extrabold text-orange-600">
                       Rp {fmt(item.hpp_weighted_average)}
-                      {isPoBased ? (
-                        <span className="text-[9px] text-emerald-400 block font-semibold">Weighted PO</span>
+                      {item.hpp_source === 'manual' ? (
+                        <span className="text-[9px] text-teal-600 block font-semibold">Input Finance / Leader</span>
+                      ) : item.hpp_source === 'po' ? (
+                        <span className="text-[9px] text-gray-500 block font-normal">Perkiraan dari PO</span>
                       ) : (
-                        <span className="text-[9px] text-gray-400 block font-normal">Harga Master</span>
+                        <span className="text-[9px] text-orange-600 block font-semibold">Belum diisi</span>
                       )}
                     </td>
-                    <td className="py-3.5 px-4 text-right font-bold text-gray-800">Rp {fmt(item.selling_price)}</td>
+                    <td className="py-3.5 px-4 text-right font-bold text-gray-800">
+                      Rp {fmt(item.selling_price)}
+                      {item.sold_qty > 0 ? (
+                        <span className="text-[9px] text-gray-400 block font-normal">{fmt(item.sold_qty)} pcs terjual</span>
+                      ) : (
+                        <span className="text-[9px] text-gray-400 block font-normal">Belum ada penjualan</span>
+                      )}
+                    </td>
                     <td className="py-3.5 px-4 text-right">
                       <span className={`font-extrabold block ${item.margin_amount >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                         Rp {fmt(item.margin_amount)}

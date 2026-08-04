@@ -81,7 +81,7 @@ export default function MarketplaceReport({ summary, filters }: Props) {
                     </div>
                     <div className="bg-gray-50 border border-gray-300 rounded-2xl p-5">
                         <p className="text-gray-500 text-xs">Order Shopee</p>
-                        <p className="text-2xl font-extrabold text-orange-400 mt-1">{summary.shopee_orders}</p>
+                        <p className="text-2xl font-extrabold text-orange-600 mt-1">{summary.shopee_orders}</p>
                         <p className="text-gray-400 text-xs mt-2">Shopee Open API v2</p>
                     </div>
                     <div className="bg-gray-50 border border-gray-300 rounded-2xl p-5">

@@ -26,7 +26,7 @@ interface Props {
 
 const STATUS_COLORS: Record<string, string> = {
     success: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
-    partial: 'bg-amber-500/20 text-amber-400 border border-amber-500/30',
+    partial: 'bg-orange-50 text-orange-600 border border-orange-300',
     failed:  'bg-red-500/20 text-red-400 border border-red-500/30',
     running: 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
 };

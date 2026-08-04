@@ -117,7 +117,7 @@ export default function SalesOrderLabel() {
         </div>
 
         {!resi && (
-          <div className="no-print max-w-[560px] mx-auto mb-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-xs px-4 py-3">
+          <div className="no-print max-w-[560px] mx-auto mb-4 rounded-xl bg-orange-50 border border-orange-200 text-orange-700 text-xs px-4 py-3">
             No. Resi / AWB belum diisi. Isi resinya dulu di halaman Sales Order agar label bisa dicetak.
           </div>
         )}

@@ -215,7 +215,7 @@ export default function AccountsShow({ account, totalIn, totalOut, txnCount, rec
                         )}
                         {canAdjust && account.status === 'active' && (
                             <button id="btn-adjustment" onClick={() => setShowAdjust(true)}
-                                className="px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 rounded-xl text-xs font-semibold transition-all">Adjustment</button>
+                                className="px-4 py-2 bg-orange-50 hover:bg-orange-100 text-orange-600 border border-orange-200 rounded-xl text-xs font-semibold transition-all">Adjustment</button>
                         )}
                         {canDeactivate && (
                             <button id="btn-toggle-status" onClick={handleDeactivate}

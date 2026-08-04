@@ -17,9 +17,6 @@ interface Product {
   color: string | null;
   is_box: boolean;
   dimension_label: string | null;
-  purchase_price: string;
-  selling_price: string;
-  minimum_stock: number;
   status: 'active' | 'inactive';
   description: string | null;
   created_at: string;
@@ -106,26 +103,11 @@ export default function Show({ product }: ShowProps) {
               <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Warna (Color)</span>
               <p className="text-sm text-gray-700">{product.color ?? '—'}</p>
             </div>
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Minimum Stok</span>
-              <p className="text-sm font-mono font-bold text-amber-500">{product.minimum_stock}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 border-b border-gray-300/80 pb-6 p-4 rounded-xl bg-gray-50 border border-gray-300/60">
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Harga Beli</span>
-              <p className="text-sm font-semibold text-gray-700">Rp {Number(product.purchase_price).toLocaleString('id-ID')}</p>
-            </div>
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Harga Jual</span>
-              <p className="text-base font-bold text-emerald-400">Rp {Number(product.selling_price).toLocaleString('id-ID')}</p>
-            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 border-b border-gray-300/80 pb-6">
             <div className="space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">NPWP / Status</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Status</span>
               <div className="pt-1">
                 <span
                   className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border

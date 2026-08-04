@@ -78,7 +78,7 @@ const typeLabel: Record<string, string> = {
 
 const typeBadgeColor: Record<string, string> = {
   customer_invoice:   'bg-blue-500/10 border-blue-500/20 text-blue-400',
-  factory_receivable: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
+  factory_receivable: 'bg-orange-50 border-orange-200 text-orange-600',
 };
 
 const methodLabel: Record<string, string> = {

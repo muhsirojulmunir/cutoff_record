@@ -80,7 +80,7 @@ export default function FinancialReport({ summary, receivables, payables, cashBa
                     </div>
                     <div className="bg-gray-50 border border-gray-300 rounded-2xl p-5">
                         <p className="text-gray-500 text-xs">Pengeluaran Petty Cash</p>
-                        <p className="text-2xl font-extrabold text-amber-400 mt-1">{fmt(summary.petty_cash_approved)}</p>
+                        <p className="text-2xl font-extrabold text-orange-600 mt-1">{fmt(summary.petty_cash_approved)}</p>
                         <p className="text-gray-400 text-xs mt-1">Pending: {fmt(summary.petty_cash_pending)}</p>
                     </div>
                 </div>
@@ -107,7 +107,7 @@ export default function FinancialReport({ summary, receivables, payables, cashBa
                         </div>
                         <div className="p-3 bg-white rounded-xl">
                             <span className="text-gray-500">Total Beban Operasional Petty Cash</span>
-                            <p className="text-amber-400 font-bold font-mono text-sm mt-1">-{fmt(summary.operating_expenses)}</p>
+                            <p className="text-orange-600 font-bold font-mono text-sm mt-1">-{fmt(summary.operating_expenses)}</p>
                         </div>
                     </div>
                 </div>

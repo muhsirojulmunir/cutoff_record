@@ -28,7 +28,7 @@ interface Props {
 
 const STATUS_COLORS: Record<string, string> = {
     out_of_stock: 'bg-red-500/20 text-red-400 border-red-500/30',
-    low_stock:    'bg-amber-500/20 text-amber-400 border-amber-500/30',
+    low_stock:    'bg-orange-50 text-orange-600 border-orange-300',
     normal:       'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
     overstock:    'bg-sky-500/20 text-sky-400 border-sky-500/30',
 };

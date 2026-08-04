@@ -1,10 +1,11 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useRef, useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import Pagination from '../../Components/Pagination';
 import Alert from '../../Components/Alert';
 import Modal from '../../Components/Modal';
 import { PageProps } from '../../Types';
+import { downloadProductTemplate, readProductRows } from '../../Utils/productExcel';
 
 interface Category {
   id: number;
@@ -51,6 +52,40 @@ export default function Index({ products, categories, filters }: ProductIndexPro
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+
+  /** Baca file Excel di browser, lalu kirim barisnya ke server untuk disimpan. */
+  async function handleImportFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    setImportError(null);
+
+    try {
+      const rows = await readProductRows(file);
+
+      if (rows.length === 0) {
+        setImportError('File Excel tidak berisi baris produk. Pastikan data diisi di sheet "Produk".');
+        return;
+      }
+
+      router.post('/products/import', { rows } as never, {
+        preserveScroll: true,
+        onError: (errors) => setImportError(Object.values(errors)[0] as string),
+        onFinish: () => setImporting(false),
+      });
+    } catch {
+      setImportError('File tidak bisa dibaca. Pastikan formatnya .xlsx atau .xls sesuai template.');
+    } finally {
+      // Reset agar file yang sama bisa dipilih ulang setelah diperbaiki.
+      event.target.value = '';
+      setImporting(false);
+    }
+  }
+
   function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
     router.get('/products', { search, category_id: categoryId, status }, { preserveState: true });
@@ -95,6 +130,8 @@ export default function Index({ products, categories, filters }: ProductIndexPro
     <AppLayout>
       <Head title="Master Produk" />
       <Alert message={flash.success ?? null} type="success" />
+      {flash.error && <Alert message={flash.error} type="error" />}
+      {importError && <Alert message={importError} type="error" />}
 
       <div className="space-y-6">
         {/* Header */}
@@ -103,7 +140,43 @@ export default function Index({ products, categories, filters }: ProductIndexPro
             <h1 className="text-2xl font-bold text-gray-900">Daftar Produk</h1>
             <p className="text-gray-500 text-xs mt-1">Master Data / Produk</p>
           </div>
-          {canCreate && (
+          <div className="flex flex-wrap items-center gap-3">
+            {canCreate && (
+              <>
+                <button
+                  type="button"
+                  onClick={downloadProductTemplate}
+                  className="flex items-center justify-center gap-2 px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 font-semibold text-sm rounded-xl border border-gray-300 hover:border-gray-400 transition-all"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                  </svg>
+                  Download Template
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importing}
+                  className="flex items-center justify-center gap-2 px-4 py-2 bg-white hover:bg-teal-50 text-teal-700 font-semibold text-sm rounded-xl border border-teal-400 hover:border-teal-500 transition-all disabled:opacity-60"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 7.5L12 3m0 0l4.5 4.5M12 3v13.5" />
+                  </svg>
+                  {importing ? 'Mengimpor...' : 'Import Excel'}
+                </button>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleImportFile}
+                  className="hidden"
+                />
+              </>
+            )}
+
+            {canCreate && (
             <Link
               href="/products/create"
               className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 active:scale-[0.99] text-white font-semibold text-sm rounded-xl transition-all shadow-lg shadow-teal-200/40"
@@ -113,7 +186,8 @@ export default function Index({ products, categories, filters }: ProductIndexPro
               </svg>
               Tambah Produk
             </Link>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Filters & Search */}
@@ -173,8 +247,6 @@ export default function Index({ products, categories, filters }: ProductIndexPro
                   <th className="px-6 py-3.5">Nama Produk</th>
                   <th className="px-6 py-3.5">Kategori / Brand</th>
                   <th className="px-6 py-3.5">Ukuran</th>
-                  <th className="px-6 py-3.5">Harga Beli / Jual</th>
-                  <th className="px-6 py-3.5">Min. Stok</th>
                   <th className="px-6 py-3.5">Status</th>
                   <th className="px-6 py-3.5 text-right">Aksi</th>
                 </tr>
@@ -182,7 +254,7 @@ export default function Index({ products, categories, filters }: ProductIndexPro
               <tbody className="divide-y divide-gray-100 text-sm">
                 {products.data.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center text-gray-400 font-medium">
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-400 font-medium">
                       Tidak ada data produk ditemukan.
                     </td>
                   </tr>
@@ -204,13 +276,6 @@ export default function Index({ products, categories, filters }: ProductIndexPro
                       <td className="px-6 py-3.5">
                         <div className="font-mono text-xs text-gray-700">{product.dimension_label ?? '—'}</div>
                         <div className="text-[10px] text-gray-400 mt-0.5">{product.is_box ? 'P × L × T' : 'P × L'}</div>
-                      </td>
-                      <td className="px-6 py-3.5 font-mono">
-                        <div className="text-[11px] text-gray-400">Beli: <span className="text-gray-700 font-semibold">Rp {Number(product.purchase_price).toLocaleString('id-ID')}</span></div>
-                        <div className="text-[11px] text-gray-400 mt-0.5">Jual: <span className="text-emerald-400 font-semibold">Rp {Number(product.selling_price).toLocaleString('id-ID')}</span></div>
-                      </td>
-                      <td className="px-6 py-3.5 font-mono text-gray-700 text-xs">
-                        {product.minimum_stock}
                       </td>
                       <td className="px-6 py-3.5 whitespace-nowrap">
                         <span

@@ -16,6 +16,7 @@ class DashboardReportService
         private readonly InventoryReportService $inventoryReportService,
         private readonly FinancialReportService $financialReportService,
         private readonly MarketplaceReportService $marketplaceReportService,
+        private readonly ProductPricingService $pricingService,
     ) {}
 
     /**
@@ -48,7 +49,6 @@ class DashboardReportService
             'marketplace'    => $marketplace,
             'channel'        => $channel,
             'channels'       => $this->getChannels(),
-            'generated_at'   => Carbon::now()->format('Y-m-d H:i:s'),
             'channel_trend'  => $this->getChannelTrend($from, $to, $channel),
             'today'          => $this->getTodayPerformance($channel),
             'profit_funnel'  => $this->getProfitFunnel($from, $to, $channel),
@@ -145,6 +145,20 @@ class DashboardReportService
     }
 
     /**
+     * Dasar perhitungan modal: item Sales Order digabung dengan HPP rata-rata
+     * dari penerimaan Purchase Order. Rentang tanggalnya ditentukan pemanggil.
+     */
+    private function cogsQuery(?string $channel): \Illuminate\Database\Eloquent\Builder
+    {
+        return SalesOrderItem::query()
+            ->join('sales_orders', 'sales_orders.id', '=', 'sales_order_items.sales_order_id')
+            ->leftJoinSub($this->pricingService->effectiveCostSubquery(), 'po_costs', 'po_costs.product_id', '=', 'sales_order_items.product_id')
+            ->whereNull('sales_orders.deleted_at')
+            ->whereNotIn('sales_orders.status', ['cancelled', 'rejected'])
+            ->when($channel, fn ($query) => $query->where('sales_orders.sales_channel', $channel));
+    }
+
+    /**
      * Angka penjualan satu hari: omset, laba bersih, jumlah order, dan
      * order yang sudah dikirim (punya nomor resi).
      */
@@ -158,14 +172,10 @@ class DashboardReportService
         $orders  = (clone $base)->count();
         $shipped = (clone $base)->whereNotNull('tracking_number')->count();
 
-        // Modal dihitung dari harga beli produk saat transaksi terjadi.
-        $cogs = (float) SalesOrderItem::whereHas('salesOrder', function ($query) use ($date, $channel) {
-            $query->whereDate('order_date', $date)
-                ->whereNotIn('status', ['cancelled', 'rejected'])
-                ->when($channel, fn ($q) => $q->where('sales_channel', $channel));
-        })
-            ->join('products', 'products.id', '=', 'sales_order_items.product_id')
-            ->sum(DB::raw('sales_order_items.quantity * products.purchase_price'));
+        // Modal memakai HPP rata-rata dari penerimaan Purchase Order.
+        $cogs = (float) $this->cogsQuery($channel)
+            ->whereDate('sales_orders.order_date', $date)
+            ->sum(DB::raw('sales_order_items.quantity * COALESCE(po_costs.avg_cost, 0)'));
 
         $expenses = (float) PettyCashTransaction::whereDate('transaction_date', $date)
             ->whereIn('status', ['approved', 'paid'])
@@ -194,13 +204,9 @@ class DashboardReportService
         $shipping = (float) (clone $base)->sum('shipping_cost');
         $discount = (float) (clone $base)->sum('discount_amount');
 
-        $cogs = (float) SalesOrderItem::whereHas('salesOrder', function ($query) use ($from, $to, $channel) {
-            $query->whereBetween('order_date', [$from, $to])
-                ->whereNotIn('status', ['cancelled', 'rejected'])
-                ->when($channel, fn ($q) => $q->where('sales_channel', $channel));
-        })
-            ->join('products', 'products.id', '=', 'sales_order_items.product_id')
-            ->sum(DB::raw('sales_order_items.quantity * products.purchase_price'));
+        $cogs = (float) $this->cogsQuery($channel)
+            ->whereBetween('sales_orders.order_date', [$from, $to])
+            ->sum(DB::raw('sales_order_items.quantity * COALESCE(po_costs.avg_cost, 0)'));
 
         $expenses = (float) PettyCashTransaction::whereBetween('transaction_date', [$from, $to])
             ->whereIn('status', ['approved', 'paid'])
@@ -228,7 +234,7 @@ class DashboardReportService
     {
         return SalesOrderItem::query()
             ->join('sales_orders', 'sales_orders.id', '=', 'sales_order_items.sales_order_id')
-            ->join('products', 'products.id', '=', 'sales_order_items.product_id')
+            ->leftJoinSub($this->pricingService->effectiveCostSubquery(), 'po_costs', 'po_costs.product_id', '=', 'sales_order_items.product_id')
             ->whereBetween('sales_orders.order_date', [$from, $to])
             ->whereNotIn('sales_orders.status', ['cancelled', 'rejected'])
             ->when($channel, fn ($query) => $query->where('sales_orders.sales_channel', $channel))
@@ -239,7 +245,7 @@ class DashboardReportService
                 'sales_order_items.sku',
                 DB::raw('SUM(sales_order_items.quantity) as qty'),
                 DB::raw('SUM(sales_order_items.subtotal) as revenue'),
-                DB::raw('SUM(sales_order_items.subtotal - (sales_order_items.quantity * products.purchase_price)) as profit'),
+                DB::raw('SUM(sales_order_items.subtotal - (sales_order_items.quantity * COALESCE(po_costs.avg_cost, 0))) as profit'),
             )
             ->orderByDesc('profit')
             ->limit($limit)

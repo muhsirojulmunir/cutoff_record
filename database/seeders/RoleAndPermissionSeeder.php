@@ -68,6 +68,10 @@ class RoleAndPermissionSeeder extends Seeder
             'fund_allocation.view'       => 'Lihat Pengisian Dana Mingguan',
             'fund_allocation.create'     => 'Catat Pengisian Dana Mingguan',
 
+            // HPP produk — hanya Finance & Leader
+            'hpp.view'                   => 'Lihat HPP Produk',
+            'hpp.manage'                 => 'Input & Ubah HPP Produk',
+
             // Marketplace
             'marketplace.view'               => 'Lihat Marketplace',
             'marketplace.sync'               => 'Sinkronisasi Marketplace',
@@ -224,6 +228,8 @@ class RoleAndPermissionSeeder extends Seeder
                 'petty_cash.finance_approve', 'petty_cash.reject', 'petty_cash.cancel',
                 // Pengisian dana mingguan — Finance yang menerima & mencatat
                 'fund_allocation.view', 'fund_allocation.create',
+                // HPP produk
+                'hpp.view', 'hpp.manage',
                 'customer.view',
                 'supplier.view',
                 'product.view',
@@ -252,6 +258,8 @@ class RoleAndPermissionSeeder extends Seeder
                 'petty_cash.view', 'petty_cash.create', 'petty_cash.edit', 'petty_cash.submit',
                 'petty_cash.leader_approve', 'petty_cash.reject', 'petty_cash.cancel',
                 'fund_allocation.view',
+                // HPP produk
+                'hpp.view', 'hpp.manage',
                 // Factory Receivable — view
                 'factory_receivable.view',
                 // Master Data — view
