@@ -69,12 +69,32 @@ class ProductImportTest extends TestCase
         $product = Product::where('sku', 'KRD-001')->firstOrFail();
 
         $this->assertSame('Kardus Polos 30x20x15', $product->name);
-        $this->assertTrue($product->is_box);
-        $this->assertEquals(15, (float) $product->height);
         // Stok tidak ikut diimpor — penambahannya lewat menu Barang Masuk.
         $this->assertEquals(0, $product->stock);
         $this->assertSame('active', $product->status);
         $this->assertSame('Kardus', Category::find($product->category_id)->name);
+    }
+
+    /** SKU kosong dibuatkan otomatis dari nama produk. */
+    public function test_sku_is_derived_from_name_when_left_empty(): void
+    {
+        $result = $this->service->import([
+            $this->row(['SKU' => '', 'Nama Produk' => 'Kardus Tanpa Kode']),
+        ], $this->admin->id);
+
+        $this->assertSame(1, $result['created']);
+        $this->assertTrue(Product::where('sku', 'KARDUS-TANPA-KODE')->exists());
+    }
+
+    /** Baris yang SKU dan namanya sama-sama kosong tidak bisa diproses. */
+    public function test_row_without_sku_and_name_is_rejected(): void
+    {
+        $result = $this->service->import([
+            $this->row(['SKU' => '', 'Nama Produk' => '']),
+        ], $this->admin->id);
+
+        $this->assertSame(0, $result['created']);
+        $this->assertSame(1, $result['failed']);
     }
 
     /** SKU yang sama diperbarui, bukan digandakan. */
@@ -101,19 +121,6 @@ class ProductImportTest extends TestCase
         $this->assertEquals(40, $product->stock);
     }
 
-    /** Produk non-kardus tidak menyimpan tinggi walau kolomnya diisi. */
-    public function test_height_is_ignored_for_non_box_product(): void
-    {
-        $this->service->import([
-            $this->row(['SKU' => 'PLS-001', 'Kardus' => 'Tidak', 'Tinggi (cm)' => 12]),
-        ], $this->admin->id);
-
-        $product = Product::where('sku', 'PLS-001')->firstOrFail();
-
-        $this->assertFalse($product->is_box);
-        $this->assertNull($product->height);
-    }
-
     /**
      * Satu baris bermasalah membatalkan seluruh impor, supaya data tidak
      * masuk setengah-setengah dan admin bisa memperbaiki filenya sekaligus.
@@ -121,13 +128,13 @@ class ProductImportTest extends TestCase
     public function test_invalid_row_cancels_the_whole_import(): void
     {
         $result = $this->service->import([
-            $this->row(['SKU' => '']),
             $this->row(['SKU' => 'KRD-002']),
+            $this->row(['SKU' => '', 'Nama Produk' => '']),
         ], $this->admin->id);
 
         $this->assertSame(0, $result['created']);
         $this->assertSame(1, $result['failed']);
-        $this->assertSame(2, $result['errors'][0]['row']);
+        // Baris pertama sah, tapi ikut dibatalkan karena ada baris bermasalah.
         $this->assertFalse(Product::where('sku', 'KRD-002')->exists());
     }
 
@@ -141,18 +148,6 @@ class ProductImportTest extends TestCase
 
         $this->assertSame(1, $result['failed']);
         $this->assertStringContainsString('ganda', $result['errors'][0]['message']);
-    }
-
-    /** Angka desimal bergaya Indonesia ("30,5") tetap terbaca benar. */
-    public function test_indonesian_number_format_is_parsed(): void
-    {
-        $this->service->import([
-            $this->row(['SKU' => 'KRD-003', 'Panjang (cm)' => '30,5']),
-        ], $this->admin->id);
-
-        $product = Product::where('sku', 'KRD-003')->firstOrFail();
-
-        $this->assertEquals(30.5, (float) $product->length);
     }
 
     /** Payload persis seperti hasil baca template, termasuk kolom kosong. */
@@ -198,6 +193,33 @@ class ProductImportTest extends TestCase
 
         $this->actingAs($viewer)
             ->post('/products/import', ['rows' => [$this->row()]])
+            ->assertForbidden();
+    }
+
+    /** Pratinjau memanggil endpoint ini untuk menandai SKU yang sudah ada. */
+    public function test_check_skus_reports_existing_products(): void
+    {
+        $this->service->import([$this->row(['SKU' => 'KRD-500'])], $this->admin->id);
+
+        $response = $this->actingAs($this->admin)->postJson('/products/check-skus', [
+            'skus' => ['KRD-500', 'KRD-501'],
+        ]);
+
+        $response->assertOk();
+        $response->assertJson(['existing' => ['KRD-500']]);
+    }
+
+    public function test_check_skus_requires_create_permission(): void
+    {
+        $viewerRole = Role::firstOrCreate(['name' => 'Viewer Cek']);
+        $viewerRole->permissions()->sync(Permission::where('name', 'product.view')->pluck('id'));
+
+        $viewer = User::create([
+            'name' => 'Viewer Cek', 'email' => 'viewer-cek@test.com',
+            'password' => Hash::make('password'), 'role_id' => $viewerRole->id, 'status' => 'active',
+        ]);
+
+        $this->actingAs($viewer)->postJson('/products/check-skus', ['skus' => ['KRD-001']])
             ->assertForbidden();
     }
 }

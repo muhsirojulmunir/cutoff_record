@@ -107,6 +107,9 @@ Route::middleware('auth')->group(function () {
         ->middleware('can:hpp.manage');
 
     // Products
+    Route::post('/products/check-skus', [ProductController::class, 'checkSkus'])
+        ->name('products.check-skus')
+        ->middleware('can:product.create');
     Route::post('/products/import', [ProductController::class, 'import'])
         ->name('products.import')
         ->middleware('can:product.create');
@@ -171,7 +174,11 @@ Route::middleware('auth')->group(function () {
     // Stock Movements (Inventory Ledger)
     // Barang Masuk — penambahan stok manual
     Route::get('/barang-masuk', [GoodsReceiptController::class, 'index'])->name('goods-receipt.index')->middleware('can:stock.view');
-    Route::post('/barang-masuk', [GoodsReceiptController::class, 'store'])->name('goods-receipt.store')->middleware('can:stock.adjust');
+    Route::post('/barang-masuk', [GoodsReceiptController::class, 'store'])->name('goods-receipt.store')->middleware('can:stock.receipt.request');
+    Route::post('/barang-masuk/{goodsReceipt}/approve', [GoodsReceiptController::class, 'approve'])
+        ->name('goods-receipt.approve')->middleware('can:stock.receipt.approve');
+    Route::post('/barang-masuk/{goodsReceipt}/reject', [GoodsReceiptController::class, 'reject'])
+        ->name('goods-receipt.reject')->middleware('can:stock.receipt.approve');
 
     Route::get('/stock-movements', [StockMovementController::class, 'index'])->name('stock-movements.index');
     Route::post('/stock-movements/adjust', [StockMovementController::class, 'adjust'])->name('stock-movements.adjust');

@@ -148,6 +148,7 @@ export default function GrosirCreate({ products }: GrosirCreateProps) {
     unit_price: 0,
     voucher: 0,
     tax: 0,
+    shipping_cost: 0,
     total_weight: 0,
     shipping_address: '',
     customer_phone: '',
@@ -161,7 +162,8 @@ export default function GrosirCreate({ products }: GrosirCreateProps) {
   const unitPrice = Number(data.unit_price) || 0;
   const voucher = Number(data.voucher) || 0;
   const tax = Number(data.tax) || 0;
-  const autoGrandTotal = Math.max(0, (qty * unitPrice) - voucher + tax);
+  const shippingCost = Number(data.shipping_cost) || 0;
+  const autoGrandTotal = Math.max(0, (qty * unitPrice) - voucher + tax + shippingCost);
 
   function handleProductSelect(e: React.ChangeEvent<HTMLSelectElement>) {
     const selectedSku = e.target.value;
@@ -480,6 +482,16 @@ export default function GrosirCreate({ products }: GrosirCreateProps) {
                 <CurrencyInput
                   value={data.tax}
                   onChange={(v) => setData('tax', v)}
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-teal-500"
+                />
+              </div>
+
+              {/* Ongkir */}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Ongkir (Rp)</label>
+                <CurrencyInput
+                  value={data.shipping_cost}
+                  onChange={(v) => setData('shipping_cost', v)}
                   className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-teal-500"
                 />
               </div>

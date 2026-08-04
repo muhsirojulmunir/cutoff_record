@@ -103,11 +103,12 @@ const statusBadgeColor: Record<string, string> = {
   cancelled:        'bg-rose-500/10 border-rose-500/20 text-rose-400',
 };
 
+/** Tahapan pengerjaan pesanan, memakai istilah yang dipakai tim gudang. */
 const statusLabel: Record<string, string> = {
   draft:            'Draft',
-  pending_approval: 'Menunggu Approval Finance',
-  approved:         'Disetujui',
-  processing:       'Diproses',
+  pending_approval: 'Menunggu ACC',
+  approved:         'Packing',
+  processing:       'DO Validate',
   completed:        'Selesai',
   cancelled:        'Dibatalkan',
 };
@@ -138,6 +139,7 @@ const channelLabel: Record<string, string> = {
   grosir:  'Grosir (Offline)',
   shopee:  'Shopee',
   tiktok:  'TikTok Shop',
+  vip:  'VIP',
   website: 'Website',
   other:   'Lainnya',
 };
@@ -577,11 +579,17 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
                     <span className="text-gray-400">Sales Channel</span>
                     <span className="font-semibold">{channelLabel[salesOrder.sales_channel] ?? salesOrder.sales_channel}</span>
 
-                    <span className="text-gray-400">Status Bayar</span>
+                    <span className="text-gray-400">ACC</span>
                     <span className="font-semibold">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${paymentBadgeColor[salesOrder.payment_status]}`}>
-                        {paymentLabel[salesOrder.payment_status]}
-                      </span>
+                      {['approved', 'processing', 'completed'].includes(salesOrder.status) ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border bg-teal-50 border-teal-200 text-teal-700">
+                          Sudah ACC
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border bg-gray-100 border-gray-300 text-gray-500">
+                          Belum ACC
+                        </span>
+                      )}
                     </span>
                   </div>
                 </div>

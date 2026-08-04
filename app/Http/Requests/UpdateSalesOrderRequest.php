@@ -24,7 +24,7 @@ class UpdateSalesOrderRequest extends FormRequest
             'order_date'             => ['required', 'date'],
             'payment_terms'          => ['nullable', 'string', 'in:cash,cod,tempo_7,tempo_14,tempo_30'],
             'source'                 => ['required', 'in:manual,marketplace,website,other'],
-            'sales_channel'          => ['required', 'in:manual,shopee,tiktok,website,other'],
+            'sales_channel'          => ['required', 'in:shopee,tiktok,vip,grosir,manual,website,other'],
             'notes'                  => ['nullable', 'string', 'max:1000'],
             'discount_amount'        => ['nullable', 'numeric', 'min:0'],
             'tax_amount'             => ['nullable', 'numeric', 'min:0'],

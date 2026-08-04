@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\GoodsReceipt;
 use App\Models\Product;
-use App\Models\StockMovement;
 use App\Models\Warehouse;
-use App\Services\StockMovementService;
+use App\Services\GoodsReceiptService;
 use Exception;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,48 +15,61 @@ use Inertia\Response;
 
 /**
  * Barang Masuk — satu-satunya tempat menambah stok secara manual.
- * Master produk hanya mengurus data barang, stoknya diatur di sini agar
- * setiap perubahan stok punya jejak (siapa, kapan, berapa, alasannya).
+ *
+ * Pengajuan tidak langsung menambah stok: PIC Gudang harus menyetujuinya
+ * lebih dulu. Dengan begitu setiap perubahan stok punya jejak siapa yang
+ * mengajukan dan siapa yang menyetujui.
  */
 class GoodsReceiptController extends Controller
 {
-    public function __construct(private readonly StockMovementService $stockMovementService) {}
+    public function __construct(private readonly GoodsReceiptService $goodsReceiptService) {}
 
     public function index(Request $request): Response
     {
         Gate::authorize('stock.view');
 
-        $movements = StockMovement::with(['product:id,sku,name', 'warehouse:id,name', 'creator:id,name'])
-            ->where('movement_type', 'in')
+        $receipts = GoodsReceipt::with([
+                'product:id,sku,name',
+                'warehouse:id,name',
+                'requester:id,name',
+                'approver:id,name',
+                'rejecter:id,name',
+            ])
             ->when($request->input('search'), function ($query, $search) {
-                $query->whereHas('product', function ($productQuery) use ($search) {
-                    $productQuery->where('name', 'like', "%{$search}%")
-                        ->orWhere('sku', 'like', "%{$search}%");
+                $query->where(function ($inner) use ($search) {
+                    $inner->where('receipt_number', 'like', "%{$search}%")
+                        ->orWhereHas('product', function ($productQuery) use ($search) {
+                            $productQuery->where('name', 'like', "%{$search}%")
+                                ->orWhere('sku', 'like', "%{$search}%");
+                        });
                 });
             })
-            ->when($request->input('warehouse_id'), fn ($query, $warehouseId) => $query->where('warehouse_id', $warehouseId))
+            ->when($request->input('status'), fn ($query, $status) => $query->where('status', $status))
+            ->orderByRaw("CASE WHEN status = 'pending' THEN 0 ELSE 1 END")
             ->orderByDesc('id')
             ->paginate(15)
             ->withQueryString();
 
         return Inertia::render('GoodsReceipt/Index', [
-            'movements'  => $movements,
-            'filters'    => $request->only(['search', 'warehouse_id']),
-            'products'   => Product::where('status', 'active')
+            'receipts'     => $receipts,
+            'filters'      => $request->only(['search', 'status']),
+            'products'     => Product::where('status', 'active')
                 ->orderBy('name')
                 ->get(['id', 'sku', 'name', 'stock']),
-            'warehouses' => Warehouse::where('status', 'active')->orderBy('name')->get(['id', 'code', 'name']),
-            'canCreate'  => Gate::allows('stock.adjust'),
+            'warehouses'   => Warehouse::where('status', 'active')->orderBy('name')->get(['id', 'code', 'name']),
+            'canRequest'   => Gate::allows('stock.receipt.request'),
+            'canApprove'   => Gate::allows('stock.receipt.approve'),
+            'pendingCount' => GoodsReceipt::where('status', GoodsReceipt::STATUS_PENDING)->count(),
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
-        Gate::authorize('stock.adjust');
+        Gate::authorize('stock.receipt.request');
 
         $validated = $request->validate([
             'product_id'   => ['required', 'exists:products,id'],
-            'warehouse_id' => ['required', 'exists:warehouses,id'],
+            'warehouse_id' => ['nullable', 'exists:warehouses,id'],
             'quantity'     => ['required', 'integer', 'min:1'],
             'notes'        => ['required', 'string', 'min:3', 'max:255'],
         ], [], [
@@ -67,25 +80,51 @@ class GoodsReceiptController extends Controller
         ]);
 
         try {
-            $product = Product::findOrFail($validated['product_id']);
-
-            $this->stockMovementService->recordStockIn(
-                $product,
-                (int) $validated['warehouse_id'],
-                (int) $validated['quantity'],
-                'manual_entry',
-                null,
-                null,
-                $validated['notes'],
-                auth()->id(),
-            );
+            $receipt = $this->goodsReceiptService->request($validated, auth()->id());
         } catch (Exception $e) {
             return back()->with('error', $e->getMessage())->withInput();
         }
 
         return back()->with(
             'success',
-            "Stok {$product->name} bertambah {$validated['quantity']} pcs."
+            "Pengajuan {$receipt->receipt_number} terkirim. Stok bertambah setelah disetujui PIC Gudang."
         );
+    }
+
+    public function approve(GoodsReceipt $goodsReceipt): RedirectResponse
+    {
+        Gate::authorize('stock.receipt.approve');
+
+        try {
+            $approved = $this->goodsReceiptService->approve($goodsReceipt, auth()->id());
+        } catch (Exception $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with(
+            'success',
+            "{$approved->receipt_number} disetujui. Stok {$approved->product->name} bertambah {$approved->quantity}."
+        );
+    }
+
+    public function reject(Request $request, GoodsReceipt $goodsReceipt): RedirectResponse
+    {
+        Gate::authorize('stock.receipt.approve');
+
+        $validated = $request->validate([
+            'rejection_reason' => ['required', 'string', 'min:3', 'max:255'],
+        ], [], ['rejection_reason' => 'Alasan penolakan']);
+
+        try {
+            $rejected = $this->goodsReceiptService->reject(
+                $goodsReceipt,
+                $validated['rejection_reason'],
+                auth()->id()
+            );
+        } catch (Exception $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', "{$rejected->receipt_number} ditolak. Stok tidak berubah.");
     }
 }
