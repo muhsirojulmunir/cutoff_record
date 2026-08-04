@@ -23,69 +23,81 @@ class ProductImportService
      */
     public function import(array $rows, int $userId): array
     {
-        $created = 0;
-        $updated = 0;
-        $errors  = [];
+        $created   = 0;
+        $updated   = 0;
+        $errors    = [];
+        $validatedRows = [];
 
-        DB::transaction(function () use ($rows, $userId, &$created, &$updated, &$errors) {
-            foreach ($rows as $index => $row) {
-                // Nomor baris di Excel: baris 1 adalah judul kolom.
-                $rowNumber = $index + 2;
-                $normalised = $this->normalise($row);
+        // FASE 1: Validasi seluruh baris terlebih dahulu (Pre-validation pass)
+        foreach ($rows as $index => $row) {
+            $rowNumber  = $index + 2; // Baris Excel (baris 1 adalah header)
+            $normalised = $this->normalise($row);
 
-                // Lewati baris contoh dari template (ditandai [CONTOH] di nama produk)
-                $namaCek = strtolower((string) ($normalised['name'] ?? ''));
-                $skuCek  = strtolower((string) ($normalised['sku'] ?? ''));
-                if (str_contains($namaCek, '[contoh') || str_starts_with($skuCek, '⚠')) {
-                    continue;
-                }
+            // Lewati baris contoh dari template
+            $namaCek = strtolower((string) ($normalised['name'] ?? ''));
+            $skuCek  = strtolower((string) ($normalised['sku'] ?? ''));
+            if (str_contains($namaCek, '[contoh') || str_starts_with($skuCek, '⚠')) {
+                continue;
+            }
 
-                // Jika nama produk kosong, otomatis gunakan SKU sebagai nama
-                if (empty($normalised['name']) && !empty($normalised['sku'])) {
-                    $normalised['name'] = strtoupper((string) $normalised['sku']);
-                }
+            // Fallback nama produk & kategori bila kosong
+            if (empty($normalised['name']) && !empty($normalised['sku'])) {
+                $normalised['name'] = strtoupper((string) $normalised['sku']);
+            }
+            if (empty($normalised['category'])) {
+                $normalised['category'] = 'Umum';
+            }
 
-                // Jika kategori kosong, gunakan "Umum" sebagai default
-                if (empty($normalised['category'])) {
-                    $normalised['category'] = 'Umum';
-                }
+            $validator = Validator::make($normalised, [
+                'sku'            => ['required', 'string', 'max:100'],
+                'name'           => ['required', 'string', 'max:255'],
+                'category'       => ['required', 'string', 'max:255'],
+                'brand'          => ['nullable', 'string', 'max:255'],
+                'color'          => ['nullable', 'string', 'max:100'],
+                'is_box'         => ['boolean'],
+                'length'         => ['nullable', 'numeric', 'min:0'],
+                'width'          => ['nullable', 'numeric', 'min:0'],
+                'height'         => ['nullable', 'numeric', 'min:0'],
+                'stock'          => ['nullable', 'integer', 'min:0'],
+                'status'         => ['required', 'in:active,inactive'],
+                'description'    => ['nullable', 'string'],
+            ], [
+                'sku.required'      => 'Kolom SKU wajib diisi.',
+                'sku.max'           => 'SKU terlalu panjang (maks 100 karakter).',
+                'name.required'     => 'Nama Produk wajib diisi.',
+                'name.max'          => 'Nama Produk terlalu panjang (maks 255 karakter).',
+                'category.required' => 'Kolom Kategori wajib diisi.',
+                'length.numeric'    => 'Panjang (cm) harus berupa angka.',
+                'width.numeric'     => 'Lebar (cm) harus berupa angka.',
+                'height.numeric'    => 'Tinggi (cm) harus berupa angka.',
+                'stock.integer'     => 'Stok Awal harus berupa bilangan bulat.',
+                'stock.min'         => 'Stok Awal tidak boleh negatif.',
+            ]);
 
-                $validator = Validator::make($normalised, [
-                    'sku'            => ['required', 'string', 'max:100'],
-                    'name'           => ['required', 'string', 'max:255'],
-                    'category'       => ['required', 'string', 'max:255'],
-                    'brand'          => ['nullable', 'string', 'max:255'],
-                    'color'          => ['nullable', 'string', 'max:100'],
-                    'is_box'         => ['boolean'],
-                    'length'         => ['nullable', 'numeric', 'min:0'],
-                    'width'          => ['nullable', 'numeric', 'min:0'],
-                    'height'         => ['nullable', 'numeric', 'min:0'],
-                    'stock'          => ['nullable', 'integer', 'min:0'],
-                    'status'         => ['required', 'in:active,inactive'],
-                    'description'    => ['nullable', 'string'],
-                ], [
-                    'sku.required'    => 'Kolom SKU wajib diisi.',
-                    'sku.max'         => 'SKU terlalu panjang (maks 100 karakter).',
-                    'name.required'   => 'Nama Produk wajib diisi.',
-                    'name.max'        => 'Nama Produk terlalu panjang (maks 255 karakter).',
-                    'category.required' => 'Kolom Kategori wajib diisi.',
-                    'length.numeric'  => 'Panjang (cm) harus berupa angka.',
-                    'width.numeric'   => 'Lebar (cm) harus berupa angka.',
-                    'height.numeric'  => 'Tinggi (cm) harus berupa angka.',
-                    'stock.integer'   => 'Stok Awal harus berupa bilangan bulat.',
-                    'stock.min'       => 'Stok Awal tidak boleh negatif.',
-                ]);
+            if ($validator->fails()) {
+                $errors[] = [
+                    'row'     => $rowNumber,
+                    'sku'     => (string) ($normalised['sku'] ?? '—'),
+                    'message' => $validator->errors()->first(),
+                ];
+            } else {
+                $validatedRows[] = $validator->validated();
+            }
+        }
 
-                if ($validator->fails()) {
-                    $errors[] = [
-                        'row'     => $rowNumber,
-                        'sku'     => (string) ($normalised['sku'] ?? '—'),
-                        'message' => $validator->errors()->first(),
-                    ];
-                    continue;
-                }
+        // FASE 2: Jika ada 1 SAJA baris bermasalah, TOLAK SEMUA (All-or-Nothing / Rollback Total)
+        if (count($errors) > 0) {
+            return [
+                'created' => 0,
+                'updated' => 0,
+                'failed'  => count($errors),
+                'errors'  => array_slice($errors, 0, 50),
+            ];
+        }
 
-                $data = $validator->validated();
+        // FASE 3: Jika seluruh baris valid, baru eksekusi ke database secara aman
+        DB::transaction(function () use ($validatedRows, $userId, &$created, &$updated) {
+            foreach ($validatedRows as $data) {
                 $category = $this->resolveCategory($data['category']);
 
                 $payload = [
@@ -104,31 +116,28 @@ class ProductImportService
                 $existing = Product::where('sku', $data['sku'])->first();
 
                 if ($existing) {
-                    // Stok hanya ditimpa bila kolomnya benar-benar diisi, supaya
-                    // impor ulang tidak menghapus stok berjalan.
                     if (array_key_exists('stock', $data) && $data['stock'] !== null) {
                         $payload['stock'] = $data['stock'];
                     }
 
                     $existing->update($payload);
                     $updated++;
-                    continue;
+                } else {
+                    Product::create($payload + [
+                        'sku'        => $data['sku'],
+                        'stock'      => $data['stock'] ?? 0,
+                        'created_by' => $userId,
+                    ]);
+                    $created++;
                 }
-
-                Product::create($payload + [
-                    'sku'        => $data['sku'],
-                    'stock'      => $data['stock'] ?? 0,
-                    'created_by' => $userId,
-                ]);
-                $created++;
             }
         });
 
         return [
             'created' => $created,
             'updated' => $updated,
-            'failed'  => count($errors),
-            'errors'  => array_slice($errors, 0, 50),
+            'failed'  => 0,
+            'errors'  => [],
         ];
     }
 
