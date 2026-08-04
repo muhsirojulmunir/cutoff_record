@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Head, Link, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import { PageProps } from '../../Types';
@@ -39,14 +39,16 @@ export default function Show({ product }: ShowProps) {
     <AppLayout>
       <Head title={`Detail Produk - ${product.sku}`} />
 
-      <div className="max-w-2xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto space-y-6">
         {/* Header Actions */}
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">{product.name}</h1>
-            <p className="text-gray-500 text-xs mt-1">Master Data / Produk / Detail ({product.sku})</p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl font-bold text-gray-900 truncate">Detail Produk — {product.sku}</h1>
+            <p className="text-gray-500 text-xs mt-0.5 truncate" title={product.name}>
+              {product.name}
+            </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <Link
               href="/products"
               className="px-4 py-2 bg-white hover:bg-teal-50 text-teal-700 border border-teal-300 hover:border-teal-400 rounded-xl text-sm font-semibold transition-all"
@@ -71,9 +73,9 @@ export default function Show({ product }: ShowProps) {
               <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Stock Keeping Unit (SKU)</span>
               <p className="text-sm font-mono font-bold text-teal-400">{product.sku}</p>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0">
               <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Nama Produk</span>
-              <p className="text-sm font-semibold text-gray-800">{product.name}</p>
+              <p className="text-sm font-semibold text-gray-800 break-words leading-snug">{product.name}</p>
             </div>
           </div>
 
