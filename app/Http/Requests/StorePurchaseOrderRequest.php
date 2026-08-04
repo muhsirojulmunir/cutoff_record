@@ -24,7 +24,9 @@ class StorePurchaseOrderRequest extends FormRequest
             'warehouse_id'            => ['nullable', 'exists:warehouses,id'],
             'order_date'              => ['required', 'date'],
             'production_lead_time_days' => ['nullable', 'integer', 'min:0', 'max:365'],
-            'payment_terms'           => ['required', 'in:cash_to_cash,tempo_7_days'],
+            # Empat opsi yang dipakai sekarang; cash_to_cash tetap diterima agar PO
+            # lama masih bisa disimpan ulang tanpa dianggap tidak valid.
+            'payment_terms'           => ['required', 'in:dp_50,cash,tempo_7_days,tempo_14_days,cash_to_cash'],
             'is_free_shipping'        => ['required', 'boolean'],
             'notes'                   => ['nullable', 'string', 'max:1000'],
             'items'                   => ['required', 'array', 'min:1'],
