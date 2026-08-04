@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import ProductDimensionFields from '@/Components/ProductDimensionFields';
@@ -23,6 +23,7 @@ export default function Create({ categories }: CreateProps) {
     length: '',
     width: '',
     height: '',
+    stock: '0',
     status: 'active' as 'active' | 'inactive',
     description: '',
   });
@@ -194,6 +195,24 @@ export default function Create({ categories }: CreateProps) {
                   <option value="inactive">Nonaktif</option>
                 </select>
                 {errors.status && <p className="text-rose-400 text-xs mt-1">{errors.status}</p>}
+              </div>
+
+              {/* Stok Awal */}
+              <div className="space-y-1.5">
+                <label htmlFor="stock" className="block text-sm font-semibold text-gray-700">
+                  Stok Awal
+                  <span className="ml-1 text-xs font-normal text-gray-400">(pcs)</span>
+                </label>
+                <input
+                  id="stock"
+                  type="number"
+                  min="0"
+                  value={data.stock}
+                  onChange={(e) => setData('stock', e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 hover:border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+                  disabled={processing}
+                />
+                {errors.stock && <p className="text-rose-400 text-xs mt-1">{errors.stock}</p>}
               </div>
             </div>
 

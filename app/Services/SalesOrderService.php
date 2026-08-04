@@ -67,10 +67,21 @@ class SalesOrderService
                 $paymentStatus = $dpAmount >= $grandTotal ? 'paid' : 'partially_paid';
             }
 
+            $paymentTerms = $data['payment_terms'] ?? 'cash';
+            $dueDate = match ($paymentTerms) {
+                'cod'       => $orderDate,
+                'tempo_7'   => date('Y-m-d', strtotime($orderDate . ' +7 days')),
+                'tempo_14'  => date('Y-m-d', strtotime($orderDate . ' +14 days')),
+                'tempo_30'  => date('Y-m-d', strtotime($orderDate . ' +30 days')),
+                default     => null, // cash = tidak ada jatuh tempo
+            };
+
             $salesOrder = SalesOrder::create([
                 'so_number'       => $soNumber,
                 'customer_id'     => $data['customer_id'] ?? null,
                 'order_date'      => $orderDate,
+                'payment_terms'   => $paymentTerms,
+                'due_date'        => $dueDate,
                 'source'          => $data['source'],
                 'sales_channel'   => $data['sales_channel'],
                 'status'          => 'draft',
@@ -137,9 +148,21 @@ class SalesOrderService
             $shipping = $data['shipping_cost'] ?? 0;
             $grandTotal = $subtotal - $discount + $tax + $shipping;
 
+            $paymentTerms = $data['payment_terms'] ?? 'cash';
+            $orderDateForDue = $data['order_date'] ?? $salesOrder->order_date->format('Y-m-d');
+            $dueDate = match ($paymentTerms) {
+                'cod'       => $orderDateForDue,
+                'tempo_7'   => date('Y-m-d', strtotime($orderDateForDue . ' +7 days')),
+                'tempo_14'  => date('Y-m-d', strtotime($orderDateForDue . ' +14 days')),
+                'tempo_30'  => date('Y-m-d', strtotime($orderDateForDue . ' +30 days')),
+                default     => null,
+            };
+
             $salesOrder->update([
                 'customer_id'     => $data['customer_id'] ?? null,
                 'order_date'      => $data['order_date'],
+                'payment_terms'   => $paymentTerms,
+                'due_date'        => $dueDate,
                 'source'          => $data['source'],
                 'sales_channel'   => $data['sales_channel'],
                 'subtotal'        => $subtotal,
@@ -356,20 +379,29 @@ class SalesOrderService
      */
     public function syncPaymentStatus(SalesOrder $salesOrder): SalesOrder
     {
-        $invoice = $salesOrder->invoice;
+        $invoice = \App\Models\Invoice::where('sales_order_id', $salesOrder->id)
+            ->where('status', '!=', 'cancelled')
+            ->first();
 
-        if (! $invoice) {
-            return $salesOrder;
+        $dp = (float) $salesOrder->dp_amount;
+        $grandTotal = (float) $salesOrder->grand_total;
+
+        if ($invoice) {
+            $paid = (float) $invoice->paid_amount;
+            $remaining = (float) $invoice->remaining_amount;
+
+            $paymentStatus = match (true) {
+                $invoice->status === 'paid' || ($remaining <= 0 && $grandTotal > 0) || ($paid >= $grandTotal && $grandTotal > 0) => 'paid',
+                $paid > 0 || $dp > 0 || $invoice->status === 'partially_paid' => 'partially_paid',
+                default => 'unpaid',
+            };
+        } else {
+            $paymentStatus = match (true) {
+                $dp >= $grandTotal && $grandTotal > 0 => 'paid',
+                $dp > 0 => 'partially_paid',
+                default => 'unpaid',
+            };
         }
-
-        $paid = (float) $invoice->paid_amount;
-
-        $paymentStatus = match (true) {
-            $invoice->status === 'cancelled' => 'unpaid',
-            (float) $invoice->remaining_amount <= 0 && $paid > 0 => 'paid',
-            $paid > 0 => 'partially_paid',
-            default => 'unpaid',
-        };
 
         if ($salesOrder->payment_status !== $paymentStatus) {
             $salesOrder->update(['payment_status' => $paymentStatus]);

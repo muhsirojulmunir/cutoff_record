@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import ProductDimensionFields from '@/Components/ProductDimensionFields';
@@ -19,6 +19,7 @@ interface Product {
   length: string | null;
   width: string | null;
   height: string | null;
+  stock: number;
   status: 'active' | 'inactive';
   description: string | null;
 }
@@ -39,6 +40,7 @@ export default function Edit({ product, categories }: EditProps) {
     length: product.length ? String(Number(product.length)) : '',
     width: product.width ? String(Number(product.width)) : '',
     height: product.height ? String(Number(product.height)) : '',
+    stock: String(product.stock ?? 0),
     status: product.status,
     description: product.description ?? '',
   });
@@ -205,6 +207,24 @@ export default function Edit({ product, categories }: EditProps) {
                   <option value="inactive">Nonaktif</option>
                 </select>
                 {errors.status && <p className="text-rose-400 text-xs mt-1">{errors.status}</p>}
+              </div>
+
+              {/* Stok */}
+              <div className="space-y-1.5">
+                <label htmlFor="stock" className="block text-sm font-semibold text-gray-700">
+                  Stok
+                  <span className="ml-1 text-xs font-normal text-gray-400">(pcs)</span>
+                </label>
+                <input
+                  id="stock"
+                  type="number"
+                  min="0"
+                  value={data.stock}
+                  onChange={(e) => setData('stock', e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 hover:border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+                  disabled={processing}
+                />
+                {errors.stock && <p className="text-rose-400 text-xs mt-1">{errors.stock}</p>}
               </div>
             </div>
 

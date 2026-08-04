@@ -29,6 +29,8 @@ class SalesOrder extends Model
         'warehouse_id',
         'order_date',
         'payment_date',
+        'payment_terms',
+        'due_date',
         'source',
         'sales_channel',
         'status',
@@ -53,6 +55,7 @@ class SalesOrder extends Model
 
     protected $casts = [
         'order_date'      => 'date',
+        'due_date'        => 'date',
         'payment_date'    => 'datetime',
         'submitted_at'      => 'datetime',
         'approved_at'       => 'datetime',
