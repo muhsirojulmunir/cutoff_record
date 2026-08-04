@@ -46,9 +46,8 @@ class ProductRequest extends FormRequest
             'length'         => ['nullable', 'numeric', 'min:0', 'max:99999999'],
             'width'          => ['nullable', 'numeric', 'min:0', 'max:99999999'],
             'height'         => [$this->boolean('is_box') ? 'required' : 'nullable', 'numeric', 'min:0', 'max:99999999'],
-            'stock'          => ['nullable', 'integer', 'min:0'],
-            'minimum_stock'  => ['nullable', 'integer', 'min:0'],
-            'status'         => ['required', 'string', 'in:active,inactive'],
+            'photo'          => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+            'status'         => ['nullable', 'string', 'in:active,inactive'],
             'description'    => ['nullable', 'string'],
         ];
     }

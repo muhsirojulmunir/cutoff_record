@@ -9,6 +9,7 @@ use App\Http\Controllers\CashBankTransactionController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\FundAllocationController;
+use App\Http\Controllers\GoodsReceiptController;
 use App\Http\Controllers\MarketplaceAccountController;
 use App\Http\Controllers\MarketplaceOrderController;
 use App\Http\Controllers\MarketplaceProductMappingController;
@@ -168,6 +169,10 @@ Route::middleware('auth')->group(function () {
     Route::resource('users', UserController::class)->except(['show']);
 
     // Stock Movements (Inventory Ledger)
+    // Barang Masuk — penambahan stok manual
+    Route::get('/barang-masuk', [GoodsReceiptController::class, 'index'])->name('goods-receipt.index')->middleware('can:stock.view');
+    Route::post('/barang-masuk', [GoodsReceiptController::class, 'store'])->name('goods-receipt.store')->middleware('can:stock.adjust');
+
     Route::get('/stock-movements', [StockMovementController::class, 'index'])->name('stock-movements.index');
     Route::post('/stock-movements/adjust', [StockMovementController::class, 'adjust'])->name('stock-movements.adjust');
 

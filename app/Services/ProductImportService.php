@@ -59,7 +59,6 @@ class ProductImportService
                 'length'         => ['nullable', 'numeric', 'min:0'],
                 'width'          => ['nullable', 'numeric', 'min:0'],
                 'height'         => ['nullable', 'numeric', 'min:0'],
-                'stock'          => ['nullable', 'integer', 'min:0'],
                 'status'         => ['required', 'in:active,inactive'],
                 'description'    => ['nullable', 'string'],
             ], [
@@ -71,8 +70,6 @@ class ProductImportService
                 'length.numeric'    => 'Panjang (cm) harus berupa angka.',
                 'width.numeric'     => 'Lebar (cm) harus berupa angka.',
                 'height.numeric'    => 'Tinggi (cm) harus berupa angka.',
-                'stock.integer'     => 'Stok Awal harus berupa bilangan bulat.',
-                'stock.min'         => 'Stok Awal tidak boleh negatif.',
             ]);
 
             if ($validator->fails()) {
@@ -137,16 +134,14 @@ class ProductImportService
                         $existing->restore();
                     }
 
-                    if (array_key_exists('stock', $data) && $data['stock'] !== null) {
-                        $payload['stock'] = $data['stock'];
-                    }
-
                     $existing->update($payload);
                     $updated++;
                 } else {
+                    // Stok produk baru selalu mulai dari 0 — penambahannya
+                    // dilakukan lewat menu Barang Masuk agar ada jejaknya.
                     Product::create($payload + [
                         'sku'        => $data['sku'],
-                        'stock'      => $data['stock'] ?? 0,
+                        'stock'      => 0,
                         'created_by' => $userId,
                     ]);
                     $created++;
@@ -200,7 +195,6 @@ class ProductImportService
             'length'         => $this->toNumber($get(['panjang_cm', 'panjang', 'length'])),
             'width'          => $this->toNumber($get(['lebar_cm', 'lebar', 'width'])),
             'height'         => $this->toNumber($get(['tinggi_cm', 'tinggi', 'height'])),
-            'stock'          => $this->toNumber($get(['stok_awal', 'stok', 'stock'])),
             'status'         => $status,
             'description'    => $get(['deskripsi', 'keterangan', 'description']),
         ];

@@ -49,16 +49,29 @@ class CustomerController extends Controller
         return Inertia::render('Customers/Create');
     }
 
+    /**
+     * Nomor urut diambil dari angka terbesar yang sudah terpakai, jadi kode
+     * lama berformat panjang (CUS-000007) tetap dihitung dan tidak bentrok.
+     */
+    private function generateCustomerCode(): string
+    {
+        $lastNumber = Customer::withTrashed()
+            ->pluck('customer_code')
+            ->map(fn ($code) => (int) preg_replace('/\D/', '', (string) $code))
+            ->max() ?? 0;
+
+        return 'CUST-' . str_pad((string) ($lastNumber + 1), 2, '0', STR_PAD_LEFT);
+    }
+
     public function store(CustomerRequest $request): RedirectResponse
     {
         Gate::authorize('customer.create');
 
         $data = $request->validated();
         
-        // Generate Customer Code (e.g. CUS-000001)
-        $lastCustomer = Customer::withTrashed()->orderBy('id', 'desc')->first();
-        $nextNumber = $lastCustomer ? ((int) str_replace('CUS-', '', $lastCustomer->customer_code)) + 1 : 1;
-        $data['customer_code'] = 'CUS-' . str_pad($nextNumber, 6, '0', STR_PAD_LEFT);
+        // Kode customer dibuat pendek: CUST-01, CUST-02, … dan otomatis
+        // melebar sendiri setelah melewati 99 (CUST-100).
+        $data['customer_code'] = $this->generateCustomerCode();
         $data['created_by'] = Auth::id();
 
         Customer::create($data);

@@ -138,7 +138,10 @@ class SalesOrderTest extends TestCase
             ->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class)
             ->post('/sales-orders', $payload);
 
-        $response->assertRedirect('/sales-orders');
+        // Setelah tersimpan, pengguna langsung diarahkan ke detail SO-nya.
+        $salesOrder = SalesOrder::latest('id')->firstOrFail();
+        $response->assertRedirect("/sales-orders/{$salesOrder->id}");
+
         $this->assertDatabaseHas('sales_orders', [
             'customer_id'    => $this->customer->id,
             'source'         => 'manual',

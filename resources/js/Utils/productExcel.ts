@@ -11,7 +11,6 @@ export const PRODUCT_TEMPLATE_HEADERS = [
   'Panjang (cm)',
   'Lebar (cm)',
   'Tinggi (cm)',
-  'Stok Awal',
   'Status',
   'Deskripsi',
 ] as const;
@@ -25,9 +24,9 @@ const EXAMPLE_ROWS = [
   // Baris peringatan
   ['⚠ PERHATIAN: Baris contoh di bawah ini BUKAN stok nyata. Hapus baris ini sebelum mengisi data produk Anda.'],
   // Baris contoh 1 — produk kardus
-  ['KRD-30X20X15', 'Kardus Polos 30x20x15 [CONTOH — HAPUS]', 'Kardus', 'Tanpa Merek', 'Coklat', 'Ya', 30, 20, 15, 0, 'Aktif', 'Contoh: kardus single wall'],
+  ['KRD-30X20X15', 'Kardus Polos 30x20x15 [CONTOH — HAPUS]', 'Kardus', 'Tanpa Merek', 'Coklat', 'Ya', 30, 20, 15, 'Aktif', 'Contoh: kardus single wall'],
   // Baris contoh 2 — produk biasa
-  ['PLS-40X30', 'Plastik Packing 40x30 [CONTOH — HAPUS]', 'Plastik', 'Tanpa Merek', 'Putih', 'Tidak', 40, 30, '', 0, 'Aktif', ''],
+  ['PLS-40X30', 'Plastik Packing 40x30 [CONTOH — HAPUS]', 'Plastik', 'Tanpa Merek', 'Putih', 'Tidak', 40, 30, '', 'Aktif', ''],
 ];
 
 const GUIDE_ROWS = [
@@ -36,7 +35,7 @@ const GUIDE_ROWS = [
   ['⚠ PENTING:', '', ''],
   ['1.', 'Isi data produk Anda HANYA di sheet "Produk"', ''],
   ['2.', 'HAPUS baris contoh (bertanda [CONTOH — HAPUS]) sebelum mengisi data Anda', ''],
-  ['3.', 'Stok di baris contoh sengaja diisi 0 — stok ini BUKAN stok nyata gudang Anda', ''],
+  ['3.', 'Stok TIDAK diisi lewat file ini — tambahkan stok lewat menu Barang Masuk', ''],
   ['4.', 'Jika ada baris yang salah saat upload, sistem akan memberi tahu nomor baris & penyebabnya', ''],
   [],
   ['Kolom', 'Wajib', 'Keterangan'],
@@ -49,13 +48,12 @@ const GUIDE_ROWS = [
   ['Panjang (cm)', 'Opsional', 'Angka saja, contoh: 30 atau 30,5.'],
   ['Lebar (cm)', 'Opsional', 'Angka saja.'],
   ['Tinggi (cm)', 'Opsional', 'Hanya diisi bila kolom Kardus = "Ya".'],
-  ['Stok Awal', 'Opsional', 'Diisi hanya untuk produk BARU. Pada produk yang sudah ada, kosongkan agar stok berjalan tidak tertimpa.'],
   ['Status', 'Opsional', 'Isi "Aktif" atau "Nonaktif". Kosong dianggap Aktif.'],
   ['Deskripsi', 'Opsional', 'Keterangan tambahan produk.'],
   [],
   ['Contoh Pesan Error Saat Upload', '', ''],
   ['Baris 3 (SKU: XYZ): SKU wajib diisi', '', '→ Kolom SKU di baris tersebut masih kosong'],
-  ['Baris 5 (SKU: ABC-01): Stok tidak boleh negatif', '', '→ Kolom Stok Awal diisi angka negatif'],
+  ['Baris 5 (SKU: ABC-01): Kategori terlalu panjang', '', '→ Isi kolom Kategori melebihi 255 karakter'],
 ];
 
 /** Unduh template Excel berisi sheet Produk (dengan contoh) dan sheet Petunjuk. */
