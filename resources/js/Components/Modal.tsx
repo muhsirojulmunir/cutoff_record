@@ -1,4 +1,4 @@
-﻿import React, { useEffect } from 'react';
+import React, { useEffect } from 'react';
 
 interface ModalProps {
   show: boolean;
@@ -39,16 +39,16 @@ export default function Modal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-gray-50 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-slate-950/50 backdrop-blur-md transition-opacity animate-fade-in"
         onClick={onClose}
       />
 
       {/* Modal Dialog */}
       <div
-        className={`w-full ${maxWidthClass} bg-gray-50 border border-gray-300 rounded-2xl shadow-2xl relative z-10 overflow-hidden transform transition-all animate-scale-up`}
+        className={`w-full ${maxWidthClass} bg-white border border-gray-200 rounded-2xl shadow-2xl relative z-10 overflow-hidden transform transition-all animate-scale-up`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-300/80">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h3 className="text-base font-bold text-gray-900">{title}</h3>
           <button
             onClick={onClose}
