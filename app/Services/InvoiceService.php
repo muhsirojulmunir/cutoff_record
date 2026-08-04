@@ -38,11 +38,21 @@ class InvoiceService
 
             $invoiceNumber = $this->generateInvoiceNumber(now()->format('Y-m-d'));
 
+            $initialPaid = (float) ($lockedSo->dp_amount ?? 0);
+            $grandTotal  = (float) $lockedSo->grand_total;
+            $remaining   = max(0.00, $grandTotal - $initialPaid);
+
+            $effectiveDueDate = $dueDate ?? ($lockedSo->due_date ? $lockedSo->due_date->format('Y-m-d') : null);
+
             $status = 'unpaid';
-            if ($dueDate) {
-                $dueDateTime = new \DateTime($dueDate);
+            if ($remaining == 0 && $grandTotal > 0) {
+                $status = 'paid';
+            } elseif ($initialPaid > 0) {
+                $status = 'partially_paid';
+            } elseif ($effectiveDueDate) {
+                $dueDateTime = new \DateTime($effectiveDueDate);
                 $today = new \DateTime(now()->format('Y-m-d'));
-                if ($dueDateTime < $today && (float)$lockedSo->grand_total > 0) {
+                if ($dueDateTime < $today && $remaining > 0) {
                     $status = 'overdue';
                 }
             }
@@ -79,14 +89,14 @@ class InvoiceService
                 'sales_order_id'   => $lockedSo->id,
                 'customer_id'      => $customerId,
                 'invoice_date'     => now()->format('Y-m-d'),
-                'due_date'         => $dueDate,
+                'due_date'         => $effectiveDueDate,
                 'subtotal'         => $lockedSo->subtotal,
                 'discount_amount'  => $lockedSo->discount_amount,
                 'tax_amount'       => $lockedSo->tax_amount,
                 'shipping_cost'    => $lockedSo->shipping_cost,
-                'total_amount'     => $lockedSo->grand_total,
-                'paid_amount'      => 0.00,
-                'remaining_amount' => $lockedSo->grand_total,
+                'total_amount'     => $grandTotal,
+                'paid_amount'      => $initialPaid,
+                'remaining_amount' => $remaining,
                 'status'           => $status,
                 'notes'            => $notes ?? "Dibuat otomatis dari SO {$lockedSo->so_number}",
                 'created_by'       => $userId,
