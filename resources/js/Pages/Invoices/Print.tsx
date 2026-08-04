@@ -84,7 +84,16 @@ function InvoiceTemplate({ invoice }: { invoice: Invoice }) {
   const subtotal  = Number(invoice.subtotal);
   const discount  = Number(invoice.discount_amount);
   const shipping  = Number(invoice.shipping_cost ?? 0);
-  const dp        = Number(invoice.sales_order?.dp_amount ?? invoice.paid_amount ?? 0);
+  // Ambil nominal DP dari sales_order / paid_amount, atau ekstrak dari teks catatan jika terformat "DP 30% 2.500.000"
+  let dp = Number(invoice.sales_order?.dp_amount ?? invoice.paid_amount ?? 0);
+  if (dp === 0 && invoice.notes) {
+    const match = invoice.notes.match(/dp[^\d]*(\d[\d\.\,]*)/i);
+    if (match && match[1]) {
+      const parsed = Number(match[1].replace(/[\.,]/g, ''));
+      if (!isNaN(parsed)) dp = parsed;
+    }
+  }
+
   const total     = Number(invoice.total_amount);
   const remaining = Math.max(0, total - dp);
   const phone     = invoice.sales_order?.customer_phone ?? invoice.customer?.phone ?? '';
@@ -241,11 +250,20 @@ function InvoiceTemplate({ invoice }: { invoice: Invoice }) {
           <div style={{ fontWeight: 900 }}>{COMPANY.bank}</div>
           <div style={{ fontWeight: 900, fontSize: 13 }}>{COMPANY.account}</div>
           <div style={{ fontWeight: 900 }}>{COMPANY.holder}</div>
-          {invoice.notes && (
-            <div style={{ marginTop: 8, fontSize: 10, color: '#555', fontStyle: 'italic', maxWidth: 220 }}>
-              {invoice.notes}
-            </div>
-          )}
+          {(() => {
+            // Filter out DP text from notes so it doesn't show under PAYMENT TO
+            const cleanNotes = invoice.notes
+              ?.split('\n')
+              .filter((line) => !/^dp\b/i.test(line.trim()))
+              .join('\n')
+              .trim();
+
+            return cleanNotes ? (
+              <div style={{ marginTop: 8, fontSize: 10, color: '#555', fontStyle: 'italic', maxWidth: 220 }}>
+                {cleanNotes}
+              </div>
+            ) : null;
+          })()}
         </div>
 
         {/* RIGHT — Summary & Signature */}
