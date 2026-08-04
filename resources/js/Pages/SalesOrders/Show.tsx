@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import Alert from '../../Components/Alert';
@@ -23,6 +23,7 @@ interface DBProduct {
   id: number;
   name: string;
   sku: string;
+  stock?: number;
 }
 
 interface SalesOrderItem {
@@ -331,6 +332,25 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
       {errors?.error && <Alert message={errors.error} type="error" />}
 
       <div className="space-y-6">
+        {/* Prominent Top Error Banner */}
+        {(flash.error || errors?.error) && (
+          <div className="p-5 bg-rose-50 border-2 border-rose-500 rounded-2xl flex items-start gap-4 shadow-xl shadow-rose-500/10 transition-all animate-shake">
+            <div className="p-2.5 bg-rose-600 text-white rounded-xl shrink-0 mt-0.5 shadow-md">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+            </div>
+            <div className="flex-1 space-y-1">
+              <h3 className="text-sm font-extrabold text-rose-800 uppercase tracking-wide flex items-center gap-2">
+                <span>⚠️ PERHATIAN: PROSES TIDAK DAPAT DILANJUTKAN</span>
+              </h3>
+              <p className="text-xs text-rose-700 font-semibold leading-relaxed">
+                {flash.error || errors?.error}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Header Section */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-4">
@@ -612,29 +632,56 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200/60 text-xs">
-                    {salesOrder.items.map((item) => (
-                      <tr key={item.id} className="hover:bg-teal-50/40 transition-all">
-                        <td className="px-6 py-4">
-                          <p className="font-bold text-gray-800">{item.product_name}</p>
-                          <p className="text-[10px] text-gray-400 font-mono mt-0.5">{item.sku}</p>
-                        </td>
-                        <td className="px-6 py-4 text-right text-gray-700">
-                          Rp {Number(item.price).toLocaleString('id-ID')}
-                        </td>
-                        <td className="px-6 py-4 text-center text-gray-700 whitespace-nowrap">
-                          {item.quantity} <span className="text-[10px] text-gray-400 uppercase font-bold ml-0.5">{item.unit}</span>
-                        </td>
-                        <td className="px-6 py-4 text-right text-rose-400">
-                          {Number(item.discount_amount) > 0 ? `-Rp ${Number(item.discount_amount).toLocaleString('id-ID')}` : '—'}
-                        </td>
-                        <td className="px-6 py-4 text-right text-gray-700">
-                          {Number(item.tax_amount) > 0 ? `+Rp ${Number(item.tax_amount).toLocaleString('id-ID')}` : '—'}
-                        </td>
-                        <td className="px-6 py-4 text-right font-bold text-emerald-400">
-                          Rp {Number(item.subtotal).toLocaleString('id-ID')}
-                        </td>
-                      </tr>
-                    ))}
+                    {salesOrder.items.map((item) => {
+                      const itemStock = item.product?.stock ?? null;
+                      const isShortage = itemStock !== null && itemStock < item.quantity && ['draft', 'pending_approval'].includes(salesOrder.status);
+
+                      return (
+                        <tr key={item.id} className={isShortage ? "bg-rose-50/80 hover:bg-rose-100/80 border-l-4 border-l-rose-500 transition-all" : "hover:bg-teal-50/40 transition-all"}>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2">
+                              <p className="font-bold text-gray-800">{item.product_name}</p>
+                              {isShortage && (
+                                <span className="px-2 py-0.5 rounded-md bg-rose-600 text-white text-[10px] font-extrabold uppercase tracking-wide flex items-center gap-1 shadow-sm">
+                                  <span>⚠️ Stok Kurang</span>
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-gray-400 font-mono mt-0.5">{item.sku}</p>
+                            {isShortage && (
+                              <div className="mt-1.5 p-2 rounded-lg bg-rose-100/80 border border-rose-300 flex items-center justify-between text-xs">
+                                <span className="text-rose-800 font-semibold">
+                                  Stok Fisik Tersedia: <strong className="font-extrabold underline">{itemStock} pcs</strong> (Dibutuhkan: {item.quantity} pcs)
+                                </span>
+                                <Link
+                                  href="/products"
+                                  className="ml-3 px-2.5 py-1 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-[11px] font-bold rounded-lg transition-all shrink-0 shadow-sm"
+                                >
+                                  Tambah Stok →
+                                </Link>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-right text-gray-700">
+                            Rp {Number(item.price).toLocaleString('id-ID')}
+                          </td>
+                          <td className="px-6 py-4 text-center text-gray-700 whitespace-nowrap">
+                            <span className={isShortage ? "font-bold text-rose-700 bg-rose-200/60 px-2 py-1 rounded" : ""}>
+                              {item.quantity} <span className="text-[10px] text-gray-400 uppercase font-bold ml-0.5">{item.unit}</span>
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right text-rose-400">
+                            {Number(item.discount_amount) > 0 ? `-Rp ${Number(item.discount_amount).toLocaleString('id-ID')}` : '—'}
+                          </td>
+                          <td className="px-6 py-4 text-right text-gray-700">
+                            {Number(item.tax_amount) > 0 ? `+Rp ${Number(item.tax_amount).toLocaleString('id-ID')}` : '—'}
+                          </td>
+                          <td className="px-6 py-4 text-right font-bold text-emerald-400">
+                            Rp {Number(item.subtotal).toLocaleString('id-ID')}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
