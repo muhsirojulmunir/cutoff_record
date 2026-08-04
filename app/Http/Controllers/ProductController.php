@@ -140,11 +140,8 @@ class ProductController extends Controller
     {
         Gate::authorize('product.edit');
 
-        $categories = Category::where('status', 'active')->orderBy('name')->get(['id', 'name']);
-
         return Inertia::render('Products/Edit', [
-            'product'    => $product,
-            'categories' => $categories,
+            'product' => $product->only(['id', 'sku', 'name', 'photo_url']),
         ]);
     }
 
