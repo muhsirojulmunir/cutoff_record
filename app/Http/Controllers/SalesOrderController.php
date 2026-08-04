@@ -163,9 +163,9 @@ class SalesOrderController extends Controller
         Gate::authorize('sales_order.create');
 
         try {
-            $this->salesOrderService->create($request->validated(), auth()->id());
+            $salesOrder = $this->salesOrderService->create($request->validated(), auth()->id());
 
-            return redirect()->route('sales-orders.index')
+            return redirect()->route('sales-orders.show', $salesOrder->id)
                 ->with('success', 'Sales Order berhasil dibuat.');
         } catch (Exception $e) {
             return back()->withErrors(['error' => $e->getMessage()]);
