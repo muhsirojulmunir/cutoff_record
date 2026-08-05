@@ -174,6 +174,8 @@ Route::middleware('auth')->group(function () {
         ->name('purchase-orders.pay-dp');
     Route::post('/purchase-orders/{purchase_order}/validate-receiving', [PurchaseOrderController::class, 'validateReceiving'])
         ->name('purchase-orders.validate-receiving');
+    Route::post('/purchase-orders/{purchase_order}/upload-payment-proof', [PurchaseOrderController::class, 'uploadPaymentProof'])
+        ->name('purchase-orders.upload-payment-proof');
 
     Route::resource('purchase-orders', PurchaseOrderController::class);
 

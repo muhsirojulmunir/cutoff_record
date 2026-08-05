@@ -24,6 +24,7 @@ class PurchaseOrder extends Model
         'is_free_shipping',
         'grand_total',
         'notes',
+        'payment_proof_path',
         'created_by',
         // Leader Approval
         'leader_approved_by',

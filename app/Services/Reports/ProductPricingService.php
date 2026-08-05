@@ -50,8 +50,17 @@ class ProductPricingService
      */
     public function costSubquery(): Builder
     {
-        $qty  = 'COALESCE(NULLIF(purchase_order_items.accepted_quantity, 0), purchase_order_items.received_quantity, purchase_order_items.quantity)';
-        $cost = "{$qty} * COALESCE(purchase_order_items.validated_unit_price, purchase_order_items.unit_price)";
+        $qty = 'COALESCE(NULLIF(purchase_order_items.accepted_quantity, 0), purchase_order_items.received_quantity, purchase_order_items.quantity)';
+
+        // Harga barang: koreksi Finance dipakai bila ada, kalau tidak harga PO.
+        $goodsPrice = 'COALESCE(purchase_order_items.validated_unit_price, purchase_order_items.unit_price)';
+
+        // Ongkir per unit = selisih landed price terhadap harga barang. Ditambahkan
+        // terpisah agar tetap ikut terhitung walau Finance mengoreksi harga barang;
+        // kalau digabung lewat COALESCE, koreksi Finance akan menghapus ongkirnya.
+        $shippingPerUnit = 'COALESCE(purchase_order_items.landed_unit_price - purchase_order_items.unit_price, 0)';
+
+        $cost = "{$qty} * ({$goodsPrice} + {$shippingPerUnit})";
 
         return DB::table('purchase_order_items')
             ->join('purchase_orders', 'purchase_orders.id', '=', 'purchase_order_items.purchase_order_id')

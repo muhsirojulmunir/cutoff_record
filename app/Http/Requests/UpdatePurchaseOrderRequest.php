@@ -28,6 +28,8 @@ class UpdatePurchaseOrderRequest extends FormRequest
             # lama masih bisa disimpan ulang tanpa dianggap tidak valid.
             'payment_terms'           => ['required', 'in:dp_50,cash,tempo_7_days,tempo_14_days,cash_to_cash'],
             'is_free_shipping'        => ['required', 'boolean'],
+            'shipping_cost'           => ['nullable', 'numeric', 'min:0'],
+            'payment_proof'           => ['nullable', 'file', 'mimes:jpeg,png,jpg,webp,pdf', 'max:5120'],
             'notes'                   => ['nullable', 'string', 'max:1000'],
             'items'                   => ['required', 'array', 'min:1'],
             'items.*.product_id'      => ['required', 'exists:products,id'],

@@ -21,6 +21,17 @@ class PurchaseOrderService
             $orderDate = $data['order_date'];
             $poNumber = $this->generatePoNumber($orderDate);
 
+            $isFreeShipping = (bool) ($data['is_free_shipping'] ?? false);
+            $shippingCost = $isFreeShipping ? 0.0 : (float) ($data['shipping_cost'] ?? 0);
+
+            // Calculate total quantity across all items to distribute shipping cost proportionally
+            $totalQuantity = 0;
+            foreach ($data['items'] as $item) {
+                $totalQuantity += (int) ($item['quantity'] ?? 1);
+            }
+
+            $shippingPerUnit = $totalQuantity > 0 ? ($shippingCost / $totalQuantity) : 0.0;
+
             // Calculate totals and compile item snapshots
             $itemsData = [];
             $subtotal = 0;
@@ -28,26 +39,27 @@ class PurchaseOrderService
             foreach ($data['items'] as $item) {
                 $product = Product::findOrFail($item['product_id']);
 
-                $price = $item['price'] ?? $product->purchase_price;
-                $quantity = $item['quantity'];
+                $price = (float) ($item['price'] ?? $product->purchase_price);
+                $quantity = (int) $item['quantity'];
                 $itemSubtotal = $price * $quantity;
+                $landedUnitPrice = $price + $shippingPerUnit;
 
                 $itemsData[] = [
-                    'product_id'      => $product->id,
-                    'product_code'    => $product->sku, // Snapshot SKU
-                    'product_name'    => $product->name, // Snapshot Name
-                    'quantity'        => $quantity,
-                    'unit'            => 'pcs',
-                    'unit_price'      => $price, // Snapshot Price
-                    'subtotal'        => $itemSubtotal,
+                    'product_id'        => $product->id,
+                    'product_code'      => $product->sku, // Snapshot SKU
+                    'product_name'      => $product->name, // Snapshot Name
+                    'quantity'          => $quantity,
+                    'unit'              => 'pcs',
+                    'unit_price'        => $price, // Snapshot Price
+                    'landed_unit_price' => $landedUnitPrice, // Price + allocated shipping per unit
+                    'subtotal'          => $itemSubtotal,
                     'received_quantity' => 0,
                 ];
 
                 $subtotal += $itemSubtotal;
             }
 
-            // Ongkir baru diketahui saat barang tiba, jadi grand total awal = subtotal.
-            $grandTotal = $subtotal;
+            $grandTotal = $subtotal + $shippingCost;
 
             // Create header
             $purchaseOrder = PurchaseOrder::create([
@@ -57,13 +69,14 @@ class PurchaseOrderService
                 'order_date'                => $orderDate,
                 'production_lead_time_days' => $data['production_lead_time_days'] ?? null,
                 'payment_terms'             => $data['payment_terms'] ?? 'cash_to_cash',
-                'is_free_shipping'          => (bool) ($data['is_free_shipping'] ?? false),
+                'is_free_shipping'          => $isFreeShipping,
                 'status'                    => 'draft',
                 'payment_status'            => 'unpaid',
                 'subtotal'                  => $subtotal,
-                'shipping_cost'             => 0,
+                'shipping_cost'             => $shippingCost,
                 'grand_total'               => $grandTotal,
                 'notes'                     => $data['notes'] ?? null,
+                'payment_proof_path'        => $data['payment_proof_path'] ?? null,
                 'created_by'                => $userId,
             ]);
 
@@ -86,33 +99,44 @@ class PurchaseOrderService
         }
 
         return DB::transaction(function () use ($po, $data) {
+            $isFreeShipping = (bool) ($data['is_free_shipping'] ?? $po->is_free_shipping);
+            $shippingCost = $isFreeShipping ? 0.0 : (float) ($data['shipping_cost'] ?? $po->shipping_cost);
+
+            // Calculate total quantity to distribute shipping cost per unit
+            $totalQuantity = 0;
+            foreach ($data['items'] as $item) {
+                $totalQuantity += (int) ($item['quantity'] ?? 1);
+            }
+
+            $shippingPerUnit = $totalQuantity > 0 ? ($shippingCost / $totalQuantity) : 0.0;
+
             $itemsData = [];
             $subtotal = 0;
 
             foreach ($data['items'] as $item) {
                 $product = Product::findOrFail($item['product_id']);
 
-                $price = $item['price'] ?? $product->purchase_price;
-                $quantity = $item['quantity'];
+                $price = (float) ($item['price'] ?? $product->purchase_price);
+                $quantity = (int) $item['quantity'];
                 $itemSubtotal = $price * $quantity;
+                $landedUnitPrice = $price + $shippingPerUnit;
 
                 $itemsData[] = [
-                    'product_id'      => $product->id,
-                    'product_code'    => $product->sku,
-                    'product_name'    => $product->name,
-                    'quantity'        => $quantity,
-                    'unit'            => 'pcs',
-                    'unit_price'      => $price,
-                    'subtotal'        => $itemSubtotal,
+                    'product_id'        => $product->id,
+                    'product_code'      => $product->sku,
+                    'product_name'      => $product->name,
+                    'quantity'          => $quantity,
+                    'unit'              => 'pcs',
+                    'unit_price'        => $price,
+                    'landed_unit_price' => $landedUnitPrice,
+                    'subtotal'          => $itemSubtotal,
                     'received_quantity' => 0,
                 ];
 
                 $subtotal += $itemSubtotal;
             }
 
-            $isFreeShipping = (bool) ($data['is_free_shipping'] ?? $po->is_free_shipping);
-            $shipping = $isFreeShipping ? 0 : (float) $po->shipping_cost;
-            $grandTotal = $subtotal + $shipping;
+            $grandTotal = $subtotal + $shippingCost;
 
             $po->update([
                 'supplier_id'               => $data['supplier_id'],
@@ -122,9 +146,10 @@ class PurchaseOrderService
                 'payment_terms'             => $data['payment_terms'] ?? $po->payment_terms,
                 'is_free_shipping'          => $isFreeShipping,
                 'subtotal'                  => $subtotal,
-                'shipping_cost'             => $shipping,
+                'shipping_cost'             => $shippingCost,
                 'grand_total'               => $grandTotal,
                 'notes'                     => $data['notes'] ?? null,
+                'payment_proof_path'        => $data['payment_proof_path'] ?? $po->payment_proof_path,
             ]);
 
             // Recreate items
@@ -387,6 +412,10 @@ class PurchaseOrderService
                 }
 
                 $lockedPo->update(['shipping_cost' => $shippingCost]);
+
+                // Ongkir berubah ⇒ alokasi per unit ikut dihitung ulang, kalau
+                // tidak landed price tertinggal di nilai lama dan HPP jadi salah.
+                $this->reallocateShipping($lockedPo, $shippingCost);
             }
 
             $validatedSubtotal = 0.0;
@@ -521,6 +550,27 @@ class PurchaseOrderService
     /**
      * Generate unique PO Number safely using database pessimistic lock.
      */
+    /**
+     * Bagi ongkir ke seluruh unit barang pada PO, lalu simpan sebagai
+     * landed_unit_price tiap item.
+     *
+     * Dipakai ulang saat ongkir diubah di form penerimaan supaya alokasinya
+     * tidak tertinggal di nilai lama.
+     */
+    protected function reallocateShipping(PurchaseOrder $po, float $shippingCost): void
+    {
+        $items = $po->items()->get();
+        $totalQuantity = (int) $items->sum('quantity');
+
+        $shippingPerUnit = $totalQuantity > 0 ? ($shippingCost / $totalQuantity) : 0.0;
+
+        foreach ($items as $item) {
+            $item->update([
+                'landed_unit_price' => (float) $item->unit_price + $shippingPerUnit,
+            ]);
+        }
+    }
+
     protected function generatePoNumber(string $dateString): string
     {
         $date = new \DateTime($dateString);
