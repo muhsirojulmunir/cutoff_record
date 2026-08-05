@@ -17,6 +17,9 @@ class CustomerController extends Controller
     {
         Gate::authorize('customer.view');
 
+        // Otomatis rapikan seluruh kode customer agar selalu berurutan dari CUST-01
+        $this->renumberCustomerCodes();
+
         $search = $request->input('search');
         $status = $request->input('status');
 
@@ -31,7 +34,7 @@ class CustomerController extends Controller
             ->when($status, function ($query, $status) {
                 $query->where('status', $status);
             })
-            ->orderBy('customer_code')
+            ->orderBy('id')
             ->paginate(10)
             ->withQueryString();
 
@@ -49,23 +52,32 @@ class CustomerController extends Controller
     }
 
     /**
-     * Nomor urut customer dibuat otomatis & berurutan khusus kode CUST-XX: CUST-01, CUST-02, dst.
-     * Kode legacy lama (seperti CUS-000030) tidak akan mengganggu urutan CUST-01.
+     * Otomatis merapikan penomoran kode seluruh customer yang ada di database
+     * agar selalu berurutan murni: CUST-01, CUST-02, CUST-03, dst.
      */
+    private function renumberCustomerCodes(): void
+    {
+        $customers = Customer::orderBy('id')->get();
+        if ($customers->isEmpty()) {
+            return;
+        }
+
+        // Tahap 1: Rename sementara agar tidak bentrok dengan unique constraint
+        foreach ($customers as $customer) {
+            $customer->update(['customer_code' => 'TEMP-' . $customer->id]);
+        }
+
+        // Tahap 2: Urutkan murni dari CUST-01
+        foreach ($customers as $index => $customer) {
+            $code = 'CUST-' . str_pad((string) ($index + 1), 2, '0', STR_PAD_LEFT);
+            $customer->update(['customer_code' => $code]);
+        }
+    }
+
     private function generateCustomerCode(): string
     {
-        $lastNumber = Customer::withTrashed()
-            ->where('customer_code', 'like', 'CUST-%')
-            ->pluck('customer_code')
-            ->map(function ($code) {
-                if (preg_match('/^CUST-(\d+)$/i', trim((string) $code), $matches)) {
-                    return (int) $matches[1];
-                }
-                return 0;
-            })
-            ->max() ?? 0;
-
-        return 'CUST-' . str_pad((string) ($lastNumber + 1), 2, '0', STR_PAD_LEFT);
+        $count = Customer::count();
+        return 'CUST-' . str_pad((string) ($count + 1), 2, '0', STR_PAD_LEFT);
     }
 
     public function store(CustomerRequest $request): RedirectResponse
@@ -78,6 +90,9 @@ class CustomerController extends Controller
         $data['created_by'] = Auth::id();
 
         Customer::create($data);
+
+        // Rapikan kembali agar urutan dijamin berurutan murni dari CUST-01
+        $this->renumberCustomerCodes();
 
         return redirect()->route('customers.index')
             ->with('success', 'Customer berhasil ditambahkan.');
@@ -118,6 +133,9 @@ class CustomerController extends Controller
         Gate::authorize('customer.delete');
 
         $customer->delete();
+
+        // Rapikan kembali agar urutan dijamin berurutan murni setelah ada data yang dihapus
+        $this->renumberCustomerCodes();
 
         return redirect()->route('customers.index')
             ->with('success', 'Customer berhasil dihapus.');
