@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Head, router } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import DownloadHistory from '../../Components/DownloadHistory';
+import { fetchAndDownloadExcel } from '../../Utils/exportExcel';
 
 interface HppRow {
   id: number;
@@ -72,16 +73,23 @@ export default function Hpp({
   }
 
   const [historyKey, setHistoryKey] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
-  function handleExportExcel() {
+  async function handleExportExcel() {
     const params = new URLSearchParams();
     if (search) params.append('search', search);
     if (dateFrom) params.append('date_from', dateFrom);
     if (dateTo) params.append('date_to', dateTo);
-    window.location.href = `/reports/export/hpp?${params.toString()}`;
 
-    // Riwayat dicatat di server; beri jeda agar barisnya sudah tersimpan.
-    window.setTimeout(() => setHistoryKey((k) => k + 1), 1200);
+    setExporting(true);
+    setExportError(null);
+
+    const error = await fetchAndDownloadExcel(`/reports/export/hpp?${params.toString()}`);
+
+    setExporting(false);
+    if (error) setExportError(error);
+    else setHistoryKey((k) => k + 1);
   }
 
   const marginPositive = summary.margin >= 0;
@@ -102,12 +110,13 @@ export default function Hpp({
         <DownloadHistory refreshKey={historyKey} />
         <button
           onClick={handleExportExcel}
-          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-emerald-200/40 transition-all shrink-0"
+          disabled={exporting}
+          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-emerald-200/40 transition-all shrink-0 disabled:opacity-60"
         >
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
           </svg>
-          Export Excel (Semua Data)
+          {exporting ? 'Menyiapkan…' : 'Export Excel (Semua Data)'}
         </button>
         </div>
       </div>

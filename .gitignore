@@ -24,3 +24,7 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Berkas hasil export yang tersimpan sementara untuk riwayat unduhan
+/storage/app/private/exports
+/storage/app/exports

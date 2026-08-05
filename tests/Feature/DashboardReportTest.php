@@ -332,12 +332,19 @@ class DashboardReportTest extends TestCase
         $response->assertStatus(403);
     }
 
+    /**
+     * Export kini mengembalikan data JSON; berkas .xlsx-nya dirakit di
+     * peramban memakai SheetJS, menggantikan unduhan CSV sebelumnya.
+     */
     /** @test */
-    public function test_csv_export_endpoint_returns_download_stream(): void
+    public function test_export_endpoint_returns_xlsx_payload(): void
     {
         $response = $this->actingAs($this->admin)->get('/reports/export/sales');
+
         $response->assertStatus(200);
-        $this->assertTrue(str_contains($response->headers->get('content-type'), 'text/csv'));
+        $response->assertJsonStructure(['file_name', 'sheet_name', 'module', 'headers', 'rows']);
+
+        $this->assertStringEndsWith('.xlsx', $response->json('file_name'));
     }
 
     /** @test */

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Head, router } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import DownloadHistory from '../../Components/DownloadHistory';
+import { fetchAndDownloadExcel } from '../../Utils/exportExcel';
 
 interface Category { id: number; name: string; }
 interface ProductItem {
@@ -62,17 +63,23 @@ export default function AllStock({
   }
 
   const [historyKey, setHistoryKey] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
-  function handleExportExcel() {
+  async function handleExportExcel() {
     const params = new URLSearchParams();
     if (search) params.append('search', search);
     if (categoryId) params.append('category_id', categoryId);
     if (date) params.append('date', date);
-    window.location.href = `/all-stock/export?${params.toString()}`;
 
-    // Riwayat dicatat di server; beri jeda sebentar agar barisnya sudah ada
-    // saat panel menyegarkan diri.
-    window.setTimeout(() => setHistoryKey((k) => k + 1), 1200);
+    setExporting(true);
+    setExportError(null);
+
+    const error = await fetchAndDownloadExcel(`/all-stock/export?${params.toString()}`);
+
+    setExporting(false);
+    if (error) setExportError(error);
+    else setHistoryKey((k) => k + 1);
   }
 
   return (
@@ -91,15 +98,22 @@ export default function AllStock({
         <DownloadHistory refreshKey={historyKey} />
         <button
           onClick={handleExportExcel}
-          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-emerald-200/40 transition-all shrink-0"
+          disabled={exporting}
+          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-emerald-200/40 transition-all shrink-0 disabled:opacity-60"
         >
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
           </svg>
-          Export Excel (Semua Stok)
+          {exporting ? 'Menyiapkan…' : 'Export Excel (Semua Stok)'}
         </button>
         </div>
       </div>
+
+      {exportError && (
+        <p className="mb-4 px-4 py-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+          {exportError}
+        </p>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
