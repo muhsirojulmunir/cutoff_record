@@ -1,5 +1,5 @@
 import { Link, router, usePage } from '@inertiajs/react';
-import { ReactNode, useLayoutEffect, useRef, useState } from 'react';
+import { ReactNode, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import NotificationBell from '../Components/NotificationBell';
 import { PageProps } from '../Types';
@@ -31,6 +31,14 @@ const navSections: NavSection[] = [
         href: '/dashboard',
         permission: 'dashboard.view',
         icon: 'M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25',
+      },
+      {
+        // Tanpa permission: isinya sudah disaring per hak akses masing-masing,
+        // jadi user yang tidak menyetujui apa pun hanya melihat halaman kosong.
+        label: 'Pusat Approval',
+        href: '/approval',
+        matchPrefix: true,
+        icon: 'M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
       },
     ],
   },
@@ -373,6 +381,7 @@ export default function AppLayout({ children }: Props) {
   const permissions = user?.permissions ?? [];
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [menuSearch, setMenuSearch] = useState('');
   const [currentPath] = useState(window.location.pathname);
   const navRef = useRef<HTMLElement>(null);
 
@@ -410,6 +419,36 @@ export default function AppLayout({ children }: Props) {
     return permissions.includes(item.permission);
   }
 
+  /**
+   * Menu disaring berdasarkan kata kunci sehingga tidak perlu menggulir
+   * daftar yang panjang. Judul section ikut dicocokkan agar mengetik
+   * "laporan" memunculkan seluruh isi Laporan Center.
+   */
+  const filteredSections = useMemo(() => {
+    const keyword = menuSearch.trim().toLowerCase();
+
+    return navSections
+      .map((section) => {
+        const visible = section.items.filter(canSee);
+        if (keyword === '') return { ...section, items: visible };
+
+        // Judul section hanya dicocokkan untuk kata kunci yang cukup panjang;
+        // kata pendek seperti "po" akan menyambar "Laporan" dan memunculkan
+        // seluruh isinya, bukan menu yang dicari.
+        const sectionMatches = keyword.length >= 4 && section.title.toLowerCase().includes(keyword);
+
+        return {
+          ...section,
+          items: sectionMatches
+            ? visible
+            : visible.filter((item) => item.label.toLowerCase().includes(keyword)),
+        };
+      })
+      .filter((section) => section.items.length > 0);
+  }, [menuSearch, permissions]);
+
+  const noMenuFound = menuSearch.trim() !== '' && filteredSections.length === 0;
+
   function handleLogout() {
     router.post('/logout');
   }
@@ -434,11 +473,48 @@ export default function AppLayout({ children }: Props) {
           </span>
         </div>
 
+        {/* Pencarian menu — hanya berguna saat sidebar terbuka */}
+        {sidebarOpen && (
+          <div className="px-3 pt-3 shrink-0">
+            <div className="relative">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
+                className="w-3.5 h-3.5 text-teal-400/60 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.637 10.637z" />
+              </svg>
+              <input
+                type="text"
+                value={menuSearch}
+                onChange={(e) => setMenuSearch(e.target.value)}
+                placeholder="Cari menu..."
+                autoComplete="off"
+                className="w-full pl-8 pr-8 py-2 rounded-lg bg-teal-900/60 border border-teal-800/60 text-white text-xs placeholder-teal-400/50 focus:outline-none focus:border-teal-500 transition-colors"
+              />
+              {menuSearch !== '' && (
+                <button
+                  type="button"
+                  onClick={() => setMenuSearch('')}
+                  title="Hapus pencarian"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-teal-400/60 hover:text-white transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-3 h-3">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Nav */}
         <nav ref={navRef} className="flex-1 min-h-0 py-4 overflow-y-auto overflow-x-hidden space-y-5 px-2 sidebar-scroll">
-          {navSections.map((section) => {
-            const visible = section.items.filter(canSee);
-            if (visible.length === 0) return null;
+          {noMenuFound && (
+            <p className="px-3 text-xs text-teal-400/60">
+              Menu "{menuSearch}" tidak ditemukan.
+            </p>
+          )}
+
+          {filteredSections.map((section) => {
+            const visible = section.items;
 
             return (
               <div key={section.title || 'dashboard'}>
