@@ -4,6 +4,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ReportController;
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\ApprovalCenterController;
 use App\Http\Controllers\CashBankAccountController;
 use App\Http\Controllers\CashBankTransactionController;
 use App\Http\Controllers\CategoryController;
@@ -55,6 +56,10 @@ Route::middleware('auth')->group(function () {
     });
 
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
+
+    // Pusat Approval — seluruh dokumen yang menunggu persetujuan user ini.
+    // Tanpa permission khusus: isinya sudah disaring per hak akses masing-masing.
+    Route::get('/approval', [ApprovalCenterController::class, 'index'])->name('approval.index');
 
     // ── Reports ─────────────────────────────────────────────────────────────
     Route::get('/reports/sales',         [ReportController::class, 'sales'])->name('reports.sales');
