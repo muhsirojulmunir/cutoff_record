@@ -29,6 +29,7 @@ use App\Http\Controllers\FactoryReceivableController;
 use App\Http\Controllers\FactoryInvoiceController;
 use App\Http\Controllers\StockAdjustmentController;
 use App\Http\Controllers\StockController;
+use App\Http\Controllers\StockReturnController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\WarehouseController;
@@ -198,6 +199,11 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/stock-movements', [StockMovementController::class, 'index'])->name('stock-movements.index');
     Route::post('/stock-movements/adjust', [StockMovementController::class, 'adjust'])->name('stock-movements.adjust');
+
+    // Stock Returns (Retur Barang)
+    Route::post('/stock-returns/{stockReturn}/approve', [StockReturnController::class, 'approve'])->name('stock-returns.approve');
+    Route::post('/stock-returns/{stockReturn}/reject',  [StockReturnController::class, 'reject'])->name('stock-returns.reject');
+    Route::resource('stock-returns', StockReturnController::class)->except(['edit', 'update', 'destroy']);
 
     // Factory Receivables (Piutang Pabrik)
     Route::post('/factory-receivables/{factory_receivable}/cancel', [FactoryReceivableController::class, 'cancel'])
