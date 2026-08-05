@@ -297,6 +297,13 @@ const navSections: NavSection[] = [
         icon: 'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801-1.206a2.25 2.25 0 00-3.302 0m3.302 0a2.247 2.247 0 011.85 1.197M1.5 10.125C1.5 8.953 2.453 8 3.625 8h10.75c1.172 0 2.125.953 2.125 2.125v7.75c0 1.172-.953 2.125-2.125 2.125H3.625A2.125 2.125 0 011.5 17.875v-7.75z',
       },
       {
+        label: 'Retur Stok',
+        href: '/stock-returns',
+        permission: 'stock_return.view',
+        matchPrefix: true,
+        icon: 'M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3',
+      },
+      {
         label: 'Laporan Penjualan',
         href: '/reports/sales',
         permission: 'reports.sales.view',
