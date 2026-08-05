@@ -70,14 +70,14 @@ export default function AllStock({
 
   return (
     <AppLayout>
-      <Head title="All Stock — Stok Produk & History" />
+      <Head title="All Stock — Stok Produk" />
 
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">All Stock</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Daftar stok produk real-time dan histori stok per tanggal di masa lalu
+            Daftar stok produk real-time dan histori stok per tanggal
           </p>
         </div>
         <button
@@ -143,7 +143,7 @@ export default function AllStock({
             />
           </div>
 
-          {/* Category */}
+          {/* Category Filter */}
           <div className="min-w-[180px]">
             <select
               value={categoryId}
@@ -191,41 +191,32 @@ export default function AllStock({
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table: HANYA SKU, NAMA PRODUK, DAN STOK */}
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/60 text-gray-500 text-[11px] font-bold uppercase tracking-wider">
-                <th className="py-3 px-5 whitespace-nowrap">SKU</th>
-                <th className="py-3 px-4">Nama Produk</th>
-                <th className="py-3 px-4 whitespace-nowrap">Kategori</th>
-                <th className="py-3 px-5 text-center whitespace-nowrap">
-                  {summary.snapshot_date ? `Stok Per ${summary.snapshot_date}` : 'Stok Real-time'}
+                <th className="py-3.5 px-6 whitespace-nowrap w-48">SKU</th>
+                <th className="py-3.5 px-6">Nama Produk</th>
+                <th className="py-3.5 px-6 text-center whitespace-nowrap w-48">
+                  {summary.snapshot_date ? `Stok Per ${summary.snapshot_date}` : 'Stok'}
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-xs text-gray-700">
               {products.data.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="py-12 text-center text-gray-400">
+                  <td colSpan={3} className="py-12 text-center text-gray-400">
                     Tidak ada data stok produk ditemukan.
                   </td>
                 </tr>
               )}
               {products.data.map((item) => (
                 <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="py-3 px-5 font-mono text-xs font-bold text-violet-600 whitespace-nowrap">{item.sku}</td>
-                  <td className="py-3 px-4 font-semibold text-gray-800">
-                    <div className="flex items-center gap-2">
-                      {item.photo_url && (
-                        <img src={item.photo_url} alt={item.name} className="w-7 h-7 rounded-lg object-cover border border-gray-200 shrink-0" />
-                      )}
-                      <span>{item.name}</span>
-                    </div>
-                  </td>
-                  <td className="py-3 px-4 text-gray-500 whitespace-nowrap">{item.category_name}</td>
-                  <td className="py-3 px-5 text-center font-extrabold text-gray-900 font-mono text-sm whitespace-nowrap">
+                  <td className="py-3.5 px-6 font-mono text-xs font-bold text-violet-600 whitespace-nowrap">{item.sku}</td>
+                  <td className="py-3.5 px-6 font-semibold text-gray-800">{item.name}</td>
+                  <td className="py-3.5 px-6 text-center font-extrabold text-gray-900 font-mono text-sm whitespace-nowrap">
                     <span className={`inline-flex px-3 py-1 rounded-full ${item.stock > 0 ? 'bg-teal-50 text-teal-700 border border-teal-200' : 'bg-rose-50 text-rose-600 border border-rose-200'}`}>
                       {fmt(item.stock)}
                     </span>
