@@ -49,6 +49,8 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
     order_date: new Date().toISOString().split('T')[0],
     payment_terms: 'cash',
     is_free_shipping: true,
+    shipping_cost: 0,
+    payment_proof: null as File | null,
     notes: '',
     items: [] as OrderItemInput[],
   });
@@ -232,7 +234,11 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
 
   // Calculate live summary
   const subtotal = localItems.reduce((sum, item) => sum + (item.subtotal || 0), 0);
-  const grandTotal = subtotal;
+  const shippingCost = data.is_free_shipping ? 0 : Number(data.shipping_cost) || 0;
+  const grandTotal = subtotal + shippingCost;
+
+  const totalQty = localItems.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+  const shippingPerUnit = totalQty > 0 ? (shippingCost / totalQty) : 0;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -505,19 +511,29 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
 
                 {/* Ongkir */}
                 <div className="pt-3 space-y-2">
-                  <span className="text-gray-500">Ongkir</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 text-sm font-medium">Ongkir</span>
+                    {!data.is_free_shipping && (
+                      <span className="text-xs font-mono font-semibold text-teal-600">
+                        Rp {shippingCost.toLocaleString('id-ID')}
+                      </span>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     {[
                       { value: true, label: 'Free Ongkir' },
-                      { value: false, label: 'Tidak Free' },
+                      { value: false, label: 'Tidak Free (Ada Ongkir)' },
                     ].map((option) => (
                       <button
                         key={String(option.value)}
                         type="button"
-                        onClick={() => setData('is_free_shipping', option.value)}
+                        onClick={() => {
+                          setData('is_free_shipping', option.value);
+                          if (option.value) setData('shipping_cost', 0);
+                        }}
                         className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all
                           ${data.is_free_shipping === option.value
-                            ? 'bg-teal-50 border-teal-400 text-teal-700'
+                            ? 'bg-teal-50 border-teal-400 text-teal-700 shadow-sm'
                             : 'bg-gray-50 border-gray-300 text-gray-500 hover:border-gray-400'
                           }`}
                       >
@@ -525,18 +541,37 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
                       </button>
                     ))}
                   </div>
+
+                  {!data.is_free_shipping && (
+                    <div className="space-y-1.5 pt-1">
+                      <label className="block text-xs font-semibold text-gray-700">Nominal Biaya Ongkir (Rp)</label>
+                      <CurrencyInput
+                        value={data.shipping_cost}
+                        onChange={(v) => setData('shipping_cost', v)}
+                        placeholder="0"
+                        className="w-full px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-xs font-mono focus:ring-2 focus:ring-teal-500"
+                      />
+                      {totalQty > 0 && shippingCost > 0 && (
+                        <div className="p-2 bg-teal-50 border border-teal-200 rounded-xl text-[11px] text-teal-700 leading-relaxed">
+                          💡 Ongkir dibagi ke total qty ({totalQty} pcs): <strong>+Rp {Math.round(shippingPerUnit).toLocaleString('id-ID')} / pcs</strong> (otomatis masuk ke HPP).
+                        </div>
+                      )}
+                      {errors.shipping_cost && <p className="text-rose-500 text-xs">{errors.shipping_cost}</p>}
+                    </div>
+                  )}
+
                   <p className="text-[11px] text-gray-400 leading-relaxed">
                     {data.is_free_shipping
-                      ? 'Ongkir ditanggung pabrik, tidak menambah tagihan.'
-                      : 'Nominal ongkir diisi admin saat penerimaan barang, karena ongkir dibayar ke kurir waktu barang datang.'}
+                      ? 'Ongkir ditanggung pabrik/supplier.'
+                      : 'Nominal ongkir otomatis dibagi rata ke seluruh kuantitas item PO untuk perhitungan HPP (landed cost).'}
                   </p>
                   {errors.is_free_shipping && <p className="text-rose-500 text-xs">{errors.is_free_shipping}</p>}
                 </div>
 
                 {/* Grand Total */}
                 <div className="flex justify-between items-center pt-4">
-                  <span className="text-base font-bold text-gray-900">Total Barang</span>
-                  <span className="text-base font-extrabold text-emerald-400">Rp {grandTotal.toLocaleString('id-ID')}</span>
+                  <span className="text-base font-bold text-gray-900">Grand Total PO</span>
+                  <span className="text-base font-extrabold text-emerald-600 font-mono">Rp {grandTotal.toLocaleString('id-ID')}</span>
                 </div>
               </div>
 
@@ -546,11 +581,24 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
                 </div>
               )}
 
+              {/* Bukti Pembayaran */}
+              <div className="space-y-1.5 pt-2">
+                <label className="block text-sm font-semibold text-gray-700">Foto Bukti Pembayaran (Opsional)</label>
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={(e) => setData('payment_proof', e.target.files?.[0] || null)}
+                  className="w-full px-3 py-2 text-xs text-gray-600 bg-gray-50 border border-gray-300 rounded-xl file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100 cursor-pointer"
+                />
+                <p className="text-[11px] text-gray-400">Bukti transfer / struk pembayaran (Max: 5MB, Gambar/PDF)</p>
+                {errors.payment_proof && <p className="text-rose-500 text-xs">{errors.payment_proof}</p>}
+              </div>
+
               {/* Notes */}
               <div className="space-y-1.5 pt-2">
                 <label className="block text-sm font-semibold text-gray-700">Catatan Internal</label>
                 <textarea
-                  rows={4}
+                  rows={3}
                   value={data.notes}
                   onChange={(e) => setData('notes', e.target.value)}
                   placeholder="Catatan tambahan..."

@@ -96,7 +96,16 @@ class PurchaseOrderController extends Controller
         Gate::authorize('purchase_order.create');
 
         try {
-            $po = $this->poService->create($request->validated(), auth()->id());
+            $validatedData = $request->validated();
+
+            if ($request->hasFile('payment_proof')) {
+                $file = $request->file('payment_proof');
+                $filename = 'po_proof_' . time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
+                $path = $file->storeAs('purchase_orders/proofs', $filename, 'public');
+                $validatedData['payment_proof_path'] = $path;
+            }
+
+            $po = $this->poService->create($validatedData, auth()->id());
 
             return redirect()->route('purchase-orders.show', $po->id)
                 ->with('success', 'Purchase Order berhasil dibuat sebagai Draft.');
@@ -177,12 +186,57 @@ class PurchaseOrderController extends Controller
         }
 
         try {
-            $this->poService->update($purchaseOrder, $request->validated());
+            $validatedData = $request->validated();
+
+            if ($request->hasFile('payment_proof')) {
+                $file = $request->file('payment_proof');
+                $filename = 'po_proof_' . $purchaseOrder->id . '_' . time() . '.' . $file->getClientOriginalExtension();
+                $path = $file->storeAs('purchase_orders/proofs', $filename, 'public');
+                $validatedData['payment_proof_path'] = $path;
+            }
+
+            $this->poService->update($purchaseOrder, $validatedData);
 
             return redirect()->route('purchase-orders.show', $purchaseOrder->id)
                 ->with('success', 'Purchase Order berhasil diperbarui.');
         } catch (Exception $e) {
             return back()->withErrors(['error' => $e->getMessage()])->withInput();
+        }
+    }
+
+    /**
+     * Upload payment proof photo for Purchase Order.
+     */
+    public function uploadPaymentProof(Request $request, PurchaseOrder $purchaseOrder): RedirectResponse
+    {
+        // Bukti bayar adalah catatan keuangan, jadi tidak cukup berbekal izin
+        // melihat PO — Management yang hanya boleh memantau tidak ikut bisa
+        // mengunggah atau mengganti buktinya.
+        $user = auth()->user();
+
+        if (! $user?->hasPermission('purchase_order.edit')
+            && ! $user?->hasPermission('purchase_order.finance_approve')) {
+            abort(403, 'Anda tidak berwenang mengunggah bukti pembayaran.');
+        }
+
+        $request->validate([
+            'payment_proof' => ['required', 'file', 'mimes:jpeg,png,jpg,webp,pdf', 'max:5120'],
+        ]);
+
+        try {
+            if ($request->hasFile('payment_proof')) {
+                $file = $request->file('payment_proof');
+                $filename = 'po_proof_' . $purchaseOrder->id . '_' . time() . '.' . $file->getClientOriginalExtension();
+                $path = $file->storeAs('purchase_orders/proofs', $filename, 'public');
+
+                $purchaseOrder->update([
+                    'payment_proof_path' => $path,
+                ]);
+            }
+
+            return back()->with('success', 'Bukti pembayaran berhasil diunggah.');
+        } catch (Exception $e) {
+            return back()->with('error', 'Gagal mengunggah bukti bayar: ' . $e->getMessage());
         }
     }
 

@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import { DP_50_RATIO, PO_PAYMENT_TERMS, poPaymentTermLabel } from '@/Constants/purchaseOrder';
@@ -20,6 +20,7 @@ interface DBOrderItem {
   quantity: number;
   unit: string;
   unit_price: string;
+  landed_unit_price: string | null;
   subtotal: string;
   received_quantity: number;
   accepted_quantity: number;
@@ -74,6 +75,7 @@ interface DBPurchaseOrder {
   shipping_cost: string;
   grand_total: string;
   notes: string | null;
+  payment_proof_path: string | null;
   created_at: string;
   // DP fields
   dp_amount: string | null;
@@ -231,6 +233,9 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
       };
     });
     setReceiveItemStates(states);
+    // Ongkir disegarkan dari data PO terbaru. Tanpa ini, nilai lama yang
+    // tersimpan di state bisa menimpa ongkir yang sudah diperbarui di tempat lain.
+    setReceiveShippingCost(Number(purchaseOrder.shipping_cost) || 0);
     setReceiveError(null);
     setReceiveModalOpen(true);
   }
@@ -595,7 +600,14 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${actionColor}`}>{actionText}</span>
                           </td>
                         </>}
-                        <td className="py-3.5 px-4 text-right font-medium whitespace-nowrap">Rp {fmt(item.unit_price)}</td>
+                        <td className="py-3.5 px-4 text-right font-medium whitespace-nowrap">
+                          <span>Rp {fmt(item.unit_price)}</span>
+                          {item.landed_unit_price && Number(item.landed_unit_price) > Number(item.unit_price) && (
+                            <span className="text-[10px] text-teal-600 font-semibold block" title="Harga per unit termasuk alokasi ongkir">
+                              Inc. Ongkir: Rp {fmt(item.landed_unit_price)}
+                            </span>
+                          )}
+                        </td>
                         {isValidated && <td className="py-3.5 px-4 text-right font-medium text-orange-600 whitespace-nowrap">Rp {fmt(item.validated_unit_price)}</td>}
                         <td className="py-3.5 px-4 text-right font-bold text-gray-900 whitespace-nowrap">Rp {fmt(item.subtotal)}</td>
                         {isValidated && <td className="py-3.5 px-4 text-right font-bold text-emerald-400 whitespace-nowrap">Rp {fmt(item.validated_total_price)}</td>}
@@ -608,7 +620,7 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
           </div>
         </div>
 
-        {/* Right Side: Summary + DP Info + Bill */}
+        {/* Right Side: Summary + DP Info + Bill + Bukti Pembayaran */}
         <div className="space-y-5">
           {/* Cost Summary */}
           <div className="bg-white border border-gray-300/80 rounded-2xl p-5 shadow-xl space-y-4">
@@ -621,17 +633,92 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                   <span className="font-semibold text-emerald-500">Free Ongkir</span>
                 ) : (
                   <span className="font-semibold text-gray-800">
-                    {Number(purchaseOrder.shipping_cost) > 0
-                      ? `Rp ${fmt(purchaseOrder.shipping_cost)}`
-                      : 'Diisi saat barang datang'}
+                    Rp {fmt(purchaseOrder.shipping_cost)}
                   </span>
                 )}
               </div>
               <div className="border-t border-gray-200 pt-3 flex justify-between items-center">
                 <span className="text-base font-bold text-gray-900">Grand Total</span>
-                <span className="text-base font-extrabold text-emerald-400">Rp {fmt(purchaseOrder.grand_total)}</span>
+                <span className="text-base font-extrabold text-emerald-600 font-mono">Rp {fmt(purchaseOrder.grand_total)}</span>
               </div>
             </div>
+          </div>
+
+          {/* Bukti Pembayaran / Transfer */}
+          <div className="bg-white border border-gray-300/80 rounded-2xl p-5 shadow-xl space-y-3">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center justify-between">
+              <span>🧾 Bukti Pembayaran</span>
+              {purchaseOrder.payment_proof_path && (
+                <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Tersimpan</span>
+              )}
+            </h3>
+
+            {purchaseOrder.payment_proof_path ? (
+              <div className="space-y-3">
+                {purchaseOrder.payment_proof_path.match(/\.(jpeg|jpg|png|webp)$/i) ? (
+                  <div className="rounded-xl overflow-hidden border border-gray-200 bg-gray-50 max-h-48 flex items-center justify-center">
+                    <img
+                      src={`/storage/${purchaseOrder.payment_proof_path}`}
+                      alt="Bukti Bayar"
+                      className="max-h-48 w-full object-contain cursor-pointer"
+                      onClick={() => window.open(`/storage/${purchaseOrder.payment_proof_path}`, '_blank')}
+                    />
+                  </div>
+                ) : (
+                  <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl flex items-center gap-2">
+                    <span className="text-xl">📄</span>
+                    <div className="min-w-0 flex-1 truncate text-xs text-gray-700">
+                      Dokumen Bukti Bayar (PDF/File)
+                    </div>
+                  </div>
+                )}
+                <a
+                  href={`/storage/${purchaseOrder.payment_proof_path}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-semibold transition-all border border-gray-300"
+                >
+                  Lihat / Unduh Bukti Bayar Full
+                </a>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 italic">Belum ada foto bukti pembayaran yang diunggah.</p>
+            )}
+
+            {/* Quick Upload / Replace Form */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const fileInput = e.currentTarget.querySelector('input[type="file"]') as HTMLInputElement;
+                if (!fileInput?.files?.[0]) return;
+                setActionLoading(true);
+                const formData = new FormData();
+                formData.append('payment_proof', fileInput.files[0]);
+                router.post(`/purchase-orders/${purchaseOrder.id}/upload-payment-proof`, formData, {
+                  onFinish: () => setActionLoading(false),
+                });
+              }}
+              className="pt-2 border-t border-gray-100 space-y-2"
+            >
+              <label className="block text-[11px] font-semibold text-gray-600">
+                {purchaseOrder.payment_proof_path ? 'Ganti / Upload Ulang Bukti Bayar' : 'Upload Bukti Bayar'}
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  required
+                  className="flex-1 min-w-0 px-2 py-1 text-xs text-gray-600 bg-gray-50 border border-gray-300 rounded-xl file:mr-2 file:py-0.5 file:px-2 file:rounded-lg file:border-0 file:text-[11px] file:font-semibold file:bg-teal-50 file:text-teal-700 cursor-pointer"
+                />
+                <button
+                  type="submit"
+                  disabled={actionLoading}
+                  className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-semibold transition-all shrink-0 disabled:opacity-50"
+                >
+                  Upload
+                </button>
+              </div>
+            </form>
           </div>
 
           {/* DP Info (shown if DP exists) */}
@@ -839,9 +926,17 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700">Ongkir (Rp)</label>
-                      <p className="text-[11px] text-gray-400 mt-0.5">
-                        Nominal ongkir yang dibayarkan ke kurir saat barang tiba.
-                      </p>
+                      {Number(purchaseOrder.shipping_cost) > 0 ? (
+                        <p className="text-[11px] text-gray-500 mt-0.5">
+                          Sudah diisi di PO sebesar{' '}
+                          <span className="font-mono font-semibold text-gray-700">Rp {fmt(purchaseOrder.shipping_cost)}</span>.
+                          Biarkan apa adanya bila tidak berubah.
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-gray-400 mt-0.5">
+                          Belum diisi di PO — isi di sini bila ongkirnya baru diketahui saat barang tiba.
+                        </p>
+                      )}
                     </div>
                     <CurrencyInput
                       hidePrefix
