@@ -110,13 +110,11 @@ class ReportController extends Controller
     }
 
     /**
-     * HPP Report — rekap barang keluar berdasarkan invoice.
+     * HPP Report — detail per invoice & per SKU item.
      *
-     * Dihitung dari item invoice (bukan master produk) agar terlihat berapa
-     * kuantitas tiap SKU yang benar-benar keluar pada rentang tanggal tertentu,
-     * lengkap dengan modal, penjualan, dan keuntungannya. Invoice batal tidak
-     * dihitung. Nama dan SKU diambil dari salinan di item invoice supaya baris
-     * lama tetap tampil walau produknya sudah dihapus dari master.
+     * Menampilkan setiap item invoice (1 invoice 1 SKU per baris) beserta
+     * customer, tanggal, harga modal (HPP), harga jual, total modal, total penjualan,
+     * dan keuntungannya. Invoice batal / terhapus tidak dihitung.
      */
     public function hpp(Request $request): \Inertia\Response
     {
@@ -130,18 +128,7 @@ class ReportController extends Controller
 
         $baseQuery = \Illuminate\Support\Facades\DB::table('invoice_items')
             ->join('invoices', 'invoices.id', '=', 'invoice_items.invoice_id')
-            ->whereNull('invoices.deleted_at')
-            ->where('invoices.status', '!=', 'cancelled')
-            ->when($dateFrom, fn($q, $from) => $q->whereDate('invoices.invoice_date', '>=', $from))
-            ->when($dateTo, fn($q, $to) => $q->whereDate('invoices.invoice_date', '<=', $to))
-            ->when($search, function ($q, $keyword) {
-                $q->where(function ($inner) use ($keyword) {
-                    $inner->where('invoice_items.sku', 'like', "%{$keyword}%")
-                          ->orWhere('invoice_items.product_name', 'like', "%{$keyword}%");
-                });
-            });
-
-        $groupedQuery = (clone $baseQuery)
+            ->leftJoin('customers', 'customers.id', '=', 'invoices.customer_id')
             ->leftJoinSub(
                 $pricing->effectiveCostSubquery(),
                 'costs',
@@ -149,42 +136,66 @@ class ReportController extends Controller
                 '=',
                 'invoice_items.product_id'
             )
-            ->groupBy('invoice_items.product_id', 'invoice_items.sku', 'invoice_items.product_name')
+            ->whereNull('invoices.deleted_at')
+            ->where('invoices.status', '!=', 'cancelled')
+            ->when($dateFrom, fn($q, $from) => $q->whereDate('invoices.invoice_date', '>=', $from))
+            ->when($dateTo, fn($q, $to) => $q->whereDate('invoices.invoice_date', '<=', $to))
+            ->when($search, function ($q, $keyword) {
+                $q->where(function ($inner) use ($keyword) {
+                    $inner->where('invoices.invoice_number', 'like', "%{$keyword}%")
+                          ->orWhere('customers.name', 'like', "%{$keyword}%")
+                          ->orWhere('invoice_items.sku', 'like', "%{$keyword}%")
+                          ->orWhere('invoice_items.product_name', 'like', "%{$keyword}%");
+                });
+            })
             ->select(
+                'invoice_items.id as item_id',
+                'invoices.invoice_number',
+                'invoices.invoice_date',
+                'customers.name as customer_name',
                 'invoice_items.product_id',
                 'invoice_items.sku',
                 'invoice_items.product_name',
-                \Illuminate\Support\Facades\DB::raw('SUM(invoice_items.quantity) as qty'),
-                \Illuminate\Support\Facades\DB::raw('SUM(invoice_items.subtotal) as total_sales'),
-                \Illuminate\Support\Facades\DB::raw('MAX(COALESCE(costs.avg_cost, 0)) as unit_hpp')
+                'invoice_items.quantity as qty',
+                'invoice_items.unit_price',
+                'invoice_items.subtotal as total_sales',
+                \Illuminate\Support\Facades\DB::raw('COALESCE(costs.avg_cost, 0) as unit_hpp')
             )
-            ->orderByDesc(\Illuminate\Support\Facades\DB::raw('SUM(invoice_items.subtotal)'));
+            ->orderByDesc('invoices.invoice_date')
+            ->orderByDesc('invoices.id');
 
-        $rows = $groupedQuery->paginate(25)->withQueryString();
+        $rows = (clone $baseQuery)->paginate(25)->withQueryString();
 
         $rows->getCollection()->transform(function ($row) {
             $qty        = (int) $row->qty;
+            $unitPrice  = (float) $row->unit_price;
             $totalSales = (float) $row->total_sales;
             $unitHpp    = (float) $row->unit_hpp;
             $totalHpp   = $qty * $unitHpp;
+            $margin     = $totalSales - $totalHpp;
+            $marginPct  = $totalSales > 0 ? round(($margin / $totalSales) * 100, 1) : 0.0;
 
             return [
+                'id font'       => $row->item_id,
+                'invoice_number'=> $row->invoice_number,
+                'invoice_date'  => $row->invoice_date ? \Carbon\Carbon::parse($row->invoice_date)->format('d/m/Y') : '-',
+                'customer_name' => $row->customer_name ?? '-',
                 'product_id'    => $row->product_id,
                 'sku'           => $row->sku,
                 'product_name'  => $row->product_name,
                 'qty'           => $qty,
                 'unit_hpp'      => round($unitHpp, 2),
-                // Harga jual rata-rata yang benar-benar tertagih di invoice.
-                'unit_price'    => $qty > 0 ? round($totalSales / $qty, 2) : 0.0,
+                'unit_price'    => round($unitPrice, 2),
                 'total_hpp'     => round($totalHpp, 2),
                 'total_sales'   => round($totalSales, 2),
-                'margin'        => round($totalSales - $totalHpp, 2),
+                'margin'        => round($margin, 2),
+                'margin_pct'    => $marginPct,
             ];
         });
 
         // Grand total dihitung atas seluruh hasil filter, bukan hanya halaman ini.
         $totals = \Illuminate\Support\Facades\DB::query()
-            ->fromSub($groupedQuery->reorder(), 'summary')
+            ->fromSub(clone $baseQuery, 'summary')
             ->selectRaw('COALESCE(SUM(qty), 0) as qty')
             ->selectRaw('COALESCE(SUM(total_sales), 0) as total_sales')
             ->selectRaw('COALESCE(SUM(qty * unit_hpp), 0) as total_hpp')
@@ -207,6 +218,7 @@ class ReportController extends Controller
             ],
         ]);
     }
+
 
 
     public function salesSummary(Request $request): \Inertia\Response
@@ -381,7 +393,82 @@ class ReportController extends Controller
             $handle = fopen('php://output', 'w');
             fputcsv($handle, ['sep=,']); // CSV header
 
-            if ($type === 'sales') {
+            if ($type === 'hpp') {
+                fputcsv($handle, [
+                    'No. Invoice', 'Tanggal Invoice', 'Customer', 'SKU', 'Nama Produk',
+                    'Qty', 'Harga HPP (Modal)', 'Total HPP', 'Harga Jual', 'Total Penjualan',
+                    'Margin (Rp)', 'Margin (%)'
+                ]);
+
+                $search   = $request->input('search');
+                $dateFrom = $request->input('date_from');
+                $dateTo   = $request->input('date_to');
+
+                $pricing = app(\App\Services\Reports\ProductPricingService::class);
+
+                $query = \Illuminate\Support\Facades\DB::table('invoice_items')
+                    ->join('invoices', 'invoices.id', '=', 'invoice_items.invoice_id')
+                    ->leftJoin('customers', 'customers.id', '=', 'invoices.customer_id')
+                    ->leftJoinSub(
+                        $pricing->effectiveCostSubquery(),
+                        'costs',
+                        'costs.product_id',
+                        '=',
+                        'invoice_items.product_id'
+                    )
+                    ->whereNull('invoices.deleted_at')
+                    ->where('invoices.status', '!=', 'cancelled')
+                    ->when($dateFrom, fn($q, $from) => $q->whereDate('invoices.invoice_date', '>=', $from))
+                    ->when($dateTo, fn($q, $to) => $q->whereDate('invoices.invoice_date', '<=', $to))
+                    ->when($search, function ($q, $keyword) {
+                        $q->where(function ($inner) use ($keyword) {
+                            $inner->where('invoices.invoice_number', 'like', "%{$keyword}%")
+                                  ->orWhere('customers.name', 'like', "%{$keyword}%")
+                                  ->orWhere('invoice_items.sku', 'like', "%{$keyword}%")
+                                  ->orWhere('invoice_items.product_name', 'like', "%{$keyword}%");
+                        });
+                    })
+                    ->select(
+                        'invoices.invoice_number',
+                        'invoices.invoice_date',
+                        'customers.name as customer_name',
+                        'invoice_items.sku',
+                        'invoice_items.product_name',
+                        'invoice_items.quantity as qty',
+                        'invoice_items.unit_price',
+                        'invoice_items.subtotal as total_sales',
+                        \Illuminate\Support\Facades\DB::raw('COALESCE(costs.avg_cost, 0) as unit_hpp')
+                    )
+                    ->orderByDesc('invoices.invoice_date')
+                    ->orderByDesc('invoices.id');
+
+                $query->chunk(500, function ($rows) use ($handle) {
+                    foreach ($rows as $row) {
+                        $qty        = (int) $row->qty;
+                        $unitPrice  = (float) $row->unit_price;
+                        $totalSales = (float) $row->total_sales;
+                        $unitHpp    = (float) $row->unit_hpp;
+                        $totalHpp   = $qty * $unitHpp;
+                        $margin     = $totalSales - $totalHpp;
+                        $marginPct  = $totalSales > 0 ? round(($margin / $totalSales) * 100, 1) : 0.0;
+
+                        fputcsv($handle, [
+                            $row->invoice_number,
+                            $row->invoice_date ? \Carbon\Carbon::parse($row->invoice_date)->format('d/m/Y') : '-',
+                            $row->customer_name ?? '-',
+                            $row->sku,
+                            $row->product_name,
+                            $qty,
+                            round($unitHpp, 2),
+                            round($totalHpp, 2),
+                            round($unitPrice, 2),
+                            round($totalSales, 2),
+                            round($margin, 2),
+                            $marginPct . '%',
+                        ]);
+                    }
+                });
+            } elseif ($type === 'sales') {
                 fputcsv($handle, ['Order Date', 'SO Number', 'Customer', 'Channel', 'Status', 'Grand Total']);
                 $orders = \App\Models\SalesOrder::with('customer')->latest('order_date')->get();
                 foreach ($orders as $so) {
@@ -444,4 +531,5 @@ class ReportController extends Controller
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
         ]);
     }
+
 }
