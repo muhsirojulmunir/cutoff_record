@@ -10,7 +10,6 @@ use App\Services\Reports\SalesReportService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ReportController extends Controller
 {
@@ -383,155 +382,178 @@ class ReportController extends Controller
 
 
 
-    public function export(string $type, Request $request): StreamedResponse
+    /**
+     * Data laporan untuk diexport.
+     *
+     * Dikembalikan sebagai baris-baris JSON, lalu berkas .xlsx dirakit di
+     * peramban memakai SheetJS. Isinya sama persis dengan versi sebelumnya,
+     * hanya bentuk keluarannya yang berubah dari CSV menjadi Excel.
+     */
+    public function export(string $type, Request $request): \Illuminate\Http\JsonResponse
     {
         Gate::authorize('reports.export');
 
-        $filename = "report_{$type}_" . date('Ymd_His') . ".csv";
+        [$headers, $rows] = $this->exportRows($type, $request);
 
-        \App\Models\ExportLog::record($filename, 'Laporan ' . ucfirst($type));
+        return response()->json([
+            'file_name'   => "report_{$type}_" . date('Ymd_His') . '.xlsx',
+            'sheet_name'  => ucfirst($type),
+            'module'      => 'Laporan ' . ucfirst($type),
+            'description' => null,
+            'headers'     => $headers,
+            'rows'        => $rows,
+        ]);
+    }
 
-        return response()->stream(function () use ($type, $request) {
-            $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['sep=,']); // CSV header
+    /**
+     * Susun judul kolom dan isi baris untuk tiap jenis laporan.
+     *
+     * @return array{0: array<int, string>, 1: array<int, array<int, mixed>>}
+     */
+    private function exportRows(string $type, Request $request): array
+    {
+        if ($type === 'hpp') {
+            $headers = [
+                'No. Invoice', 'Tanggal Invoice', 'Customer', 'SKU', 'Nama Produk',
+                'Qty', 'Harga HPP (Modal)', 'Total HPP', 'Harga Jual', 'Total Penjualan',
+                'Margin (Rp)', 'Margin (%)',
+            ];
 
-            if ($type === 'hpp') {
-                fputcsv($handle, [
-                    'No. Invoice', 'Tanggal Invoice', 'Customer', 'SKU', 'Nama Produk',
-                    'Qty', 'Harga HPP (Modal)', 'Total HPP', 'Harga Jual', 'Total Penjualan',
-                    'Margin (Rp)', 'Margin (%)'
-                ]);
+            $search   = $request->input('search');
+            $dateFrom = $request->input('date_from');
+            $dateTo   = $request->input('date_to');
 
-                $search   = $request->input('search');
-                $dateFrom = $request->input('date_from');
-                $dateTo   = $request->input('date_to');
+            $pricing = app(\App\Services\Reports\ProductPricingService::class);
 
-                $pricing = app(\App\Services\Reports\ProductPricingService::class);
+            $query = \Illuminate\Support\Facades\DB::table('invoice_items')
+                ->join('invoices', 'invoices.id', '=', 'invoice_items.invoice_id')
+                ->leftJoin('customers', 'customers.id', '=', 'invoices.customer_id')
+                ->leftJoinSub(
+                    $pricing->effectiveCostSubquery(),
+                    'costs',
+                    'costs.product_id',
+                    '=',
+                    'invoice_items.product_id'
+                )
+                ->whereNull('invoices.deleted_at')
+                ->where('invoices.status', '!=', 'cancelled')
+                ->when($dateFrom, fn($q, $from) => $q->whereDate('invoices.invoice_date', '>=', $from))
+                ->when($dateTo, fn($q, $to) => $q->whereDate('invoices.invoice_date', '<=', $to))
+                ->when($search, function ($q, $keyword) {
+                    $q->where(function ($inner) use ($keyword) {
+                        $inner->where('invoices.invoice_number', 'like', "%{$keyword}%")
+                              ->orWhere('customers.name', 'like', "%{$keyword}%")
+                              ->orWhere('invoice_items.sku', 'like', "%{$keyword}%")
+                              ->orWhere('invoice_items.product_name', 'like', "%{$keyword}%");
+                    });
+                })
+                ->select(
+                    'invoices.invoice_number',
+                    'invoices.invoice_date',
+                    'customers.name as customer_name',
+                    'invoice_items.sku',
+                    'invoice_items.product_name',
+                    'invoice_items.quantity as qty',
+                    'invoice_items.unit_price',
+                    'invoice_items.subtotal as total_sales',
+                    \Illuminate\Support\Facades\DB::raw('COALESCE(costs.avg_cost, 0) as unit_hpp')
+                )
+                ->orderByDesc('invoices.invoice_date')
+                ->orderByDesc('invoices.id');
 
-                $query = \Illuminate\Support\Facades\DB::table('invoice_items')
-                    ->join('invoices', 'invoices.id', '=', 'invoice_items.invoice_id')
-                    ->leftJoin('customers', 'customers.id', '=', 'invoices.customer_id')
-                    ->leftJoinSub(
-                        $pricing->effectiveCostSubquery(),
-                        'costs',
-                        'costs.product_id',
-                        '=',
-                        'invoice_items.product_id'
-                    )
-                    ->whereNull('invoices.deleted_at')
-                    ->where('invoices.status', '!=', 'cancelled')
-                    ->when($dateFrom, fn($q, $from) => $q->whereDate('invoices.invoice_date', '>=', $from))
-                    ->when($dateTo, fn($q, $to) => $q->whereDate('invoices.invoice_date', '<=', $to))
-                    ->when($search, function ($q, $keyword) {
-                        $q->where(function ($inner) use ($keyword) {
-                            $inner->where('invoices.invoice_number', 'like', "%{$keyword}%")
-                                  ->orWhere('customers.name', 'like', "%{$keyword}%")
-                                  ->orWhere('invoice_items.sku', 'like', "%{$keyword}%")
-                                  ->orWhere('invoice_items.product_name', 'like', "%{$keyword}%");
-                        });
-                    })
-                    ->select(
-                        'invoices.invoice_number',
-                        'invoices.invoice_date',
-                        'customers.name as customer_name',
-                        'invoice_items.sku',
-                        'invoice_items.product_name',
-                        'invoice_items.quantity as qty',
-                        'invoice_items.unit_price',
-                        'invoice_items.subtotal as total_sales',
-                        \Illuminate\Support\Facades\DB::raw('COALESCE(costs.avg_cost, 0) as unit_hpp')
-                    )
-                    ->orderByDesc('invoices.invoice_date')
-                    ->orderByDesc('invoices.id');
+            $rows = [];
 
-                $query->chunk(500, function ($rows) use ($handle) {
-                    foreach ($rows as $row) {
-                        $qty        = (int) $row->qty;
-                        $unitPrice  = (float) $row->unit_price;
-                        $totalSales = (float) $row->total_sales;
-                        $unitHpp    = (float) $row->unit_hpp;
-                        $totalHpp   = $qty * $unitHpp;
-                        $margin     = $totalSales - $totalHpp;
-                        $marginPct  = $totalSales > 0 ? round(($margin / $totalSales) * 100, 1) : 0.0;
+            foreach ($query->get() as $row) {
+                $qty        = (int) $row->qty;
+                $unitPrice  = (float) $row->unit_price;
+                $totalSales = (float) $row->total_sales;
+                $unitHpp    = (float) $row->unit_hpp;
+                $totalHpp   = $qty * $unitHpp;
+                $margin     = $totalSales - $totalHpp;
+                $marginPct  = $totalSales > 0 ? round(($margin / $totalSales) * 100, 1) : 0.0;
 
-                        fputcsv($handle, [
-                            $row->invoice_number,
-                            $row->invoice_date ? \Carbon\Carbon::parse($row->invoice_date)->format('d/m/Y') : '-',
-                            $row->customer_name ?? '-',
-                            $row->sku,
-                            $row->product_name,
-                            $qty,
-                            round($unitHpp, 2),
-                            round($totalHpp, 2),
-                            round($unitPrice, 2),
-                            round($totalSales, 2),
-                            round($margin, 2),
-                            $marginPct . '%',
-                        ]);
-                    }
-                });
-            } elseif ($type === 'sales') {
-                fputcsv($handle, ['Order Date', 'SO Number', 'Customer', 'Channel', 'Status', 'Grand Total']);
-                $orders = \App\Models\SalesOrder::with('customer')->latest('order_date')->get();
-                foreach ($orders as $so) {
-                    fputcsv($handle, [
-                        $so->order_date->format('d/m/Y'),
-                        $so->so_number,
-                        $so->customer?->name ?? '-',
-                        $so->sales_channel,
-                        $so->status,
-                        $so->grand_total,
-                    ]);
-                }
-            } elseif ($type === 'inventory') {
-                fputcsv($handle, ['SKU', 'Product Name', 'Physical Stock', 'Reserved Stock', 'Available Stock', 'Status']);
-                $overview = $this->inventoryService->getStockOverview(1000);
-                foreach ($overview as $row) {
-                    fputcsv($handle, [
-                        $row['sku'],
-                        $row['name'],
-                        $row['physical_stock'],
-                        $row['reserved_stock'],
-                        $row['available_stock'],
-                        $row['status'],
-                    ]);
-                }
-            } elseif ($type === 'receivables') {
-                fputcsv($handle, ['Invoice Number', 'Customer', 'Due Date', 'Total Amount', 'Paid Amount', 'Remaining', 'Status']);
-                $invoices = \App\Models\Invoice::with('customer')->latest('due_date')->get();
-                foreach ($invoices as $inv) {
-                    $rem = max(0, $inv->grand_total - $inv->paid_amount);
-                    fputcsv($handle, [
-                        $inv->invoice_number,
-                        $inv->customer?->name ?? '-',
-                        $inv->due_date ? $inv->due_date->format('d/m/Y') : '-',
-                        $inv->grand_total,
-                        $inv->paid_amount,
-                        $rem,
-                        $inv->status,
-                    ]);
-                }
-            } elseif ($type === 'marketplace') {
-                fputcsv($handle, ['Platform', 'External Order ID', 'Customer', 'Tracking Number', 'Status', 'Workflow', 'Total']);
-                $orders = \App\Models\MarketplaceOrder::latest('order_date')->get();
-                foreach ($orders as $mo) {
-                    fputcsv($handle, [
-                        $mo->marketplace,
-                        $mo->external_order_id,
-                        $mo->customer_name ?? '-',
-                        $mo->tracking_number ?? '-',
-                        $mo->internal_status,
-                        $mo->workflow_status,
-                        $mo->total_amount,
-                    ]);
-                }
+                $rows[] = [
+                    $row->invoice_number,
+                    $row->invoice_date ? \Carbon\Carbon::parse($row->invoice_date)->format('d/m/Y') : '-',
+                    $row->customer_name ?? '-',
+                    $row->sku,
+                    $row->product_name,
+                    $qty,
+                    round($unitHpp, 2),
+                    round($totalHpp, 2),
+                    round($unitPrice, 2),
+                    round($totalSales, 2),
+                    round($margin, 2),
+                    $marginPct,
+                ];
             }
 
-            fclose($handle);
-        }, 200, [
-            'Content-Type'        => 'text/csv',
-            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
-        ]);
+            return [$headers, $rows];
+        }
+
+        if ($type === 'sales') {
+            $headers = ['Order Date', 'SO Number', 'Customer', 'Channel', 'Status', 'Grand Total'];
+            $rows = \App\Models\SalesOrder::with('customer')->latest('order_date')->get()
+                ->map(fn ($so) => [
+                    $so->order_date?->format('d/m/Y'),
+                    $so->so_number,
+                    $so->customer?->name ?? '-',
+                    $so->sales_channel,
+                    $so->status,
+                    (float) $so->grand_total,
+                ])->all();
+
+            return [$headers, $rows];
+        }
+
+        if ($type === 'inventory') {
+            $headers = ['SKU', 'Product Name', 'Physical Stock', 'Reserved Stock', 'Available Stock', 'Status'];
+            $rows = collect($this->inventoryService->getStockOverview(1000))
+                ->map(fn ($row) => [
+                    $row['sku'],
+                    $row['name'],
+                    $row['physical_stock'],
+                    $row['reserved_stock'],
+                    $row['available_stock'],
+                    $row['status'],
+                ])->all();
+
+            return [$headers, $rows];
+        }
+
+        if ($type === 'receivables') {
+            $headers = ['Invoice Number', 'Customer', 'Due Date', 'Total Amount', 'Paid Amount', 'Remaining', 'Status'];
+            $rows = \App\Models\Invoice::with('customer')->latest('due_date')->get()
+                ->map(fn ($inv) => [
+                    $inv->invoice_number,
+                    $inv->customer?->name ?? '-',
+                    $inv->due_date ? $inv->due_date->format('d/m/Y') : '-',
+                    (float) $inv->grand_total,
+                    (float) $inv->paid_amount,
+                    max(0, (float) $inv->grand_total - (float) $inv->paid_amount),
+                    $inv->status,
+                ])->all();
+
+            return [$headers, $rows];
+        }
+
+        if ($type === 'marketplace') {
+            $headers = ['Platform', 'External Order ID', 'Customer', 'Tracking Number', 'Status', 'Workflow', 'Total'];
+            $rows = \App\Models\MarketplaceOrder::latest('order_date')->get()
+                ->map(fn ($mo) => [
+                    $mo->marketplace,
+                    $mo->external_order_id,
+                    $mo->customer_name ?? '-',
+                    $mo->tracking_number ?? '-',
+                    $mo->internal_status,
+                    $mo->workflow_status,
+                    (float) $mo->total_amount,
+                ])->all();
+
+            return [$headers, $rows];
+        }
+
+        return [[], []];
     }
 
 }

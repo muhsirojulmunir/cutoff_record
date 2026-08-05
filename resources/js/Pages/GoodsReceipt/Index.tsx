@@ -7,24 +7,7 @@ import Pagination from '../../Components/Pagination';
 import SkuSearchInput from '../../Components/SkuSearchInput';
 import { PageProps } from '../../Types';
 import * as XLSX from 'xlsx';
-
-/** Catat unduhan ke riwayat. Kegagalan pencatatan tidak mengganggu unduhan. */
-async function catatRiwayatUnduhan(fileName: string, module: string, description?: string) {
-  try {
-    await fetch('/export-logs', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        'X-CSRF-TOKEN': document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '',
-      },
-      credentials: 'same-origin',
-      body: JSON.stringify({ file_name: fileName, module, description }),
-    });
-  } catch {
-    // Diabaikan: file sudah berhasil diunduh, riwayat hanya catatan tambahan.
-  }
-}
+import { downloadWorkbook } from '../../Utils/exportExcel';
 
 interface Product {
   id: number;
@@ -155,8 +138,7 @@ export default function GoodsReceiptIndex({
 
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Barang Masuk');
-    XLSX.writeFile(workbook, 'Template_Barang_Masuk.xlsx');
-    catatRiwayatUnduhan('Template_Barang_Masuk.xlsx', 'Barang Masuk', 'Template import');
+    downloadWorkbook(workbook, 'Template_Barang_Masuk.xlsx', 'Barang Masuk', 'Template import');
   }
 
   /** Baca file Excel lalu isi daftar SKU. Baris tanpa SKU dilewati. */

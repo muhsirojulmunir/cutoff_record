@@ -6,6 +6,8 @@ interface ExportLog {
   module: string;
   description: string | null;
   exported_at: string;
+  /** Berkasnya masih tersimpan sehingga bisa diunduh ulang. */
+  downloadable: boolean;
 }
 
 interface Props {
@@ -132,7 +134,7 @@ export default function DownloadHistory({ refreshKey = 0 }: Props) {
           <div className="px-5 py-3.5 border-b border-gray-200 bg-gray-50 shrink-0">
             <p className="text-sm font-bold text-gray-900">Riwayat Download</p>
             <p className="text-[11px] text-gray-500 mt-0.5">
-              File export yang pernah Anda unduh
+              10 unduhan terakhir Anda — yang lebih lama terhapus sendiri
             </p>
           </div>
 
@@ -159,7 +161,7 @@ export default function DownloadHistory({ refreshKey = 0 }: Props) {
           )}
 
           {!loading && !error && logs.length > 0 && (
-            <div className="overflow-y-auto sidebar-scroll">
+            <div className="overflow-y-auto sidebar-scroll max-h-[22rem]">
               {grouped.map((group) => (
                 <div key={group.label}>
                   <p className="px-5 py-1.5 bg-gray-50/80 border-y border-gray-100 text-[10px] font-bold uppercase tracking-wider text-gray-500 sticky top-0">
@@ -192,6 +194,26 @@ export default function DownloadHistory({ refreshKey = 0 }: Props) {
                               <p className="text-[10px] text-gray-400 mt-1">{log.description}</p>
                             )}
                           </div>
+
+                          {log.downloadable ? (
+                            <a
+                              href={`/export-logs/${log.id}/download`}
+                              title="Unduh ulang berkas ini"
+                              className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-[11px] font-semibold transition-all"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                              </svg>
+                              Download
+                            </a>
+                          ) : (
+                            <span
+                              title="Berkas lama sudah tidak tersimpan"
+                              className="shrink-0 px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-400 text-[11px] font-semibold"
+                            >
+                              Tidak tersedia
+                            </span>
+                          )}
                         </div>
                       </li>
                     ))}

@@ -61,6 +61,7 @@ Route::middleware('auth')->group(function () {
     // Riwayat unduhan file export — dipanggil lewat fetch dari komponen panel.
     Route::get('/export-logs', [ExportLogController::class, 'index'])->name('export-logs.index');
     Route::post('/export-logs', [ExportLogController::class, 'store'])->name('export-logs.store');
+    Route::get('/export-logs/{exportLog}/download', [ExportLogController::class, 'download'])->name('export-logs.download');
 
     // Pusat Approval — seluruh dokumen yang menunggu persetujuan user ini.
     // Tanpa permission khusus: isinya sudah disaring per hak akses masing-masing.
