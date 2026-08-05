@@ -117,6 +117,7 @@ class ProductController extends Controller
     /**
      * Foto produk disimpan di storage publik. Saat diganti, berkas lama
      * dihapus supaya tidak menumpuk di hosting.
+     * Validasi dilakukan manual tanpa finfo agar kompatibel dengan semua hosting.
      */
     private function withPhoto(array $data, Request $request, ?Product $product = null): array
     {
@@ -126,14 +127,34 @@ class ProductController extends Controller
             return $data;
         }
 
+        $file = $request->file('photo');
+
+        // Validasi manual tanpa finfo: cek ekstensi dan ukuran file
+        $allowedExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+        $ext = strtolower($file->getClientOriginalExtension());
+
+        if (! in_array($ext, $allowedExtensions)) {
+            return $data; // abaikan file dengan ekstensi tidak valid
+        }
+
+        // Cek ukuran file maks 2MB (2048 KB = 2097152 bytes)
+        if ($file->getSize() > 2097152) {
+            return $data; // abaikan file terlalu besar
+        }
+
         if ($product?->photo_path) {
             Storage::disk('public')->delete($product->photo_path);
         }
 
-        $data['photo_path'] = $request->file('photo')->store('produk', 'public');
+        $data['photo_path'] = $file->storeAs(
+            'produk',
+            uniqid('foto_') . '.' . $ext,
+            'public'
+        );
 
         return $data;
     }
+
 
     public function store(ProductRequest $request): RedirectResponse
     {
