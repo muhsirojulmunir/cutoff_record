@@ -35,24 +35,17 @@ class ApprovalCenterController extends Controller
     {
         $queue = $this->workQueueService->getForUser($request->user());
 
+        // Halaman ini khusus persetujuan. Pengingat lain seperti invoice jatuh
+        // tempo tetap tersedia di lonceng notifikasi dan dashboard.
         $approvals = array_values(array_filter(
             $queue['items'],
             fn (array $item) => in_array($item['key'], self::APPROVAL_KEYS, true)
         ));
 
-        // Sisanya tetap ditampilkan terpisah sebagai tindak lanjut, supaya
-        // halaman ini tidak menyembunyikan pekerjaan lain yang menunggu.
-        $others = array_values(array_filter(
-            $queue['items'],
-            fn (array $item) => !in_array($item['key'], self::APPROVAL_KEYS, true)
-        ));
-
         return Inertia::render('Approvals/Index', [
             'approvals' => $approvals,
-            'others'    => $others,
             'summary'   => [
                 'approval_total' => array_sum(array_column($approvals, 'count')),
-                'other_total'    => array_sum(array_column($others, 'count')),
             ],
         ]);
     }

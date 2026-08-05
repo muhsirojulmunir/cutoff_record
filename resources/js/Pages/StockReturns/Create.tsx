@@ -79,7 +79,7 @@ export default function Create({ products }: Props) {
                 value={data.invoice_number}
                 onChange={e => setData('invoice_number', e.target.value)}
                 placeholder="Contoh: INV-202408-0001"
-                className={`w-full px-4 py-2.5 rounded-xl bg-gray-50 border text-gray-800 text-sm font-mono focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all ${errors.invoice_number ? 'border-rose-400' : 'border-gray-200'}`}
+                className={`w-full px-4 py-2.5 rounded-xl bg-gray-50 border text-gray-800 text-sm font-mono focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all ${errors.invoice_number ? 'border-rose-400' : 'border-gray-200'}`}
                 disabled={processing}
               />
               {errors.invoice_number && <p className="text-rose-400 text-xs">{errors.invoice_number}</p>}
@@ -96,7 +96,7 @@ export default function Create({ products }: Props) {
                 onChange={e => { setProductSearch(e.target.value); setShowDropdown(true); setSelectedProduct(null); setData('product_id', ''); }}
                 onFocus={() => setShowDropdown(true)}
                 placeholder="Ketik SKU atau nama produk..."
-                className={`w-full px-4 py-2.5 rounded-xl bg-gray-50 border text-gray-800 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all ${errors.product_id ? 'border-rose-400' : 'border-gray-200'}`}
+                className={`w-full px-4 py-2.5 rounded-xl bg-gray-50 border text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all ${errors.product_id ? 'border-rose-400' : 'border-gray-200'}`}
                 disabled={processing}
                 autoComplete="off"
               />
@@ -110,10 +110,10 @@ export default function Create({ products }: Props) {
                       key={p.id}
                       type="button"
                       onClick={() => selectProduct(p)}
-                      className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-violet-50 transition-colors text-left"
+                      className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-teal-50 transition-colors text-left"
                     >
                       <div>
-                        <span className="font-mono text-xs font-semibold text-violet-600">{p.sku}</span>
+                        <span className="font-mono text-xs font-semibold text-teal-600">{p.sku}</span>
                         <span className="text-gray-600 text-xs ml-2 truncate">{p.name}</span>
                       </div>
                       <span className="text-[10px] text-gray-400 ml-2 shrink-0">Stok: {p.stock}</span>
@@ -150,7 +150,7 @@ export default function Create({ products }: Props) {
                 value={data.quantity}
                 onChange={e => setData('quantity', e.target.value)}
                 placeholder="Contoh: 5"
-                className={`w-full px-4 py-2.5 rounded-xl bg-gray-50 border text-gray-800 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all ${errors.quantity ? 'border-rose-400' : 'border-gray-200'}`}
+                className={`w-full px-4 py-2.5 rounded-xl bg-gray-50 border text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all ${errors.quantity ? 'border-rose-400' : 'border-gray-200'}`}
                 disabled={processing}
               />
               {errors.quantity && <p className="text-rose-400 text-xs">{errors.quantity}</p>}
@@ -167,7 +167,7 @@ export default function Create({ products }: Props) {
                 value={data.reason}
                 onChange={e => setData('reason', e.target.value)}
                 placeholder="Contoh: Barang cacat / rusak saat diterima customer, customer komplain warna tidak sesuai..."
-                className={`w-full px-4 py-2.5 rounded-xl bg-gray-50 border text-gray-800 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all resize-none ${errors.reason ? 'border-rose-400' : 'border-gray-200'}`}
+                className={`w-full px-4 py-2.5 rounded-xl bg-gray-50 border text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all resize-none ${errors.reason ? 'border-rose-400' : 'border-gray-200'}`}
                 disabled={processing}
               />
               {errors.reason && <p className="text-rose-400 text-xs">{errors.reason}</p>}
@@ -184,7 +184,7 @@ export default function Create({ products }: Props) {
               <button
                 type="submit"
                 disabled={processing}
-                className="px-5 py-2.5 bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-400 active:scale-[0.99] text-white rounded-xl text-sm font-semibold shadow-lg shadow-violet-200/40 transition-all disabled:opacity-60 flex items-center gap-2"
+                className="px-5 py-2.5 bg-teal-600 hover:bg-teal-500 active:scale-[0.99] text-white rounded-xl text-sm font-semibold transition-all disabled:opacity-60 flex items-center gap-2"
               >
                 {processing && (
                   <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

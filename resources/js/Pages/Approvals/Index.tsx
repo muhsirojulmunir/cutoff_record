@@ -5,8 +5,7 @@ import { WorkQueueItem, WorkQueueType } from '../../Types';
 
 interface Props {
   approvals: WorkQueueItem[];
-  others: WorkQueueItem[];
-  summary: { approval_total: number; other_total: number };
+  summary: { approval_total: number };
 }
 
 /** Path Heroicons 24x24 outline per jenis dokumen. */
@@ -75,7 +74,7 @@ function QueueCard({ item }: { item: WorkQueueItem }) {
   );
 }
 
-export default function ApprovalCenter({ approvals, others, summary }: Props) {
+export default function ApprovalCenter({ approvals, summary }: Props) {
   return (
     <AppLayout>
       <Head title="Pusat Approval" />
@@ -91,23 +90,13 @@ export default function ApprovalCenter({ approvals, others, summary }: Props) {
         </div>
 
         {/* Ringkasan */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-white border border-gray-300/80 rounded-2xl p-4 shadow-xl">
-            <p className="text-xs font-semibold text-rose-600">Menunggu Persetujuan Anda</p>
-            <p className="text-2xl font-extrabold text-rose-600 mt-1 font-mono">{summary.approval_total}</p>
-          </div>
-          <div className="bg-white border border-gray-300/80 rounded-2xl p-4 shadow-xl">
-            <p className="text-xs font-semibold text-gray-500">Tindak Lanjut Lain</p>
-            <p className="text-2xl font-extrabold text-gray-900 mt-1 font-mono">{summary.other_total}</p>
-          </div>
+        <div className="bg-white border border-gray-300/80 rounded-2xl p-4 shadow-xl">
+          <p className="text-xs font-semibold text-rose-600">Menunggu Persetujuan Anda</p>
+          <p className="text-2xl font-extrabold text-rose-600 mt-1 font-mono">{summary.approval_total}</p>
         </div>
 
         {/* Daftar approval */}
         <div>
-          <h2 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
-            Perlu Persetujuan
-          </h2>
-
           {approvals.length === 0 ? (
             <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center shadow-sm">
               <span className="inline-flex p-3 rounded-2xl bg-emerald-50 text-emerald-600">
@@ -129,19 +118,6 @@ export default function ApprovalCenter({ approvals, others, summary }: Props) {
           )}
         </div>
 
-        {/* Tindak lanjut lain */}
-        {others.length > 0 && (
-          <div>
-            <h2 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
-              Tindak Lanjut Lain
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {others.map((item) => (
-                <QueueCard key={item.key} item={item} />
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </AppLayout>
   );
