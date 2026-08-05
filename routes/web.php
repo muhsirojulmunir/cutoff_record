@@ -67,6 +67,7 @@ Route::middleware('auth')->group(function () {
 
     // ── Menu baru (placeholder — diimplementasi pada task berikutnya) ───────
     Route::get('/all-stock', [StockController::class, 'allStock'])->middleware('can:stock.view')->name('all-stock');
+    Route::get('/all-stock/export', [StockController::class, 'export'])->middleware('can:stock.view')->name('all-stock.export');
 
     Route::get('/reports/hpp', [ReportController::class, 'hpp'])->middleware('can:reports.purchase.view')->name('reports.hpp');
     Route::get('/reports/sales-summary', [ReportController::class, 'salesSummary'])->middleware('can:reports.sales.view')->name('reports.sales-summary');
