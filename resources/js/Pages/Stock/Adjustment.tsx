@@ -3,6 +3,7 @@ import { Head, router, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import Alert from '../../Components/Alert';
 import Pagination from '../../Components/Pagination';
+import SkuSearchInput from '../../Components/SkuSearchInput';
 import { PageProps } from '../../Types';
 
 interface Product {
@@ -117,26 +118,17 @@ export default function StockAdjustment({ adjustments, filters, products, wareho
             </div>
 
             <form onSubmit={submit} className="p-6 space-y-4">
-              <datalist id="adj-sku-options">
-                {products.map((product) => (
-                  <option key={product.id} value={product.sku}>{product.name}</option>
-                ))}
-              </datalist>
-
               <div>
                 <label htmlFor="sku" className={labelClass}>
                   SKU Produk <span className="text-rose-500">*</span>
                 </label>
-                <input
+                <SkuSearchInput
                   id="sku"
-                  list="adj-sku-options"
                   value={sku}
-                  onChange={(e) => handleSkuChange(e.target.value)}
-                  placeholder="Ketik / tempel SKU"
-                  autoComplete="off"
-                  className={`${inputClass} font-mono ${
-                    sku.trim() !== '' && !selected ? 'border-rose-300 bg-rose-50 text-rose-700' : ''
-                  }`}
+                  onChange={handleSkuChange}
+                  options={products}
+                  invalid={sku.trim() !== '' && !selected}
+                  className={`${inputClass} font-mono`}
                 />
                 {sku.trim() !== '' && !selected && (
                   <p className="text-rose-500 text-xs mt-1">SKU tidak ditemukan.</p>
