@@ -339,11 +339,17 @@ export default function GoodsReceiptIndex({
                       <button
                         type="button"
                         onClick={handleDownloadTemplate}
-                        className="text-[11px] font-semibold text-gray-600 hover:text-gray-900 hover:underline"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-gray-300 text-gray-700 text-[11px] font-semibold hover:bg-gray-50 hover:border-gray-400 transition-all"
                       >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-3.5 h-3.5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
                         Template
                       </button>
-                      <label className="text-[11px] font-semibold text-teal-700 hover:underline cursor-pointer">
+                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-50 border border-teal-300 text-teal-700 text-[11px] font-semibold hover:bg-teal-100 hover:border-teal-400 transition-all cursor-pointer">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-3.5 h-3.5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 7.5L12 3m0 0l4.5 4.5M12 3v13.5" />
+                        </svg>
                         Import
                         <input type="file" accept=".xlsx,.xls" onChange={handleImportExcel} className="hidden" />
                       </label>

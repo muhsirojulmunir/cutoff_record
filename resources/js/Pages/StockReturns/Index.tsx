@@ -113,7 +113,7 @@ export default function Index({ returns, filters }: Props) {
           {(canCreate || isSuperAdmin) && (
             <Link
               href="/stock-returns/create"
-              className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-400 text-white rounded-xl text-sm font-semibold shadow-lg shadow-violet-200/40 transition-all"
+              className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-sm font-semibold transition-all"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -134,13 +134,13 @@ export default function Index({ returns, filters }: Props) {
               value={search}
               onChange={e => { setSearch(e.target.value); applyFilter(e.target.value, status); }}
               placeholder="Cari nomor retur, invoice, SKU..."
-              className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-white border border-gray-200 text-sm text-gray-800 focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+              className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-white border border-gray-200 text-sm text-gray-800 focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
             />
           </div>
           <select
             value={status}
             onChange={e => { setStatus(e.target.value); applyFilter(search, e.target.value); }}
-            className="px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-sm text-gray-700 focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+            className="px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-sm text-gray-700 focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
           >
             {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
@@ -170,7 +170,7 @@ export default function Index({ returns, filters }: Props) {
                   </tr>
                 ) : returns.data.map(item => (
                   <tr key={item.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                    <td className="px-4 py-3 font-mono text-xs font-semibold text-violet-600 whitespace-nowrap">{item.return_number}</td>
+                    <td className="px-4 py-3 font-mono text-xs font-semibold text-teal-600 whitespace-nowrap">{item.return_number}</td>
                     <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{item.invoice_number}</td>
                     <td className="px-4 py-3">
                       <div className="font-semibold text-gray-800 text-xs">{item.product_sku}</div>
@@ -234,7 +234,7 @@ export default function Index({ returns, filters }: Props) {
                     onClick={() => link.url && router.get(link.url)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                       link.active
-                        ? 'bg-violet-600 text-white'
+                        ? 'bg-teal-600 text-white'
                         : link.url
                           ? 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
                           : 'text-gray-300 cursor-not-allowed'
