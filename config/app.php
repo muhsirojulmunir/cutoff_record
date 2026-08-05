@@ -78,8 +78,12 @@ return [
     |
     */
 
-    'locale' => env('APP_LOCALE', 'en'),
+    // Pesan bawaan Laravel (terutama validasi form) tampil dalam bahasa
+    // Indonesia; terjemahannya ada di lang/id.
+    'locale' => env('APP_LOCALE', 'id'),
 
+    // Cadangan tetap bahasa Inggris agar kunci yang belum diterjemahkan
+    // tidak tampil sebagai kode mentah.
     'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
 
     'faker_locale' => env('APP_FAKER_LOCALE', 'en_US'),

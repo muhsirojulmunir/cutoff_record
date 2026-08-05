@@ -1,7 +1,7 @@
 ﻿import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
-import { PO_PAYMENT_TERMS, poPaymentTermLabel } from '@/Constants/purchaseOrder';
+import { DP_50_RATIO, PO_PAYMENT_TERMS, poPaymentTermLabel } from '@/Constants/purchaseOrder';
 import CurrencyInput from '@/Components/CurrencyInput';
 import Alert from '../../Components/Alert';
 import { PageProps } from '../../Types';
@@ -173,8 +173,11 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
   const [dpModalOpen, setDpModalOpen] = useState(false);
   const [dpAmount, setDpAmount] = useState('');
   const [dpAccountId, setDpAccountId] = useState<number | null>(null);
-  const [dpPaymentTerms, setDpPaymentTerms] = useState(purchaseOrder.payment_terms ?? 'cash_to_cash');
+  const [dpPaymentTerms, setDpPaymentTerms] = useState(purchaseOrder.payment_terms ?? 'cash');
   const [dpError, setDpError] = useState<string | null>(null);
+
+  /** Nominal yang harus dibayar bila syaratnya DP 50%. */
+  const requiredDp = Math.round(Number(purchaseOrder.grand_total) * DP_50_RATIO);
 
   // ── Finance Validation Modal ──────────────────────────────
   const [validateModalOpen, setValidateModalOpen] = useState(false);
@@ -302,8 +305,11 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
   // ─────────── Down Payment ─────────────────────────────────
   function handleOpenDpModal() {
     setDpAmount('');
+    const terms = purchaseOrder.payment_terms ?? 'cash';
     setDpAccountId(cashBankAccounts[0]?.id ?? null);
-    setDpPaymentTerms(purchaseOrder.payment_terms ?? 'cash_to_cash');
+    setDpPaymentTerms(terms);
+    // DP 50% langsung terisi supaya Finance tidak perlu menghitung sendiri.
+    setDpAmount(terms === 'dp_50' ? String(requiredDp) : '');
     setDpError(null);
     setDpModalOpen(true);
   }
@@ -314,6 +320,15 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
     const amt = Number(dpAmount);
     if (!amt || amt <= 0) { setDpError('Nominal DP harus lebih dari 0.'); return; }
     if (amt > Number(purchaseOrder.grand_total)) { setDpError('DP tidak boleh melebihi Grand Total PO.'); return; }
+
+    // Nominal DP 50% sudah pasti, jadi selisihnya dicegat sebelum dikirim.
+    if (dpPaymentTerms === 'dp_50' && Math.abs(amt - requiredDp) > 1) {
+      setDpError(
+        `Pembayaran DP 50% harus Rp ${fmt(requiredDp)} (setengah dari Grand Total Rp ${fmt(purchaseOrder.grand_total)}), ` +
+        `sedangkan yang diisi Rp ${fmt(amt)}.`
+      );
+      return;
+    }
     setActionLoading(true);
     router.post(`/purchase-orders/${purchaseOrder.id}/pay-dp`, {
       dp_amount: amt,
@@ -839,11 +854,31 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
             <form onSubmit={submitDownPayment} className="space-y-4 mt-5">
               {dpError && <div className="p-3.5 bg-rose-500/10 border border-rose-500/25 rounded-xl text-rose-400 text-xs font-semibold">{dpError}</div>}
 
+              {/* Nominal DP 50% dihitungkan langsung supaya Finance tidak perlu menghitung sendiri */}
+              {dpPaymentTerms === 'dp_50' && (
+                <div className="p-3.5 bg-orange-50 border border-orange-200 rounded-xl">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-orange-700">Harus Dibayar Sekarang (DP 50%)</p>
+                  <p className="text-2xl font-extrabold text-orange-700 font-mono mt-1">Rp {fmt(requiredDp)}</p>
+                  <p className="text-[11px] text-gray-600 mt-1">
+                    50% dari Grand Total Rp {fmt(purchaseOrder.grand_total)} · sisa pelunasan Rp {fmt(Number(purchaseOrder.grand_total) - requiredDp)}
+                  </p>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1.5">Nominal Down Payment (Rp) *</label>
                 <CurrencyInput value={dpAmount} onChange={(v) => setDpAmount(String(v))}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-800 text-sm focus:ring-1 focus:ring-orange-400 focus:outline-none"
                   placeholder="Contoh: 5000000" />
+                {dpPaymentTerms === 'dp_50' && (
+                  <button
+                    type="button"
+                    onClick={() => { setDpAmount(String(requiredDp)); setDpError(null); }}
+                    className="mt-1.5 text-[11px] font-semibold text-orange-700 hover:underline"
+                  >
+                    Isi otomatis Rp {fmt(requiredDp)}
+                  </button>
+                )}
               </div>
 
               <div>

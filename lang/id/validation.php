@@ -1,0 +1,121 @@
+<?php
+
+/**
+ * Pesan validasi berbahasa Indonesia.
+ *
+ * Laravel memakai bahasa Inggris bila berkas ini tidak ada. Yang dimuat di
+ * sini adalah aturan yang benar-benar dipakai aplikasi, sehingga pesan yang
+ * dilihat pengguna seluruhnya berbahasa Indonesia.
+ */
+return [
+    'accepted'             => ':attribute wajib disetujui.',
+    'active_url'           => ':attribute bukan URL yang valid.',
+    'after'                => ':attribute harus tanggal setelah :date.',
+    'after_or_equal'       => ':attribute harus tanggal setelah atau sama dengan :date.',
+    'alpha'                => ':attribute hanya boleh berisi huruf.',
+    'alpha_dash'           => ':attribute hanya boleh berisi huruf, angka, strip, dan garis bawah.',
+    'alpha_num'            => ':attribute hanya boleh berisi huruf dan angka.',
+    'array'                => ':attribute harus berupa daftar.',
+    'before'               => ':attribute harus tanggal sebelum :date.',
+    'before_or_equal'      => ':attribute harus tanggal sebelum atau sama dengan :date.',
+    'boolean'              => ':attribute hanya boleh bernilai ya atau tidak.',
+    'confirmed'            => 'Konfirmasi :attribute tidak cocok.',
+    'date'                 => ':attribute bukan tanggal yang valid.',
+    'date_equals'          => ':attribute harus tanggal yang sama dengan :date.',
+    'date_format'          => 'Format :attribute tidak sesuai.',
+    'different'            => ':attribute dan :other harus berbeda.',
+    'digits'               => ':attribute harus terdiri dari :digits angka.',
+    'digits_between'       => ':attribute harus terdiri dari :min sampai :max angka.',
+    'email'                => ':attribute harus berupa alamat email yang valid.',
+    'ends_with'            => ':attribute harus diakhiri dengan salah satu dari: :values.',
+    'exists'               => ':attribute yang dipilih tidak ditemukan.',
+    'file'                 => ':attribute harus berupa berkas.',
+    'filled'               => ':attribute wajib diisi.',
+    'image'                => ':attribute harus berupa gambar.',
+    'in'                   => ':attribute yang dipilih tidak valid.',
+    'in_array'             => ':attribute tidak ada di dalam :other.',
+    'integer'              => ':attribute harus berupa angka bulat.',
+    'json'                 => ':attribute harus berupa teks JSON yang valid.',
+    'lowercase'            => ':attribute harus huruf kecil.',
+    'max'                  => [
+        'array'   => ':attribute tidak boleh lebih dari :max item.',
+        'file'    => ':attribute tidak boleh lebih besar dari :max kilobyte.',
+        'numeric' => ':attribute tidak boleh lebih dari :max.',
+        'string'  => ':attribute tidak boleh lebih dari :max karakter.',
+    ],
+    'mimes'                => ':attribute harus berupa berkas berjenis: :values.',
+    'mimetypes'            => ':attribute harus berupa berkas berjenis: :values.',
+    'min'                  => [
+        'array'   => ':attribute harus berisi minimal :min item.',
+        'file'    => ':attribute harus berukuran minimal :min kilobyte.',
+        'numeric' => ':attribute harus bernilai minimal :min.',
+        'string'  => ':attribute harus berisi minimal :min karakter.',
+    ],
+    'not_in'               => ':attribute yang dipilih tidak valid.',
+    'numeric'              => ':attribute harus berupa angka.',
+    'present'              => ':attribute wajib ada.',
+    'prohibited'           => ':attribute tidak diperbolehkan.',
+    'regex'                => 'Format :attribute tidak sesuai.',
+    'required'             => ':attribute wajib diisi.',
+    'required_if'          => ':attribute wajib diisi bila :other bernilai :value.',
+    'required_unless'      => ':attribute wajib diisi kecuali :other bernilai :values.',
+    'required_with'        => ':attribute wajib diisi bila ada :values.',
+    'required_without'     => ':attribute wajib diisi bila tidak ada :values.',
+    'same'                 => ':attribute dan :other harus sama.',
+    'size'                 => [
+        'array'   => ':attribute harus berisi :size item.',
+        'file'    => ':attribute harus berukuran :size kilobyte.',
+        'numeric' => ':attribute harus bernilai :size.',
+        'string'  => ':attribute harus berisi :size karakter.',
+    ],
+    'starts_with'          => ':attribute harus diawali dengan salah satu dari: :values.',
+    'string'               => ':attribute harus berupa teks.',
+    'unique'               => ':attribute sudah digunakan.',
+    'uploaded'             => ':attribute gagal diunggah.',
+    'uppercase'            => ':attribute harus huruf kapital.',
+    'url'                  => 'Format :attribute tidak sesuai.',
+
+    'custom' => [
+        'attribute-name' => [
+            'rule-name' => 'custom-message',
+        ],
+    ],
+
+    /**
+     * Nama field yang umum dipakai di seluruh aplikasi. Nama yang lebih
+     * spesifik tetap bisa ditimpa lewat parameter ketiga pada validate().
+     */
+    'attributes' => [
+        'name'             => 'Nama',
+        'email'            => 'Email',
+        'password'         => 'Kata sandi',
+        'phone'            => 'Nomor telepon',
+        'address'          => 'Alamat',
+        'city'             => 'Kota',
+        'province'         => 'Provinsi',
+        'notes'            => 'Catatan',
+        'status'           => 'Status',
+        'quantity'         => 'Kuantitas',
+        'price'            => 'Harga',
+        'unit_price'       => 'Harga satuan',
+        'amount'           => 'Nominal',
+        'dp_amount'        => 'Nominal Down Payment',
+        'discount_amount'  => 'Diskon',
+        'tax_amount'       => 'Pajak',
+        'shipping_cost'    => 'Ongkos kirim',
+        'grand_total'      => 'Grand total',
+        'order_date'       => 'Tanggal order',
+        'due_date'         => 'Tanggal jatuh tempo',
+        'payment_date'     => 'Tanggal pembayaran',
+        'payment_terms'    => 'Syarat pembayaran',
+        'product_id'       => 'Produk',
+        'customer_id'      => 'Customer',
+        'supplier_id'      => 'Supplier',
+        'warehouse_id'     => 'Gudang',
+        'category_id'      => 'Kategori',
+        'sku'              => 'SKU',
+        'items'            => 'Daftar barang',
+        'tracking_number'  => 'Nomor resi',
+        'rejection_reason' => 'Alasan penolakan',
+    ],
+];
