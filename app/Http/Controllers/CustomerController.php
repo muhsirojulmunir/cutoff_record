@@ -110,9 +110,19 @@ class CustomerController extends Controller
     {
         Gate::authorize('customer.delete');
 
-        $customer->delete();
+        if ($customer->salesOrders()->exists() || $customer->invoices()->exists()) {
+            return redirect()->back()
+                ->with('error', "Customer '{$customer->name}' ({$customer->customer_code}) tidak dapat dihapus karena sudah memiliki riwayat transaksi. Silakan ubah statusnya menjadi Nonaktif.");
+        }
 
-        return redirect()->route('customers.index')
-            ->with('success', 'Customer berhasil dihapus.');
+        try {
+            $customer->delete();
+
+            return redirect()->route('customers.index')
+                ->with('success', 'Customer berhasil dihapus.');
+        } catch (\Throwable $e) {
+            return redirect()->back()
+                ->with('error', "Customer '{$customer->name}' tidak dapat dihapus karena terhubung dengan data lain.");
+        }
     }
 }
