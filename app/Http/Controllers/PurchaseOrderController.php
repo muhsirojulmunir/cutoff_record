@@ -359,11 +359,30 @@ class PurchaseOrderController extends Controller
     {
         Gate::authorize('purchase_order.finance_approve');
 
-        $request->validate([
+        $validated = $request->validate([
             'dp_amount'           => ['required', 'numeric', 'min:1'],
             'cash_bank_account_id'=> ['nullable', 'exists:cash_bank_accounts,id'],
-            'payment_terms'       => ['required', 'in:cash_to_cash,tempo_7_days'],
+            'payment_terms'       => ['required', 'in:dp_50,cash,tempo_7_days,tempo_14_days,cash_to_cash'],
+        ], [], [
+            'dp_amount'            => 'Nominal Down Payment',
+            'cash_bank_account_id' => 'Akun Kas / Bank',
+            'payment_terms'        => 'Syarat pembayaran',
         ]);
+
+        // Opsi DP 50% berarti nominalnya sudah pasti; Finance tidak perlu
+        // menghitung sendiri dan salah ketik langsung ditolak di sini.
+        if ($validated['payment_terms'] === 'dp_50') {
+            $expected = round(((float) $purchaseOrder->grand_total) * 0.5);
+            $paid     = round((float) $validated['dp_amount']);
+
+            if (abs($paid - $expected) > 1) {
+                return back()->withErrors([
+                    'error' => 'Pembayaran DP 50% harus Rp ' . number_format($expected, 0, ',', '.')
+                        . ' (setengah dari Grand Total Rp ' . number_format((float) $purchaseOrder->grand_total, 0, ',', '.')
+                        . '), sedangkan yang diisi Rp ' . number_format($paid, 0, ',', '.') . '.',
+                ]);
+            }
+        }
 
         try {
             $this->poService->payDownPayment($purchaseOrder, $request->all(), auth()->id());
