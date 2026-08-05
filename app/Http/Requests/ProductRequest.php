@@ -18,7 +18,7 @@ class ProductRequest extends FormRequest
         return [
             'sku'   => ['required', 'string', 'max:100', 'unique:products,sku,' . $id],
             'name'  => ['required', 'string', 'max:255'],
-            'photo' => ['nullable', 'image', 'max:2048', 'extensions:jpg,jpeg,png,webp'],
+            'photo' => ['nullable', 'file', 'max:2048', 'extensions:jpg,jpeg,png,webp'],
         ];
     }
 }
