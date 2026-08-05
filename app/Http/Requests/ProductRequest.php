@@ -16,9 +16,9 @@ class ProductRequest extends FormRequest
         $id = $this->route('product') ? $this->route('product')->id : null;
 
         return [
-            'sku'   => ['required', 'string', 'max:100', 'unique:products,sku,' . $id],
-            'name'  => ['required', 'string', 'max:255'],
-            'photo' => ['nullable', 'file', 'max:2048', 'extensions:jpg,jpeg,png,webp'],
+            'sku'  => ['required', 'string', 'max:100', 'unique:products,sku,' . $id],
+            'name' => ['required', 'string', 'max:255'],
+            // photo: divalidasi manual di controller (hindari finfo yang tidak tersedia di hosting)
         ];
     }
 }
