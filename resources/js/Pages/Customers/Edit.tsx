@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 
@@ -7,7 +7,6 @@ interface Customer {
   customer_code: string;
   name: string;
   phone: string | null;
-  email: string | null;
   address: string | null;
   tax_number: string | null;
   status: 'active' | 'inactive';
@@ -22,7 +21,6 @@ export default function Edit({ customer }: EditProps) {
   const { data, setData, put, processing, errors } = useForm({
     name: customer.name,
     phone: customer.phone ?? '',
-    email: customer.email ?? '',
     address: customer.address ?? '',
     tax_number: customer.tax_number ?? '',
     status: customer.status,
@@ -65,39 +63,20 @@ export default function Edit({ customer }: EditProps) {
               {errors.name && <p className="text-rose-400 text-xs mt-1">{errors.name}</p>}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Phone */}
-              <div className="space-y-1.5">
-                <label htmlFor="phone" className="block text-sm font-semibold text-gray-700">
-                  Nomor Telepon
-                </label>
-                <input
-                  id="phone"
-                  type="text"
-                  value={data.phone}
-                  onChange={(e) => setData('phone', e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 hover:border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                  disabled={processing}
-                />
-                {errors.phone && <p className="text-rose-400 text-xs mt-1">{errors.phone}</p>}
-              </div>
-
-              {/* Email */}
-              <div className="space-y-1.5">
-                <label htmlFor="email" className="block text-sm font-semibold text-gray-700">
-                  Email
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  value={data.email}
-                  onChange={(e) => setData('email', e.target.value)}
-                  className={`w-full px-4 py-2.5 rounded-xl bg-gray-50 border text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all
-                    ${errors.email ? 'border-rose-500' : 'border-gray-300 hover:border-gray-300'}`}
-                  disabled={processing}
-                />
-                {errors.email && <p className="text-rose-400 text-xs mt-1">{errors.email}</p>}
-              </div>
+            {/* Phone */}
+            <div className="space-y-1.5">
+              <label htmlFor="phone" className="block text-sm font-semibold text-gray-700">
+                Nomor Telepon
+              </label>
+              <input
+                id="phone"
+                type="text"
+                value={data.phone}
+                onChange={(e) => setData('phone', e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 hover:border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+                disabled={processing}
+              />
+              {errors.phone && <p className="text-rose-400 text-xs mt-1">{errors.phone}</p>}
             </div>
 
             {/* Address */}

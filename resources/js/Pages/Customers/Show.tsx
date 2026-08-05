@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Head, Link, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import { PageProps } from '../../Types';
@@ -8,7 +8,6 @@ interface Customer {
   customer_code: string;
   name: string;
   phone: string | null;
-  email: string | null;
   address: string | null;
   tax_number: string | null;
   status: 'active' | 'inactive';
@@ -77,8 +76,8 @@ export default function Show({ customer }: ShowProps) {
               <p className="text-sm font-medium text-gray-700">{customer.phone ?? '—'}</p>
             </div>
             <div className="space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Email</span>
-              <p className="text-sm text-gray-700">{customer.email ?? '—'}</p>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">NPWP / Nomor Pajak</span>
+              <p className="text-sm font-medium text-gray-700">{customer.tax_number ?? '—'}</p>
             </div>
           </div>
 
@@ -88,10 +87,6 @@ export default function Show({ customer }: ShowProps) {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 border-b border-gray-300/80 pb-6">
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">NPWP / Nomor Pajak</span>
-              <p className="text-sm font-medium text-gray-700">{customer.tax_number ?? '—'}</p>
-            </div>
             <div className="space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Status</span>
               <div className="pt-1">
@@ -106,6 +101,10 @@ export default function Show({ customer }: ShowProps) {
                   {customer.status === 'active' ? 'Aktif' : 'Nonaktif'}
                 </span>
               </div>
+            </div>
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Dibuat Oleh</span>
+              <p className="text-xs text-gray-700 pt-1">{customer.creator?.name ?? 'Sistem'}</p>
             </div>
           </div>
 
