@@ -25,8 +25,7 @@ class CustomerController extends Controller
                 $query->where(function($q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")
                       ->orWhere('customer_code', 'like', "%{$search}%")
-                      ->orWhere('phone', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%");
+                      ->orWhere('phone', 'like', "%{$search}%");
                 });
             })
             ->when($status, function ($query, $status) {
@@ -50,12 +49,11 @@ class CustomerController extends Controller
     }
 
     /**
-     * Nomor urut diambil dari angka terbesar yang sudah terpakai, jadi kode
-     * lama berformat panjang (CUS-000007) tetap dihitung dan tidak bentrok.
+     * Nomor urut customer dibuat otomatis & berurutan: CUST-01, CUST-02, CUST-03, dst.
      */
     private function generateCustomerCode(): string
     {
-        $lastNumber = Customer::withTrashed()
+        $lastNumber = Customer::query()
             ->pluck('customer_code')
             ->map(fn ($code) => (int) preg_replace('/\D/', '', (string) $code))
             ->max() ?? 0;
@@ -69,8 +67,6 @@ class CustomerController extends Controller
 
         $data = $request->validated();
         
-        // Kode customer dibuat pendek: CUST-01, CUST-02, … dan otomatis
-        // melebar sendiri setelah melewati 99 (CUST-100).
         $data['customer_code'] = $this->generateCustomerCode();
         $data['created_by'] = Auth::id();
 
@@ -117,6 +113,6 @@ class CustomerController extends Controller
         $customer->delete();
 
         return redirect()->route('customers.index')
-            ->with('success', 'Customer berhasil dihapus (soft delete).');
+            ->with('success', 'Customer berhasil dihapus.');
     }
 }
