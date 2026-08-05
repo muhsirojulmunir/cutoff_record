@@ -115,9 +115,9 @@ class ProductController extends Controller
     }
 
     /**
-     * Foto produk disimpan di storage publik. Saat diganti, berkas lama
-     * dihapus supaya tidak menumpuk di hosting.
-     * Validasi dilakukan manual tanpa finfo agar kompatibel dengan semua hosting.
+     * Foto produk disimpan menggunakan PHP native move() untuk menghindari
+     * ketergantungan pada finfo (league/mime-type-detection) yang tidak tersedia
+     * di beberapa shared hosting.
      */
     private function withPhoto(array $data, Request $request, ?Product $product = null): array
     {
@@ -129,28 +129,37 @@ class ProductController extends Controller
 
         $file = $request->file('photo');
 
-        // Validasi manual tanpa finfo: cek ekstensi dan ukuran file
+        // Validasi ekstensi manual (tanpa finfo / MIME detection)
         $allowedExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
         $ext = strtolower($file->getClientOriginalExtension());
 
         if (! in_array($ext, $allowedExtensions)) {
-            return $data; // abaikan file dengan ekstensi tidak valid
+            return $data;
         }
 
-        // Cek ukuran file maks 2MB (2048 KB = 2097152 bytes)
+        // Validasi ukuran maks 2MB
         if ($file->getSize() > 2097152) {
-            return $data; // abaikan file terlalu besar
+            return $data;
         }
 
+        // Hapus foto lama menggunakan PHP native (bypass Flysystem/finfo)
         if ($product?->photo_path) {
-            Storage::disk('public')->delete($product->photo_path);
+            $oldPath = storage_path('app/public/' . $product->photo_path);
+            if (file_exists($oldPath)) {
+                @unlink($oldPath);
+            }
         }
 
-        $data['photo_path'] = $file->storeAs(
-            'produk',
-            uniqid('foto_') . '.' . $ext,
-            'public'
-        );
+        // Simpan file dengan PHP native move() — ZERO finfo dependency
+        $destDir = storage_path('app/public/produk');
+        if (! is_dir($destDir)) {
+            mkdir($destDir, 0755, true);
+        }
+
+        $filename = uniqid('foto_') . '_' . time() . '.' . $ext;
+        $file->move($destDir, $filename);
+
+        $data['photo_path'] = 'produk/' . $filename;
 
         return $data;
     }
