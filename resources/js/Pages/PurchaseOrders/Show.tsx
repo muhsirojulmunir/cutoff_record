@@ -342,15 +342,34 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
   }
 
   // ─────────── Finance Validate ─────────────────────────────
+  /**
+   * Layar validasi Finance dibuka dengan angka yang sudah diisi admin saat
+   * penerimaan barang — termasuk jumlah reject dan alasannya. Finance tinggal
+   * memeriksa dan menyetujui, bukan mengetik ulang dari nol.
+   */
   function handleOpenValidateModal() {
-    const items: ValidationItem[] = purchaseOrder.items.map(item => ({
-      item_id: item.id,
-      action: 'accepted' as const,
-      accepted_quantity: item.received_quantity,
-      rejected_quantity: 0,
-      rejected_reason: '',
-      validated_unit_price: Number(item.unit_price),
-    }));
+    const items: ValidationItem[] = purchaseOrder.items.map(item => {
+      const received = Number(item.received_quantity) || 0;
+      const rejected = Number(item.rejected_quantity) || 0;
+      const accepted = item.accepted_quantity !== null && item.accepted_quantity !== undefined
+        ? Number(item.accepted_quantity)
+        : Math.max(0, received - rejected);
+
+      // Tindakan mengikuti catatan admin; bila belum ada, disimpulkan dari
+      // ada tidaknya barang reject.
+      const action: ValidationItem['action'] = item.action_taken
+        ?? (rejected <= 0 ? 'accepted' : (accepted <= 0 ? 'rejected' : 'revised'));
+
+      return {
+        item_id: item.id,
+        action,
+        accepted_quantity: accepted,
+        rejected_quantity: rejected,
+        rejected_reason: item.rejected_reason ?? '',
+        validated_unit_price: Number(item.validated_unit_price ?? item.unit_price),
+      };
+    });
+
     setValidationItems(items);
     setValidateModalOpen(true);
   }
@@ -937,7 +956,24 @@ export default function Show({ purchaseOrder, cashBankAccounts, can }: PurchaseO
                         {/* Item Info */}
                         <div className="md:w-1/3 flex-shrink-0">
                           <p className="font-bold text-gray-800 text-sm">{po_item.product_name}</p>
-                          <p className="text-[10px] text-gray-400">{po_item.product_code} • Diterima: <span className="text-gray-700 font-semibold">{po_item.received_quantity} {po_item.unit}</span></p>
+                          <p className="text-[10px] text-gray-400">{po_item.product_code}</p>
+
+                          {/* Catatan admin saat penerimaan — acuan Finance */}
+                          <div className="mt-1.5 text-[10px] text-gray-600 bg-white border border-gray-200 rounded-lg px-2 py-1.5 space-y-0.5">
+                            <p className="font-semibold text-gray-500 uppercase tracking-wider text-[9px]">Catatan Admin</p>
+                            <p>
+                              Barang datang: <span className="font-mono font-bold text-gray-800">{po_item.received_quantity}</span> {po_item.unit}
+                            </p>
+                            <p>
+                              Reject: <span className={`font-mono font-bold ${Number(po_item.rejected_quantity) > 0 ? 'text-rose-600' : 'text-gray-800'}`}>
+                                {po_item.rejected_quantity ?? 0}
+                              </span>
+                              {' · '}Bagus: <span className="font-mono font-bold text-teal-700">{po_item.accepted_quantity ?? po_item.received_quantity}</span>
+                            </p>
+                            {po_item.rejected_reason && (
+                              <p className="text-rose-600">Alasan: {po_item.rejected_reason}</p>
+                            )}
+                          </div>
                         </div>
 
                         {/* Action Selector */}
