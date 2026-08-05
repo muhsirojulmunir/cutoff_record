@@ -49,13 +49,20 @@ class CustomerController extends Controller
     }
 
     /**
-     * Nomor urut customer dibuat otomatis & berurutan: CUST-01, CUST-02, CUST-03, dst.
+     * Nomor urut customer dibuat otomatis & berurutan khusus kode CUST-XX: CUST-01, CUST-02, dst.
+     * Kode legacy lama (seperti CUS-000030) tidak akan mengganggu urutan CUST-01.
      */
     private function generateCustomerCode(): string
     {
         $lastNumber = Customer::withTrashed()
+            ->where('customer_code', 'like', 'CUST-%')
             ->pluck('customer_code')
-            ->map(fn ($code) => (int) preg_replace('/\D/', '', (string) $code))
+            ->map(function ($code) {
+                if (preg_match('/^CUST-(\d+)$/i', trim((string) $code), $matches)) {
+                    return (int) $matches[1];
+                }
+                return 0;
+            })
             ->max() ?? 0;
 
         return 'CUST-' . str_pad((string) ($lastNumber + 1), 2, '0', STR_PAD_LEFT);
