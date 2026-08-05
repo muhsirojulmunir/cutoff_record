@@ -118,10 +118,26 @@ class ProductController extends Controller
      * Foto produk disimpan menggunakan PHP native move() untuk menghindari
      * ketergantungan pada finfo (league/mime-type-detection) yang tidak tersedia
      * di beberapa shared hosting.
+     *
+     * Jika remove_photo=1 dikirim tanpa file baru → foto lama dihapus, photo_path jadi null.
      */
     private function withPhoto(array $data, Request $request, ?Product $product = null): array
     {
         unset($data['photo']);
+
+        $removePhoto = $request->input('remove_photo') === '1';
+
+        // Kasus: hapus foto tanpa upload foto baru
+        if ($removePhoto && ! $request->hasFile('photo')) {
+            if ($product?->photo_path) {
+                $oldPath = storage_path('app/public/' . $product->photo_path);
+                if (file_exists($oldPath)) {
+                    @unlink($oldPath);
+                }
+            }
+            $data['photo_path'] = null;
+            return $data;
+        }
 
         if (! $request->hasFile('photo')) {
             return $data;
