@@ -27,6 +27,7 @@ use App\Http\Controllers\PettyCashController;
 use App\Http\Controllers\StockMovementController;
 use App\Http\Controllers\FactoryReceivableController;
 use App\Http\Controllers\FactoryInvoiceController;
+use App\Http\Controllers\StockAdjustmentController;
 use App\Http\Controllers\StockController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\UserController;
@@ -180,6 +181,12 @@ Route::middleware('auth')->group(function () {
         ->name('goods-receipt.approve')->middleware('can:stock.receipt.approve');
     Route::post('/barang-masuk/{goodsReceipt}/reject', [GoodsReceiptController::class, 'reject'])
         ->name('goods-receipt.reject')->middleware('can:stock.receipt.approve');
+
+    // Adjustment Stok — khusus Leader
+    Route::get('/adjustment-stok', [StockAdjustmentController::class, 'index'])
+        ->name('stock-adjustment.index')->middleware('can:stock.adjustment.manage');
+    Route::post('/adjustment-stok', [StockAdjustmentController::class, 'store'])
+        ->name('stock-adjustment.store')->middleware('can:stock.adjustment.manage');
 
     // Gudang — cetak resi & validasi serah terima kurir
     Route::get('/gudang/pengiriman', [WarehouseDispatchController::class, 'index'])

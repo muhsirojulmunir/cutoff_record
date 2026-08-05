@@ -144,6 +144,10 @@ class GoodsReceiptTest extends TestCase
         $this->assertEquals(10, $this->product->fresh()->stock);
     }
 
+    /**
+     * Bentuk lama (satu produk langsung di akar payload) tetap didukung,
+     * dan kuantitasnya dinormalkan menjadi satu baris items.
+     */
     public function test_quantity_must_be_positive(): void
     {
         $this->actingAs($this->admin)->post('/barang-masuk', [
@@ -151,6 +155,46 @@ class GoodsReceiptTest extends TestCase
             'warehouse_id' => $this->warehouse->id,
             'quantity'     => 0,
             'notes'        => 'Percobaan',
-        ])->assertSessionHasErrors('quantity');
+        ])->assertSessionHasErrors('items.0.quantity');
+    }
+
+    /** Beberapa SKU boleh diajukan sekaligus dengan satu nomor PO. */
+    public function test_multiple_skus_can_be_submitted_at_once(): void
+    {
+        $second = Product::create([
+            'sku' => 'SPT-002', 'name' => 'Sepatu Olahraga',
+            'category_id' => $this->product->category_id,
+            'stock' => 4, 'status' => 'active', 'created_by' => $this->admin->id,
+        ]);
+
+        $this->actingAs($this->admin)->post('/barang-masuk', [
+            'po_number'    => 'PO-202608-0001',
+            'warehouse_id' => $this->warehouse->id,
+            'notes'        => 'Kiriman pabrik',
+            'items'        => [
+                ['product_id' => $this->product->id, 'quantity' => 25],
+                ['product_id' => $second->id,        'quantity' => 7],
+            ],
+        ])->assertRedirect();
+
+        $this->assertEquals(2, GoodsReceipt::where('po_number', 'PO-202608-0001')->count());
+
+        // Keduanya masih menunggu approval, jadi stok belum boleh berubah.
+        $this->assertEquals(10, $this->product->fresh()->stock);
+        $this->assertEquals(4, $second->fresh()->stock);
+    }
+
+    /** Bila satu SKU tidak valid, tidak ada pengajuan yang tersimpan. */
+    public function test_invalid_sku_cancels_whole_submission(): void
+    {
+        $this->actingAs($this->admin)->post('/barang-masuk', [
+            'notes' => 'Kiriman pabrik',
+            'items' => [
+                ['product_id' => $this->product->id, 'quantity' => 5],
+                ['product_id' => 999999,             'quantity' => 3],
+            ],
+        ])->assertSessionHasErrors('items.1.product_id');
+
+        $this->assertEquals(0, GoodsReceipt::count());
     }
 }

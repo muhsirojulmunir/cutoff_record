@@ -20,6 +20,7 @@ class GoodsReceipt extends Model
 
     protected $fillable = [
         'receipt_number',
+        'po_number',
         'product_id',
         'warehouse_id',
         'quantity',
