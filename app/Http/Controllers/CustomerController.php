@@ -53,7 +53,7 @@ class CustomerController extends Controller
      */
     private function generateCustomerCode(): string
     {
-        $lastNumber = Customer::query()
+        $lastNumber = Customer::withTrashed()
             ->pluck('customer_code')
             ->map(fn ($code) => (int) preg_replace('/\D/', '', (string) $code))
             ->max() ?? 0;
@@ -110,19 +110,9 @@ class CustomerController extends Controller
     {
         Gate::authorize('customer.delete');
 
-        if ($customer->salesOrders()->exists() || $customer->invoices()->exists()) {
-            return redirect()->back()
-                ->with('error', "Customer '{$customer->name}' ({$customer->customer_code}) tidak dapat dihapus karena sudah memiliki riwayat transaksi. Silakan ubah statusnya menjadi Nonaktif.");
-        }
+        $customer->delete();
 
-        try {
-            $customer->delete();
-
-            return redirect()->route('customers.index')
-                ->with('success', 'Customer berhasil dihapus.');
-        } catch (\Throwable $e) {
-            return redirect()->back()
-                ->with('error', "Customer '{$customer->name}' tidak dapat dihapus karena terhubung dengan data lain.");
-        }
+        return redirect()->route('customers.index')
+            ->with('success', 'Customer berhasil dihapus.');
     }
 }
