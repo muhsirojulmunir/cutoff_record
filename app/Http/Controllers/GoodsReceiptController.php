@@ -38,6 +38,7 @@ class GoodsReceiptController extends Controller
             ->when($request->input('search'), function ($query, $search) {
                 $query->where(function ($inner) use ($search) {
                     $inner->where('receipt_number', 'like', "%{$search}%")
+                        ->orWhere('po_number', 'like', "%{$search}%")
                         ->orWhereHas('product', function ($productQuery) use ($search) {
                             $productQuery->where('name', 'like', "%{$search}%")
                                 ->orWhere('sku', 'like', "%{$search}%");
@@ -67,28 +68,53 @@ class GoodsReceiptController extends Controller
     {
         Gate::authorize('stock.receipt.request');
 
+        // Bentuk lama (satu produk per kiriman) tetap diterima agar tautan dan
+        // integrasi yang sudah ada tidak ikut rusak.
+        if (!$request->has('items')) {
+            $request->merge([
+                'items' => [[
+                    'product_id' => $request->input('product_id'),
+                    'quantity'   => $request->input('quantity'),
+                ]],
+            ]);
+        }
+
         $validated = $request->validate([
-            'product_id'   => ['required', 'exists:products,id'],
-            'warehouse_id' => ['nullable', 'exists:warehouses,id'],
-            'quantity'     => ['required', 'integer', 'min:1'],
-            'notes'        => ['required', 'string', 'min:3', 'max:255'],
+            'po_number'           => ['nullable', 'string', 'max:100'],
+            'warehouse_id'        => ['nullable', 'exists:warehouses,id'],
+            'notes'               => ['required', 'string', 'min:3', 'max:255'],
+            'items'               => ['required', 'array', 'min:1'],
+            'items.*.product_id'  => ['required', 'exists:products,id'],
+            'items.*.quantity'    => ['required', 'integer', 'min:1'],
         ], [], [
-            'product_id'   => 'Produk',
-            'warehouse_id' => 'Gudang',
-            'quantity'     => 'Jumlah masuk',
-            'notes'        => 'Keterangan',
+            'po_number'          => 'Nomor PO',
+            'warehouse_id'       => 'Gudang',
+            'notes'              => 'Keterangan',
+            'items'              => 'Daftar barang',
+            'items.*.product_id' => 'Produk',
+            'items.*.quantity'   => 'Jumlah masuk',
         ]);
 
         try {
-            $receipt = $this->goodsReceiptService->request($validated, auth()->id());
+            $created = $this->goodsReceiptService->requestBatch(
+                [
+                    'po_number'    => $validated['po_number'] ?? null,
+                    'warehouse_id' => $validated['warehouse_id'] ?? null,
+                    'notes'        => $validated['notes'],
+                ],
+                $validated['items'],
+                auth()->id()
+            );
         } catch (Exception $e) {
             return back()->with('error', $e->getMessage())->withInput();
         }
 
-        return back()->with(
-            'success',
-            "Pengajuan {$receipt->receipt_number} terkirim. Stok bertambah setelah disetujui PIC Gudang."
-        );
+        $count   = count($created);
+        $rincian = $count === 1
+            ? "Pengajuan {$created[0]->receipt_number} terkirim."
+            : "{$count} SKU diajukan" . (!empty($validated['po_number']) ? " untuk PO {$validated['po_number']}." : '.');
+
+        return back()->with('success', "{$rincian} Stok bertambah setelah disetujui PIC Gudang.");
     }
 
     public function approve(GoodsReceipt $goodsReceipt): RedirectResponse

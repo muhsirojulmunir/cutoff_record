@@ -23,6 +23,7 @@ class GoodsReceiptService
         return DB::transaction(function () use ($data, $userId) {
             return GoodsReceipt::create([
                 'receipt_number' => $this->generateReceiptNumber(),
+                'po_number'      => $data['po_number'] ?? null,
                 'product_id'     => $data['product_id'],
                 'warehouse_id'   => $data['warehouse_id'] ?? null,
                 'quantity'       => (int) $data['quantity'],
@@ -31,6 +32,36 @@ class GoodsReceiptService
                 'requested_by'   => $userId,
                 'requested_at'   => now(),
             ]);
+        });
+    }
+
+    /**
+     * Ajukan beberapa SKU sekaligus dalam satu kiriman.
+     *
+     * Tiap SKU tetap menjadi baris tersendiri supaya PIC Gudang bisa
+     * menyetujui atau menolaknya satu per satu; nomor PO, gudang, dan
+     * keterangan dipakai bersama. Seluruhnya dibungkus satu transaksi agar
+     * tidak ada pengajuan yang masuk setengah-setengah.
+     *
+     * @param  array<int, array{product_id: int|string, quantity: int|string}>  $items
+     * @return array<int, GoodsReceipt>
+     */
+    public function requestBatch(array $shared, array $items, ?int $userId = null): array
+    {
+        return DB::transaction(function () use ($shared, $items, $userId) {
+            $created = [];
+
+            foreach ($items as $item) {
+                $created[] = $this->request([
+                    'po_number'    => $shared['po_number'] ?? null,
+                    'warehouse_id' => $shared['warehouse_id'] ?? null,
+                    'notes'        => $shared['notes'],
+                    'product_id'   => $item['product_id'],
+                    'quantity'     => $item['quantity'],
+                ], $userId);
+            }
+
+            return $created;
         });
     }
 

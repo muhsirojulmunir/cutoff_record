@@ -5,6 +5,7 @@ import Alert from '../../Components/Alert';
 import Modal from '../../Components/Modal';
 import Pagination from '../../Components/Pagination';
 import { PageProps } from '../../Types';
+import * as XLSX from 'xlsx';
 
 interface Product {
   id: number;
@@ -21,9 +22,16 @@ interface Warehouse {
 
 type ReceiptStatus = 'pending' | 'approved' | 'rejected';
 
+/** Satu baris SKU pada form pengajuan. */
+interface SkuLine {
+  sku: string;
+  quantity: string;
+}
+
 interface Receipt {
   id: number;
   receipt_number: string;
+  po_number: string | null;
   quantity: number;
   notes: string;
   status: ReceiptStatus;
@@ -85,17 +93,106 @@ export default function GoodsReceiptIndex({
   const [rejectReason, setRejectReason] = useState('');
   const [rejectError, setRejectError] = useState<string | null>(null);
 
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importInfo, setImportInfo] = useState<string | null>(null);
+  const [lines, setLines] = useState<SkuLine[]>([{ sku: '', quantity: '' }]);
+
   const { data, setData, post, processing, errors, reset } = useForm({
-    product_id: '',
+    po_number: '',
     warehouse_id: warehouses[0]?.id ? String(warehouses[0].id) : '',
-    quantity: '',
     notes: '',
+    items: [] as { product_id: number; quantity: number }[],
   });
 
-  const selectedProduct = useMemo(
-    () => products.find((product) => String(product.id) === data.product_id) ?? null,
-    [products, data.product_id],
-  );
+  /** Cocokkan SKU tanpa peduli huruf besar/kecil maupun spasi berlebih. */
+  const findProductBySku = useMemo(() => {
+    const bySku = new Map(products.map((p) => [p.sku.trim().toLowerCase(), p]));
+    return (sku: string): Product | undefined => bySku.get(String(sku ?? '').trim().toLowerCase());
+  }, [products]);
+
+  function addLine() {
+    setLines([...lines, { sku: '', quantity: '' }]);
+  }
+
+  function removeLine(index: number) {
+    setLines(lines.filter((_, i) => i !== index));
+  }
+
+  function updateLine(index: number, key: keyof SkuLine, value: string) {
+    const updated = [...lines];
+    updated[index] = { ...updated[index], [key]: value };
+    setLines(updated);
+  }
+
+  /** Unduh template Excel berisi kolom SKU dan QTY. */
+  function handleDownloadTemplate() {
+    const rows = [
+      ['SKU', 'QTY'],
+      ...products.slice(0, 3).map((p) => [p.sku, 1]),
+    ];
+
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    worksheet['!cols'] = [{ wch: 24 }, { wch: 10 }];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Barang Masuk');
+    XLSX.writeFile(workbook, 'Template_Barang_Masuk.xlsx');
+  }
+
+  /** Baca file Excel lalu isi daftar SKU. Baris tanpa SKU dilewati. */
+  function handleImportExcel(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImportError(null);
+    setImportInfo(null);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const workbook = XLSX.read(event.target?.result, { type: 'binary' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const raw: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        if (!raw || raw.length === 0) {
+          setImportError('File Excel kosong atau tidak dapat dibaca.');
+          return;
+        }
+
+        const startIndex = String(raw[0]?.[0] ?? '').trim().toLowerCase() === 'sku' ? 1 : 0;
+
+        const parsed: SkuLine[] = [];
+        const unknown: string[] = [];
+
+        for (let i = startIndex; i < raw.length; i++) {
+          const sku = String(raw[i]?.[0] ?? '').trim();
+          if (sku === '') continue;
+
+          if (!findProductBySku(sku)) unknown.push(sku);
+
+          const qty = Math.max(1, parseInt(String(raw[i]?.[1] ?? 1), 10) || 1);
+          parsed.push({ sku, quantity: String(qty) });
+        }
+
+        if (parsed.length === 0) {
+          setImportError('Tidak ada baris berisi SKU pada file ini.');
+          return;
+        }
+
+        setLines(parsed);
+        setImportInfo(
+          unknown.length > 0
+            ? `${parsed.length} baris dimuat. SKU tidak dikenal: ${unknown.join(', ')} — perbaiki dulu sebelum mengirim.`
+            : `${parsed.length} baris berhasil dimuat dari Excel.`
+        );
+      } catch (err: any) {
+        setImportError('Gagal membaca file Excel: ' + (err?.message ?? err));
+      }
+    };
+
+    reader.readAsBinaryString(file);
+    e.target.value = '';
+  }
 
   function applyFilter(next?: { search?: string; status?: string }) {
     router.get('/barang-masuk', {
@@ -106,9 +203,35 @@ export default function GoodsReceiptIndex({
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    post('/barang-masuk', {
+    setImportError(null);
+
+    const filled = lines.filter((line) => line.sku.trim() !== '');
+
+    if (filled.length === 0) {
+      setImportError('Isi minimal satu SKU sebelum mengirim pengajuan.');
+      return;
+    }
+
+    const unknown = filled.filter((line) => !findProductBySku(line.sku));
+    if (unknown.length > 0) {
+      setImportError(`SKU tidak dikenal: ${unknown.map((l) => l.sku).join(', ')}.`);
+      return;
+    }
+
+    const items = filled.map((line) => ({
+      product_id: findProductBySku(line.sku)!.id,
+      quantity: Math.max(1, Number(line.quantity) || 1),
+    }));
+
+    // useForm menyimpan state secara asinkron, jadi item dikirim langsung
+    // lewat transform agar baris terbaru pasti ikut terkirim.
+    router.post('/barang-masuk', { ...data, items }, {
       preserveScroll: true,
-      onSuccess: () => reset('product_id', 'quantity', 'notes'),
+      onSuccess: () => {
+        setLines([{ sku: '', quantity: '' }]);
+        setImportInfo(null);
+        reset('po_number', 'notes');
+      },
     });
   }
 
@@ -173,38 +296,25 @@ export default function GoodsReceiptIndex({
               </div>
 
               <form onSubmit={submit} className="p-6 space-y-4">
+                {/* Daftar SKU untuk autocomplete saat mengetik */}
+                <datalist id="gr-sku-options">
+                  {products.map((product) => (
+                    <option key={product.id} value={product.sku}>{product.name}</option>
+                  ))}
+                </datalist>
+
                 <div>
-                  <label htmlFor="product_id" className={labelClass}>
-                    Produk <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    id="product_id"
-                    value={data.product_id}
-                    onChange={(e) => setData('product_id', e.target.value)}
+                  <label htmlFor="po_number" className={labelClass}>Nomor PO</label>
+                  <input
+                    id="po_number"
+                    type="text"
+                    value={data.po_number}
+                    onChange={(e) => setData('po_number', e.target.value)}
+                    placeholder="Mis. PO-202608-0001 (opsional)"
+                    autoComplete="off"
                     className={inputClass}
-                  >
-                    <option value="">-- Pilih Produk --</option>
-                    {products.map((product) => (
-                      <option key={product.id} value={product.id}>
-                        [{product.sku}] {product.name}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedProduct && (
-                    <p className="text-[11px] text-gray-500 mt-1.5">
-                      Stok saat ini{' '}
-                      <span className="font-mono font-bold text-gray-800">{selectedProduct.stock}</span>
-                      {data.quantity && Number(data.quantity) > 0 && (
-                        <>
-                          {' → setelah disetujui '}
-                          <span className="font-mono font-bold text-teal-600">
-                            {selectedProduct.stock + Number(data.quantity)}
-                          </span>
-                        </>
-                      )}
-                    </p>
-                  )}
-                  {errors.product_id && <p className="text-rose-500 text-xs mt-1">{errors.product_id}</p>}
+                  />
+                  {errors.po_number && <p className="text-rose-500 text-xs mt-1">{errors.po_number}</p>}
                 </div>
 
                 <div>
@@ -225,20 +335,96 @@ export default function GoodsReceiptIndex({
                   {errors.warehouse_id && <p className="text-rose-500 text-xs mt-1">{errors.warehouse_id}</p>}
                 </div>
 
-                <div>
-                  <label htmlFor="quantity" className={labelClass}>
-                    Jumlah Masuk <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    id="quantity"
-                    type="number"
-                    min={1}
-                    value={data.quantity}
-                    onChange={(e) => setData('quantity', e.target.value)}
-                    placeholder="Contoh: 50"
-                    className={inputClass}
-                  />
-                  {errors.quantity && <p className="text-rose-500 text-xs mt-1">{errors.quantity}</p>}
+                {/* Daftar SKU — bisa lebih dari satu dalam sekali pengajuan */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-semibold text-gray-500">
+                      Daftar SKU <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleDownloadTemplate}
+                        className="text-[11px] font-semibold text-gray-600 hover:text-gray-900 hover:underline"
+                      >
+                        Template
+                      </button>
+                      <label className="text-[11px] font-semibold text-teal-700 hover:underline cursor-pointer">
+                        Import
+                        <input type="file" accept=".xlsx,.xls" onChange={handleImportExcel} className="hidden" />
+                      </label>
+                    </div>
+                  </div>
+
+                  {importError && (
+                    <p className="text-rose-600 text-[11px] bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1.5">{importError}</p>
+                  )}
+                  {importInfo && (
+                    <p className="text-gray-600 text-[11px] bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5">{importInfo}</p>
+                  )}
+
+                  {lines.map((line, index) => {
+                    const matched = findProductBySku(line.sku);
+                    return (
+                      <div key={index} className="flex gap-2 items-start">
+                        <div className="flex-1">
+                          <input
+                            list="gr-sku-options"
+                            value={line.sku}
+                            onChange={(e) => updateLine(index, 'sku', e.target.value)}
+                            placeholder="Ketik / tempel SKU"
+                            autoComplete="off"
+                            className={`w-full px-3 py-2 rounded-xl border text-xs font-mono focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all ${
+                              line.sku.trim() !== '' && !matched
+                                ? 'bg-rose-50 border-rose-300 text-rose-700'
+                                : 'bg-gray-50 border-gray-300 text-gray-800'
+                            }`}
+                          />
+                          {line.sku.trim() !== '' && !matched && (
+                            <p className="text-rose-500 text-[10px] mt-0.5">SKU tidak ditemukan</p>
+                          )}
+                          {matched && (
+                            <p className="text-[10px] text-gray-400 mt-0.5">
+                              Stok {matched.stock}
+                              {Number(line.quantity) > 0 && (
+                                <> &rarr; <span className="text-teal-600 font-semibold">{matched.stock + Number(line.quantity)}</span></>
+                              )}
+                            </p>
+                          )}
+                        </div>
+                        <input
+                          type="number"
+                          min={1}
+                          value={line.quantity}
+                          onChange={(e) => updateLine(index, 'quantity', e.target.value)}
+                          placeholder="Qty"
+                          className="w-20 px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-xs text-center font-mono focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all"
+                        />
+                        {lines.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeLine(index)}
+                            title="Hapus baris"
+                            className="p-2 rounded-xl text-gray-400 hover:text-rose-500 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all shrink-0"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  <button
+                    type="button"
+                    onClick={addLine}
+                    className="w-full py-2 rounded-xl border border-dashed border-gray-300 text-gray-500 hover:text-teal-700 hover:border-teal-300 text-[11px] font-semibold transition-all"
+                  >
+                    + Tambah SKU
+                  </button>
+
+                  {errors.items && <p className="text-rose-500 text-xs mt-1">{errors.items}</p>}
                 </div>
 
                 <div>
@@ -342,6 +528,9 @@ export default function GoodsReceiptIndex({
                           <tr key={receipt.id} className="hover:bg-teal-50/60 transition-colors">
                             <td className="px-5 py-3.5 whitespace-nowrap">
                               <p className="text-xs font-mono font-bold text-gray-800">{receipt.receipt_number}</p>
+                              {receipt.po_number && (
+                                <p className="text-[10px] font-mono text-teal-700">PO: {receipt.po_number}</p>
+                              )}
                               <p className="text-[10px] text-gray-400">{fmtDateTime(receipt.requested_at)}</p>
                               <p className="text-[10px] text-gray-400">{receipt.requester?.name ?? '—'}</p>
                             </td>
