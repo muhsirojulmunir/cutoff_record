@@ -4,6 +4,7 @@ import AppLayout from '../../Layouts/AppLayout';
 import Alert from '../../Components/Alert';
 import Modal from '../../Components/Modal';
 import Pagination from '../../Components/Pagination';
+import SkuSearchInput from '../../Components/SkuSearchInput';
 import { PageProps } from '../../Types';
 import * as XLSX from 'xlsx';
 
@@ -296,13 +297,6 @@ export default function GoodsReceiptIndex({
               </div>
 
               <form onSubmit={submit} className="p-6 space-y-4">
-                {/* Daftar SKU untuk autocomplete saat mengetik */}
-                <datalist id="gr-sku-options">
-                  {products.map((product) => (
-                    <option key={product.id} value={product.sku}>{product.name}</option>
-                  ))}
-                </datalist>
-
                 <div>
                   <label htmlFor="po_number" className={labelClass}>Nomor PO</label>
                   <input
@@ -368,17 +362,12 @@ export default function GoodsReceiptIndex({
                     return (
                       <div key={index} className="flex gap-2 items-start">
                         <div className="flex-1">
-                          <input
-                            list="gr-sku-options"
+                          <SkuSearchInput
                             value={line.sku}
-                            onChange={(e) => updateLine(index, 'sku', e.target.value)}
-                            placeholder="Ketik / tempel SKU"
-                            autoComplete="off"
-                            className={`w-full px-3 py-2 rounded-xl border text-xs font-mono focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all ${
-                              line.sku.trim() !== '' && !matched
-                                ? 'bg-rose-50 border-rose-300 text-rose-700'
-                                : 'bg-gray-50 border-gray-300 text-gray-800'
-                            }`}
+                            onChange={(sku) => updateLine(index, 'sku', sku)}
+                            options={products}
+                            invalid={line.sku.trim() !== '' && !matched}
+                            className="w-full px-3 py-2 rounded-xl border bg-gray-50 border-gray-300 text-gray-800 text-xs font-mono focus:ring-2 focus:ring-teal-500 focus:border-transparent focus:outline-none transition-all"
                           />
                           {line.sku.trim() !== '' && !matched && (
                             <p className="text-rose-500 text-[10px] mt-0.5">SKU tidak ditemukan</p>
