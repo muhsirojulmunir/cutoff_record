@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 interface ModalProps {
   show: boolean;
@@ -15,6 +16,12 @@ export default function Modal({
   children,
   maxWidth = 'md',
 }: ModalProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   useEffect(() => {
     if (show) {
       document.body.style.overflow = 'hidden';
@@ -26,7 +33,7 @@ export default function Modal({
     };
   }, [show]);
 
-  if (!show) return null;
+  if (!show || !mounted) return null;
 
   const maxWidthClass = {
     sm: 'max-w-sm',
@@ -35,17 +42,17 @@ export default function Modal({
     xl: 'max-w-xl',
   }[maxWidth];
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop: Semi-transparent dark overlay with soft subtle blur across entire window */}
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+      {/* Fullscreen Backdrop Blur: Menutupi 100% seluruh layar browser (termasuk Sidebar & Topbar Header) */}
       <div
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-300 animate-fade-in"
+        className="fixed inset-0 bg-slate-950/60 backdrop-blur-md transition-opacity duration-300 animate-fade-in"
         onClick={onClose}
       />
 
-      {/* Modal Dialog Card: Crisp, clean, rounded card */}
+      {/* Modal Dialog Card: Card melayang rapi presisi di tengah layar */}
       <div
-        className={`w-full ${maxWidthClass} bg-white border border-gray-200/90 rounded-2xl shadow-2xl relative z-10 overflow-hidden transform transition-all animate-scale-up`}
+        className={`w-full ${maxWidthClass} bg-white border border-gray-100 rounded-2xl shadow-2xl relative z-10 overflow-hidden transform transition-all animate-scale-up my-auto`}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/50">
@@ -66,4 +73,6 @@ export default function Modal({
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }
