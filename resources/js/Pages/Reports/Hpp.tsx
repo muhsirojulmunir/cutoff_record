@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Head, router } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
+import DownloadHistory from '../../Components/DownloadHistory';
 
 interface HppRow {
   id: number;
@@ -70,12 +71,17 @@ export default function Hpp({
     router.get('/reports/hpp', { search, date_from: today, date_to: today }, { preserveState: true });
   }
 
+  const [historyKey, setHistoryKey] = useState(0);
+
   function handleExportExcel() {
     const params = new URLSearchParams();
     if (search) params.append('search', search);
     if (dateFrom) params.append('date_from', dateFrom);
     if (dateTo) params.append('date_to', dateTo);
     window.location.href = `/reports/export/hpp?${params.toString()}`;
+
+    // Riwayat dicatat di server; beri jeda agar barisnya sudah tersimpan.
+    window.setTimeout(() => setHistoryKey((k) => k + 1), 1200);
   }
 
   const marginPositive = summary.margin >= 0;
@@ -92,6 +98,8 @@ export default function Hpp({
             Rincian per invoice dan SKU, lengkap dengan modal (HPP), harga jual, dan margin keuntungan
           </p>
         </div>
+        <div className="flex items-center gap-2 shrink-0">
+        <DownloadHistory refreshKey={historyKey} />
         <button
           onClick={handleExportExcel}
           className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-emerald-200/40 transition-all shrink-0"
@@ -101,6 +109,7 @@ export default function Hpp({
           </svg>
           Export Excel (Semua Data)
         </button>
+        </div>
       </div>
 
       {/* Summary Cards */}

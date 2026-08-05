@@ -126,6 +126,12 @@ class StockController extends Controller
         $dateFormatted = $date ? Carbon::parse($date)->format('Ymd') : date('Ymd_His');
         $filename = "stok_produk_{$dateFormatted}.csv";
 
+        \App\Models\ExportLog::record(
+            $filename,
+            'All Stock',
+            $date ? 'Stok per tanggal ' . $date : null
+        );
+
         return response()->stream(function () use ($search, $categoryId, $date) {
             $handle = fopen('php://output', 'w');
             fputcsv($handle, ['sep=,']); // CSV UTF-8 separator

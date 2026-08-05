@@ -27,6 +27,7 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PettyCashController;
 use App\Http\Controllers\StockMovementController;
 use App\Http\Controllers\FactoryReceivableController;
+use App\Http\Controllers\ExportLogController;
 use App\Http\Controllers\FactoryInvoiceController;
 use App\Http\Controllers\StockAdjustmentController;
 use App\Http\Controllers\StockController;
@@ -56,6 +57,10 @@ Route::middleware('auth')->group(function () {
     });
 
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
+
+    // Riwayat unduhan file export — dipanggil lewat fetch dari komponen panel.
+    Route::get('/export-logs', [ExportLogController::class, 'index'])->name('export-logs.index');
+    Route::post('/export-logs', [ExportLogController::class, 'store'])->name('export-logs.store');
 
     // Pusat Approval — seluruh dokumen yang menunggu persetujuan user ini.
     // Tanpa permission khusus: isinya sudah disaring per hak akses masing-masing.

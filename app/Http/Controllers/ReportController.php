@@ -389,6 +389,8 @@ class ReportController extends Controller
 
         $filename = "report_{$type}_" . date('Ymd_His') . ".csv";
 
+        \App\Models\ExportLog::record($filename, 'Laporan ' . ucfirst($type));
+
         return response()->stream(function () use ($type, $request) {
             $handle = fopen('php://output', 'w');
             fputcsv($handle, ['sep=,']); // CSV header

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Head, router } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
+import DownloadHistory from '../../Components/DownloadHistory';
 
 interface Category { id: number; name: string; }
 interface ProductItem {
@@ -60,12 +61,18 @@ export default function AllStock({
     router.get('/all-stock', { search, category_id: categoryId, date: today }, { preserveState: true });
   }
 
+  const [historyKey, setHistoryKey] = useState(0);
+
   function handleExportExcel() {
     const params = new URLSearchParams();
     if (search) params.append('search', search);
     if (categoryId) params.append('category_id', categoryId);
     if (date) params.append('date', date);
     window.location.href = `/all-stock/export?${params.toString()}`;
+
+    // Riwayat dicatat di server; beri jeda sebentar agar barisnya sudah ada
+    // saat panel menyegarkan diri.
+    window.setTimeout(() => setHistoryKey((k) => k + 1), 1200);
   }
 
   return (
@@ -80,6 +87,8 @@ export default function AllStock({
             Daftar stok produk real-time dan histori stok per tanggal
           </p>
         </div>
+        <div className="flex items-center gap-2 shrink-0">
+        <DownloadHistory refreshKey={historyKey} />
         <button
           onClick={handleExportExcel}
           className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-emerald-200/40 transition-all shrink-0"
@@ -89,6 +98,7 @@ export default function AllStock({
           </svg>
           Export Excel (Semua Stok)
         </button>
+        </div>
       </div>
 
       {/* Summary Cards */}

@@ -2,6 +2,24 @@ import React from 'react';
 import { Head, usePage } from '@inertiajs/react';
 import * as XLSX from 'xlsx';
 
+/** Catat unduhan ke riwayat. Kegagalan pencatatan tidak mengganggu unduhan. */
+async function catatRiwayatUnduhan(fileName: string, module: string, description?: string) {
+  try {
+    await fetch('/export-logs', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-CSRF-TOKEN': document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '',
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({ file_name: fileName, module, description }),
+    });
+  } catch {
+    // Diabaikan: file sudah berhasil diunduh, riwayat hanya catatan tambahan.
+  }
+}
+
 interface InvoiceItem {
   id: number;
   product_name: string;
@@ -424,6 +442,7 @@ export default function InvoicePrint() {
     ws['!cols'] = [{ wch: 30 }, { wch: 10 }, { wch: 16 }, { wch: 18 }];
     XLSX.utils.book_append_sheet(wb, ws, 'Invoice');
     XLSX.writeFile(wb, `Invoice_${invoice.invoice_number}.xlsx`);
+    catatRiwayatUnduhan(`Invoice_${invoice.invoice_number}.xlsx`, 'Invoice', invoice.invoice_number);
   }
 
   return (

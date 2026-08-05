@@ -6,6 +6,24 @@ import * as XLSX from 'xlsx';
 import { DP_50_RATIO, PO_PAYMENT_TERMS } from '@/Constants/purchaseOrder';
 import { PageProps } from '../../Types';
 
+/** Catat unduhan ke riwayat. Kegagalan pencatatan tidak mengganggu unduhan. */
+async function catatRiwayatUnduhan(fileName: string, module: string, description?: string) {
+  try {
+    await fetch('/export-logs', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-CSRF-TOKEN': document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '',
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({ file_name: fileName, module, description }),
+    });
+  } catch {
+    // Diabaikan: file sudah berhasil diunduh, riwayat hanya catatan tambahan.
+  }
+}
+
 interface Supplier {
   id: number;
   supplier_code: string;
@@ -108,6 +126,7 @@ export default function Create({ suppliers, warehouses, products }: PurchaseOrde
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Item PO');
     XLSX.writeFile(workbook, 'Template_Item_PO.xlsx');
+    catatRiwayatUnduhan('Template_Item_PO.xlsx', 'Purchase Order', 'Template item PO');
   }
 
   /** Baca file Excel dan isi daftar barang. Baris tanpa SKU dilewati. */
