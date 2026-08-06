@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
 class UserRequest extends FormRequest
@@ -18,7 +19,12 @@ class UserRequest extends FormRequest
 
         return [
             'name'     => ['required', 'string', 'max:150'],
-            'email'    => ['required', 'email', 'max:150', "unique:users,email,{$userId}"],
+            // User yang sudah dihapus tidak ikut dihitung supaya emailnya
+            // bisa didaftarkan lagi; controller memulihkan akun lamanya.
+            'email'    => [
+                'required', 'email', 'max:150',
+                Rule::unique('users', 'email')->ignore($userId)->whereNull('deleted_at'),
+            ],
             'password' => $userId
                 ? ['nullable', 'string', Password::min(8)]
                 : ['required', 'string', Password::min(8)],

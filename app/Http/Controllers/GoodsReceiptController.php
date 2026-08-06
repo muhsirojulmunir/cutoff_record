@@ -153,4 +153,30 @@ class GoodsReceiptController extends Controller
 
         return back()->with('success', "{$rejected->receipt_number} ditolak. Stok tidak berubah.");
     }
+
+    /**
+     * Hapus pengajuan barang masuk. Khusus Super Admin karena pengajuan yang
+     * sudah disetujui berarti stoknya ikut ditarik kembali.
+     */
+    public function destroy(GoodsReceipt $goodsReceipt): RedirectResponse
+    {
+        abort_unless(
+            auth()->user()?->isSuperAdmin(),
+            403,
+            'Penghapusan barang masuk hanya dapat dilakukan oleh Super Admin.'
+        );
+
+        $nomor      = $goodsReceipt->receipt_number;
+        $sudahMasuk = (bool) $goodsReceipt->stock_movement_id;
+
+        try {
+            $this->goodsReceiptService->deleteRequest($goodsReceipt, auth()->id());
+        } catch (Exception $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', $sudahMasuk
+            ? "{$nomor} dihapus. Stok yang sudah masuk ditarik kembali."
+            : "{$nomor} dihapus.");
+    }
 }

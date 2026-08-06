@@ -66,6 +66,19 @@ class UserController extends Controller
         $data = $request->validated();
         $data['password'] = Hash::make($data['password']);
 
+        // Email unik untuk satu tabel penuh, termasuk user yang sudah dihapus.
+        // Kalau emailnya pernah dipakai, akun lamanya dipulihkan dan seluruh
+        // datanya ditimpa isian baru — termasuk role dan password.
+        $archived = User::onlyTrashed()->where('email', $data['email'])->first();
+
+        if ($archived) {
+            $archived->restore();
+            $archived->update($data);
+
+            return redirect()->route('users.index')
+                ->with('success', 'User berhasil dibuat kembali dengan data terbaru.');
+        }
+
         User::create($data);
 
         return redirect()->route('users.index')

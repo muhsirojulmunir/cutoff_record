@@ -6,6 +6,8 @@ use App\Models\Category;
 use App\Http\Requests\CategoryRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -62,23 +64,35 @@ class CategoryController extends Controller
         Gate::authorize('category.delete');
 
         $activeProducts = $category->products()->count();
+        $isSuperAdmin   = (bool) Auth::user()?->isSuperAdmin();
 
-        if ($activeProducts > 0) {
+        // Role biasa harus memindahkan produknya dulu supaya tidak ada produk
+        // yang kehilangan kategori tanpa disadari.
+        if ($activeProducts > 0 && !$isSuperAdmin) {
             return back()->withErrors([
                 'error' => "Kategori tidak dapat dihapus karena masih dipakai oleh {$activeProducts} produk aktif. "
                     . 'Pindahkan produk tersebut ke kategori lain terlebih dahulu.',
             ]);
         }
 
-        // Nama kategori unik untuk satu tabel penuh. Lepas namanya agar nama
-        // yang sama bisa dipakai lagi setelah kategori ini diarsipkan.
-        $category->update([
-            'name' => mb_substr('ARSIP-' . $category->id . '-' . $category->name, 0, 255),
-        ]);
+        DB::transaction(function () use ($category) {
+            // Produk yang masih menempel dilepas menjadi tanpa kategori,
+            // bukan ikut terhapus.
+            $category->products()->update(['category_id' => null]);
 
-        $category->delete();
+            // Nama kategori unik untuk satu tabel penuh. Lepas namanya agar nama
+            // yang sama bisa dipakai lagi setelah kategori ini diarsipkan.
+            $category->update([
+                'name' => mb_substr('ARSIP-' . $category->id . '-' . $category->name, 0, 255),
+            ]);
 
-        return redirect()->route('categories.index')
-            ->with('success', 'Kategori berhasil dihapus.');
+            $category->delete();
+        });
+
+        $message = $activeProducts > 0
+            ? "Kategori berhasil dihapus. {$activeProducts} produk kini berstatus tanpa kategori."
+            : 'Kategori berhasil dihapus.';
+
+        return redirect()->route('categories.index')->with('success', $message);
     }
 }

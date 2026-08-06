@@ -123,6 +123,50 @@ class GoodsReceiptService
         return $receipt->fresh();
     }
 
+    /**
+     * Hapus pengajuan barang masuk.
+     *
+     * Bila pengajuannya sudah disetujui, stok yang terlanjur masuk ditarik
+     * kembali lebih dulu supaya sisa stok tetap cocok dengan catatannya.
+     * Nomor pengajuan tidak dipakai ulang karena penomoran menghitung data
+     * yang sudah dihapus juga.
+     */
+    public function deleteRequest(GoodsReceipt $receipt, ?int $userId = null): void
+    {
+        DB::transaction(function () use ($receipt, $userId) {
+            $locked = GoodsReceipt::where('id', $receipt->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->stock_movement_id) {
+                $product = Product::find($locked->product_id);
+
+                if (!$product) {
+                    throw new InvalidArgumentException('Produk pada pengajuan ini sudah tidak ada, penghapusan dibatalkan.');
+                }
+
+                if ($product->stock < $locked->quantity) {
+                    throw new InvalidArgumentException(
+                        "Pengajuan ini tidak bisa dihapus karena stok {$product->sku} tinggal {$product->stock}, "
+                        . "sedangkan yang harus ditarik kembali {$locked->quantity}. "
+                        . 'Sesuaikan stok lewat menu Adjustment terlebih dahulu.'
+                    );
+                }
+
+                $this->stockMovementService->recordStockOut(
+                    $product,
+                    $locked->warehouse_id,
+                    $locked->quantity,
+                    'goods_receipt_deleted',
+                    $locked->id,
+                    $locked->receipt_number,
+                    'Pembatalan barang masuk ' . $locked->receipt_number,
+                    $userId,
+                );
+            }
+
+            $locked->delete();
+        });
+    }
+
     /** Format nomor: BM-YYYYMM-0001, berurutan per bulan. */
     private function generateReceiptNumber(): string
     {
