@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\GoodsReceipt;
 use App\Models\Product;
+use App\Models\StockMovement;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -147,42 +148,41 @@ class GoodsReceiptService
     }
 
     /**
-     * Tarik kembali stok dari pengajuan yang sudah disetujui.
+     * Batalkan efek pengajuan yang sudah disetujui.
+     *
+     * Catatan di Inventory Ledger ikut dihapus, bukan ditimpa baris
+     * pembatalan, supaya ledger tidak lagi menampilkan barang masuk yang
+     * pengajuannya sudah tidak ada.
      *
      * Penghapusan tidak pernah dibatalkan hanya karena stoknya tidak bisa
-     * ditarik — produknya mungkin sudah dihapus, atau barangnya sudah
+     * dikurangi — produknya mungkin sudah dihapus, atau barangnya sudah
      * terlanjur keluar. Alasannya dikembalikan supaya bisa disampaikan
      * apa adanya ke pengguna.
      */
     private function reverseStock(GoodsReceipt $receipt, ?int $userId): ?string
     {
+        StockMovement::where('id', $receipt->stock_movement_id)->delete();
+
         $product = Product::withTrashed()->find($receipt->product_id);
 
         // Produk yang hilang atau sudah dihapus tidak lagi punya stok yang
-        // dipakai di mana pun, jadi tidak ada yang perlu ditarik kembali.
+        // dipakai di mana pun, jadi tidak ada yang perlu dikurangi.
         if (!$product) {
-            return 'Produknya sudah tidak ada, jadi stok tidak ditarik kembali.';
+            return 'Produknya sudah tidak ada, jadi stok tidak dikurangi.';
         }
 
         if ($product->trashed()) {
-            return "Produk {$product->sku} sudah dihapus dari master data, jadi stok tidak ditarik kembali.";
+            return "Produk {$product->sku} sudah dihapus dari master data, jadi stok tidak dikurangi.";
         }
 
-        if ($product->stock < $receipt->quantity) {
-            return "Stok {$product->sku} tinggal {$product->stock} sedangkan yang masuk {$receipt->quantity}, "
-                . 'jadi stok tidak ditarik kembali. Sesuaikan lewat menu Adjustment bila perlu.';
+        $locked = Product::withTrashed()->where('id', $product->id)->lockForUpdate()->firstOrFail();
+
+        if ($locked->stock < $receipt->quantity) {
+            return "Stok {$locked->sku} tinggal {$locked->stock} sedangkan yang masuk {$receipt->quantity}, "
+                . 'jadi stok tidak dikurangi. Sesuaikan lewat menu Adjustment bila perlu.';
         }
 
-        $this->stockMovementService->recordStockOut(
-            $product,
-            $receipt->warehouse_id,
-            $receipt->quantity,
-            'goods_receipt_deleted',
-            $receipt->id,
-            $receipt->receipt_number,
-            'Pembatalan barang masuk ' . $receipt->receipt_number,
-            $userId,
-        );
+        $locked->update(['stock' => $locked->stock - $receipt->quantity]);
 
         return null;
     }

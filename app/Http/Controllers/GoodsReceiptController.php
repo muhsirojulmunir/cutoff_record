@@ -180,7 +180,7 @@ class GoodsReceiptController extends Controller
         }
 
         return back()->with('success', $sudahMasuk
-            ? "{$nomor} dihapus. Stok yang sudah masuk ditarik kembali."
+            ? "{$nomor} dihapus. Stok dikembalikan dan catatannya hilang dari Inventory Ledger."
             : "{$nomor} dihapus.");
     }
 }
