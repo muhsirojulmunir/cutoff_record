@@ -171,7 +171,8 @@
       "PowerShell(php artisan tinker \"C:\\\\Users\\\\Asus\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\E--Folder-Pekerjaan-Record-Koding-ERP-koding-erp\\\\4b3ff2be-2f02-4e17-9519-83f8c1f856af\\\\scratchpad\\\\uji_massal.php\")",
       "PowerShell(php artisan tinker \"C:\\\\Users\\\\Asus\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\E--Folder-Pekerjaan-Record-Koding-ERP-koding-erp\\\\4b3ff2be-2f02-4e17-9519-83f8c1f856af\\\\scratchpad\\\\inspect3.php\" 2>&1)",
       "PowerShell(php artisan tinker \"C:\\\\Users\\\\Asus\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\E--Folder-Pekerjaan-Record-Koding-ERP-koding-erp\\\\4b3ff2be-2f02-4e17-9519-83f8c1f856af\\\\scratchpad\\\\uji_hapus_bm.php\")",
-      "PowerShell(php artisan tinker \"C:\\\\Users\\\\Asus\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\E--Folder-Pekerjaan-Record-Koding-ERP-koding-erp\\\\4b3ff2be-2f02-4e17-9519-83f8c1f856af\\\\scratchpad\\\\uji_migrasi.php\")"
+      "PowerShell(php artisan tinker \"C:\\\\Users\\\\Asus\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\E--Folder-Pekerjaan-Record-Koding-ERP-koding-erp\\\\4b3ff2be-2f02-4e17-9519-83f8c1f856af\\\\scratchpad\\\\uji_migrasi.php\")",
+      "PowerShell(php artisan tinker \"C:\\\\Users\\\\Asus\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\E--Folder-Pekerjaan-Record-Koding-ERP-koding-erp\\\\4b3ff2be-2f02-4e17-9519-83f8c1f856af\\\\scratchpad\\\\uji_ledger.php\")"
     ]
   }
 }
