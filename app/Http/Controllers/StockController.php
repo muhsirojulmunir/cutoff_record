@@ -49,6 +49,8 @@ class StockController extends Controller
             $lastMovements = DB::table('stock_movements')
                 ->select('product_id', DB::raw('MAX(id) as max_id'))
                 ->where('created_at', '<=', $targetDateTime)
+                // Baris ledger yang sudah dihapus tidak boleh ikut menentukan stok historis.
+                ->whereNull('deleted_at')
                 ->groupBy('product_id');
 
             $query->leftJoinSub($lastMovements, 'last_mov', 'last_mov.product_id', '=', 'products.id')
@@ -86,6 +88,7 @@ class StockController extends Controller
                     DB::table('stock_movements')
                         ->select('product_id', DB::raw('MAX(id) as max_id'))
                         ->where('created_at', '<=', $targetDateTime)
+                        ->whereNull('deleted_at')
                         ->groupBy('product_id'),
                     'last_mov',
                     'last_mov.product_id',
@@ -146,6 +149,8 @@ class StockController extends Controller
             $lastMovements = DB::table('stock_movements')
                 ->select('product_id', DB::raw('MAX(id) as max_id'))
                 ->where('created_at', '<=', $targetDateTime)
+                // Baris ledger yang sudah dihapus tidak boleh ikut menentukan stok historis.
+                ->whereNull('deleted_at')
                 ->groupBy('product_id');
 
             $query->leftJoinSub($lastMovements, 'last_mov', 'last_mov.product_id', '=', 'products.id')
