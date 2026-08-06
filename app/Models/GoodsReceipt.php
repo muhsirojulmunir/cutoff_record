@@ -45,7 +45,9 @@ class GoodsReceipt extends Model
 
     public function product(): BelongsTo
     {
-        return $this->belongsTo(Product::class);
+        // withTrashed agar pengajuan lama tetap menampilkan produknya
+        // walaupun produk tersebut sudah dihapus dari master data.
+        return $this->belongsTo(Product::class)->withTrashed();
     }
 
     public function warehouse(): BelongsTo

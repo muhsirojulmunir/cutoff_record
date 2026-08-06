@@ -170,9 +170,13 @@ class GoodsReceiptController extends Controller
         $sudahMasuk = (bool) $goodsReceipt->stock_movement_id;
 
         try {
-            $this->goodsReceiptService->deleteRequest($goodsReceipt, auth()->id());
+            $catatan = $this->goodsReceiptService->deleteRequest($goodsReceipt, auth()->id());
         } catch (Exception $e) {
             return back()->with('error', $e->getMessage());
+        }
+
+        if ($catatan) {
+            return back()->with('success', "{$nomor} dihapus. {$catatan}");
         }
 
         return back()->with('success', $sudahMasuk
