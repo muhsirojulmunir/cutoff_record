@@ -8,6 +8,7 @@ use App\Models\Warehouse;
 use App\Services\StockMovementService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -70,6 +71,44 @@ class StockMovementController extends Controller
             'products'       => $products,
             'filters'        => $request->only(['search', 'movement_type', 'warehouse_id', 'start_date', 'end_date']),
         ]);
+    }
+
+    /**
+     * Kosongkan seluruh Inventory Ledger dan nolkan stok semua produk.
+     *
+     * Disediakan agar client bisa mencoba sistem dari kondisi bersih. Karena
+     * dampaknya luas dan tidak bisa dibatalkan, aksinya dibatasi Super Admin
+     * dan harus dikonfirmasi dengan mengetik ulang kata kuncinya.
+     */
+    public function reset(Request $request): RedirectResponse
+    {
+        abort_unless(
+            $request->user()?->isSuperAdmin(),
+            403,
+            'Pengosongan Inventory Ledger hanya dapat dilakukan oleh Super Admin.'
+        );
+
+        $request->validate([
+            'confirmation' => ['required', 'string', 'in:KOSONGKAN'],
+        ], [
+            'confirmation.in'       => 'Ketik KOSONGKAN untuk memastikan Anda memang ingin mengosongkan ledger.',
+            'confirmation.required' => 'Ketik KOSONGKAN untuk memastikan Anda memang ingin mengosongkan ledger.',
+        ]);
+
+        $jumlahBaris = StockMovement::withTrashed()->count();
+
+        DB::transaction(function () {
+            // withTrashed agar baris yang sudah diarsipkan ikut terbuang —
+            // tujuannya memang meninggalkan tabel yang benar-benar kosong.
+            StockMovement::withTrashed()->forceDelete();
+
+            Product::withTrashed()->update(['stock' => 0]);
+        });
+
+        return back()->with(
+            'success',
+            "Inventory Ledger dikosongkan: {$jumlahBaris} catatan dihapus dan stok semua produk kembali ke 0."
+        );
     }
 
     /**
