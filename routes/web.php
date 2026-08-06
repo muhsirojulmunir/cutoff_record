@@ -128,6 +128,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/products/import', [ProductController::class, 'import'])
         ->name('products.import')
         ->middleware('can:product.create');
+    // Harus di atas resource agar tidak tertangkap sebagai products/{product}.
+    Route::delete('/products/bulk-destroy', [ProductController::class, 'bulkDestroy'])
+        ->name('products.bulk-destroy')
+        ->middleware('can:product.delete');
     Route::resource('products', ProductController::class);
 
     // Sales Orders Grosir Offline & Tracking Resi
