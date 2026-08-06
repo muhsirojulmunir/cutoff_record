@@ -85,11 +85,18 @@ const labelClass = 'block text-xs font-semibold text-gray-500 mb-1.5';
 export default function GoodsReceiptIndex({
   receipts, filters, products, warehouses, canRequest, canApprove, pendingCount,
 }: Props) {
-  const { flash } = usePage<PageProps>().props;
+  const { flash, auth } = usePage<PageProps>().props;
+
+  // Penghapusan pengajuan khusus Super Admin — pengajuan yang sudah disetujui
+  // berarti stoknya ikut ditarik kembali.
+  const canDelete = Boolean(auth.user?.is_super_admin);
 
   const [search, setSearch] = useState(filters.search ?? '');
   const [status, setStatus] = useState(filters.status ?? '');
   const [processingId, setProcessingId] = useState<number | null>(null);
+
+  const [deleteTarget, setDeleteTarget] = useState<Receipt | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [rejectTarget, setRejectTarget] = useState<Receipt | null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -242,6 +249,17 @@ export default function GoodsReceiptIndex({
     router.post(`/barang-masuk/${receipt.id}/approve`, {}, {
       preserveScroll: true,
       onFinish: () => setProcessingId(null),
+    });
+  }
+
+  function confirmDelete() {
+    if (!deleteTarget) return;
+
+    setDeleting(true);
+    router.delete(`/barang-masuk/${deleteTarget.id}`, {
+      preserveScroll: true,
+      onSuccess: () => setDeleteTarget(null),
+      onFinish: () => setDeleting(false),
     });
   }
 
@@ -504,14 +522,14 @@ export default function GoodsReceiptIndex({
                       <th className="px-5 py-3.5 text-center">Qty</th>
                       <th className="px-5 py-3.5">Status</th>
                       <th className="px-5 py-3.5">Keterangan</th>
-                      {canApprove && <th className="px-5 py-3.5 text-center">Aksi</th>}
+                      {(canApprove || canDelete) && <th className="px-5 py-3.5 text-center">Aksi</th>}
                     </tr>
                   </thead>
 
                   <tbody className="divide-y divide-gray-100 text-sm">
                     {receipts.data.length === 0 ? (
                       <tr>
-                        <td colSpan={canApprove ? 6 : 5} className="px-5 py-14 text-center text-gray-400">
+                        <td colSpan={canApprove || canDelete ? 6 : 5} className="px-5 py-14 text-center text-gray-400">
                           Belum ada pengajuan barang masuk.
                         </td>
                       </tr>
@@ -568,30 +586,48 @@ export default function GoodsReceiptIndex({
                               )}
                             </td>
 
-                            {canApprove && (
+                            {(canApprove || canDelete) && (
                               <td className="px-5 py-3.5 text-center whitespace-nowrap">
-                                {receipt.status === 'pending' ? (
-                                  <div className="flex items-center justify-center gap-2">
+                                <div className="flex items-center justify-center gap-2">
+                                  {canApprove && receipt.status === 'pending' && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => approve(receipt)}
+                                        disabled={busy}
+                                        className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-[11px] font-semibold transition-all disabled:opacity-50"
+                                      >
+                                        Setujui
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => { setRejectTarget(receipt); setRejectReason(''); setRejectError(null); }}
+                                        disabled={busy}
+                                        className="px-3 py-1.5 rounded-lg bg-white hover:bg-rose-50 text-rose-600 border border-rose-300 text-[11px] font-semibold transition-all disabled:opacity-50"
+                                      >
+                                        Tolak
+                                      </button>
+                                    </>
+                                  )}
+
+                                  {canApprove && receipt.status !== 'pending' && (
+                                    <span className="text-[11px] text-gray-400">Selesai</span>
+                                  )}
+
+                                  {canDelete && (
                                     <button
                                       type="button"
-                                      onClick={() => approve(receipt)}
+                                      onClick={() => setDeleteTarget(receipt)}
                                       disabled={busy}
-                                      className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-[11px] font-semibold transition-all disabled:opacity-50"
+                                      title="Hapus pengajuan"
+                                      className="p-1.5 rounded-lg text-gray-500 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all disabled:opacity-50"
                                     >
-                                      Setujui
+                                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                                      </svg>
                                     </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => { setRejectTarget(receipt); setRejectReason(''); setRejectError(null); }}
-                                      disabled={busy}
-                                      className="px-3 py-1.5 rounded-lg bg-white hover:bg-rose-50 text-rose-600 border border-rose-300 text-[11px] font-semibold transition-all disabled:opacity-50"
-                                    >
-                                      Tolak
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <span className="text-[11px] text-gray-400">Selesai</span>
-                                )}
+                                  )}
+                                </div>
                               </td>
                             )}
                           </tr>
@@ -652,6 +688,54 @@ export default function GoodsReceiptIndex({
               className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold transition-all disabled:opacity-50"
             >
               Tolak Pengajuan
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Konfirmasi hapus pengajuan — khusus Super Admin */}
+      <Modal
+        show={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title={`Hapus ${deleteTarget?.receipt_number ?? ''}`}
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-4 p-4 rounded-2xl bg-rose-50/80 border border-rose-200/80">
+            <div className="p-2.5 rounded-xl bg-rose-100 text-rose-600 shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-6 h-6">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+            </div>
+            <div className="space-y-1.5 min-w-0 flex-1">
+              <p className="text-xs text-gray-700 leading-relaxed">
+                Pengajuan <span className="font-mono font-bold">{deleteTarget?.receipt_number}</span> untuk{' '}
+                <span className="font-semibold">{deleteTarget?.product?.name ?? '—'}</span> sebanyak{' '}
+                <span className="font-bold">{deleteTarget?.quantity}</span> akan dihapus.
+              </p>
+              {deleteTarget?.status === 'approved' && (
+                <p className="text-[11px] text-rose-700 font-semibold">
+                  Pengajuan ini sudah disetujui, jadi stok yang terlanjur masuk akan ditarik kembali.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleting}
+              className="px-4 py-2 rounded-xl bg-white text-gray-600 border border-gray-300 text-sm font-semibold hover:bg-gray-50 transition-all disabled:opacity-50"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={confirmDelete}
+              disabled={deleting}
+              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold transition-all disabled:opacity-50"
+            >
+              {deleting ? 'Menghapus...' : 'Ya, Hapus'}
             </button>
           </div>
         </div>

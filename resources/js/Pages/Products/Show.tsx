@@ -12,7 +12,7 @@ interface Product {
   id: number;
   sku: string;
   name: string;
-  category: Category;
+  category: Category | null;
   brand: string | null;
   color: string | null;
   is_box: boolean;
@@ -82,7 +82,7 @@ export default function Show({ product }: ShowProps) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 border-b border-gray-300/80 pb-6">
             <div className="space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Kategori</span>
-              <p className="text-sm font-semibold text-gray-800">{product.category?.name}</p>
+              <p className="text-sm font-semibold text-gray-800">{product.category?.name ?? 'Tanpa Kategori'}</p>
             </div>
             <div className="space-y-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Brand / Merek</span>

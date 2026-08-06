@@ -188,6 +188,19 @@ class ProductController extends Controller
         $data = $this->withPhoto($request->validated(), $request);
         $data['created_by'] = Auth::id();
 
+        // SKU unik untuk satu tabel penuh, termasuk produk yang sudah dihapus.
+        // Kalau SKU-nya pernah dipakai, produk lamanya dipulihkan dan diisi
+        // data baru — jadi input ulang tidak pernah kena error duplikat.
+        $archived = Product::onlyTrashed()->where('sku', $data['sku'])->first();
+
+        if ($archived) {
+            $archived->restore();
+            $archived->update($data);
+
+            return redirect()->route('products.index')
+                ->with('success', 'Produk berhasil ditambahkan kembali dengan data terbaru.');
+        }
+
         Product::create($data);
 
         return redirect()->route('products.index')

@@ -200,6 +200,9 @@ Route::middleware('auth')->group(function () {
         ->name('goods-receipt.approve')->middleware('can:stock.receipt.approve');
     Route::post('/barang-masuk/{goodsReceipt}/reject', [GoodsReceiptController::class, 'reject'])
         ->name('goods-receipt.reject')->middleware('can:stock.receipt.approve');
+    // Hanya Super Admin — dijaga lagi di dalam controller.
+    Route::delete('/barang-masuk/{goodsReceipt}', [GoodsReceiptController::class, 'destroy'])
+        ->name('goods-receipt.destroy')->middleware('can:stock.view');
 
     // Adjustment Stok — khusus Leader
     Route::get('/adjustment-stok', [StockAdjustmentController::class, 'index'])
