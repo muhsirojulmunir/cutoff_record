@@ -44,13 +44,13 @@ export default function Create({ products }: Props) {
 
   return (
     <AppLayout>
-      <Head title="Ajukan Retur Stok" />
+      <Head title="Ajukan Return Stok" />
 
       <div className="max-w-lg mx-auto space-y-6">
         {/* ── Header ── */}
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Ajukan Retur Stok</h1>
-          <p className="text-gray-400 text-xs mt-1">Inventori / Retur Stok / Ajukan Baru</p>
+          <h1 className="text-2xl font-bold text-gray-900">Ajukan Return Stok</h1>
+          <p className="text-gray-400 text-xs mt-1">Inventori / Return Stok / Ajukan Baru</p>
         </div>
 
         {/* ── Form Card ── */}
@@ -61,8 +61,8 @@ export default function Create({ products }: Props) {
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
             </svg>
             <div>
-              <p className="text-xs font-semibold text-amber-800">Retur menunggu persetujuan Leader</p>
-              <p className="text-xs text-amber-600 mt-0.5">Stok belum akan berubah sampai Leader menyetujui retur ini.</p>
+              <p className="text-xs font-semibold text-amber-800">Return menunggu persetujuan Leader</p>
+              <p className="text-xs text-amber-600 mt-0.5">Stok belum akan berubah sampai Leader menyetujui return ini.</p>
             </div>
           </div>
 
@@ -156,10 +156,10 @@ export default function Create({ products }: Props) {
               {errors.quantity && <p className="text-rose-400 text-xs">{errors.quantity}</p>}
             </div>
 
-            {/* Keterangan Retur */}
+            {/* Keterangan Return */}
             <div className="space-y-1.5">
               <label htmlFor="reason" className="block text-xs font-bold uppercase tracking-wider text-gray-500">
-                Keterangan Retur <span className="text-rose-500 normal-case font-normal">(wajib)</span>
+                Keterangan Return <span className="text-rose-500 normal-case font-normal">(wajib)</span>
               </label>
               <textarea
                 id="reason"
@@ -192,7 +192,7 @@ export default function Create({ products }: Props) {
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
                   </svg>
                 )}
-                {processing ? 'Mengajukan...' : 'Ajukan Retur'}
+                {processing ? 'Mengajukan...' : 'Ajukan Return'}
               </button>
             </div>
           </form>

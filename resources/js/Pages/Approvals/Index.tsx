@@ -84,7 +84,7 @@ export default function ApprovalCenter({ approvals, summary }: Props) {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Pusat Approval</h1>
           <p className="text-gray-500 text-xs mt-1">
-            Semua dokumen yang menunggu persetujuan Anda — Purchase Order, Barang Masuk, Retur,
+            Semua dokumen yang menunggu persetujuan Anda — Purchase Order, Barang Masuk, Return,
             Sales Order, dan Petty Cash dalam satu halaman
           </p>
         </div>
