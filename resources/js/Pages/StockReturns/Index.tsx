@@ -101,14 +101,14 @@ export default function Index({ returns, filters }: Props) {
 
   return (
     <AppLayout>
-      <Head title="Retur Stok" />
+      <Head title="Return Stok" />
 
       <div className="space-y-6">
         {/* ── Header ── */}
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Retur Stok</h1>
-            <p className="text-gray-400 text-xs mt-0.5">Kelola pengajuan retur barang dari customer</p>
+            <h1 className="text-2xl font-bold text-gray-900">Return Stok</h1>
+            <p className="text-gray-400 text-xs mt-0.5">Kelola pengajuan return barang dari customer</p>
           </div>
           {(canCreate || isSuperAdmin) && (
             <Link
@@ -118,7 +118,7 @@ export default function Index({ returns, filters }: Props) {
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
               </svg>
-              Ajukan Retur
+              Ajukan Return
             </Link>
           )}
         </div>
@@ -152,7 +152,7 @@ export default function Index({ returns, filters }: Props) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/60">
-                  {['No. Retur', 'No. Invoice', 'SKU / Produk', 'Qty', 'Keterangan', 'Status', 'Diajukan Oleh', 'Tanggal', 'Aksi'].map(h => (
+                  {['No. Return', 'No. Invoice', 'SKU / Produk', 'Qty', 'Keterangan', 'Status', 'Diajukan Oleh', 'Tanggal', 'Aksi'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -164,8 +164,8 @@ export default function Index({ returns, filters }: Props) {
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10 mx-auto mb-3 text-gray-300">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
                       </svg>
-                      <p className="font-medium text-gray-500">Belum ada retur</p>
-                      <p className="text-xs mt-1">Ajukan retur pertama Anda</p>
+                      <p className="font-medium text-gray-500">Belum ada retun</p>
+                      <p className="text-xs mt-1">Ajukan return pertama Anda</p>
                     </td>
                   </tr>
                 ) : returns.data.map(item => (
