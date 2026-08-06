@@ -249,15 +249,15 @@ export default function Index({ returns, filters }: Props) {
       </div>
 
       {/* ── Modal: Konfirmasi Approve ── */}
-      <Modal show={approvingId !== null} onClose={() => setApprovingId(null)} title="Konfirmasi Persetujuan Retur">
+      <Modal show={approvingId !== null} onClose={() => setApprovingId(null)} title="Konfirmasi Persetujuan Return">
         <div className="space-y-4">
           <div className="flex items-start gap-3 p-4 bg-emerald-50 rounded-xl border border-emerald-200">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div>
-              <p className="text-sm font-semibold text-emerald-800">Setujui Retur <span className="font-mono">{approvingNum}</span>?</p>
-              <p className="text-xs text-emerald-600 mt-1">Stok produk akan <strong>langsung bertambah</strong> sesuai qty retur dan tercatat di Stock Movements.</p>
+              <p className="text-sm font-semibold text-emerald-800">Setujui Return <span className="font-mono">{approvingNum}</span>?</p>
+              <p className="text-xs text-emerald-600 mt-1">Stok produk akan <strong>langsung bertambah</strong> sesuai qty return dan tercatat di Stock Movements.</p>
             </div>
           </div>
           <div className="flex justify-end gap-2">
@@ -267,11 +267,11 @@ export default function Index({ returns, filters }: Props) {
         </div>
       </Modal>
 
-      {/* ── Modal: Tolak Retur ── */}
-      <Modal show={rejectingItem !== null} onClose={() => setRejectingItem(null)} title="Tolak Retur">
+      {/* ── Modal: Tolak Return ── */}
+      <Modal show={rejectingItem !== null} onClose={() => setRejectingItem(null)} title="Tolak Return">
         <div className="space-y-4">
           <p className="text-sm text-gray-600">
-            Tolak retur <span className="font-mono font-semibold text-gray-800">{rejectingItem?.return_number}</span>? Stok tidak akan berubah.
+            Tolak return <span className="font-mono font-semibold text-gray-800">{rejectingItem?.return_number}</span>? Stok tidak akan berubah.
           </p>
           <div className="space-y-1.5">
             <label className="block text-xs font-bold uppercase tracking-wider text-gray-500">Alasan Penolakan <span className="text-rose-500 normal-case font-normal">(wajib)</span></label>
@@ -279,7 +279,7 @@ export default function Index({ returns, filters }: Props) {
               value={rejectionReason}
               onChange={e => setRejectionReason(e.target.value)}
               rows={3}
-              placeholder="Contoh: Barang tidak sesuai dengan klaim retur..."
+              placeholder="Contoh: Barang tidak sesuai dengan klaim return..."
               className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-200 text-sm text-gray-800 focus:ring-2 focus:ring-rose-500 focus:border-transparent transition-all resize-none"
             />
           </div>
