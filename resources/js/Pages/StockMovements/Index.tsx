@@ -83,8 +83,30 @@ export default function Index({ stockMovements, warehouses, products, filters }:
 
   const [adjustModalOpen, setAdjustModalOpen] = useState(false);
 
+  // Pengosongan ledger untuk keperluan testing — khusus Super Admin.
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [resetInput, setResetInput] = useState('');
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
+
   const canViewPo   = permissions.includes('purchase_order.view');
   const canAdjust   = permissions.includes('stock.adjust');
+  const canReset    = Boolean(auth.user?.is_super_admin);
+
+  function handleResetLedger() {
+    if (resetInput.trim() !== 'KOSONGKAN') {
+      setResetError('Ketik KOSONGKAN persis seperti itu untuk melanjutkan.');
+      return;
+    }
+
+    setResetting(true);
+    router.delete('/stock-movements/reset', {
+      data: { confirmation: resetInput.trim() },
+      onSuccess: () => setResetModalOpen(false),
+      onError: (err) => setResetError(Object.values(err)[0] as string),
+      onFinish: () => setResetting(false),
+    });
+  }
 
   const { data, setData, post, processing, errors, reset } = useForm({
     product_id: '',
@@ -156,6 +178,20 @@ export default function Index({ stockMovements, warehouses, products, filters }:
             <p className="text-gray-500 text-xs mt-1">Laporan / Histori Pergerakan Stok</p>
           </div>
 
+          <div className="flex flex-wrap items-center gap-3">
+          {canReset && (
+            <button
+              type="button"
+              onClick={() => { setResetModalOpen(true); setResetInput(''); setResetError(null); }}
+              className="px-4 py-2.5 bg-white hover:bg-rose-50 text-rose-600 border border-rose-300 hover:border-rose-400 rounded-xl text-sm font-semibold transition-all flex items-center gap-2"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+              </svg>
+              Kosongkan Ledger
+            </button>
+          )}
+
           {canAdjust && (
             <button
               onClick={handleOpenAdjustModal}
@@ -167,6 +203,7 @@ export default function Index({ stockMovements, warehouses, products, filters }:
               Stock Adjustment
             </button>
           )}
+          </div>
         </div>
 
         {/* Alerts */}
@@ -477,6 +514,72 @@ export default function Index({ stockMovements, warehouses, products, filters }:
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Kosongkan Ledger — khusus Super Admin */}
+      {resetModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-2xl border border-gray-200 shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <h2 className="text-base font-bold text-gray-900">Kosongkan Inventory Ledger</h2>
+              <p className="text-[11px] text-gray-500 mt-0.5">Untuk menyiapkan sistem dari kondisi bersih</p>
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div className="flex items-start gap-4 p-4 rounded-2xl bg-rose-50/80 border border-rose-200/80">
+                <div className="p-2.5 rounded-xl bg-rose-100 text-rose-600 shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-6 h-6">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                  </svg>
+                </div>
+                <div className="space-y-2 text-xs text-gray-700 leading-relaxed">
+                  <p className="font-bold text-rose-700">Tindakan ini tidak bisa dibatalkan.</p>
+                  <ul className="space-y-1 list-disc list-inside">
+                    <li>Seluruh riwayat pergerakan stok dihapus permanen</li>
+                    <li>Stok semua produk kembali ke <span className="font-bold">0</span></li>
+                  </ul>
+                  <p className="text-gray-500">
+                    Master data seperti produk, kategori, customer, dan user tidak ikut terhapus.
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">
+                  Ketik <span className="font-mono text-rose-600">KOSONGKAN</span> untuk melanjutkan
+                </label>
+                <input
+                  type="text"
+                  value={resetInput}
+                  onChange={(e) => { setResetInput(e.target.value); setResetError(null); }}
+                  placeholder="KOSONGKAN"
+                  autoFocus
+                  className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm font-mono focus:ring-2 focus:ring-rose-500 focus:border-transparent transition-all"
+                />
+                {resetError && <p className="text-rose-600 text-xs mt-1.5">{resetError}</p>}
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setResetModalOpen(false)}
+                  disabled={resetting}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetLedger}
+                  disabled={resetting || resetInput.trim() !== 'KOSONGKAN'}
+                  className="px-5 py-2 bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white rounded-xl text-xs font-semibold shadow-md shadow-rose-200/50 transition-all disabled:opacity-40"
+                >
+                  {resetting ? 'Mengosongkan...' : 'Ya, Kosongkan Semua'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

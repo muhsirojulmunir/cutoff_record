@@ -220,6 +220,9 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/stock-movements', [StockMovementController::class, 'index'])->name('stock-movements.index');
     Route::post('/stock-movements/adjust', [StockMovementController::class, 'adjust'])->name('stock-movements.adjust');
+    // Pengosongan ledger untuk keperluan testing — hanya Super Admin,
+    // dijaga lagi di dalam controller.
+    Route::delete('/stock-movements/reset', [StockMovementController::class, 'reset'])->name('stock-movements.reset');
 
     // Stock Returns (Retur Barang)
     Route::post('/stock-returns/{stockReturn}/approve', [StockReturnController::class, 'approve'])->name('stock-returns.approve');
