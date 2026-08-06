@@ -74,10 +74,24 @@ class CustomerController extends Controller
         }
     }
 
+    /**
+     * Kode customer unik untuk satu tabel penuh, jadi nomor urut berikutnya
+     * dicari sampai benar-benar belum terpakai.
+     */
     private function generateCustomerCode(): string
     {
-        $count = Customer::count();
-        return 'CUST-' . str_pad((string) ($count + 1), 2, '0', STR_PAD_LEFT);
+        $sequence = Customer::count() + 1;
+
+        while (Customer::withTrashed()->where('customer_code', $this->formatCustomerCode($sequence))->exists()) {
+            $sequence++;
+        }
+
+        return $this->formatCustomerCode($sequence);
+    }
+
+    private function formatCustomerCode(int $sequence): string
+    {
+        return 'CUST-' . str_pad((string) $sequence, 2, '0', STR_PAD_LEFT);
     }
 
     public function store(CustomerRequest $request): RedirectResponse
@@ -131,6 +145,13 @@ class CustomerController extends Controller
     public function destroy(Customer $customer): RedirectResponse
     {
         Gate::authorize('customer.delete');
+
+        // Kode dilepas dulu supaya nomor urutnya bisa dipakai lagi oleh customer
+        // aktif saat penomoran dirapikan — tanpa ini penomoran ulang bentrok
+        // dengan kode milik customer yang sudah diarsipkan.
+        $customer->update([
+            'customer_code' => mb_substr('ARSIP-' . $customer->id . '-' . $customer->customer_code, 0, 255),
+        ]);
 
         $customer->delete();
 

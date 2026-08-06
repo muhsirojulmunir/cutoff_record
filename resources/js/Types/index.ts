@@ -24,7 +24,8 @@ export interface AuthUser {
   } | null;
   roles?: string[];
   permissions: string[];
-
+  /** Aksi tertentu — seperti hapus massal produk — khusus Super Admin. */
+  is_super_admin?: boolean;
 }
 
 export type WorkQueueSeverity = 'critical' | 'warning' | 'info';

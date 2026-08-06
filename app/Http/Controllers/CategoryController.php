@@ -61,12 +61,20 @@ class CategoryController extends Controller
     {
         Gate::authorize('category.delete');
 
-        // Check if category contains active products before restrict delete
-        if ($category->products()->exists()) {
+        $activeProducts = $category->products()->count();
+
+        if ($activeProducts > 0) {
             return back()->withErrors([
-                'error' => 'Kategori tidak dapat dihapus karena masih digunakan oleh produk aktif.'
+                'error' => "Kategori tidak dapat dihapus karena masih dipakai oleh {$activeProducts} produk aktif. "
+                    . 'Pindahkan produk tersebut ke kategori lain terlebih dahulu.',
             ]);
         }
+
+        // Nama kategori unik untuk satu tabel penuh. Lepas namanya agar nama
+        // yang sama bisa dipakai lagi setelah kategori ini diarsipkan.
+        $category->update([
+            'name' => mb_substr('ARSIP-' . $category->id . '-' . $category->name, 0, 255),
+        ]);
 
         $category->delete();
 

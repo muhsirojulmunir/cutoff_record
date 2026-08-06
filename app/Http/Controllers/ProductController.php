@@ -233,4 +233,33 @@ class ProductController extends Controller
         return redirect()->route('products.index')
             ->with('success', 'Produk berhasil dihapus.');
     }
+
+    /**
+     * Hapus beberapa produk sekaligus. Sengaja dibatasi Super Admin karena
+     * cakupannya luas dan tidak bisa dibatalkan dari layar produk.
+     */
+    public function bulkDestroy(Request $request): RedirectResponse
+    {
+        Gate::authorize('product.delete');
+
+        abort_unless(
+            Auth::user()?->isSuperAdmin(),
+            403,
+            'Hapus massal produk hanya dapat dilakukan oleh Super Admin.'
+        );
+
+        $validated = $request->validate([
+            'ids'   => ['required', 'array', 'min:1', 'max:1000'],
+            'ids.*' => ['integer', 'exists:products,id'],
+        ], [], [
+            'ids' => 'produk yang dipilih',
+        ]);
+
+        $deleted = Product::whereIn('id', $validated['ids'])->get()
+            ->each(fn (Product $product) => $product->delete())
+            ->count();
+
+        return redirect()->route('products.index')
+            ->with('success', "{$deleted} produk berhasil dihapus.");
+    }
 }

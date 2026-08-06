@@ -48,7 +48,9 @@ class HandleInertiaRequests extends Middleware
                     ] : null,
                     'roles'       => method_exists($user, 'roles') && $user->roles->count() > 0 ? $user->roles->pluck('name')->toArray() : ($user->role ? [$user->role->name] : []),
                     'permissions' => $user->getPermissions(),
-
+                    // Dipakai untuk aksi yang hanya boleh dilakukan Super Admin,
+                    // misalnya hapus massal produk.
+                    'is_super_admin' => $user->isSuperAdmin(),
                 ] : null,
             ],
             'flash' => [
