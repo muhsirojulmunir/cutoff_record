@@ -70,18 +70,23 @@ return new class extends Migration
         }
     }
 
+    /**
+     * Hanya MySQL/MariaDB yang perlu melepas dan memasang ulang foreign key
+     * saat kolom diubah. SQLite membangun ulang tabelnya sendiri, jadi
+     * foreign key-nya ikut terbawa tanpa perlu disentuh.
+     */
     private function foreignKeyExists(): bool
     {
-        $found = DB::selectOne(
-            'SELECT CONSTRAINT_NAME
-               FROM information_schema.TABLE_CONSTRAINTS
-              WHERE CONSTRAINT_SCHEMA = DATABASE()
-                AND TABLE_NAME = ?
-                AND CONSTRAINT_NAME = ?
-                AND CONSTRAINT_TYPE = ?',
-            ['products', self::FOREIGN_KEY, 'FOREIGN KEY']
-        );
+        if (!in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            return false;
+        }
 
-        return $found !== null;
+        foreach (Schema::getForeignKeys('products') as $foreignKey) {
+            if (($foreignKey['name'] ?? null) === self::FOREIGN_KEY) {
+                return true;
+            }
+        }
+
+        return false;
     }
 };

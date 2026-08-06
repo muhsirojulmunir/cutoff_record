@@ -131,40 +131,60 @@ class GoodsReceiptService
      * Nomor pengajuan tidak dipakai ulang karena penomoran menghitung data
      * yang sudah dihapus juga.
      */
-    public function deleteRequest(GoodsReceipt $receipt, ?int $userId = null): void
+    public function deleteRequest(GoodsReceipt $receipt, ?int $userId = null): ?string
     {
-        DB::transaction(function () use ($receipt, $userId) {
+        return DB::transaction(function () use ($receipt, $userId) {
             $locked = GoodsReceipt::where('id', $receipt->id)->lockForUpdate()->firstOrFail();
 
-            if ($locked->stock_movement_id) {
-                $product = Product::find($locked->product_id);
-
-                if (!$product) {
-                    throw new InvalidArgumentException('Produk pada pengajuan ini sudah tidak ada, penghapusan dibatalkan.');
-                }
-
-                if ($product->stock < $locked->quantity) {
-                    throw new InvalidArgumentException(
-                        "Pengajuan ini tidak bisa dihapus karena stok {$product->sku} tinggal {$product->stock}, "
-                        . "sedangkan yang harus ditarik kembali {$locked->quantity}. "
-                        . 'Sesuaikan stok lewat menu Adjustment terlebih dahulu.'
-                    );
-                }
-
-                $this->stockMovementService->recordStockOut(
-                    $product,
-                    $locked->warehouse_id,
-                    $locked->quantity,
-                    'goods_receipt_deleted',
-                    $locked->id,
-                    $locked->receipt_number,
-                    'Pembatalan barang masuk ' . $locked->receipt_number,
-                    $userId,
-                );
-            }
+            $catatan = $locked->stock_movement_id
+                ? $this->reverseStock($locked, $userId)
+                : null;
 
             $locked->delete();
+
+            return $catatan;
         });
+    }
+
+    /**
+     * Tarik kembali stok dari pengajuan yang sudah disetujui.
+     *
+     * Penghapusan tidak pernah dibatalkan hanya karena stoknya tidak bisa
+     * ditarik — produknya mungkin sudah dihapus, atau barangnya sudah
+     * terlanjur keluar. Alasannya dikembalikan supaya bisa disampaikan
+     * apa adanya ke pengguna.
+     */
+    private function reverseStock(GoodsReceipt $receipt, ?int $userId): ?string
+    {
+        $product = Product::withTrashed()->find($receipt->product_id);
+
+        // Produk yang hilang atau sudah dihapus tidak lagi punya stok yang
+        // dipakai di mana pun, jadi tidak ada yang perlu ditarik kembali.
+        if (!$product) {
+            return 'Produknya sudah tidak ada, jadi stok tidak ditarik kembali.';
+        }
+
+        if ($product->trashed()) {
+            return "Produk {$product->sku} sudah dihapus dari master data, jadi stok tidak ditarik kembali.";
+        }
+
+        if ($product->stock < $receipt->quantity) {
+            return "Stok {$product->sku} tinggal {$product->stock} sedangkan yang masuk {$receipt->quantity}, "
+                . 'jadi stok tidak ditarik kembali. Sesuaikan lewat menu Adjustment bila perlu.';
+        }
+
+        $this->stockMovementService->recordStockOut(
+            $product,
+            $receipt->warehouse_id,
+            $receipt->quantity,
+            'goods_receipt_deleted',
+            $receipt->id,
+            $receipt->receipt_number,
+            'Pembatalan barang masuk ' . $receipt->receipt_number,
+            $userId,
+        );
+
+        return null;
     }
 
     /** Format nomor: BM-YYYYMM-0001, berurutan per bulan. */
