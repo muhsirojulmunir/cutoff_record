@@ -29,6 +29,8 @@ class UpdateSalesOrderRequest extends FormRequest
             'discount_amount'        => ['nullable', 'numeric', 'min:0'],
             'tax_amount'             => ['nullable', 'numeric', 'min:0'],
             'shipping_cost'          => ['nullable', 'numeric', 'min:0'],
+            'admin_fee'              => ['nullable', 'numeric', 'min:0'],
+            'other_fee'              => ['nullable', 'numeric', 'min:0'],
             'items'                  => ['required', 'array', 'min:1'],
             'items.*.product_id'     => ['required', 'exists:products,id'],
             'items.*.quantity'       => ['required', 'integer', 'min:1'],

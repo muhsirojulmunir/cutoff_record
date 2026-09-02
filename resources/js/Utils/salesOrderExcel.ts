@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 
-interface ExportOrder {
+export interface ExportOrder {
   so_number: string;
   order_date: string | null;
   customer_code: string | null;
@@ -17,6 +17,8 @@ interface ExportOrder {
   discount_amount: number;
   tax_amount: number;
   shipping_cost: number;
+  admin_fee?: number;
+  other_fee?: number;
   grand_total: number;
   dp_amount: number;
   remaining_amount: number;
@@ -25,7 +27,7 @@ interface ExportOrder {
   notes: string | null;
 }
 
-interface ExportItem {
+export interface ExportItem {
   so_number: string;
   order_date: string | null;
   customer_name: string | null;
@@ -38,7 +40,7 @@ interface ExportItem {
   subtotal: number;
 }
 
-interface ExportPayload {
+export interface ExportPayload {
   orders: ExportOrder[];
   items: ExportItem[];
 }
@@ -98,6 +100,8 @@ function toOrderRow(order: ExportOrder) {
     'Diskon': order.discount_amount,
     'Pajak': order.tax_amount,
     'Ongkir': order.shipping_cost,
+    'Biaya Admin': order.admin_fee ?? 0,
+    'Biaya Lain-lain': order.other_fee ?? 0,
     'Grand Total': order.grand_total,
     'DP / Uang Muka': order.dp_amount,
     'Sisa Tagihan': order.remaining_amount,
@@ -172,4 +176,80 @@ export async function downloadSalesOrderList(filters: Record<string, string | un
 /** Unduh satu Sales Order beserta detail itemnya. */
 export function downloadSingleSalesOrder(order: ExportOrder, items: ExportItem[]): void {
   XLSX.writeFile(buildWorkbook({ orders: [order], items }), `${order.so_number}.xlsx`);
+}
+
+/**
+ * Unduh Template Excel Resmi untuk Impor Pesanan Sales Order / Grosir (17 Kolom).
+ * Termasuk kolom Biaya Admin dan Biaya Lain-lain.
+ */
+export function downloadGrosirTemplateExcel(availableSkus?: string[]): void {
+  const sampleSku1 = availableSkus && availableSkus.length > 0 ? availableSkus[0] : 'PRD-001';
+  const sampleSku2 = availableSkus && availableSkus.length > 1 ? availableSkus[1] : 'PRD-002';
+
+  const templateRows = [
+    {
+      'Resi / AWB': 'JNT123456789',
+      'Waktu Pembayaran': todayStamp(),
+      'Nama Penerima': 'Budi Santoso',
+      'Nama Akun': 'Grosir Offline',
+      'SKU': sampleSku1,
+      'QTY': 2,
+      'Satuan Harga': 75000,
+      'Voucher': 5000,
+      'Pajak': 0,
+      'Total Berat Barang': 1.5,
+      'Alamat Penerima': 'Jl. Merdeka No. 45',
+      'No. Telp': '081234567890',
+      'Kota': 'Surabaya',
+      'Provinsi': 'Jawa Timur',
+      'Biaya Admin': 2500,
+      'Biaya Lain-lain': 1000,
+      'DP': 50000,
+    },
+    {
+      'Resi / AWB': 'SPX987654321',
+      'Waktu Pembayaran': todayStamp(),
+      'Nama Penerima': 'Siti Rahmawati',
+      'Nama Akun': 'Toko Grosir Cabang',
+      'SKU': sampleSku2,
+      'QTY': 5,
+      'Satuan Harga': 120000,
+      'Voucher': 0,
+      'Pajak': 0,
+      'Total Berat Barang': 3.0,
+      'Alamat Penerima': 'Jl. Diponegoro No. 12',
+      'No. Telp': '085712345678',
+      'Kota': 'Semarang',
+      'Provinsi': 'Jawa Tengah',
+      'Biaya Admin': 5000,
+      'Biaya Lain-lain': 0,
+      'DP': 605000,
+    },
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  const sheet = XLSX.utils.json_to_sheet(templateRows);
+
+  sheet['!cols'] = [
+    { wch: 18 }, // Resi/AWB
+    { wch: 18 }, // Waktu Pembayaran
+    { wch: 22 }, // Nama Penerima
+    { wch: 20 }, // Nama Akun
+    { wch: 15 }, // SKU
+    { wch: 8 },  // QTY
+    { wch: 14 }, // Satuan Harga
+    { wch: 12 }, // Voucher
+    { wch: 10 }, // Pajak
+    { wch: 18 }, // Total Berat Barang
+    { wch: 28 }, // Alamat Penerima
+    { wch: 16 }, // No. Telp
+    { wch: 16 }, // Kota
+    { wch: 16 }, // Provinsi
+    { wch: 14 }, // Biaya Admin
+    { wch: 16 }, // Biaya Lain-lain
+    { wch: 14 }, // DP
+  ];
+
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Template Import SO');
+  XLSX.writeFile(workbook, `template-import-sales-order-17-kolom.xlsx`);
 }
