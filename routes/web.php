@@ -134,6 +134,14 @@ Route::middleware('auth')->group(function () {
         ->middleware('can:product.delete');
     Route::resource('products', ProductController::class);
 
+    // Sales Orders Marketplace (Shopee / TikTok) Import
+    Route::get('/sales-orders/marketplace/import', [SalesOrderController::class, 'importMarketplace'])
+        ->name('sales-orders.marketplace.import')
+        ->middleware('can:sales_order.create');
+    Route::post('/sales-orders/marketplace/import', [SalesOrderController::class, 'storeMarketplaceImport'])
+        ->name('sales-orders.marketplace.store')
+        ->middleware('can:sales_order.create');
+
     // Sales Orders Grosir Offline & Tracking Resi
     Route::get('/sales-orders/grosir/create', [SalesOrderController::class, 'createGrosir'])
         ->name('sales-orders.grosir.create');

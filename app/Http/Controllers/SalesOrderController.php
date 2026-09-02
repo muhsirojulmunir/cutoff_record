@@ -457,5 +457,52 @@ class SalesOrderController extends Controller
             return back()->with('error', $e->getMessage());
         }
     }
+
+    /**
+     * Show page for importing Marketplace Orders (Shopee / TikTok).
+     */
+    public function importMarketplace(): Response
+    {
+        Gate::authorize('sales_order.create');
+
+        $products = Product::orderBy('name')->get(['id', 'name', 'sku', 'selling_price']);
+
+        return Inertia::render('SalesOrders/MarketplaceImport', [
+            'products' => $products,
+        ]);
+    }
+
+    /**
+     * Store Marketplace Orders in Batch from Shopee / TikTok parsed Excel.
+     */
+    public function storeMarketplaceImport(Request $request): RedirectResponse
+    {
+        Gate::authorize('sales_order.create');
+
+        $request->validate([
+            'orders' => 'required|array|min:1',
+            'orders.*.external_order_id' => 'required|string',
+            'orders.*.sales_channel'     => 'required|string|in:shopee,tiktok',
+            'orders.*.items'             => 'required|array|min:1',
+        ]);
+
+        try {
+            $userId = auth()->id();
+            $batchData = $request->input('orders');
+
+            $created = $this->salesOrderService->createMarketplaceOrdersBatch($batchData, $userId);
+
+            if (count($created) === 1) {
+                $so = $created[0];
+                return redirect()->route('sales-orders.show', $so->id)
+                    ->with('success', "Sales Order " . ucfirst($so->sales_channel) . " {$so->so_number} (Ref: {$so->external_order_id}) berhasil diimpor sebagai Draft.");
+            }
+
+            return redirect()->route('sales-orders.index', ['status' => 'draft'])
+                ->with('success', count($created) . " pesanan marketplace berhasil diimpor sebagai Draft.");
+        } catch (Exception $e) {
+            return back()->with('error', $e->getMessage())->withInput();
+        }
+    }
 }
 
