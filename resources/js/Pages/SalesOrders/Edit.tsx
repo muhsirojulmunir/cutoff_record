@@ -40,6 +40,8 @@ interface DBSalesOrder {
   discount_amount: string;
   tax_amount: string;
   shipping_cost: string;
+  admin_fee?: string;
+  other_fee?: string;
   grand_total: string;
   dp_amount?: string;
   items: DBOrderItem[];
@@ -87,6 +89,8 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
     discount_amount: 0,
     tax_amount: 0,
     shipping_cost: Number(salesOrder.shipping_cost),
+    admin_fee: Number(salesOrder.admin_fee ?? 0),
+    other_fee: Number(salesOrder.other_fee ?? 0),
     dp_amount: Number(salesOrder.dp_amount ?? 0),
     items: initialItems,
   });
@@ -154,7 +158,9 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
   // Calculate live summary (identical to Create.tsx)
   const subtotal = localItems.reduce((sum, item) => sum + (item.subtotal || 0), 0);
   const shippingCost = Number(data.shipping_cost) || 0;
-  const grandTotal = subtotal + shippingCost;
+  const adminFee = Number(data.admin_fee) || 0;
+  const otherFee = Number(data.other_fee) || 0;
+  const grandTotal = Math.max(0, subtotal + shippingCost + adminFee + otherFee);
   const dpAmount = Number(data.dp_amount) || 0;
   const sisaTagihan = Math.max(0, grandTotal - dpAmount);
 
@@ -443,6 +449,32 @@ export default function Edit({ salesOrder, customers, products }: SalesOrderEdit
                     min="0"
                   />
                   {errors.shipping_cost && <p className="text-rose-400 text-xs">{errors.shipping_cost}</p>}
+                </div>
+
+                {/* Biaya Admin — Opsional */}
+                <div className="pt-3 space-y-1.5">
+                  <label className="text-teal-700 font-semibold text-xs">Biaya Admin <span className="text-gray-400 text-[10px]">(opsional)</span></label>
+                  <CurrencyInput
+                    hidePrefix
+                    value={data.admin_fee}
+                    onChange={(v) => setData('admin_fee', v)}
+                    className="w-full px-3 py-1.5 rounded-lg bg-gray-50 border border-teal-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+                    min="0"
+                  />
+                  {errors.admin_fee && <p className="text-rose-400 text-xs">{errors.admin_fee}</p>}
+                </div>
+
+                {/* Biaya Lain-lain — Opsional */}
+                <div className="pt-3 space-y-1.5">
+                  <label className="text-teal-700 font-semibold text-xs">Biaya Lain-lain <span className="text-gray-400 text-[10px]">(opsional)</span></label>
+                  <CurrencyInput
+                    hidePrefix
+                    value={data.other_fee}
+                    onChange={(v) => setData('other_fee', v)}
+                    className="w-full px-3 py-1.5 rounded-lg bg-gray-50 border border-teal-300 text-gray-800 text-xs focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+                    min="0"
+                  />
+                  {errors.other_fee && <p className="text-rose-400 text-xs">{errors.other_fee}</p>}
                 </div>
 
                 {/* Grand Total */}

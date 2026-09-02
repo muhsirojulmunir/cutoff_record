@@ -57,9 +57,11 @@ class SalesOrderService
             $discount = $data['discount_amount'] ?? 0;
             $tax = $data['tax_amount'] ?? 0;
             $shipping = $data['shipping_cost'] ?? 0;
+            $adminFee = (float) ($data['admin_fee'] ?? 0);
+            $otherFee = (float) ($data['other_fee'] ?? 0);
 
-            // Grand Total = Subtotal - Discount + Tax + Shipping Cost
-            $grandTotal = $subtotal - $discount + $tax + $shipping;
+            // Grand Total = Subtotal - Discount + Tax + Shipping Cost + Admin Fee + Other Fee
+            $grandTotal = max(0, $subtotal - $discount + $tax + $shipping + $adminFee + $otherFee);
 
             $dpAmount = (float) ($data['dp_amount'] ?? 0);
             $paymentStatus = 'unpaid';
@@ -90,6 +92,8 @@ class SalesOrderService
                 'discount_amount' => $discount,
                 'tax_amount'      => $tax,
                 'shipping_cost'   => $shipping,
+                'admin_fee'       => $adminFee,
+                'other_fee'       => $otherFee,
                 'grand_total'     => $grandTotal,
                 'dp_amount'       => $dpAmount,
                 'notes'           => $data['notes'] ?? null,
@@ -146,7 +150,9 @@ class SalesOrderService
             $discount = $data['discount_amount'] ?? 0;
             $tax = $data['tax_amount'] ?? 0;
             $shipping = $data['shipping_cost'] ?? 0;
-            $grandTotal = $subtotal - $discount + $tax + $shipping;
+            $adminFee = (float) ($data['admin_fee'] ?? $salesOrder->admin_fee ?? 0);
+            $otherFee = (float) ($data['other_fee'] ?? $salesOrder->other_fee ?? 0);
+            $grandTotal = max(0, $subtotal - $discount + $tax + $shipping + $adminFee + $otherFee);
 
             $paymentTerms = $data['payment_terms'] ?? 'cash';
             $orderDateForDue = $data['order_date'] ?? $salesOrder->order_date->format('Y-m-d');
@@ -169,6 +175,8 @@ class SalesOrderService
                 'discount_amount' => $discount,
                 'tax_amount'      => $tax,
                 'shipping_cost'   => $shipping,
+                'admin_fee'       => $adminFee,
+                'other_fee'       => $otherFee,
                 'grand_total'     => $grandTotal,
                 'notes'           => $data['notes'] ?? null,
             ]);
@@ -549,11 +557,13 @@ class SalesOrderService
             $voucher = (float) ($data['voucher'] ?? $data['discount_amount'] ?? 0);
             $tax = (float) ($data['tax'] ?? $data['tax_amount'] ?? 0);
             $shippingCost = (float) ($data['shipping_cost'] ?? 0);
+            $adminFee = (float) ($data['admin_fee'] ?? 0);
+            $otherFee = (float) ($data['other_fee'] ?? 0);
             $totalWeight = (float) ($data['total_weight'] ?? 0);
             $dpAmount = (float) ($data['dp_amount'] ?? 0);
 
             $subtotal = $unitPrice * $qty;
-            $grandTotal = max(0, $subtotal - $voucher + $tax + $shippingCost);
+            $grandTotal = max(0, $subtotal - $voucher + $tax + $shippingCost + $adminFee + $otherFee);
 
             // Status bayar hanya boleh ditentukan oleh uang yang benar-benar
             // diterima. Tanggal pembayaran di form hanyalah catatan waktu, jadi
@@ -586,6 +596,8 @@ class SalesOrderService
                 'discount_amount'  => $voucher,
                 'tax_amount'       => $tax,
                 'shipping_cost'    => $shippingCost,
+                'admin_fee'        => $adminFee,
+                'other_fee'        => $otherFee,
                 'grand_total'      => $grandTotal,
                 'total_weight'     => $totalWeight,
                 'dp_amount'        => $dpAmount,

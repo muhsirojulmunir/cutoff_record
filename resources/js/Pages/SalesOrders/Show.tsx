@@ -63,6 +63,8 @@ interface SalesOrder {
   discount_amount: string;
   tax_amount: string;
   shipping_cost: string;
+  admin_fee?: string | null;
+  other_fee?: string | null;
   grand_total: string;
   notes: string | null;
   created_at: string;
@@ -685,6 +687,22 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
                   <div className="flex justify-between items-center pt-3 pb-3">
                     <span className="text-gray-400">Biaya Pengiriman</span>
                     <span className="font-semibold text-gray-700">+Rp {Number(salesOrder.shipping_cost).toLocaleString('id-ID')}</span>
+                  </div>
+                )}
+
+                {/* Biaya Admin (jika ada) */}
+                {Number(salesOrder.admin_fee ?? 0) > 0 && (
+                  <div className="flex justify-between items-center pt-3 pb-3">
+                    <span className="text-teal-700 font-medium">Biaya Admin</span>
+                    <span className="font-semibold text-teal-700">+Rp {Number(salesOrder.admin_fee).toLocaleString('id-ID')}</span>
+                  </div>
+                )}
+
+                {/* Biaya Lain-lain (jika ada) */}
+                {Number(salesOrder.other_fee ?? 0) > 0 && (
+                  <div className="flex justify-between items-center pt-3 pb-3">
+                    <span className="text-teal-700 font-medium">Biaya Lain-lain</span>
+                    <span className="font-semibold text-teal-700">+Rp {Number(salesOrder.other_fee).toLocaleString('id-ID')}</span>
                   </div>
                 )}
 
