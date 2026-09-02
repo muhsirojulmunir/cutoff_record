@@ -706,5 +706,145 @@ class SalesOrderService
 
         return $prefix . '-' . str_pad((string)$nextSequence, 4, '0', STR_PAD_LEFT);
     }
+
+    /**
+     * Create Marketplace (Shopee / TikTok) Sales Orders in Batch from parsed Excel.
+     */
+    public function createMarketplaceOrdersBatch(array $orders, int $userId): array
+    {
+        $created = [];
+
+        DB::transaction(function () use ($orders, $userId, &$created) {
+            foreach ($orders as $index => $row) {
+                try {
+                    $created[] = $this->createSingleMarketplaceOrder($row, $userId);
+                } catch (\Exception $e) {
+                    throw new \Exception('Pesanan ' . ($row['external_order_id'] ?? ('#' . ($index + 1))) . ': ' . $e->getMessage());
+                }
+            }
+        });
+
+        return $created;
+    }
+
+    /**
+     * Create single Marketplace Sales Order from parsed data.
+     */
+    public function createSingleMarketplaceOrder(array $data, int $userId): SalesOrder
+    {
+        $channel = in_array($data['sales_channel'] ?? '', ['shopee', 'tiktok'], true)
+            ? $data['sales_channel']
+            : 'shopee';
+
+        $orderDate = !empty($data['order_date']) ? date('Y-m-d', strtotime($data['order_date'])) : now()->format('Y-m-d');
+        $paymentDateStr = !empty($data['payment_date']) ? $data['payment_date'] : null;
+        $soNumber = $this->generateSoNumber($orderDate);
+
+        // Find or create customer
+        $recipientName = trim($data['recipient_name'] ?? ('Pembeli ' . ucfirst($channel)));
+        $customerPhone = trim($data['customer_phone'] ?? '');
+
+        $customer = null;
+        if ($customerPhone !== '') {
+            $customer = \App\Models\Customer::where('phone', $customerPhone)->first();
+        }
+        if (!$customer && $recipientName !== '') {
+            $customer = \App\Models\Customer::where('name', $recipientName)->first();
+        }
+        if (!$customer) {
+            $prefixCode = strtoupper(substr($channel, 0, 3));
+            $customerCode = 'CUST-' . $prefixCode . '-' . strtoupper(\Illuminate\Support\Str::random(5));
+            $customer = \App\Models\Customer::create([
+                'customer_code' => $customerCode,
+                'name'          => $recipientName,
+                'phone'         => $customerPhone ?: null,
+                'address'       => $data['shipping_address'] ?? null,
+                'city'          => $data['city'] ?? null,
+                'province'      => $data['province'] ?? null,
+            ]);
+        }
+
+        // Process items
+        $itemsData = [];
+        $computedSubtotal = 0;
+
+        foreach ($data['items'] as $itemRow) {
+            $sku = trim((string)($itemRow['sku'] ?? ''));
+            $product = null;
+            if ($sku !== '' && $sku !== 'NO-SKU') {
+                $product = Product::where('sku', $sku)->first();
+                if (!$product) {
+                    $product = Product::where('sku', 'like', "%{$sku}%")->first();
+                }
+            }
+            if (!$product && !empty($itemRow['product_id'])) {
+                $product = Product::find($itemRow['product_id']);
+            }
+            if (!$product) {
+                throw new InvalidArgumentException("Produk dengan SKU '{$sku}' ({$itemRow['product_name']}) tidak ditemukan di master data produk.");
+            }
+
+            $qty = max(1, (int)($itemRow['quantity'] ?? 1));
+            $price = (float)($itemRow['price'] ?? $product->selling_price);
+            $itemDiscount = (float)($itemRow['discount_amount'] ?? 0);
+            $itemSubtotal = max(0, ($price * $qty) - $itemDiscount);
+
+            $itemsData[] = [
+                'product_id'      => $product->id,
+                'sku'             => $product->sku,
+                'product_name'    => $itemRow['product_name'] ?? $product->name,
+                'quantity'        => $qty,
+                'unit'            => 'pcs',
+                'price'           => $price,
+                'discount_amount' => $itemDiscount,
+                'tax_amount'      => 0,
+                'subtotal'        => $itemSubtotal,
+            ];
+
+            $computedSubtotal += $itemSubtotal;
+        }
+
+        $shippingCost = (float)($data['shipping_cost'] ?? 0);
+        $discountAmount = (float)($data['discount_amount'] ?? 0);
+        $taxAmount = (float)($data['tax_amount'] ?? 0);
+        $adminFee = (float)($data['admin_fee'] ?? 0);
+        $otherFee = (float)($data['other_fee'] ?? 0);
+        $grandTotal = (float)($data['grand_total'] ?? max(0, $computedSubtotal - $discountAmount + $shippingCost + $adminFee + $otherFee));
+
+        $salesOrder = SalesOrder::create([
+            'so_number'          => $soNumber,
+            'tracking_number'    => $data['tracking_number'] ?? null,
+            'external_order_id'  => $data['external_order_id'] ?? null,
+            'account_name'       => $data['account_name'] ?? ucfirst($channel),
+            'customer_id'        => $customer->id,
+            'recipient_name'     => $recipientName,
+            'customer_phone'     => $customerPhone,
+            'shipping_address'   => $data['shipping_address'] ?? null,
+            'city'               => $data['city'] ?? null,
+            'province'           => $data['province'] ?? null,
+            'order_date'         => $orderDate,
+            'payment_date'       => $paymentDateStr ? date('Y-m-d H:i:s', strtotime($paymentDateStr)) : null,
+            'source'             => 'marketplace',
+            'sales_channel'      => $channel,
+            'status'             => 'draft',
+            'payment_status'     => 'paid',
+            'subtotal'           => $computedSubtotal,
+            'discount_amount'    => $discountAmount,
+            'tax_amount'         => $taxAmount,
+            'shipping_cost'      => $shippingCost,
+            'admin_fee'          => $adminFee,
+            'other_fee'          => $otherFee,
+            'grand_total'        => $grandTotal,
+            'dp_amount'          => 0,
+            'notes'              => $data['notes'] ?? ('Import ' . ucfirst($channel) . ' Order #' . ($data['external_order_id'] ?? '')),
+            'created_by'         => $userId,
+        ]);
+
+        foreach ($itemsData as $item) {
+            $salesOrder->items()->create($item);
+        }
+
+        return $salesOrder;
+    }
 }
 
