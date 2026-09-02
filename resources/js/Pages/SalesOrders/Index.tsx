@@ -4,7 +4,7 @@ import AppLayout from '../../Layouts/AppLayout';
 import Pagination from '../../Components/Pagination';
 import Alert from '../../Components/Alert';
 import { PageProps } from '../../Types';
-import { downloadSalesOrderList } from '../../Utils/salesOrderExcel';
+import { downloadSalesOrderList, downloadGrosirTemplateExcel } from '../../Utils/salesOrderExcel';
 
 interface Customer {
   id: number;
@@ -183,14 +183,24 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
           <div className="flex items-center gap-3">
             <button
               type="button"
+              onClick={() => downloadGrosirTemplateExcel()}
+              className="flex items-center justify-center gap-2 px-3.5 py-2 bg-white hover:bg-emerald-50 text-emerald-700 font-semibold text-sm rounded-xl border border-emerald-300 hover:border-emerald-400 transition-all shadow-sm cursor-pointer"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-emerald-600">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              Template Import (17 Kolom)
+            </button>
+            <button
+              type="button"
               onClick={handleDownloadExcel}
               disabled={downloading}
-              className="flex items-center justify-center gap-2 px-4 py-2 bg-white hover:bg-teal-50 text-teal-700 font-semibold text-sm rounded-xl border border-teal-400 hover:border-teal-500 transition-all disabled:opacity-60"
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-white hover:bg-teal-50 text-teal-700 font-semibold text-sm rounded-xl border border-teal-400 hover:border-teal-500 transition-all disabled:opacity-60 cursor-pointer"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
               </svg>
-              {downloading ? 'Menyiapkan...' : 'Download Excel'}
+              {downloading ? 'Menyiapkan...' : 'Export Data'}
             </button>
 
             {canCreate && (
