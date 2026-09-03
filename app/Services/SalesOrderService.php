@@ -853,12 +853,21 @@ class SalesOrderService
 
         // Simpan juga ke MarketplaceOrder agar langsung muncul di menu /marketplace/orders tanpa perlu API
         $marketplaceType = $channel === 'tiktok' ? 'tiktok_shop' : 'shopee';
-        $mpAccount = \App\Models\MarketplaceAccount::where('marketplace', $marketplaceType)->first();
+        $adminUser = \App\Models\User::first();
+        $mpAccount = \App\Models\MarketplaceAccount::firstOrCreate(
+            ['marketplace' => $marketplaceType],
+            [
+                'account_name'       => $marketplaceType === 'tiktok_shop' ? 'TikTok Shop' : 'Shopee',
+                'status'             => 'active',
+                'credentials_status' => 'configured',
+                'created_by'         => $adminUser ? $adminUser->id : 1,
+            ]
+        );
 
         $mpOrder = \App\Models\MarketplaceOrder::updateOrCreate(
             ['external_order_id' => $data['external_order_id']],
             [
-                'marketplace_account_id' => $mpAccount?->id,
+                'marketplace_account_id' => $mpAccount->id,
                 'marketplace'            => $marketplaceType,
                 'external_order_number'  => $data['external_order_id'],
                 'order_status'           => $data['order_status'] ?? 'completed',

@@ -77,12 +77,21 @@ class FixMarketplaceOrdersCommand extends Command
 
                 // Sinkronkan ke MarketplaceOrder agar muncul di /marketplace/orders
                 $marketplaceType = $channel === 'tiktok' ? 'tiktok_shop' : 'shopee';
-                $mpAccount = MarketplaceAccount::where('marketplace', $marketplaceType)->first();
+                $adminUser = \App\Models\User::first();
+                $mpAccount = MarketplaceAccount::firstOrCreate(
+                    ['marketplace' => $marketplaceType],
+                    [
+                        'account_name'       => $marketplaceType === 'tiktok_shop' ? 'TikTok Shop' : 'Shopee',
+                        'status'             => 'active',
+                        'credentials_status' => 'configured',
+                        'created_by'         => $adminUser ? $adminUser->id : 1,
+                    ]
+                );
 
                 $mpOrder = MarketplaceOrder::updateOrCreate(
                     ['external_order_id' => $so->external_order_id ?: $so->so_number],
                     [
-                        'marketplace_account_id' => $mpAccount?->id,
+                        'marketplace_account_id' => $mpAccount->id,
                         'marketplace'            => $marketplaceType,
                         'external_order_number'  => $so->external_order_id ?: $so->so_number,
                         'order_status'           => 'completed',
