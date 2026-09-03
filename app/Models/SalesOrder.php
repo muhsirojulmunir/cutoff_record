@@ -42,6 +42,7 @@ class SalesOrder extends Model
         'admin_fee',
         'other_fee',
         'grand_total',
+        'estimated_payout',
         'total_weight',
         'dp_amount',
         'notes',

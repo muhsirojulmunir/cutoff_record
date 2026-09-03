@@ -24,7 +24,7 @@ class MarketplaceReportService
 
         $soOrders = (clone $soQuery)->get();
         $totalOrders = $soOrders->count();
-        $totalRevenue = (float) $soOrders->sum('grand_total');
+        $totalRevenue = (float) $soOrders->sum(fn($o) => ($o->estimated_payout && (float)$o->estimated_payout > 0) ? (float)$o->estimated_payout : (float)$o->grand_total);
         $totalShipping = (float) $soOrders->sum('shipping_cost');
         $totalAdminFee = (float) $soOrders->sum('admin_fee') + (float) $soOrders->sum('other_fee');
         $totalDiscount = (float) $soOrders->sum('discount_amount');
@@ -40,14 +40,13 @@ class MarketplaceReportService
             ->when($dateTo, fn($q) => $q->where('sales_orders.order_date', '<=', $dateTo . ' 23:59:59'))
             ->sum(DB::raw('sales_order_items.quantity * COALESCE(po_costs.avg_cost, 0)'));
 
-        // Laba Bersih Marketplace = (Omset - Ongkir) - HPP - Biaya Admin Marketplace
-        $grossProfit = max(0, ($totalRevenue - $totalShipping) - $totalCogs);
-        $netProfit = $totalRevenue > 0 ? ($grossProfit - $totalAdminFee) : 0.0;
+        // Laba Bersih Marketplace = Total Pendapatan Bersih Settlement - HPP Modal
+        $netProfit = $totalRevenue > 0 ? max(0, $totalRevenue - $totalCogs) : 0.0;
 
         // Shopee Breakdown
         $shopeeOrdersList = $soOrders->where('sales_channel', 'shopee');
         $shopeeCount = $shopeeOrdersList->count();
-        $shopeeRevenue = (float) $shopeeOrdersList->sum('grand_total');
+        $shopeeRevenue = (float) $shopeeOrdersList->sum(fn($o) => ($o->estimated_payout && (float)$o->estimated_payout > 0) ? (float)$o->estimated_payout : (float)$o->grand_total);
         $shopeeShipping = (float) $shopeeOrdersList->sum('shipping_cost');
         $shopeeAdmin = (float) $shopeeOrdersList->sum('admin_fee') + (float) $shopeeOrdersList->sum('other_fee');
         $shopeeCogs = (float) SalesOrderItem::query()
@@ -59,12 +58,12 @@ class MarketplaceReportService
             ->when($dateFrom, fn($q) => $q->where('sales_orders.order_date', '>=', $dateFrom))
             ->when($dateTo, fn($q) => $q->where('sales_orders.order_date', '<=', $dateTo . ' 23:59:59'))
             ->sum(DB::raw('sales_order_items.quantity * COALESCE(po_costs.avg_cost, 0)'));
-        $shopeeNetProfit = $shopeeRevenue > 0 ? max(0, ($shopeeRevenue - $shopeeShipping) - $shopeeCogs) - $shopeeAdmin : 0.0;
+        $shopeeNetProfit = $shopeeRevenue > 0 ? max(0, $shopeeRevenue - $shopeeCogs) : 0.0;
 
         // TikTok Breakdown
         $tiktokOrdersList = $soOrders->where('sales_channel', 'tiktok');
         $tiktokCount = $tiktokOrdersList->count();
-        $tiktokRevenue = (float) $tiktokOrdersList->sum('grand_total');
+        $tiktokRevenue = (float) $tiktokOrdersList->sum(fn($o) => ($o->estimated_payout && (float)$o->estimated_payout > 0) ? (float)$o->estimated_payout : (float)$o->grand_total);
         $tiktokShipping = (float) $tiktokOrdersList->sum('shipping_cost');
         $tiktokAdmin = (float) $tiktokOrdersList->sum('admin_fee') + (float) $tiktokOrdersList->sum('other_fee');
         $tiktokCogs = (float) SalesOrderItem::query()
@@ -76,7 +75,7 @@ class MarketplaceReportService
             ->when($dateFrom, fn($q) => $q->where('sales_orders.order_date', '>=', $dateFrom))
             ->when($dateTo, fn($q) => $q->where('sales_orders.order_date', '<=', $dateTo . ' 23:59:59'))
             ->sum(DB::raw('sales_order_items.quantity * COALESCE(po_costs.avg_cost, 0)'));
-        $tiktokNetProfit = $tiktokRevenue > 0 ? max(0, ($tiktokRevenue - $tiktokShipping) - $tiktokCogs) - $tiktokAdmin : 0.0;
+        $tiktokNetProfit = $tiktokRevenue > 0 ? max(0, $tiktokRevenue - $tiktokCogs) : 0.0;
 
         // Hitung juga data dari tabel MarketplaceOrder (API) bila ada
         $mpApiQuery = MarketplaceOrder::query();
