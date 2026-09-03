@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 
@@ -16,7 +16,8 @@ interface Props {
     summary: {
         total_receivables: number; overdue_receivables: number; unpaid_invoices_count: number; overdue_invoices_count: number;
         total_payables: number; total_cash_balance: number; petty_cash_approved: number; petty_cash_pending: number;
-        estimated_revenue: number; estimated_cogs: number; operating_expenses: number; estimated_gross_profit: number;
+        estimated_revenue: number; estimated_cogs: number; operating_expenses: number;
+        estimated_gross_profit: number; estimated_net_profit?: number;
     };
     receivables: { data: ReceivableRow[] };
     payables: { data: PayableRow[] };
@@ -89,25 +90,32 @@ export default function FinancialReport({ summary, receivables, payables, cashBa
                 <div className="bg-gray-50 border border-gray-300 rounded-2xl p-5">
                     <div className="flex justify-between items-center mb-3">
                         <div>
-                            <h2 className="text-gray-900 font-semibold text-sm">Estimasi Laba Kotor (Estimated Gross Profit)</h2>
-                            <p className="text-gray-400 text-xs mt-0.5">Formula: Revenue - Purchase Cost (COGS) - Operating Expenses (Petty Cash)</p>
+                            <h2 className="text-gray-900 font-semibold text-sm">Estimasi Laba Kotor &amp; Laba Bersih</h2>
+                            <p className="text-gray-400 text-xs mt-0.5">Laba Kotor = Omset − HPP Barang Terjual &nbsp;|&nbsp; Laba Bersih = Laba Kotor − Petty Cash Operasional</p>
                         </div>
-                        <span className="text-xs font-mono font-bold px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-xl">
-                            {fmt(summary.estimated_gross_profit)}
-                        </span>
+                        <div className="text-right">
+                            <span className="text-[10px] text-gray-500 font-bold block mb-1">Laba Bersih</span>
+                            <span className="text-sm font-mono font-bold px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 rounded-xl">
+                                {fmt(summary.estimated_net_profit ?? summary.estimated_gross_profit)}
+                            </span>
+                        </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-gray-300 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-3 border-t border-gray-300 text-xs">
                         <div className="p-3 bg-white rounded-xl">
                             <span className="text-gray-500">Total Omset Sales Order</span>
                             <p className="text-gray-900 font-bold font-mono text-sm mt-1">{fmt(summary.estimated_revenue)}</p>
                         </div>
                         <div className="p-3 bg-white rounded-xl">
-                            <span className="text-gray-500">Total Pembelian PO (COGS)</span>
+                            <span className="text-gray-500">HPP Barang Terjual (COGS)</span>
                             <p className="text-rose-400 font-bold font-mono text-sm mt-1">-{fmt(summary.estimated_cogs)}</p>
                         </div>
                         <div className="p-3 bg-white rounded-xl">
                             <span className="text-gray-500">Total Beban Operasional Petty Cash</span>
                             <p className="text-orange-600 font-bold font-mono text-sm mt-1">-{fmt(summary.operating_expenses)}</p>
+                        </div>
+                        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                            <span className="text-emerald-700 font-semibold">Estimasi Laba Kotor</span>
+                            <p className="text-emerald-600 font-bold font-mono text-sm mt-1">{fmt(summary.estimated_gross_profit)}</p>
                         </div>
                     </div>
                 </div>
