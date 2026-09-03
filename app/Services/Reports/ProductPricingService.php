@@ -38,8 +38,8 @@ class ProductPricingService
             ->whereNull('products.deleted_at')
             ->select(
                 'products.id as product_id',
-                DB::raw('COALESCE(product_hpps.hpp, po_costs.avg_cost, 0) as avg_cost'),
-                DB::raw('COALESCE(po_costs.avg_cost, 0) as po_average_cost'),
+                DB::raw('COALESCE(product_hpps.hpp, po_costs.avg_cost, products.purchase_price, 0) as avg_cost'),
+                DB::raw('COALESCE(po_costs.avg_cost, products.purchase_price, 0) as po_average_cost'),
                 DB::raw('product_hpps.hpp as manual_hpp'),
             );
     }

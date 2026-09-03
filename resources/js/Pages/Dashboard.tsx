@@ -48,9 +48,12 @@ interface Props {
             operating_expenses: number; estimated_gross_profit: number;
         };
         marketplace: {
-            total_orders: number; shopee_orders: number; tiktok_orders: number;
+            total_orders: number;
+            total_net_profit?: number;
+            shopee_orders: number; shopee_net_profit?: number;
+            tiktok_orders: number; tiktok_net_profit?: number;
             shipped_count: number; completed_count: number;
-            insufficient_count: number; mapping_required_count: number;
+            insufficient_count?: number; mapping_required_count?: number;
             pipeline: Record<string, number>;
         };
         today: {
@@ -71,6 +74,11 @@ interface Props {
             revenue: number; cogs: number; gross_profit: number;
             discount: number; shipping: number; expenses: number;
             net_profit: number; margin: number;
+        };
+        period: {
+            revenue: number; cogs: number; expenses: number;
+            gross_profit: number; net_profit: number;
+            orders: number; shipped: number;
         };
         top_products: TopProduct[];
     };
@@ -146,7 +154,7 @@ export default function Dashboard({ metrics, filters }: Props) {
         router.reload({ onFinish: () => setRefreshing(false) });
     };
 
-    const { today, profit_funnel: funnel, top_products: topProducts } = metrics;
+    const { today, profit_funnel: funnel, period, top_products: topProducts } = metrics;
     const maxProfit = Math.max(...topProducts.map(p => Math.abs(p.profit)), 1);
 
     // Corong laba — blok pertama paling besar, sisanya menyusut seperti referensi.
@@ -171,6 +179,7 @@ export default function Dashboard({ metrics, filters }: Props) {
             key: 'laba',
             label: 'Laba Bersih Hari Ini',
             value: <CountUp value={today.net_profit} format={fmt} />,
+            sub: <span className="text-[10px] text-gray-400">Periode: {fmt(period?.net_profit ?? 0)}</span>,
             growth: today.growth.net_profit,
             filled: true,
             icon: 'M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z',

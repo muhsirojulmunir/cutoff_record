@@ -9,11 +9,16 @@ use App\Models\Invoice;
 use App\Models\PettyCashTransaction;
 use App\Models\PurchaseOrder;
 use App\Models\SalesOrder;
+use App\Models\SalesOrderItem;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class FinancialReportService
 {
+    public function __construct(
+        private readonly ProductPricingService $pricingService,
+    ) {}
+
     public function getSummary(?string $dateFrom = null, ?string $dateTo = null): array
     {
         // 1. Customer Receivables
@@ -57,24 +62,32 @@ class FinancialReportService
         $totalPettyCashApproved = (float) (clone $pcQuery)->where('status', 'approved')->sum('amount');
         $totalPettyCashPending  = (float) (clone $pcQuery)->where('status', 'submitted')->sum('amount');
 
-        // 5. Estimated Gross Profit Calculation
+        // 5. Estimated Gross Profit & Net Profit Calculation
         $soQuery = SalesOrder::whereNotIn('status', ['cancelled', 'rejected']);
-        $poQuery = PurchaseOrder::whereNotIn('status', ['cancelled', 'rejected']);
 
         if ($dateFrom) {
             $soQuery->where('order_date', '>=', $dateFrom);
-            $poQuery->where('order_date', '>=', $dateFrom);
         }
         if ($dateTo) {
             $soQuery->where('order_date', '<=', $dateTo);
-            $poQuery->where('order_date', '<=', $dateTo);
         }
 
-        $revenue   = (float) $soQuery->sum('grand_total');
-        $cogs      = (float) $poQuery->sum('grand_total'); // Direct purchase cost estimate
+        $revenue = (float) $soQuery->sum('grand_total');
+
+        // HPP barang terjual yang sebenarnya (COGS) dari SalesOrderItem x HPP produk
+        $cogs = (float) SalesOrderItem::query()
+            ->join('sales_orders', 'sales_orders.id', '=', 'sales_order_items.sales_order_id')
+            ->leftJoinSub($this->pricingService->effectiveCostSubquery(), 'po_costs', 'po_costs.product_id', '=', 'sales_order_items.product_id')
+            ->whereNull('sales_orders.deleted_at')
+            ->whereNotIn('sales_orders.status', ['cancelled', 'rejected'])
+            ->when($dateFrom, fn($q) => $q->where('sales_orders.order_date', '>=', $dateFrom))
+            ->when($dateTo, fn($q) => $q->where('sales_orders.order_date', '<=', $dateTo))
+            ->sum(DB::raw('sales_order_items.quantity * COALESCE(po_costs.avg_cost, 0)'));
+
         $operating = (float) $totalPettyCashApproved;
 
-        $estimatedGrossProfit = $revenue - $cogs - $operating;
+        $estimatedGrossProfit = $revenue - $cogs;
+        $estimatedNetProfit   = $estimatedGrossProfit - $operating;
 
         return [
             'total_receivables'      => $totalReceivables,
@@ -89,6 +102,7 @@ class FinancialReportService
             'estimated_cogs'         => $cogs,
             'operating_expenses'     => $operating,
             'estimated_gross_profit' => $estimatedGrossProfit,
+            'estimated_net_profit'   => $estimatedNetProfit,
         ];
     }
 

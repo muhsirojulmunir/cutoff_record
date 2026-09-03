@@ -51,6 +51,7 @@ class DashboardReportService
             'channels'       => $this->getChannels(),
             'channel_trend'  => $this->getChannelTrend($from, $to, $channel),
             'today'          => $this->getTodayPerformance($channel),
+            'period'         => $this->getPeriodPerformance($from, $to, $channel),
             'profit_funnel'  => $this->getProfitFunnel($from, $to, $channel),
             'top_products'   => $this->getTopProfitableProducts($from, $to, $channel),
         ];
@@ -168,9 +169,11 @@ class DashboardReportService
             ->whereNotIn('status', ['cancelled', 'rejected'])
             ->when($channel, fn ($query) => $query->where('sales_channel', $channel));
 
-        $revenue = (float) (clone $base)->sum('grand_total');
-        $orders  = (clone $base)->count();
-        $shipped = (clone $base)->whereNotNull('tracking_number')->count();
+        $revenue   = (float) (clone $base)->sum('grand_total');
+        $orders    = (clone $base)->count();
+        $shipped   = (clone $base)->whereNotNull('tracking_number')->count();
+        $shipping  = (float) (clone $base)->sum('shipping_cost');
+        $adminFees = (float) (clone $base)->sum('admin_fee') + (float) (clone $base)->sum('other_fee');
 
         // Modal memakai HPP rata-rata dari penerimaan Purchase Order.
         $cogs = (float) $this->cogsQuery($channel)
@@ -181,13 +184,58 @@ class DashboardReportService
             ->whereIn('status', ['approved', 'paid'])
             ->sum('amount');
 
+        $netSales    = max(0, $revenue - $shipping);
+        $grossProfit = max(0, $netSales - $cogs);
+        $totalExpenses = $expenses + $adminFees;
+        $netProfit   = $revenue > 0 ? ($grossProfit - $totalExpenses) : (0.0 - $expenses);
+
         return [
-            'revenue'    => $revenue,
-            'cogs'       => $cogs,
-            'expenses'   => $expenses,
-            'net_profit' => $revenue - $cogs - $expenses,
-            'orders'     => $orders,
-            'shipped'    => $shipped,
+            'revenue'      => $revenue,
+            'cogs'         => $cogs,
+            'expenses'     => $totalExpenses,
+            'gross_profit' => $grossProfit,
+            'net_profit'   => $netProfit,
+            'orders'       => $orders,
+            'shipped'      => $shipped,
+        ];
+    }
+
+    /**
+     * Angka penjualan pada rentang periode terpilih (hari ini, minggu ini, bulan ini, tahun ini).
+     */
+    public function getPeriodPerformance(string $from, string $to, ?string $channel = null): array
+    {
+        $base = SalesOrder::whereBetween('order_date', [$from, $to])
+            ->whereNotIn('status', ['cancelled', 'rejected'])
+            ->when($channel, fn ($query) => $query->where('sales_channel', $channel));
+
+        $revenue = (float) (clone $base)->sum('grand_total');
+        $orders  = (clone $base)->count();
+        $shipped = (clone $base)->whereNotNull('tracking_number')->count();
+        $adminFees = (float) (clone $base)->sum('admin_fee') + (float) (clone $base)->sum('other_fee');
+        $shipping = (float) (clone $base)->sum('shipping_cost');
+
+        $cogs = (float) $this->cogsQuery($channel)
+            ->whereBetween('sales_orders.order_date', [$from, $to])
+            ->sum(DB::raw('sales_order_items.quantity * COALESCE(po_costs.avg_cost, 0)'));
+
+        $expenses = (float) PettyCashTransaction::whereBetween('transaction_date', [$from, $to])
+            ->whereIn('status', ['approved', 'paid'])
+            ->sum('amount');
+
+        $netSales = max(0, $revenue - $shipping);
+        $grossProfit = max(0, $netSales - $cogs);
+        $totalExpenses = $expenses + $adminFees;
+        $netProfit = $revenue > 0 ? ($grossProfit - $totalExpenses) : (0.0 - $expenses);
+
+        return [
+            'revenue'      => $revenue,
+            'cogs'         => $cogs,
+            'expenses'     => $totalExpenses,
+            'gross_profit' => $grossProfit,
+            'net_profit'   => $netProfit,
+            'orders'       => $orders,
+            'shipped'      => $shipped,
         ];
     }
 
@@ -200,9 +248,11 @@ class DashboardReportService
             ->whereNotIn('status', ['cancelled', 'rejected'])
             ->when($channel, fn ($query) => $query->where('sales_channel', $channel));
 
-        $revenue = (float) (clone $base)->sum('grand_total');
-        $shipping = (float) (clone $base)->sum('shipping_cost');
-        $discount = (float) (clone $base)->sum('discount_amount');
+        $revenue   = (float) (clone $base)->sum('grand_total');
+        $shipping  = (float) (clone $base)->sum('shipping_cost');
+        $discount  = (float) (clone $base)->sum('discount_amount');
+        $adminFee  = (float) (clone $base)->sum('admin_fee');
+        $otherFee  = (float) (clone $base)->sum('other_fee');
 
         $cogs = (float) $this->cogsQuery($channel)
             ->whereBetween('sales_orders.order_date', [$from, $to])
@@ -212,8 +262,11 @@ class DashboardReportService
             ->whereIn('status', ['approved', 'paid'])
             ->sum('amount');
 
-        $grossProfit = $revenue - $cogs;
-        $netProfit   = $grossProfit - $expenses - $shipping;
+        // Omset bersih barang di luar ongkir titipan
+        $netSales = max(0, $revenue - $shipping);
+        $grossProfit = max(0, $netSales - $cogs);
+        $totalExpenses = $expenses + $adminFee + $otherFee;
+        $netProfit = $revenue > 0 ? ($grossProfit - $totalExpenses) : (0.0 - $expenses);
 
         return [
             'revenue'      => $revenue,
@@ -221,7 +274,7 @@ class DashboardReportService
             'gross_profit' => $grossProfit,
             'discount'     => $discount,
             'shipping'     => $shipping,
-            'expenses'     => $expenses,
+            'expenses'     => $totalExpenses,
             'net_profit'   => $netProfit,
             'margin'       => $revenue > 0 ? round(($netProfit / $revenue) * 100, 2) : 0.0,
         ];
