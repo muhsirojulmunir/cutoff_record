@@ -169,13 +169,14 @@ class DashboardReportService
             ->whereNotIn('status', ['cancelled', 'rejected'])
             ->when($channel, fn ($query) => $query->where('sales_channel', $channel));
 
-        $revenue   = (float) (clone $base)->sum('grand_total');
+        // Untuk marketplace, gunakan estimasi pembayaran bersih jika ada
+        $revenue   = (float) (clone $base)->sum(DB::raw('CASE WHEN sales_channel IN ("shopee", "tiktok") AND COALESCE(estimated_payout, 0) > 0 THEN estimated_payout ELSE grand_total END'));
         $orders    = (clone $base)->count();
         $shipped   = (clone $base)->whereNotNull('tracking_number')->count();
-        $shipping  = (float) (clone $base)->sum('shipping_cost');
-        $adminFees = (float) (clone $base)->sum('admin_fee') + (float) (clone $base)->sum('other_fee');
+        $shipping  = (float) (clone $base)->where(fn($q) => $q->whereNotIn('sales_channel', ['shopee', 'tiktok'])->orWhereNull('estimated_payout'))->sum('shipping_cost');
+        $adminFees = (float) (clone $base)->where(fn($q) => $q->whereNotIn('sales_channel', ['shopee', 'tiktok'])->orWhereNull('estimated_payout'))->sum('admin_fee') + (float) (clone $base)->sum('other_fee');
 
-        // Modal memakai HPP rata-rata dari penerimaan Purchase Order.
+        // Modal memakai HPP rata-rata dari penerimaan Purchase Order / harga beli.
         $cogs = (float) $this->cogsQuery($channel)
             ->whereDate('sales_orders.order_date', $date)
             ->sum(DB::raw('sales_order_items.quantity * COALESCE(po_costs.avg_cost, 0)'));
@@ -209,11 +210,11 @@ class DashboardReportService
             ->whereNotIn('status', ['cancelled', 'rejected'])
             ->when($channel, fn ($query) => $query->where('sales_channel', $channel));
 
-        $revenue = (float) (clone $base)->sum('grand_total');
-        $orders  = (clone $base)->count();
-        $shipped = (clone $base)->whereNotNull('tracking_number')->count();
-        $adminFees = (float) (clone $base)->sum('admin_fee') + (float) (clone $base)->sum('other_fee');
-        $shipping = (float) (clone $base)->sum('shipping_cost');
+        $revenue   = (float) (clone $base)->sum(DB::raw('CASE WHEN sales_channel IN ("shopee", "tiktok") AND COALESCE(estimated_payout, 0) > 0 THEN estimated_payout ELSE grand_total END'));
+        $orders    = (clone $base)->count();
+        $shipped   = (clone $base)->whereNotNull('tracking_number')->count();
+        $shipping  = (float) (clone $base)->where(fn($q) => $q->whereNotIn('sales_channel', ['shopee', 'tiktok'])->orWhereNull('estimated_payout'))->sum('shipping_cost');
+        $adminFees = (float) (clone $base)->where(fn($q) => $q->whereNotIn('sales_channel', ['shopee', 'tiktok'])->orWhereNull('estimated_payout'))->sum('admin_fee') + (float) (clone $base)->sum('other_fee');
 
         $cogs = (float) $this->cogsQuery($channel)
             ->whereBetween('sales_orders.order_date', [$from, $to])
@@ -223,10 +224,10 @@ class DashboardReportService
             ->whereIn('status', ['approved', 'paid'])
             ->sum('amount');
 
-        $netSales = max(0, $revenue - $shipping);
+        $netSales    = max(0, $revenue - $shipping);
         $grossProfit = max(0, $netSales - $cogs);
         $totalExpenses = $expenses + $adminFees;
-        $netProfit = $revenue > 0 ? ($grossProfit - $totalExpenses) : (0.0 - $expenses);
+        $netProfit   = $revenue > 0 ? ($grossProfit - $totalExpenses) : (0.0 - $expenses);
 
         return [
             'revenue'      => $revenue,
@@ -248,10 +249,10 @@ class DashboardReportService
             ->whereNotIn('status', ['cancelled', 'rejected'])
             ->when($channel, fn ($query) => $query->where('sales_channel', $channel));
 
-        $revenue   = (float) (clone $base)->sum('grand_total');
-        $shipping  = (float) (clone $base)->sum('shipping_cost');
+        $revenue   = (float) (clone $base)->sum(DB::raw('CASE WHEN sales_channel IN ("shopee", "tiktok") AND COALESCE(estimated_payout, 0) > 0 THEN estimated_payout ELSE grand_total END'));
+        $shipping  = (float) (clone $base)->where(fn($q) => $q->whereNotIn('sales_channel', ['shopee', 'tiktok'])->orWhereNull('estimated_payout'))->sum('shipping_cost');
         $discount  = (float) (clone $base)->sum('discount_amount');
-        $adminFee  = (float) (clone $base)->sum('admin_fee');
+        $adminFee  = (float) (clone $base)->where(fn($q) => $q->whereNotIn('sales_channel', ['shopee', 'tiktok'])->orWhereNull('estimated_payout'))->sum('admin_fee');
         $otherFee  = (float) (clone $base)->sum('other_fee');
 
         $cogs = (float) $this->cogsQuery($channel)
@@ -290,6 +291,7 @@ class DashboardReportService
             ->leftJoinSub($this->pricingService->effectiveCostSubquery(), 'po_costs', 'po_costs.product_id', '=', 'sales_order_items.product_id')
             ->whereBetween('sales_orders.order_date', [$from, $to])
             ->whereNotIn('sales_orders.status', ['cancelled', 'rejected'])
+            ->where('sales_order_items.subtotal', '>', 0) // Jangan tampilkan item giveaway/hadiah bernilai Rp 0
             ->when($channel, fn ($query) => $query->where('sales_orders.sales_channel', $channel))
             ->groupBy('sales_order_items.product_id', 'sales_order_items.product_name', 'sales_order_items.sku')
             ->select(

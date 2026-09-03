@@ -29,6 +29,7 @@ export interface ParsedMarketplaceOrder {
   admin_fee: number;
   other_fee: number;
   grand_total: number;
+  estimated_payout: number;  // Estimasi pembayaran bersih dari platform (income seller)
   notes?: string;
   items: ParsedMarketplaceItem[];
 }
@@ -59,11 +60,41 @@ function getColIdx(headers: string[], keywords: string[], fallbackIdx: number, t
 
 function parseMoney(val: any): number {
   if (val === null || val === undefined) return 0;
-  if (typeof val === 'number') return val;
-  const str = String(val).trim();
-  if (str === 'N' || str === 'n' || str === 'Y' || str === 'y') return 0;
-  const cleaned = str.replace(/[^0-9.]/g, '');
-  return parseFloat(cleaned) || 0;
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  let str = String(val).trim();
+  if (!str || str === 'N' || str === 'n' || str === 'Y' || str === 'y' || str === '-') return 0;
+
+  // Hapus simbol mata uang dan spasi
+  str = str.replace(/^(Rp|IDR)\s*/i, '').trim();
+
+  // Format angka Indonesia atau Excel: "40.000,00" atau "40.000"
+  if (str.includes('.') && str.includes(',')) {
+    if (str.indexOf('.') < str.indexOf(',')) {
+      // 40.000,00 -> titik adalah ribuan, koma adalah desimal
+      str = str.replace(/\./g, '').replace(',', '.');
+    } else {
+      // 40,000.00 -> koma adalah ribuan, titik adalah desimal
+      str = str.replace(/,/g, '');
+    }
+  } else if (str.includes('.')) {
+    // Jika ada titik ribuan khas Indonesia (misal "40.000", "117.000", atau "1.250.000")
+    const parts = str.split('.');
+    if (parts.length > 1 && parts.slice(1).every((p) => p.length === 3)) {
+      str = parts.join('');
+    }
+  } else if (str.includes(',')) {
+    // Koma ribuan (40,000) atau desimal (40,50)
+    const parts = str.split(',');
+    if (parts.length > 1 && parts.slice(1).every((p) => p.length === 3)) {
+      str = parts.join('');
+    } else {
+      str = str.replace(',', '.');
+    }
+  }
+
+  const cleaned = str.replace(/[^0-9.-]/g, '');
+  const result = parseFloat(cleaned);
+  return isNaN(result) ? 0 : result;
 }
 
 function parseExcelDate(val: any): string {
@@ -141,6 +172,7 @@ export function parseShopeeExcel(rawData: any[][]): ParsedMarketplaceOrder[] {
   const itemSubtotalIdx = resolve(['subtotal produk', 'subtotal'], 21);
   const sellerDiscIdx= resolve(['diskon dari penjual', 'voucher ditanggung penjual'], 23);
   const shippingIdx  = resolve(['ongkos kirim dibayar oleh pembeli', 'ongkos kirim', 'ongkir'], 36);
+  const estimatedPayoutIdx = resolve(['estimasi pembayaran bersih', 'estimasi bersih', 'perkiraan pembayaran bersih', 'estimated settlement', 'settlement amount', 'net payment'], 38);
   const totalPayIdx  = resolve(['total pembayaran', 'total', 'grand total'], 39);
   const notesIdx     = resolve(['catatan dari pembeli', 'catatan pembeli', 'catatan'], 41);
   const nameIdx      = resolve(['nama penerima', 'penerima'], 44);
@@ -190,6 +222,7 @@ export function parseShopeeExcel(rawData: any[][]): ParsedMarketplaceOrder[] {
       const shippingFee = parseMoney(cols[shippingIdx]);
       const discount = parseMoney(cols[sellerDiscIdx]);
       const grandTotal = parseMoney(cols[totalPayIdx]);
+      const estimatedPayout = parseMoney(cols[estimatedPayoutIdx]);
       const notes = String(cols[notesIdx] || '').trim();
 
       orderMap.set(orderId, {
@@ -211,6 +244,7 @@ export function parseShopeeExcel(rawData: any[][]): ParsedMarketplaceOrder[] {
         admin_fee: 0,
         other_fee: 0,
         grand_total: grandTotal || item.subtotal + shippingFee - discount,
+        estimated_payout: estimatedPayout,  // Estimasi bersih dari Shopee
         notes: notes ? `Shopee: ${notes}` : 'Pesanan Shopee',
         items: [item],
       });
@@ -271,6 +305,7 @@ export function parseTikTokExcel(rawData: any[][]): ParsedMarketplaceOrder[] {
   const priceIdx     = resolve(['sku subtotal after discount', 'sku unit original price', 'harga satuan', 'unit price'], 14);
   const sellerDiscIdx= resolve(['sku seller discount', 'diskon penjual', 'order discount amount'], 15);
   const shippingIdx  = resolve(['shipping fee after discount', 'shipping fee', 'ongkos kirim', 'ongkir'], 17);
+  const estimatedPayoutIdx = resolve(['estimated settlement', 'settlement amount', 'net payment', 'estimasi pembayaran bersih', 'estimasi bersih', 'seller income'], 21);
   const totalAmountIdx = resolve(['order amount', 'total pembayaran', 'total'], 22);
   const messageIdx   = resolve(['buyer message', 'pesan pembeli', 'catatan'], 23);
   const nameIdx      = resolve(['recipient', 'nama penerima', 'penerima'], 24);
@@ -322,6 +357,7 @@ export function parseTikTokExcel(rawData: any[][]): ParsedMarketplaceOrder[] {
       const shippingFee = parseMoney(cols[shippingIdx]);
       const discount = parseMoney(cols[sellerDiscIdx]);
       const grandTotal = parseMoney(cols[totalAmountIdx]);
+      const estimatedPayout = parseMoney(cols[estimatedPayoutIdx]);
       const notes = String(cols[messageIdx] || '').trim();
 
       orderMap.set(orderId, {
@@ -343,6 +379,7 @@ export function parseTikTokExcel(rawData: any[][]): ParsedMarketplaceOrder[] {
         admin_fee: 0,
         other_fee: 0,
         grand_total: grandTotal || item.subtotal + shippingFee - discount,
+        estimated_payout: estimatedPayout,  // Estimasi bersih dari TikTok
         notes: notes ? `TikTok: ${notes}` : 'Pesanan TikTok Shop',
         items: [item],
       });

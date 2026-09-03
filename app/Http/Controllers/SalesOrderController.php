@@ -492,14 +492,8 @@ class SalesOrderController extends Controller
 
             $created = $this->salesOrderService->createMarketplaceOrdersBatch($batchData, $userId);
 
-            if (count($created) === 1) {
-                $so = $created[0];
-                return redirect()->route('sales-orders.show', $so->id)
-                    ->with('success', "Sales Order " . ucfirst($so->sales_channel) . " {$so->so_number} (Ref: {$so->external_order_id}) berhasil diimpor sebagai Draft.");
-            }
-
-            return redirect()->route('sales-orders.index', ['status' => 'draft'])
-                ->with('success', count($created) . " pesanan marketplace berhasil diimpor sebagai Draft.");
+            return redirect()->route('marketplace.orders.index')
+                ->with('success', count($created) . " pesanan marketplace berhasil dimasukkan ke Order Marketplace (Status: Siap/Selesai, tanpa perlu ACC Leader).");
         } catch (Exception $e) {
             return back()->with('error', $e->getMessage())->withInput();
         }

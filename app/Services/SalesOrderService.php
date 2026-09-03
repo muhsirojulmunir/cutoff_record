@@ -811,6 +811,12 @@ class SalesOrderService
         $otherFee = (float)($data['other_fee'] ?? 0);
         $grandTotal = (float)($data['grand_total'] ?? max(0, $computedSubtotal - $discountAmount + $shippingCost + $adminFee + $otherFee));
 
+        // Estimasi pembayaran bersih dari marketplace (income seller setelah potong komisi dll)
+        // Jika tidak ada, fallback ke grand_total - shipping (perkiraan)
+        $estimatedPayout = isset($data['estimated_payout']) && (float)$data['estimated_payout'] > 0
+            ? (float)$data['estimated_payout']
+            : max(0, $grandTotal - $shippingCost);
+
         $salesOrder = SalesOrder::create([
             'so_number'          => $soNumber,
             'tracking_number'    => $data['tracking_number'] ?? null,
@@ -826,7 +832,7 @@ class SalesOrderService
             'payment_date'       => $paymentDateStr ? date('Y-m-d H:i:s', strtotime($paymentDateStr)) : null,
             'source'             => 'marketplace',
             'sales_channel'      => $channel,
-            'status'             => 'draft',
+            'status'             => 'confirmed',  // Tanpa acc leader, langsung confirmed
             'payment_status'     => 'paid',
             'subtotal'           => $computedSubtotal,
             'discount_amount'    => $discountAmount,
@@ -835,6 +841,7 @@ class SalesOrderService
             'admin_fee'          => $adminFee,
             'other_fee'          => $otherFee,
             'grand_total'        => $grandTotal,
+            'estimated_payout'   => $estimatedPayout,
             'dp_amount'          => 0,
             'notes'              => $data['notes'] ?? ('Import ' . ucfirst($channel) . ' Order #' . ($data['external_order_id'] ?? '')),
             'created_by'         => $userId,
@@ -842,6 +849,55 @@ class SalesOrderService
 
         foreach ($itemsData as $item) {
             $salesOrder->items()->create($item);
+        }
+
+        // Simpan juga ke MarketplaceOrder agar langsung muncul di menu /marketplace/orders tanpa perlu API
+        $marketplaceType = $channel === 'tiktok' ? 'tiktok_shop' : 'shopee';
+        $mpAccount = \App\Models\MarketplaceAccount::where('marketplace', $marketplaceType)->first();
+
+        $mpOrder = \App\Models\MarketplaceOrder::updateOrCreate(
+            ['external_order_id' => $data['external_order_id']],
+            [
+                'marketplace_account_id' => $mpAccount?->id,
+                'marketplace'            => $marketplaceType,
+                'external_order_number'  => $data['external_order_id'],
+                'order_status'           => $data['order_status'] ?? 'completed',
+                'internal_status'        => 'ready_to_process',
+                'workflow_status'        => !empty($data['tracking_number']) ? 'shipped' : 'completed',
+                'payment_status'         => 'paid',
+                'fulfillment_status'     => 'fulfilled',
+                'customer_name'          => $recipientName,
+                'customer_phone'         => $customerPhone,
+                'shipping_address'       => $data['shipping_address'] ?? null,
+                'city'                   => $data['city'] ?? null,
+                'province'               => $data['province'] ?? null,
+                'subtotal'               => $computedSubtotal,
+                'discount'               => $discountAmount,
+                'shipping_fee'           => $shippingCost,
+                'total_amount'           => $estimatedPayout > 0 ? $estimatedPayout : $grandTotal,
+                'tracking_number'        => $data['tracking_number'] ?? null,
+                'courier_name'           => $data['courier_name'] ?? null,
+                'order_date'             => $orderDate,
+                'paid_at'                => $paymentDateStr ? date('Y-m-d H:i:s', strtotime($paymentDateStr)) : now(),
+                'sales_order_id'         => $salesOrder->id,
+                'conversion_status'      => 'converted',
+                'converted_at'           => now(),
+            ]
+        );
+
+        $salesOrder->update(['marketplace_order_id' => $mpOrder->id]);
+
+        \App\Models\MarketplaceOrderItem::where('marketplace_order_id', $mpOrder->id)->delete();
+        foreach ($itemsData as $item) {
+            \App\Models\MarketplaceOrderItem::create([
+                'marketplace_order_id' => $mpOrder->id,
+                'product_id'           => $item['product_id'],
+                'product_name'         => $item['product_name'],
+                'product_sku'          => $item['sku'],
+                'quantity'             => $item['quantity'],
+                'unit_price'           => $item['price'],
+                'subtotal'             => $item['subtotal'],
+            ]);
         }
 
         return $salesOrder;

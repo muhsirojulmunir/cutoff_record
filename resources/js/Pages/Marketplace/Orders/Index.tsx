@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 
@@ -116,17 +116,28 @@ export default function MarketplaceOrdersIndex({
             <Head title="Order Marketplace" />
             <div className="min-h-screen bg-white p-6">
                 {/* Header */}
-                <div className="flex items-center justify-between mb-8">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                     <div>
                         <h1 className="text-2xl font-bold text-gray-900">Order Marketplace</h1>
-                        <p className="text-gray-500 text-sm mt-1">Staging & fulfillment order dari Shopee & TikTok Shop</p>
+                        <p className="text-gray-500 text-sm mt-1">Pesanan penjualan dari Shopee &amp; TikTok Shop (Manual Excel &amp; API)</p>
                     </div>
-                    {activeFilterCount > 0 && (
-                        <button onClick={resetFilters}
-                            className="text-xs text-gray-500 hover:text-gray-900 px-3 py-1.5 border border-gray-300 rounded-lg transition-colors">
-                            Reset Filter ({activeFilterCount})
-                        </button>
-                    )}
+                    <div className="flex items-center gap-3">
+                        {activeFilterCount > 0 && (
+                            <button onClick={resetFilters}
+                                className="text-xs text-gray-500 hover:text-gray-900 px-3 py-1.5 border border-gray-300 rounded-lg transition-colors cursor-pointer">
+                                Reset Filter ({activeFilterCount})
+                            </button>
+                        )}
+                        <Link
+                            href="/sales-orders/marketplace/import"
+                            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold shadow-md shadow-orange-500/20 transition-all cursor-pointer"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                            </svg>
+                            Import Excel (Shopee / TikTok)
+                        </Link>
+                    </div>
                 </div>
 
                 {flash.success && <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-sm">{flash.success}</div>}
