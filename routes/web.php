@@ -170,6 +170,11 @@ Route::middleware('auth')->group(function () {
     Route::post('/sales-orders/{sales_order}/cancel', [SalesOrderController::class, 'cancel'])
         ->name('sales-orders.cancel');
 
+    // Harus di atas resource agar tidak tertangkap sebagai sales-orders/{sales_order}.
+    Route::match(['delete', 'post'], '/sales-orders/bulk-destroy', [SalesOrderController::class, 'bulkDestroy'])
+        ->name('sales-orders.bulk-destroy')
+        ->middleware('can:sales_order.delete');
+
     Route::resource('sales-orders', SalesOrderController::class);
 
 
