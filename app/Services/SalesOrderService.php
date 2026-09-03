@@ -313,7 +313,7 @@ class SalesOrderService
      */
     public function deductStock(SalesOrder $salesOrder, ?int $userId = null): bool
     {
-        if ($this->usesOwnStockFlow($salesOrder) || $salesOrder->stock_deducted_at) {
+        if ($salesOrder->stock_deducted_at) {
             return false;
         }
 
@@ -919,6 +919,9 @@ class SalesOrderService
                 'raw_payload'          => !empty($item['variation_name']) ? ['variation_name' => $item['variation_name']] : null,
             ]);
         }
+
+        // Potong stok fisik produk secara otomatis karena pesanan marketplace sudah lunas & terjual
+        $this->deductStock($salesOrder, $userId);
 
         return $salesOrder;
     }
