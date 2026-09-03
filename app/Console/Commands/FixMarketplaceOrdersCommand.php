@@ -106,7 +106,9 @@ class FixMarketplaceOrdersCommand extends Command
                         'province'               => $so->province,
                         'subtotal'               => $computedSubtotal,
                         'discount'               => (float)$so->discount_amount,
+                        'voucher_discount'       => (float)$so->discount_amount,
                         'shipping_fee'           => (float)$so->shipping_cost,
+                        'service_fee'            => 0,
                         'total_amount'           => $estimatedPayout > 0 ? $estimatedPayout : $grandTotal,
                         'tracking_number'        => $so->tracking_number,
                         'order_date'             => $so->order_date,
@@ -114,6 +116,12 @@ class FixMarketplaceOrdersCommand extends Command
                         'sales_order_id'         => $so->id,
                         'conversion_status'      => 'converted',
                         'converted_at'           => now(),
+                        'raw_payload'            => [
+                            'estimated_payout'   => $estimatedPayout,
+                            'grand_total'        => $grandTotal,
+                            'admin_fee'          => (float)$so->admin_fee,
+                            'other_fee'          => (float)$so->other_fee,
+                        ],
                     ]
                 );
 
