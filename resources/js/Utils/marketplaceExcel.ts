@@ -272,7 +272,10 @@ export function parseTikTokExcel(rawData: any[][]): ParsedMarketplaceOrder[] {
     const line = rawData[i];
     if (Array.isArray(line)) {
       const lineStr = line.map((c) => String(c || '').toLowerCase()).join(' ');
-      if (lineStr.includes('order id') || lineStr.includes('id pesanan') || lineStr.includes('sku')) {
+      if (
+        lineStr.includes('order id') || lineStr.includes('id pesanan') ||
+        lineStr.includes('seller sku') || lineStr.includes('sku penjual')
+      ) {
         headerRow = line.map((c) => String(c || '').trim());
         startIdx = i + 1;
         break;
@@ -292,28 +295,45 @@ export function parseTikTokExcel(rawData: any[][]): ParsedMarketplaceOrder[] {
     return idx;
   };
 
-  const orderIdIdx   = resolve(['order id', 'id pesanan', 'no pesanan'], 0);
+  // --- Kolom identitas pesanan ---
+  const orderIdIdx   = resolve(['order id', 'id pesanan', 'no pesanan', 'order number'], 0);
   const statusIdx    = resolve(['order status', 'status pesanan', 'status'], 1);
-  const resiIdx      = resolve(['tracking id', 'no resi', 'tracking number', 'resi'], 4);
-  const courierIdx   = resolve(['shipping provider name', 'jasa pengiriman', 'kurir', 'logistics service'], 5);
-  const dateIdx      = resolve(['created time', 'waktu dibuat', 'tanggal order', 'waktu pesanan dibuat'], 7);
-  const payDateIdx   = resolve(['paid time', 'waktu pembayaran', 'tanggal bayar'], 8);
-  const skuIdx       = resolve(['seller sku', 'sku penjual', 'sku', 'nomor referensi sku'], 9);
-  const prodNameIdx  = resolve(['product name', 'nama produk', 'produk'], 10);
-  const varNameIdx   = resolve(['variation', 'variasi', 'nama variasi'], 11);
-  const qtyIdx       = resolve(['quantity', 'jumlah', 'kuantitas', 'qty'], 12);
-  const priceIdx     = resolve(['sku subtotal after discount', 'sku unit original price', 'harga satuan', 'unit price'], 14);
-  const sellerDiscIdx= resolve(['sku seller discount', 'diskon penjual', 'order discount amount'], 15);
-  const shippingIdx  = resolve(['shipping fee after discount', 'shipping fee', 'ongkos kirim', 'ongkir'], 17);
-  const estimatedPayoutIdx = resolve(['estimated settlement', 'settlement amount', 'net payment', 'estimasi pembayaran bersih', 'estimasi bersih', 'seller income'], 21);
-  const totalAmountIdx = resolve(['order amount', 'total pembayaran', 'total'], 22);
-  const messageIdx   = resolve(['buyer message', 'pesan pembeli', 'catatan'], 23);
-  const nameIdx      = resolve(['recipient', 'nama penerima', 'penerima'], 24);
-  const phoneIdx     = resolve(['phone', 'no telepon', 'no hp', 'telepon'], 25);
-  const addressIdx   = resolve(['detail address', 'delivery address', 'alamat pengiriman', 'alamat'], 26);
-  const districtIdx  = resolve(['district', 'kecamatan'], 27);
-  const cityIdx      = resolve(['city', 'kota', 'kabupaten'], 28);
-  const provinceIdx  = resolve(['province', 'provinsi', 'propinsi'], 29);
+  const resiIdx      = resolve(['tracking id', 'tracking number', 'no resi', 'nomor resi', 'resi', 'waybill'], 2);
+  const courierIdx   = resolve(['shipping provider name', 'shipping provider', 'jasa kirim', 'jasa pengiriman', 'kurir', 'logistics service', 'logistics provider'], 3);
+  const dateIdx      = resolve(['created time', 'order create time', 'waktu buat pesanan', 'waktu pesanan dibuat', 'waktu dibuat', 'tanggal pesanan'], 5);
+  const payDateIdx   = resolve(['paid time', 'waktu bayar', 'waktu pembayaran', 'tanggal bayar', 'payment time'], 6);
+
+  // --- Kolom produk ---
+  const skuIdx       = resolve(['seller sku', 'sku penjual', 'seller sku id', 'sku id', 'sku'], 7);
+  const prodNameIdx  = resolve(['product name', 'nama produk', 'product'], 8);
+  const varNameIdx   = resolve(['variation', 'variasi', 'nama variasi', 'variant name', 'sku name'], 9);
+  const qtyIdx       = resolve(['quantity', 'jumlah', 'qty', 'kuantitas'], 10);
+  const unitPriceIdx = resolve(['sku unit original price', 'unit original price', 'harga satuan', 'unit price', 'original price', 'harga awal'], 11);
+  const sellerDiscIdx = resolve(['sku seller discount', 'seller discount', 'diskon penjual', 'seller promo'], 12);
+  const itemSubtotalIdx = resolve(['sku subtotal after discount', 'subtotal produk', 'sku subtotal', 'item subtotal'], 13);
+
+  // --- Kolom biaya pengiriman ---
+  const shippingBuyerIdx  = resolve(['shipping fee paid by buyer', 'shipping fee buyer', 'ongkos kirim pembeli', 'ongkos kirim dibayar pembeli', 'buyer shipping fee'], 14);
+  const shippingDiscIdx   = resolve(['shipping fee seller discount', 'shipping discount', 'diskon ongkir penjual'], 15);
+  const shippingFinalIdx  = resolve(['shipping fee after discount', 'ongkir setelah diskon', 'actual shipping fee'], 16);
+
+  // --- Kolom total & settlement ---
+  const totalAmountIdx     = resolve(['order amount', 'total pembayaran', 'total amount', 'order total', 'total'], 17);
+  const estimatedPayoutIdx = resolve([
+    'settlement amount', 'estimated settlement', 'net payment', 'seller income',
+    'perkiraan pembayaran bersih', 'estimasi pembayaran bersih', 'estimasi bersih',
+    'total pembayaran yang diterima', 'total diterima penjual',
+  ], 18);
+  const payMethodIdx = resolve(['payment method', 'metode pembayaran'], 19);
+
+  // --- Kolom penerima ---
+  const messageIdx   = resolve(['buyer message', 'buyer note', 'catatan pembeli', 'pesan pembeli', 'catatan'], 20);
+  const nameIdx      = resolve(['recipient', 'nama penerima', 'recipient name', 'penerima'], 21);
+  const phoneIdx     = resolve(['phone #', 'phone number', 'phone', 'no hp', 'no telepon', 'nomor telepon', 'telepon'], 22);
+  const addressIdx   = resolve(['detail address', 'full address', 'alamat lengkap', 'alamat pengiriman', 'delivery address', 'alamat'], 23);
+  const districtIdx  = resolve(['district', 'kecamatan'], 24);
+  const cityIdx      = resolve(['city', 'kota', 'kabupaten', 'kota kabupaten'], 25);
+  const provinceIdx  = resolve(['province', 'provinsi', 'propinsi'], 26);
 
   const orderMap = new Map<string, ParsedMarketplaceOrder>();
 
@@ -324,41 +344,48 @@ export function parseTikTokExcel(rawData: any[][]): ParsedMarketplaceOrder[] {
     const orderId = String(cols[orderIdIdx] || '').trim();
     if (!orderId) continue;
 
-    const rawSku = cols[skuIdx] || '';
-    const sku = String(rawSku).trim();
+    const rawSku  = cols[skuIdx] || '';
+    const sku     = String(rawSku).trim();
     const prodName = String(cols[prodNameIdx] || 'Produk TikTok').trim();
-    const varName = String(cols[varNameIdx] || '').trim();
-    const qty = Math.max(1, parseInt(String(cols[qtyIdx] || 1)) || 1);
-    const unitPrice = parseMoney(cols[priceIdx]) / (qty || 1);
+    const varName  = String(cols[varNameIdx] || '').trim();
+    const qty      = Math.max(1, parseInt(String(cols[qtyIdx] || 1)) || 1);
+
+    // Gunakan unit price langsung (bukan subtotal / qty)
+    const rawUnitPrice = parseMoney(cols[unitPriceIdx]);
+    const rawSubtotal  = cols[itemSubtotalIdx] !== undefined ? parseMoney(cols[itemSubtotalIdx]) : 0;
+    const unitPrice    = rawUnitPrice > 0 ? rawUnitPrice : (rawSubtotal > 0 ? rawSubtotal / qty : 0);
+    const itemSubtotal = rawSubtotal > 0 ? rawSubtotal : unitPrice * qty;
 
     const item: ParsedMarketplaceItem = {
       sku: sku || 'NO-SKU',
       product_name: prodName,
       variation_name: varName,
       quantity: qty,
-      price: unitPrice || parseMoney(cols[priceIdx]),
-      discount_amount: 0,
-      subtotal: unitPrice * qty || parseMoney(cols[priceIdx]),
+      price: unitPrice,
+      discount_amount: parseMoney(cols[sellerDiscIdx]),
+      subtotal: itemSubtotal,
     };
 
     if (!orderMap.has(orderId)) {
-      const orderDate = parseExcelDate(cols[dateIdx]);
-      const payDate = cols[payDateIdx] ? parseExcelDate(cols[payDateIdx]) : orderDate;
+      const orderDate    = parseExcelDate(cols[dateIdx]);
+      const payDate      = cols[payDateIdx] ? parseExcelDate(cols[payDateIdx]) : orderDate;
       const recipientName = String(cols[nameIdx] || 'Pembeli TikTok').trim();
-      const phone = String(cols[phoneIdx] || '').trim();
-      const rawAddress = String(cols[addressIdx] || '').trim();
-      const district = districtIdx !== -1 ? String(cols[districtIdx] || '').trim() : '';
-      const fullAddress = district ? `${rawAddress}, Kec. ${district}` : rawAddress;
-      const city = String(cols[cityIdx] || '').trim();
-      const province = String(cols[provinceIdx] || '').trim();
-      const resi = String(cols[resiIdx] || '').trim();
-      const courier = String(cols[courierIdx] || 'TikTok Shipping').trim();
-      const status = String(cols[statusIdx] || 'To Ship').trim();
-      const shippingFee = parseMoney(cols[shippingIdx]);
-      const discount = parseMoney(cols[sellerDiscIdx]);
-      const grandTotal = parseMoney(cols[totalAmountIdx]);
+      const phone        = String(cols[phoneIdx] || '').trim();
+      const rawAddress   = String(cols[addressIdx] || '').trim();
+      const district     = String(cols[districtIdx] || '').trim();
+      const fullAddress  = district ? `${rawAddress}, Kec. ${district}` : rawAddress;
+      const city         = String(cols[cityIdx] || '').trim();
+      const province     = String(cols[provinceIdx] || '').trim();
+      const resi         = String(cols[resiIdx] || '').trim();
+      const courier      = String(cols[courierIdx] || 'TikTok Shipping').trim();
+      const status       = String(cols[statusIdx] || 'To Ship').trim();
+
+      // Ongkir: prefer shipping_final → shipping_buyer → 0
+      const shippingFee = parseMoney(cols[shippingFinalIdx]) || parseMoney(cols[shippingBuyerIdx]);
+      const discount    = parseMoney(cols[sellerDiscIdx]);
+      const grandTotal  = parseMoney(cols[totalAmountIdx]);
       const estimatedPayout = parseMoney(cols[estimatedPayoutIdx]);
-      const notes = String(cols[messageIdx] || '').trim();
+      const notes       = String(cols[messageIdx] || '').trim();
 
       orderMap.set(orderId, {
         external_order_id: orderId,
@@ -371,15 +398,15 @@ export function parseTikTokExcel(rawData: any[][]): ParsedMarketplaceOrder[] {
         recipient_name: recipientName,
         customer_phone: phone,
         shipping_address: fullAddress,
-        city: city,
-        province: province,
+        city,
+        province,
         subtotal: item.subtotal,
         discount_amount: discount,
         shipping_cost: shippingFee,
         admin_fee: 0,
         other_fee: 0,
         grand_total: grandTotal || item.subtotal + shippingFee - discount,
-        estimated_payout: estimatedPayout,  // Estimasi bersih dari TikTok
+        estimated_payout: estimatedPayout,
         notes: notes ? `TikTok: ${notes}` : 'Pesanan TikTok Shop',
         items: [item],
       });
@@ -453,44 +480,145 @@ export function downloadShopeeTemplateExcel(availableSkus?: string[]): void {
 }
 
 /**
- * Unduh Template Resmi TikTok Shop Seller Center dengan data contoh.
+ * Unduh Template TikTok Shop Seller Center — format disesuaikan agar terbaca otomatis oleh sistem.
+ *
+ * Urutan kolom:
+ * 0  Order ID           | 1  Order Status       | 2  Tracking ID          | 3  Shipping Provider Name
+ * 4  Fulfillment Type   | 5  Created Time        | 6  Paid Time            | 7  Seller SKU
+ * 8  Product Name       | 9  Variation           | 10 Quantity             | 11 SKU Unit Original Price
+ * 12 SKU Seller Discount| 13 SKU Subtotal After Discount                   | 14 Shipping Fee (Buyer Paid)
+ * 15 Shipping Fee Seller Discount                | 16 Shipping Fee After Discount
+ * 17 Order Amount       | 18 Settlement Amount   | 19 Payment Method
+ * 20 Buyer Message      | 21 Recipient           | 22 Phone #              | 23 Detail Address
+ * 24 District           | 25 City                | 26 Province             | 27 Zipcode
+ * 28 Country            | 29 Cancel Reason       | 30 Buyer Username
  */
 export function downloadTikTokTemplateExcel(availableSkus?: string[]): void {
   const sampleSku1 = availableSkus && availableSkus.length > 0 ? availableSkus[0] : 'PRD-001';
   const sampleSku2 = availableSkus && availableSkus.length > 1 ? availableSkus[1] : 'PRD-002';
   const today = new Date().toISOString().split('T')[0];
 
+  // Header disesuaikan agar tepat dibaca oleh parseTikTokExcel
+  // Kolom kritis: Order ID (0), Tracking ID (2), SKU (7), Qty (10), Unit Price (11),
+  //               Shipping Fee After Discount (16), Order Amount (17), Settlement Amount (18),
+  //               Recipient (21), Phone (22), Address (23), District (24), City (25), Province (26)
   const tiktokHeaders = [
-    'Order ID', 'Order Status', 'Order Substatus', 'Cancelation/Return Status', 'Tracking ID',
-    'Shipping Provider Name', 'Shipping Type', 'Created Time', 'Paid Time', 'Seller SKU',
-    'Product Name', 'Variation', 'Quantity', 'SKU Unit Original Price', 'SKU Subtotal After Discount',
-    'SKU Seller Discount', 'SKU Platform Discount', 'Shipping Fee After Discount', 'Original Shipping Fee',
-    'Shipping Fee Seller Discount', 'Shipping Fee Platform Discount', 'Taxes', 'Order Refund Amount',
-    'Order Subtotal', 'Order Discount Amount', 'Order Amount', 'Buyer Message', 'Recipient',
-    'Phone #', 'Detail Address', 'District', 'City', 'Province', 'Zipcode', 'Country', 'Payment Method'
+    /* 0 */ 'Order ID',
+    /* 1 */ 'Order Status',
+    /* 2 */ 'Tracking ID',
+    /* 3 */ 'Shipping Provider Name',
+    /* 4 */ 'Fulfillment Type',
+    /* 5 */ 'Created Time',
+    /* 6 */ 'Paid Time',
+    /* 7 */ 'Seller SKU',
+    /* 8 */ 'Product Name',
+    /* 9 */ 'Variation',
+    /* 10 */ 'Quantity',
+    /* 11 */ 'SKU Unit Original Price',
+    /* 12 */ 'SKU Seller Discount',
+    /* 13 */ 'SKU Subtotal After Discount',
+    /* 14 */ 'Shipping Fee (Buyer Paid)',
+    /* 15 */ 'Shipping Fee Seller Discount',
+    /* 16 */ 'Shipping Fee After Discount',
+    /* 17 */ 'Order Amount',
+    /* 18 */ 'Settlement Amount',
+    /* 19 */ 'Payment Method',
+    /* 20 */ 'Buyer Message',
+    /* 21 */ 'Recipient',
+    /* 22 */ 'Phone #',
+    /* 23 */ 'Detail Address',
+    /* 24 */ 'District',
+    /* 25 */ 'City',
+    /* 26 */ 'Province',
+    /* 27 */ 'Zipcode',
+    /* 28 */ 'Country',
+    /* 29 */ 'Cancel Reason',
+    /* 30 */ 'Buyer Username',
   ];
 
+  // Contoh row 1: 1 item, qty=1, harga 119.000, settlement 110.000 (setelah potong komisi 5%)
   const row1 = [
-    '578912345678901234', 'To Ship', 'Awaiting Collection', '', 'JNT12345678',
-    'J&T Express', 'Standard Shipping', today + ' 09:15:00', today + ' 09:16:00', sampleSku1,
-    'Sneakers Pria Trendy', 'Putih 40', 1, 150000, 119000,
-    31000, 0, 9000, 18000,
-    0, 9000, 0, 0,
-    119000, 31000, 128000, 'Warna putih ya min', 'Rian TikTok',
-    '081398765432', 'Jl. Melati No. 5', 'Coblong', 'Kota Bandung', 'Jawa Barat', '40132', 'Indonesia', 'TikTok PayLater'
+    /* 0  Order ID              */ '578912345678901234',
+    /* 1  Order Status          */ 'Completed',
+    /* 2  Tracking ID           */ 'JNT12345678901',
+    /* 3  Shipping Provider     */ 'J&T Express',
+    /* 4  Fulfillment Type      */ 'Standard',
+    /* 5  Created Time          */ today + ' 09:15:00',
+    /* 6  Paid Time             */ today + ' 09:16:00',
+    /* 7  Seller SKU            */ sampleSku1,
+    /* 8  Product Name          */ 'Sneakers Pria Trendy',
+    /* 9  Variation             */ 'Putih Ukuran 40',
+    /* 10 Quantity              */ 1,
+    /* 11 Unit Original Price   */ 150000,
+    /* 12 SKU Seller Discount   */ 31000,
+    /* 13 SKU Subtotal After    */ 119000,
+    /* 14 Shipping Fee Buyer    */ 18000,
+    /* 15 Shipping Disc Seller  */ 9000,
+    /* 16 Shipping After Disc   */ 9000,
+    /* 17 Order Amount          */ 128000,
+    /* 18 Settlement Amount     */ 113100,
+    /* 19 Payment Method        */ 'TikTok PayLater',
+    /* 20 Buyer Message         */ 'Warna putih ya min',
+    /* 21 Recipient             */ 'Rian TikTok',
+    /* 22 Phone #               */ '081398765432',
+    /* 23 Detail Address        */ 'Jl. Melati No. 5',
+    /* 24 District              */ 'Coblong',
+    /* 25 City                  */ 'Kota Bandung',
+    /* 26 Province              */ 'Jawa Barat',
+    /* 27 Zipcode               */ '40132',
+    /* 28 Country               */ 'Indonesia',
+    /* 29 Cancel Reason         */ '',
+    /* 30 Buyer Username        */ 'buyer_tiktok_01',
   ];
 
+  // Contoh row 2: 1 pesanan tapi 2 baris (2 item berbeda sku dalam 1 order)
   const row2 = [
-    '578912345678901235', 'To Ship', 'Awaiting Collection', '', 'NINJA9876543',
-    'Ninja Van', 'Standard Shipping', today + ' 14:20:00', today + ' 14:22:00', sampleSku2,
-    'Tas Selempang Kanvas', 'Hitam', 2, 75000, 130000,
-    20000, 0, 11000, 22000,
-    0, 11000, 0, 0,
-    130000, 20000, 141000, '', 'Siti Nurhaliza',
-    '082156781234', 'Jl. Kenanga No. 17', 'Tebet', 'Kota Jakarta Selatan', 'DKI Jakarta', '12810', 'Indonesia', 'DANA'
+    /* 0  Order ID              */ '578912345678901235',
+    /* 1  Order Status          */ 'Completed',
+    /* 2  Tracking ID           */ 'NINJA9876543210',
+    /* 3  Shipping Provider     */ 'Ninja Van',
+    /* 4  Fulfillment Type      */ 'Standard',
+    /* 5  Created Time          */ today + ' 14:20:00',
+    /* 6  Paid Time             */ today + ' 14:22:00',
+    /* 7  Seller SKU            */ sampleSku2,
+    /* 8  Product Name          */ 'Tas Selempang Kanvas',
+    /* 9  Variation             */ 'Hitam',
+    /* 10 Quantity              */ 2,
+    /* 11 Unit Original Price   */ 75000,
+    /* 12 SKU Seller Discount   */ 10000,
+    /* 13 SKU Subtotal After    */ 140000,
+    /* 14 Shipping Fee Buyer    */ 22000,
+    /* 15 Shipping Disc Seller  */ 11000,
+    /* 16 Shipping After Disc   */ 11000,
+    /* 17 Order Amount          */ 151000,
+    /* 18 Settlement Amount     */ 136000,
+    /* 19 Payment Method        */ 'DANA',
+    /* 20 Buyer Message         */ '',
+    /* 21 Recipient             */ 'Siti Nurhaliza',
+    /* 22 Phone #               */ '082156781234',
+    /* 23 Detail Address        */ 'Jl. Kenanga No. 17',
+    /* 24 District              */ 'Tebet',
+    /* 25 City                  */ 'Kota Jakarta Selatan',
+    /* 26 Province              */ 'DKI Jakarta',
+    /* 27 Zipcode               */ '12810',
+    /* 28 Country               */ 'Indonesia',
+    /* 29 Cancel Reason         */ '',
+    /* 30 Buyer Username        */ 'buyer_tiktok_02',
   ];
 
   const ws = XLSX.utils.aoa_to_sheet([tiktokHeaders, row1, row2]);
+
+  // Set lebar kolom agar mudah dibaca
+  ws['!cols'] = [
+    { wch: 22 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 12 },
+    { wch: 20 }, { wch: 20 }, { wch: 16 }, { wch: 24 }, { wch: 16 },
+    { wch: 8  }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 14 },
+    { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 16 },
+    { wch: 22 }, { wch: 18 }, { wch: 14 }, { wch: 26 }, { wch: 12 },
+    { wch: 18 }, { wch: 16 }, { wch: 8  }, { wch: 10 }, { wch: 14 },
+    { wch: 18 },
+  ];
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Orders');
   XLSX.writeFile(wb, `template-order-tiktok-shop.xlsx`);
