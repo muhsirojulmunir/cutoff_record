@@ -259,6 +259,11 @@ class SalesOrderController extends Controller
 
         try {
             \Illuminate\Support\Facades\DB::transaction(function () use ($salesOrder) {
+                // Kembalikan stok fisik jika sebelumnya pernah dipotong
+                if ($salesOrder->stock_deducted_at) {
+                    $this->salesOrderService->restoreStock($salesOrder, auth()->id());
+                }
+
                 // Delete associated invoices & items
                 $invoices = \App\Models\Invoice::where('sales_order_id', $salesOrder->id)->get();
                 foreach ($invoices as $inv) {
@@ -270,6 +275,12 @@ class SalesOrderController extends Controller
                 \App\Models\StockReservation::where('marketplace_order_id', function ($sub) use ($salesOrder) {
                     $sub->select('id')->from('marketplace_orders')->where('sales_order_id', $salesOrder->id);
                 })->delete();
+
+                // Hapus Marketplace Order terkait jika ada
+                if ($salesOrder->marketplace_order_id) {
+                    \App\Models\MarketplaceOrderItem::where('marketplace_order_id', $salesOrder->marketplace_order_id)->delete();
+                    \App\Models\MarketplaceOrder::where('id', $salesOrder->marketplace_order_id)->delete();
+                }
 
                 // Delete items and the SO itself
                 $salesOrder->items()->delete();
