@@ -90,6 +90,39 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
   const [deletingOrder, setDeletingOrder] = useState<SalesOrder | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  // Khusus Super Admin: Fitur Hapus Massal Sales Order
+  const isSuperAdmin = auth.user?.role?.name === 'Super Admin' || auth.user?.roles?.includes('Super Admin');
+  const canBulkDelete = Boolean(isSuperAdmin);
+
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  const pageIds = salesOrders.data.map((o) => o.id);
+  const allOnPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
+
+  function toggleSelectAll() {
+    setSelectedIds(allOnPageSelected ? [] : pageIds);
+  }
+
+  function toggleSelect(id: number) {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
+  }
+
+  function handleBulkDelete() {
+    if (selectedIds.length === 0 || bulkDeleting) return;
+
+    setBulkDeleting(true);
+    router.delete('/sales-orders/bulk-destroy', {
+      data: { ids: selectedIds },
+      onSuccess: () => {
+        setSelectedIds([]);
+        setBulkModalOpen(false);
+      },
+      onFinish: () => setBulkDeleting(false),
+    });
+  }
+
   const canCreate = permissions.includes('sales_order.create');
   const canEdit   = permissions.includes('sales_order.edit');
   const canDelete = permissions.includes('sales_order.delete');
@@ -306,12 +339,56 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
           </form>
         </div>
 
+        {/* Bilah aksi untuk Sales Order yang dicentang (Khusus Super Admin) */}
+        {canBulkDelete && selectedIds.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-rose-50 border border-rose-200 rounded-2xl px-5 py-3.5 shadow-sm">
+            <div className="flex items-center gap-2.5">
+              <span className="w-7 h-7 rounded-lg bg-rose-100 border border-rose-300 flex items-center justify-center text-rose-700 font-bold text-xs">
+                {selectedIds.length}
+              </span>
+              <p className="text-sm font-semibold text-rose-900">
+                Sales Order dipilih
+              </p>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setSelectedIds([])}
+                className="px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-semibold border border-gray-300 transition-all cursor-pointer"
+              >
+                Batalkan Pilihan
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white rounded-xl text-xs font-semibold shadow-md shadow-rose-200/50 transition-all cursor-pointer"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                </svg>
+                Hapus Massal ({selectedIds.length} SO)
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Data Table */}
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xl">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-gray-200 text-[10px] font-bold uppercase tracking-widest text-gray-500 bg-gray-50">
+                  {canBulkDelete && (
+                    <th className="w-10 px-4 py-3.5 text-center">
+                      <input
+                        type="checkbox"
+                        checked={allOnPageSelected}
+                        onChange={toggleSelectAll}
+                        title="Pilih semua pesanan di halaman ini"
+                        className="h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                      />
+                    </th>
+                  )}
                   <th className="px-6 py-3.5">SO Number</th>
                   <th className="px-6 py-3.5">Tanggal</th>
                   <th className="px-6 py-3.5">Customer</th>
@@ -326,13 +403,29 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
               <tbody className="divide-y divide-gray-100 text-sm">
                 {salesOrders.data.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-6 py-12 text-center text-gray-400 font-medium">
+                    <td colSpan={canBulkDelete ? 10 : 9} className="px-6 py-12 text-center text-gray-400 font-medium">
                       Tidak ada transaksi Sales Order ditemukan.
                     </td>
                   </tr>
                 ) : (
                   salesOrders.data.map((order) => (
-                    <tr key={order.id} className="hover:bg-teal-50/60 group transition-all">
+                    <tr
+                      key={order.id}
+                      className={`group transition-all ${
+                        selectedIds.includes(order.id) ? 'bg-rose-50/70 hover:bg-rose-50/90' : 'hover:bg-teal-50/60'
+                      }`}
+                    >
+                      {canBulkDelete && (
+                        <td className="w-10 px-4 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(order.id)}
+                            onChange={() => toggleSelect(order.id)}
+                            title={`Pilih ${order.so_number}`}
+                            className="h-4 w-4 rounded border-gray-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                          />
+                        </td>
+                      )}
                       <td className="px-6 py-3.5 font-bold text-teal-400 font-mono text-xs group-hover:text-teal-600 transition-colors">
                         <Link href={`/sales-orders/${order.id}`}>
                           {order.so_number}
@@ -471,6 +564,64 @@ export default function Index({ salesOrders, filters }: SalesOrderIndexProps) {
                 disabled={deleteLoading}
               >
                 {deleteLoading ? 'Menghapus...' : 'Hapus SO'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Hapus Massal Sales Order (Khusus Super Admin) */}
+      {bulkModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !bulkDeleting && setBulkModalOpen(false)} />
+          <div className="relative bg-white border border-gray-300 rounded-2xl shadow-2xl p-6 w-full max-w-md">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 border border-rose-200 flex items-center justify-center shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-5 h-5 text-rose-600">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Hapus Massal Sales Order</h3>
+                <p className="text-xs text-gray-500">Aksi Khusus Super Admin</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-700 mb-3 leading-relaxed">
+              Apakah Anda yakin ingin menghapus <span className="font-bold text-rose-600">{selectedIds.length} Sales Order</span> yang dipilih?
+            </p>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 mb-6 text-xs text-amber-800 leading-relaxed space-y-1.5">
+              <p className="font-bold text-amber-900 flex items-center gap-1">
+                ⚠️ Catatan Penting:
+              </p>
+              <p>• Seluruh data terkait (Invoice, Item Pesanan, dan data Marketplace) akan ikut terhapus.</p>
+              <p>• Stok produk yang sebelumnya pernah terpotong otomatis akan <strong>dikembalikan ke gudang</strong>.</p>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={bulkDeleting}
+                onClick={() => setBulkModalOpen(false)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-all cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={bulkDeleting}
+                onClick={handleBulkDelete}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-semibold shadow-lg shadow-rose-200 transition-all disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+              >
+                {bulkDeleting ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Menghapus...
+                  </>
+                ) : (
+                  `Ya, Hapus ${selectedIds.length} SO`
+                )}
               </button>
             </div>
           </div>

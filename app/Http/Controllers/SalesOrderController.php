@@ -294,6 +294,70 @@ class SalesOrderController extends Controller
         }
     }
 
+    /**
+     * Hapus beberapa Sales Order sekaligus secara massal. Khusus Super Admin.
+     */
+    public function bulkDestroy(Request $request): RedirectResponse
+    {
+        Gate::authorize('sales_order.delete');
+
+        $user = auth()->user();
+        abort_unless(
+            $user && ($user->isSuperAdmin() || ($user->roles && $user->roles->contains('name', 'Super Admin'))),
+            403,
+            'Hapus massal Sales Order hanya dapat dilakukan oleh Super Admin.'
+        );
+
+        $validated = $request->validate([
+            'ids'   => ['required', 'array', 'min:1', 'max:2000'],
+            'ids.*' => ['integer', 'exists:sales_orders,id'],
+        ], [], [
+            'ids' => 'Sales Order yang dipilih',
+        ]);
+
+        $deletedCount = 0;
+        try {
+            \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $user, &$deletedCount) {
+                $salesOrders = SalesOrder::whereIn('id', $validated['ids'])->get();
+
+                foreach ($salesOrders as $salesOrder) {
+                    // Kembalikan stok fisik jika sebelumnya pernah dipotong
+                    if ($salesOrder->stock_deducted_at) {
+                        $this->salesOrderService->restoreStock($salesOrder, $user->id);
+                    }
+
+                    // Hapus invoice dan invoice items terkait
+                    $invoices = \App\Models\Invoice::where('sales_order_id', $salesOrder->id)->get();
+                    foreach ($invoices as $inv) {
+                        $inv->items()->delete();
+                        $inv->delete();
+                    }
+
+                    // Hapus stock reservations
+                    \App\Models\StockReservation::where('marketplace_order_id', function ($sub) use ($salesOrder) {
+                        $sub->select('id')->from('marketplace_orders')->where('sales_order_id', $salesOrder->id);
+                    })->delete();
+
+                    // Hapus Marketplace Order terkait jika ada
+                    if ($salesOrder->marketplace_order_id) {
+                        \App\Models\MarketplaceOrderItem::where('marketplace_order_id', $salesOrder->marketplace_order_id)->delete();
+                        \App\Models\MarketplaceOrder::where('id', $salesOrder->marketplace_order_id)->delete();
+                    }
+
+                    // Hapus items dan SO
+                    $salesOrder->items()->delete();
+                    $salesOrder->delete();
+                    $deletedCount++;
+                }
+            });
+
+            return redirect()->route('sales-orders.index')
+                ->with('success', "{$deletedCount} Sales Order berhasil dihapus massal dan stok terkait telah dikembalikan.");
+        } catch (Exception $e) {
+            return back()->withErrors(['error' => 'Gagal menghapus massal: ' . $e->getMessage()]);
+        }
+    }
+
 
     /**
      * Submit sales order for approval.
