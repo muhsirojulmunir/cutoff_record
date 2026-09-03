@@ -65,6 +65,7 @@ interface SalesOrder {
   shipping_cost: string;
   admin_fee?: string | null;
   other_fee?: string | null;
+  estimated_payout?: string | null;
   grand_total: string;
   notes: string | null;
   created_at: string;
@@ -159,6 +160,8 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
   const canApprove = permissions.includes('sales_order.approve');
   const canCreateInvoice = permissions.includes('invoice.create');
   const canViewInvoice = permissions.includes('invoice.view');
+
+  const isMarketplace = salesOrder.source === 'marketplace' || ['shopee', 'tiktok'].includes(salesOrder.sales_channel);
 
   // Invoice state
   const hasActiveInvoice = salesOrder.invoice && salesOrder.invoice.status !== 'cancelled';
@@ -672,56 +675,98 @@ export default function Show({ salesOrder, approverRoles }: SalesOrderShowProps)
           {/* Right Panel: Cost Summary & Audit */}
           <div className="space-y-6">
             {/* Cost Summary Card */}
-            <div className="bg-white border border-gray-300 rounded-2xl p-6 space-y-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Ringkasan Biaya</h3>
+            <div className="bg-white border border-gray-300 rounded-2xl p-6 space-y-4 shadow-sm">
+              <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                  {isMarketplace ? 'Informasi Pembayaran Marketplace' : 'Ringkasan Biaya'}
+                </h3>
+                {isMarketplace && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-orange-50 text-orange-600 border border-orange-200">
+                    {salesOrder.sales_channel.toUpperCase()}
+                  </span>
+                )}
+              </div>
 
               <div className="space-y-3 divide-y divide-gray-200/60 text-xs">
                 {/* Subtotal */}
                 <div className="flex justify-between items-center pb-3">
-                  <span className="text-gray-400">Subtotal Item</span>
-                  <span className="font-semibold text-gray-700">Rp {Number(salesOrder.subtotal).toLocaleString('id-ID')}</span>
+                  <span className="text-gray-500">Subtotal Item</span>
+                  <span className="font-semibold text-gray-900">Rp {Number(salesOrder.subtotal).toLocaleString('id-ID')}</span>
                 </div>
 
                 {/* Ongkir (jika ada) */}
                 {Number(salesOrder.shipping_cost) > 0 && (
                   <div className="flex justify-between items-center pt-3 pb-3">
-                    <span className="text-gray-400">Biaya Pengiriman</span>
+                    <span className="text-gray-500">{isMarketplace ? 'Estimasi Ongkos Kirim' : 'Biaya Pengiriman'}</span>
                     <span className="font-semibold text-gray-700">+Rp {Number(salesOrder.shipping_cost).toLocaleString('id-ID')}</span>
                   </div>
                 )}
 
-                {/* Biaya Admin (jika ada) */}
-                {Number(salesOrder.admin_fee ?? 0) > 0 && (
+                {/* Diskon / Voucher (jika ada) */}
+                {Number(salesOrder.discount_amount ?? 0) > 0 && (
                   <div className="flex justify-between items-center pt-3 pb-3">
-                    <span className="text-teal-700 font-medium">Biaya Admin</span>
-                    <span className="font-semibold text-teal-700">+Rp {Number(salesOrder.admin_fee).toLocaleString('id-ID')}</span>
+                    <span className="text-gray-500">Voucher / Diskon Penjual</span>
+                    <span className="font-semibold text-rose-600">-Rp {Number(salesOrder.discount_amount).toLocaleString('id-ID')}</span>
                   </div>
                 )}
 
-                {/* Biaya Lain-lain (jika ada) */}
+                {/* Biaya Admin Marketplace (jika ada) */}
+                {Number(salesOrder.admin_fee ?? 0) > 0 && (
+                  <div className="flex justify-between items-center pt-3 pb-3">
+                    <span className="text-gray-500 flex items-center gap-1">
+                      Biaya Platform / Admin
+                      <span className="text-gray-400 cursor-help" title="Potongan administrasi resmi dari platform marketplace">🛈</span>
+                    </span>
+                    <span className="font-semibold text-rose-600">
+                      {isMarketplace ? '-' : '+'}Rp {Number(salesOrder.admin_fee).toLocaleString('id-ID')}
+                    </span>
+                  </div>
+                )}
+
+                {/* Biaya Lain-lain / Promosi (jika ada) */}
                 {Number(salesOrder.other_fee ?? 0) > 0 && (
                   <div className="flex justify-between items-center pt-3 pb-3">
-                    <span className="text-teal-700 font-medium">Biaya Lain-lain</span>
-                    <span className="font-semibold text-teal-700">+Rp {Number(salesOrder.other_fee).toLocaleString('id-ID')}</span>
+                    <span className="text-gray-500 flex items-center gap-1">
+                      Biaya Promosi / Layanan
+                      <span className="text-gray-400 cursor-help" title="Potongan program promosi atau layanan marketplace">🛈</span>
+                    </span>
+                    <span className="font-semibold text-rose-600">
+                      {isMarketplace ? '-' : '+'}Rp {Number(salesOrder.other_fee).toLocaleString('id-ID')}
+                    </span>
                   </div>
                 )}
 
                 {/* DP / Uang Muka (jika ada) */}
-                {Number(salesOrder.dp_amount ?? 0) > 0 && (
+                {!isMarketplace && Number(salesOrder.dp_amount ?? 0) > 0 && (
                   <div className="flex justify-between items-center pt-3 pb-3">
-                    <span className="text-gray-400">DP / Uang Muka</span>
+                    <span className="text-gray-500">DP / Uang Muka</span>
                     <span className="font-semibold text-teal-600">-Rp {Number(salesOrder.dp_amount).toLocaleString('id-ID')}</span>
                   </div>
                 )}
 
-                {/* Grand Total */}
-                <div className="flex justify-between items-center pt-4">
-                  <span className="text-sm font-bold text-gray-900">Grand Total</span>
-                  <span className="text-base font-extrabold text-emerald-500">Rp {Number(salesOrder.grand_total).toLocaleString('id-ID')}</span>
-                </div>
+                {/* Estimasi Total Penghasilan Bersih (Marketplace) */}
+                {isMarketplace ? (
+                  <div className="pt-3 border-t-2 border-gray-200">
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs font-bold text-gray-900 flex items-center gap-1">
+                        Estimasi Total Penghasilan
+                        <span className="text-gray-400 cursor-help text-[11px]" title="Dana bersih yang masuk ke saldo penjual">🛈</span>
+                      </span>
+                      <span className="text-xl font-black text-orange-600">
+                        Rp {Number(salesOrder.estimated_payout || salesOrder.grand_total).toLocaleString('id-ID')}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-gray-400 text-right mt-0.5">Pelepasan dana bersih marketplace</p>
+                  </div>
+                ) : (
+                  <div className="flex justify-between items-center pt-4">
+                    <span className="text-sm font-bold text-gray-900">Grand Total</span>
+                    <span className="text-base font-extrabold text-emerald-500">Rp {Number(salesOrder.grand_total).toLocaleString('id-ID')}</span>
+                  </div>
+                )}
 
-                {/* Sisa tagihan setelah DP */}
-                {Number(salesOrder.dp_amount ?? 0) > 0 && (
+                {/* Sisa tagihan setelah DP (non-marketplace) */}
+                {!isMarketplace && Number(salesOrder.dp_amount ?? 0) > 0 && (
                   <div className="flex justify-between items-center pt-3">
                     <span className="text-sm font-bold text-gray-700">Sisa Tagihan</span>
                     <span className="text-base font-extrabold text-rose-500">

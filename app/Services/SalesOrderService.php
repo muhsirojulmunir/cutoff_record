@@ -882,7 +882,9 @@ class SalesOrderService
                 'province'               => $data['province'] ?? null,
                 'subtotal'               => $computedSubtotal,
                 'discount'               => $discountAmount,
+                'voucher_discount'       => (float)($data['voucher_discount'] ?? ($data['fee_details']['voucher_subsidy'] ?? $discountAmount)),
                 'shipping_fee'           => $shippingCost,
+                'service_fee'            => (float)($data['service_fee'] ?? ($data['fee_details']['service_fee'] ?? 0)),
                 'total_amount'           => $estimatedPayout > 0 ? $estimatedPayout : $grandTotal,
                 'tracking_number'        => $data['tracking_number'] ?? null,
                 'courier_name'           => $data['courier_name'] ?? null,
@@ -891,6 +893,14 @@ class SalesOrderService
                 'sales_order_id'         => $salesOrder->id,
                 'conversion_status'      => 'converted',
                 'converted_at'           => now(),
+                'raw_payload'            => [
+                    'estimated_payout'   => $estimatedPayout,
+                    'grand_total'        => $grandTotal,
+                    'admin_fee'          => $adminFee,
+                    'service_fee'        => (float)($data['service_fee'] ?? 0),
+                    'other_fee'          => $otherFee,
+                    'fee_details'        => $data['fee_details'] ?? null,
+                ],
             ]
         );
 
@@ -906,6 +916,7 @@ class SalesOrderService
                 'quantity'             => $item['quantity'],
                 'unit_price'           => $item['price'],
                 'subtotal'             => $item['subtotal'],
+                'raw_payload'          => !empty($item['variation_name']) ? ['variation_name' => $item['variation_name']] : null,
             ]);
         }
 

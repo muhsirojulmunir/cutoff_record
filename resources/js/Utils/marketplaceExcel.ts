@@ -10,6 +10,14 @@ export interface ParsedMarketplaceItem {
   subtotal: number;
 }
 
+export interface ParsedMarketplaceFeeBreakdown {
+  platform_fee?: number;
+  service_fee?: number;
+  extra_shipping_fee?: number;
+  promo_fee?: number;
+  voucher_subsidy?: number;
+}
+
 export interface ParsedMarketplaceOrder {
   external_order_id: string;
   sales_channel: 'shopee' | 'tiktok';
@@ -28,8 +36,11 @@ export interface ParsedMarketplaceOrder {
   shipping_cost: number;
   admin_fee: number;
   other_fee: number;
+  service_fee?: number;
+  voucher_discount?: number;
   grand_total: number;
   estimated_payout: number;  // Estimasi pembayaran bersih dari platform (income seller)
+  fee_details?: ParsedMarketplaceFeeBreakdown;
   notes?: string;
   items: ParsedMarketplaceItem[];
 }
@@ -181,6 +192,10 @@ export function parseShopeeExcel(rawData: any[][]): ParsedMarketplaceOrder[] {
   const cityIdx      = resolve(['kota kabupaten', 'kota', 'kabupaten'], 47);
   const provinceIdx  = resolve(['provinsi', 'propinsi'], 48);
 
+  const adminFeeIdx  = resolve(['biaya administrasi', 'biaya admin', 'biaya platform', 'biaya transaksi', 'biaya kartu kredit'], -1);
+  const serviceFeeIdx= resolve(['biaya layanan', 'service fee', 'biaya gratis ongkir xtra', 'gratis ongkir xtra'], -1);
+  const promoFeeIdx  = resolve(['biaya promosi', 'potongan promosi'], -1);
+
   const orderMap = new Map<string, ParsedMarketplaceOrder>();
 
   for (let i = startIdx; i < rawData.length; i++) {
@@ -225,6 +240,26 @@ export function parseShopeeExcel(rawData: any[][]): ParsedMarketplaceOrder[] {
       const estimatedPayout = parseMoney(cols[estimatedPayoutIdx]);
       const notes = String(cols[notesIdx] || '').trim();
 
+      const rawAdmin = adminFeeIdx !== -1 ? parseMoney(cols[adminFeeIdx]) : 0;
+      const rawService = serviceFeeIdx !== -1 ? parseMoney(cols[serviceFeeIdx]) : 0;
+      const rawPromo = promoFeeIdx !== -1 ? parseMoney(cols[promoFeeIdx]) : 0;
+
+      let adminFee = rawAdmin;
+      let serviceFee = rawService;
+      let otherFee = rawPromo;
+
+      // Jika ada estimatedPayout tapi fee belum ada di Excel, hitung otomatis selisihnya sebagai biaya platform
+      if (adminFee === 0 && serviceFee === 0 && estimatedPayout > 0 && item.subtotal > estimatedPayout) {
+        adminFee = Math.max(0, (item.subtotal + shippingFee - discount) - estimatedPayout);
+      }
+
+      const feeDetails: ParsedMarketplaceFeeBreakdown = {
+        platform_fee: adminFee,
+        service_fee: serviceFee,
+        promo_fee: otherFee,
+        voucher_subsidy: discount,
+      };
+
       orderMap.set(orderId, {
         external_order_id: orderId,
         sales_channel: 'shopee',
@@ -241,10 +276,13 @@ export function parseShopeeExcel(rawData: any[][]): ParsedMarketplaceOrder[] {
         subtotal: item.subtotal,
         discount_amount: discount,
         shipping_cost: shippingFee,
-        admin_fee: 0,
-        other_fee: 0,
+        admin_fee: adminFee,
+        other_fee: otherFee,
+        service_fee: serviceFee,
+        voucher_discount: discount,
         grand_total: grandTotal || item.subtotal + shippingFee - discount,
         estimated_payout: estimatedPayout,  // Estimasi bersih dari Shopee
+        fee_details: feeDetails,
         notes: notes ? `Shopee: ${notes}` : 'Pesanan Shopee',
         items: [item],
       });
@@ -326,6 +364,9 @@ export function parseTikTokExcel(rawData: any[][]): ParsedMarketplaceOrder[] {
   ], 18);
   const payMethodIdx = resolve(['payment method', 'metode pembayaran'], 19);
 
+  const platformFeeIdx = resolve(['platform commission', 'biaya komisi', 'komisi platform', 'biaya platform'], -1);
+  const serviceFeeIdx  = resolve(['service fee', 'biaya layanan', 'payment fee', 'biaya transaksi'], -1);
+
   // --- Kolom penerima ---
   const messageIdx   = resolve(['buyer message', 'buyer note', 'catatan pembeli', 'pesan pembeli', 'catatan'], 20);
   const nameIdx      = resolve(['recipient', 'nama penerima', 'recipient name', 'penerima'], 21);
@@ -387,6 +428,22 @@ export function parseTikTokExcel(rawData: any[][]): ParsedMarketplaceOrder[] {
       const estimatedPayout = parseMoney(cols[estimatedPayoutIdx]);
       const notes       = String(cols[messageIdx] || '').trim();
 
+      const rawPlatform = platformFeeIdx !== -1 ? parseMoney(cols[platformFeeIdx]) : 0;
+      const rawService  = serviceFeeIdx !== -1 ? parseMoney(cols[serviceFeeIdx]) : 0;
+
+      let adminFee = rawPlatform;
+      let serviceFee = rawService;
+
+      if (adminFee === 0 && serviceFee === 0 && estimatedPayout > 0 && item.subtotal > estimatedPayout) {
+        adminFee = Math.max(0, (item.subtotal + shippingFee - discount) - estimatedPayout);
+      }
+
+      const feeDetails: ParsedMarketplaceFeeBreakdown = {
+        platform_fee: adminFee,
+        service_fee: serviceFee,
+        voucher_subsidy: discount,
+      };
+
       orderMap.set(orderId, {
         external_order_id: orderId,
         sales_channel: 'tiktok',
@@ -403,10 +460,13 @@ export function parseTikTokExcel(rawData: any[][]): ParsedMarketplaceOrder[] {
         subtotal: item.subtotal,
         discount_amount: discount,
         shipping_cost: shippingFee,
-        admin_fee: 0,
+        admin_fee: adminFee,
         other_fee: 0,
+        service_fee: serviceFee,
+        voucher_discount: discount,
         grand_total: grandTotal || item.subtotal + shippingFee - discount,
         estimated_payout: estimatedPayout,
+        fee_details: feeDetails,
         notes: notes ? `TikTok: ${notes}` : 'Pesanan TikTok Shop',
         items: [item],
       });

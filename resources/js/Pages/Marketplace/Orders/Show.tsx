@@ -1,12 +1,14 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 
 interface Product { id: number; name: string; sku: string; }
 interface OrderItem {
     id: number; external_sku: string | null; product_name: string;
+    product_sku?: string | null;
     quantity: number; unit_price: string; subtotal: string;
     product: Product | null;
+    raw_payload?: { variation_name?: string } | null;
 }
 interface StockReservation {
     id: number; quantity: number; status: string;
@@ -15,6 +17,11 @@ interface StockReservation {
 }
 interface SalesOrder {
     id: number; so_number: string; status: string; grand_total: string;
+    estimated_payout?: string | number | null;
+    admin_fee?: string | number | null;
+    other_fee?: string | number | null;
+    shipping_cost?: string | number | null;
+    discount_amount?: string | number | null;
     invoice: { id: number; invoice_number: string; status: string; } | null;
 }
 interface Warehouse { id: number; name: string; }
@@ -55,6 +62,21 @@ interface Order {
     warehouse: Warehouse | null;
     account: Account;
     stock_reservations: StockReservation[];
+    raw_payload?: {
+        estimated_payout?: number;
+        grand_total?: number;
+        admin_fee?: number;
+        service_fee?: number;
+        other_fee?: number;
+        voucher_discount?: number;
+        fee_details?: {
+            platform_fee?: number;
+            service_fee?: number;
+            extra_shipping_fee?: number;
+            promo_fee?: number;
+            voucher_subsidy?: number;
+        };
+    } | null;
 }
 
 interface Props {
@@ -160,6 +182,41 @@ export default function MarketplaceOrderShow({ order, canViewPayload, timeline }
     const hasActiveRes   = order.stock_reservations.some(r => r.status === 'reserved');
     const canFulfill     = order.conversion_status === 'converted' && order.workflow_status !== 'shipped' && order.workflow_status !== 'completed' && order.internal_status !== 'cancelled';
 
+    const [openDetails, setOpenDetails] = useState<Record<string, boolean>>({});
+    const toggleDetail = (key: string) => setOpenDetails(p => ({ ...p, [key]: !p[key] }));
+
+    // Nilai rincian keuangan
+    const subtotal = Number(order.subtotal || 0);
+    const shippingFee = Number(order.shipping_fee || order.sales_order?.shipping_cost || 0);
+    const voucherDiscount = Number(order.voucher_discount || order.discount || order.sales_order?.discount_amount || 0);
+
+    // Estimasi total penghasilan bersih yang dilepaskan marketplace
+    const estimatedPayout = Number(
+        order.sales_order?.estimated_payout ||
+        order.raw_payload?.estimated_payout ||
+        order.total_amount || 0
+    );
+
+    // Detail potongan biaya marketplace
+    const rawFeeDetails = order.raw_payload?.fee_details;
+    const rawPlatformFee = Number(order.raw_payload?.admin_fee || order.sales_order?.admin_fee || rawFeeDetails?.platform_fee || 0);
+    const rawServiceFee = Number(order.service_fee || order.raw_payload?.service_fee || rawFeeDetails?.service_fee || 0);
+    const rawExtraShippingFee = Number(rawFeeDetails?.extra_shipping_fee || 0);
+    const rawPromoFee = Number(order.raw_payload?.other_fee || order.sales_order?.other_fee || rawFeeDetails?.promo_fee || 0);
+
+    // Hitung selisih biaya platform jika belum terinci terpisah
+    let platformFee = rawPlatformFee;
+    let serviceFee = rawServiceFee;
+    let extraShippingFee = rawExtraShippingFee;
+    let promoFee = rawPromoFee;
+
+    const totalKnownDeduction = platformFee + serviceFee + extraShippingFee + promoFee;
+    const expectedDeductions = Math.max(0, (subtotal + shippingFee - voucherDiscount) - estimatedPayout);
+
+    if (totalKnownDeduction === 0 && expectedDeductions > 0 && estimatedPayout > 0) {
+        platformFee = expectedDeductions;
+    }
+
     return (
         <AppLayout>
             <Head title={`Order ${order.external_order_id}`} />
@@ -243,62 +300,276 @@ export default function MarketplaceOrderShow({ order, canViewPayload, timeline }
                             </div>
                         </div>
 
-                        {/* Items */}
-                        <div className="bg-gray-50 border border-gray-300 rounded-2xl overflow-hidden">
-                            <div className="px-5 py-4 border-b border-gray-300">
-                                <h2 className="text-gray-900 font-semibold">Item Order</h2>
-                            </div>
-                            <table className="w-full">
-                                <thead>
-                                    <tr className="border-b border-gray-300">
-                                        {['Produk / SKU', 'Status Mapping', 'Qty', 'Harga', 'Subtotal'].map(h => (
-                                            <th key={h} className="text-left px-5 py-3 text-gray-500 text-xs font-medium">{h}</th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-200/50">
-                                    {order.items.map(item => (
-                                        <tr key={item.id}>
-                                            <td className="px-5 py-3">
-                                                <p className="text-gray-900 text-sm">{item.product_name}</p>
-                                                <p className="text-gray-400 text-xs font-mono">{item.external_sku ?? '—'}</p>
-                                            </td>
-                                            <td className="px-5 py-3">
-                                                {item.product ? (
-                                                    <span className="inline-block px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full text-xs">
-                                                        {item.product.sku}
-                                                    </span>
-                                                ) : (
-                                                    <span className="inline-block px-2 py-0.5 bg-rose-500/20 text-rose-400 rounded-full text-xs">
-                                                        Belum Di-map
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td className="px-5 py-3 text-gray-700 text-sm">{item.quantity}</td>
-                                            <td className="px-5 py-3 text-gray-700 text-sm">{fmt(item.unit_price)}</td>
-                                            <td className="px-5 py-3 text-gray-900 text-sm font-medium">{fmt(item.subtotal)}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                            {/* Totals */}
-                            <div className="px-5 py-4 border-t border-gray-300 space-y-1.5">
-                                {[
-                                    { label: 'Subtotal', value: order.subtotal },
-                                    { label: 'Diskon', value: `-${order.discount}` },
-                                    { label: 'Diskon Voucher', value: `-${order.voucher_discount}` },
-                                    { label: 'Ongkos Kirim', value: order.shipping_fee },
-                                    { label: 'Biaya Layanan', value: order.service_fee },
-                                    { label: 'Pajak', value: order.tax },
-                                ].map(({ label, value }) => (
-                                    <div key={label} className="flex justify-between text-sm">
-                                        <span className="text-gray-500">{label}</span>
-                                        <span className="text-gray-700">{fmt(value)}</span>
+                        {/* Informasi Pembayaran Card (Sesuai Rincian Marketplace Shopee & TikTok) */}
+                        <div className="bg-white border border-gray-300 rounded-2xl overflow-hidden shadow-sm">
+                            {/* Card Header */}
+                            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gray-50">
+                                <div className="flex items-center gap-2.5">
+                                    <span className="w-8 h-8 rounded-lg bg-orange-100 border border-orange-200 flex items-center justify-center text-orange-600 text-sm shadow-sm">
+                                        💳
+                                    </span>
+                                    <div>
+                                        <h2 className="text-gray-900 font-bold text-base">Informasi Pembayaran</h2>
+                                        <p className="text-gray-500 text-xs mt-0.5">Rincian produk, potongan platform, dan estimasi pelepasan dana {MP_LABELS[order.marketplace] ?? order.marketplace}</p>
                                     </div>
-                                ))}
-                                <div className="flex justify-between text-sm font-bold pt-2 border-t border-gray-300">
-                                    <span className="text-gray-900">Total</span>
-                                    <span className="text-gray-900">{fmt(order.total_amount)}</span>
+                                </div>
+                                {order.sales_order && (
+                                    <Link
+                                        href={`/sales-orders/${order.sales_order.id}`}
+                                        className="text-xs font-semibold text-teal-600 hover:text-teal-700 flex items-center gap-1 transition-colors"
+                                    >
+                                        Lihat Sales Order &rarr;
+                                    </Link>
+                                )}
+                            </div>
+
+                            {/* Item Products Table */}
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead>
+                                        <tr className="border-b border-gray-200 bg-gray-50/70 text-gray-500 text-[11px] font-bold uppercase tracking-wider">
+                                            <th className="text-center w-12 px-4 py-3">No.</th>
+                                            <th className="text-left px-4 py-3">Produk</th>
+                                            <th className="text-right px-4 py-3">Harga Satuan</th>
+                                            <th className="text-center px-4 py-3">Jumlah</th>
+                                            <th className="text-right px-4 py-3">Subtotal</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {order.items.map((item, idx) => {
+                                            const varName = item.raw_payload?.variation_name;
+                                            return (
+                                                <tr key={item.id} className="hover:bg-gray-50/40 transition-colors">
+                                                    <td className="text-center px-4 py-4 text-xs font-medium text-gray-400">
+                                                        {idx + 1}
+                                                    </td>
+                                                    <td className="px-4 py-4">
+                                                        <div className="flex items-start gap-3">
+                                                            <div className="w-12 h-12 rounded-xl bg-gray-100 border border-gray-200 flex-shrink-0 flex items-center justify-center text-gray-400 overflow-hidden">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" d="m20.25 7.5-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+                                                                </svg>
+                                                            </div>
+                                                            <div className="min-w-0 flex-1">
+                                                                <p className="text-gray-900 font-semibold text-sm leading-snug">{item.product_name}</p>
+                                                                {varName && (
+                                                                    <p className="text-xs text-gray-500 mt-0.5">
+                                                                        <span className="font-medium text-gray-600">Variasi:</span> {varName}
+                                                                    </p>
+                                                                )}
+                                                                <div className="flex items-center gap-2 mt-1">
+                                                                    <span className="text-[11px] font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
+                                                                        Kode: {item.product_sku || item.external_sku || '—'}
+                                                                    </span>
+                                                                    {item.product ? (
+                                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                                            Mapped: {item.product.sku}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                                                            Belum Di-map
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="text-right px-4 py-4 text-xs font-semibold text-gray-800">
+                                                        {fmt(item.unit_price)}
+                                                    </td>
+                                                    <td className="text-center px-4 py-4 text-xs font-medium text-gray-600">
+                                                        {item.quantity}
+                                                    </td>
+                                                    <td className="text-right px-4 py-4 text-sm font-bold text-gray-900">
+                                                        {fmt(item.subtotal)}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Rincian Pemotongan & Estimasi Penghasilan (Sesuai Screenshot) */}
+                            <div className="p-6 bg-gray-50/70 border-t border-gray-200 flex flex-col items-end">
+                                <div className="w-full max-w-md space-y-2.5">
+                                    {/* Subtotal Pesanan */}
+                                    <div className="flex items-center justify-between text-xs">
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleDetail('subtotal')}
+                                            className="text-gray-600 font-medium hover:text-gray-900 flex items-center gap-1 cursor-pointer"
+                                        >
+                                            <span>Subtotal Pesanan</span>
+                                            <span className="text-gray-400 text-[10px]">{openDetails['subtotal'] ? '▲' : '▼'}</span>
+                                        </button>
+                                        <span className="font-semibold text-gray-900">{fmt(subtotal)}</span>
+                                    </div>
+                                    {openDetails['subtotal'] && (
+                                        <p className="text-[11px] text-gray-400 pl-2 pb-1 border-l-2 border-gray-300">
+                                            Total nilai produk sebelum potongan dan biaya platform.
+                                        </p>
+                                    )}
+
+                                    {/* Estimasi Subtotal Ongkos Kirim */}
+                                    <div className="flex items-center justify-between text-xs">
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleDetail('shipping')}
+                                            className="text-gray-600 hover:text-gray-900 flex items-center gap-1 cursor-pointer"
+                                        >
+                                            <span>Estimasi Subtotal Ongkos Kirim</span>
+                                            <span className="text-gray-400 text-[10px]">{openDetails['shipping'] ? '▲' : '▼'}</span>
+                                        </button>
+                                        <span className="font-semibold text-gray-700">{fmt(shippingFee)}</span>
+                                    </div>
+                                    {openDetails['shipping'] && (
+                                        <p className="text-[11px] text-gray-400 pl-2 pb-1 border-l-2 border-gray-300">
+                                            Ongkos kirim pesanan dibayar pembeli / disubsidi platform.
+                                        </p>
+                                    )}
+
+                                    {/* Voucher & Subsidi */}
+                                    {voucherDiscount > 0 && (
+                                        <>
+                                            <div className="flex items-center justify-between text-xs">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleDetail('voucher')}
+                                                    className="text-gray-600 hover:text-gray-900 flex items-center gap-1 cursor-pointer"
+                                                >
+                                                    <span>Voucher &amp; Subsidi</span>
+                                                    <span className="text-gray-400 text-[10px]">{openDetails['voucher'] ? '▲' : '▼'}</span>
+                                                </button>
+                                                <span className="font-semibold text-rose-600">-{fmt(voucherDiscount)}</span>
+                                            </div>
+                                            {openDetails['voucher'] && (
+                                                <p className="text-[11px] text-gray-400 pl-2 pb-1 border-l-2 border-gray-300">
+                                                    Diskon dan potongan voucher yang ditanggung penjual.
+                                                </p>
+                                            )}
+                                        </>
+                                    )}
+
+                                    {/* Biaya Platform */}
+                                    {platformFee > 0 && (
+                                        <>
+                                            <div className="flex items-center justify-between text-xs">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleDetail('platform')}
+                                                    className="text-gray-600 hover:text-gray-900 flex items-center gap-1 cursor-pointer"
+                                                >
+                                                    <span className="flex items-center gap-1">
+                                                        Biaya Platform
+                                                        <span className="text-gray-400 text-[11px]">🛈</span>
+                                                    </span>
+                                                    <span className="text-gray-400 text-[10px]">{openDetails['platform'] ? '▲' : '▼'}</span>
+                                                </button>
+                                                <span className="font-semibold text-rose-600">-{fmt(platformFee)}</span>
+                                            </div>
+                                            {openDetails['platform'] && (
+                                                <p className="text-[11px] text-gray-400 pl-2 pb-1 border-l-2 border-gray-300">
+                                                    Biaya administrasi dan komisi resmi platform {MP_LABELS[order.marketplace] ?? order.marketplace}.
+                                                </p>
+                                            )}
+                                        </>
+                                    )}
+
+                                    {/* Biaya Gratis Ongkir XTRA (jika ada) */}
+                                    {extraShippingFee > 0 && (
+                                        <>
+                                            <div className="flex items-center justify-between text-xs">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleDetail('extraShipping')}
+                                                    className="text-gray-600 hover:text-gray-900 flex items-center gap-1 cursor-pointer"
+                                                >
+                                                    <span className="flex items-center gap-1">
+                                                        Biaya Gratis Ongkir XTRA
+                                                        <span className="text-gray-400 text-[11px]">🛈</span>
+                                                    </span>
+                                                    <span className="text-gray-400 text-[10px]">{openDetails['extraShipping'] ? '▲' : '▼'}</span>
+                                                </button>
+                                                <span className="font-semibold text-rose-600">-{fmt(extraShippingFee)}</span>
+                                            </div>
+                                            {openDetails['extraShipping'] && (
+                                                <p className="text-[11px] text-gray-400 pl-2 pb-1 border-l-2 border-gray-300">
+                                                    Biaya keikutsertaan program Gratis Ongkir XTRA marketplace.
+                                                </p>
+                                            )}
+                                        </>
+                                    )}
+
+                                    {/* Biaya Layanan */}
+                                    {serviceFee > 0 && (
+                                        <>
+                                            <div className="flex items-center justify-between text-xs">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleDetail('service')}
+                                                    className="text-gray-600 hover:text-gray-900 flex items-center gap-1 cursor-pointer"
+                                                >
+                                                    <span className="flex items-center gap-1">
+                                                        Biaya Layanan
+                                                        <span className="text-gray-400 text-[11px]">🛈</span>
+                                                    </span>
+                                                    <span className="text-gray-400 text-[10px]">{openDetails['service'] ? '▲' : '▼'}</span>
+                                                </button>
+                                                <span className="font-semibold text-rose-600">-{fmt(serviceFee)}</span>
+                                            </div>
+                                            {openDetails['service'] && (
+                                                <p className="text-[11px] text-gray-400 pl-2 pb-1 border-l-2 border-gray-300">
+                                                    Biaya layanan pemrosesan transaksi dari platform marketplace.
+                                                </p>
+                                            )}
+                                        </>
+                                    )}
+
+                                    {/* Biaya Promosi / Lainnya */}
+                                    {promoFee > 0 && (
+                                        <>
+                                            <div className="flex items-center justify-between text-xs">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleDetail('promo')}
+                                                    className="text-gray-600 hover:text-gray-900 flex items-center gap-1 cursor-pointer"
+                                                >
+                                                    <span className="flex items-center gap-1">
+                                                        Biaya Promosi
+                                                        <span className="text-gray-400 text-[11px]">🛈</span>
+                                                    </span>
+                                                    <span className="text-gray-400 text-[10px]">{openDetails['promo'] ? '▲' : '▼'}</span>
+                                                </button>
+                                                <span className="font-semibold text-rose-600">-{fmt(promoFee)}</span>
+                                            </div>
+                                            {openDetails['promo'] && (
+                                                <p className="text-[11px] text-gray-400 pl-2 pb-1 border-l-2 border-gray-300">
+                                                    Biaya program promosi atau afiliasi penjual.
+                                                </p>
+                                            )}
+                                        </>
+                                    )}
+
+                                    {/* Subtotal Biaya Layanan Tambahan */}
+                                    <div className="flex items-center justify-between text-xs">
+                                        <span className="text-gray-400">Subtotal Biaya Layanan Tambahan</span>
+                                        <span className="font-medium text-gray-400">{fmt(0)}</span>
+                                    </div>
+
+                                    {/* Estimasi Total Penghasilan */}
+                                    <div className="pt-3 border-t-2 border-gray-200 flex items-baseline justify-between">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="text-sm font-bold text-gray-900">Estimasi Total Penghasilan</span>
+                                            <span className="text-gray-400 cursor-help text-xs" title="Total dana bersih yang akan dilepaskan marketplace ke saldo rekening seller setelah dipotong semua biaya">🛈</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-2xl font-black text-orange-600 tracking-tight">
+                                                {fmt(estimatedPayout)}
+                                            </span>
+                                            <p className="text-[10px] text-gray-400 mt-0.5">Pelepasan dana bersih ke saldo toko</p>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
