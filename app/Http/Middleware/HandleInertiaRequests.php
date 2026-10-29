@@ -57,8 +57,8 @@ class HandleInertiaRequests extends Middleware
                 'success' => $request->session()->get('success'),
                 'error'   => $request->session()->get('error'),
             ],
-            // Antrian tugas per-role untuk lonceng notifikasi di topbar & dashboard.
-            'workQueue' => fn() => app(WorkQueueService::class)->getForUser($user),
+            // Antrian tugas / notifikasi (kosong untuk clean starter)
+            'workQueue' => ['items' => [], 'total' => 0, 'critical' => 0],
         ];
     }
 }

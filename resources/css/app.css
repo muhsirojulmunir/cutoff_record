@@ -1,4 +1,4 @@
-﻿@import 'tailwindcss';
+    @import 'tailwindcss';
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
@@ -44,7 +44,7 @@
     }
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: none;
     }
 }
 
@@ -55,7 +55,7 @@
     }
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: none;
     }
 }
 
@@ -75,7 +75,7 @@
     }
     to {
         opacity: 1;
-        transform: translateX(0);
+        transform: none;
     }
 }
 
@@ -86,8 +86,23 @@
     }
     to {
         opacity: 1;
-        transform: scale(1) translateY(0);
+        transform: none;
     }
+}
+
+@keyframes erp-scale-up {
+    from {
+        opacity: 0;
+        transform: scale(0.96) translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+.animate-scale-up {
+    animation: erp-scale-up 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes erp-ring {

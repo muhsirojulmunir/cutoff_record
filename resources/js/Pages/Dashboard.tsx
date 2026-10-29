@@ -1,485 +1,821 @@
 import React, { useState } from 'react';
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../Layouts/AppLayout';
-import CountUp from '../Components/CountUp';
-import LineChart from '../Components/LineChart';
+import { PageProps } from '../Types';
+import DualCalendarRangePicker from '../Components/DualCalendarRangePicker';
 
-interface SalesTrend { date: string; count: number; total: number; }
-interface ChannelBreakdown { channel: string; count: number; total: number; }
-interface TopProduct {
-    product_id: number;
-    name: string;
-    sku: string | null;
-    qty: number;
-    revenue: number;
-    profit: number;
+interface FilterState {
+  range: string;
+  date_from: string;
+  date_to: string;
 }
 
-interface Props {
-    metrics: {
-        range: string;
-        date_from: string;
-        date_to: string;
-        channel: string | null;
-        channels: string[];
-        sales: {
-            total_orders: number; total_revenue: number;
-            today_orders: number; today_revenue: number;
-            month_orders: number; month_revenue: number;
-            status_breakdown: Record<string, number>;
-            channel_breakdown: ChannelBreakdown[];
-        };
-        sales_trend: SalesTrend[];
-        channel_trend: {
-            dates: string[];
-            series: { channel: string; total: number; points: number[] }[];
-        };
-        inventory: {
-            total_products: number; total_physical: number;
-            total_reserved: number; available_stock: number;
-            out_of_stock_count: number; low_stock_count: number;
-        };
-        financial: {
-            total_receivables: number; overdue_receivables: number;
-            unpaid_invoices_count: number; overdue_invoices_count: number;
-            total_payables: number; total_cash_balance: number;
-            petty_cash_approved: number; petty_cash_pending: number;
-            estimated_revenue: number; estimated_cogs: number;
-            operating_expenses: number; estimated_gross_profit: number;
-        };
-        marketplace: {
-            total_orders: number;
-            total_net_profit?: number;
-            shopee_orders: number; shopee_net_profit?: number;
-            tiktok_orders: number; tiktok_net_profit?: number;
-            shipped_count: number; completed_count: number;
-            insufficient_count?: number; mapping_required_count?: number;
-            pipeline: Record<string, number>;
-        };
-        today: {
-            date: string;
-            revenue: number;
-            net_profit: number;
-            orders: number;
-            shipped: number;
-            growth: {
-                revenue: number | null;
-                net_profit: number | null;
-                orders: number | null;
-                shipped: number | null;
-            };
-            yesterday: { revenue: number; net_profit: number; orders: number; shipped: number };
-        };
-        profit_funnel: {
-            revenue: number; cogs: number; gross_profit: number;
-            discount: number; shipping: number; expenses: number;
-            net_profit: number; margin: number;
-        };
-        period: {
-            revenue: number; cogs: number; expenses: number;
-            gross_profit: number; net_profit: number;
-            orders: number; shipped: number;
-        };
-        top_products: TopProduct[];
-    };
-    filters: { range: string; date_from?: string; date_to?: string; channel?: string | null };
+interface TodayStats {
+  date: string;
+  orders: number;
+  estNetIncome: number;
+  netPayout: number;
+  oos: number;
+  rj: number;
+  dpp: number;
 }
 
-const fmt = (v: number) => 'Rp ' + Number(v).toLocaleString('id-ID', { maximumFractionDigits: 0 });
+interface PeriodStats {
+  range: string;
+  totalOrders: number;
+  totalOos: number;
+  totalRj: number;
+  totalDpp: number;
+  estNetIncome: number;
+  netPayout: number;
+}
 
-const fmtCompact = (v: number) => {
-    const abs = Math.abs(v);
-    if (abs >= 1_000_000_000) return `Rp ${(v / 1_000_000_000).toFixed(1).replace('.', ',')} M`;
-    if (abs >= 1_000_000) return `Rp ${(v / 1_000_000).toFixed(1).replace('.', ',')} jt`;
-    return fmt(v);
-};
+interface ChannelItem {
+  channel: string;
+  count: number;
+  total_income: number | string;
+}
 
-const RANGE_LABELS: Record<string, string> = {
-    today: 'Hari Ini',
-    this_week: 'Minggu Ini',
-    this_month: 'Bulan Ini',
-    this_year: 'Tahun Ini',
-    custom: 'Kustom',
-};
+interface CourierItem {
+  shipping_courier: string;
+  count: number;
+  total_income: number | string;
+}
 
-const CHANNEL_LABELS: Record<string, string> = {
-    manual: 'Manual',
-    grosir: 'Grosir Offline',
-    shopee: 'Shopee',
-    tiktok: 'TikTok Shop',
-    vip: 'VIP',
-    website: 'Website',
-    other: 'Lainnya',
-};
+interface DailyTrendItem {
+  date: string;
+  order_count: number;
+  total_income: number | string;
+}
 
-const fmtDate = (value: string) =>
-    new Date(value).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+interface RecentOrder {
+  id: number;
+  order_number: string;
+  order_date: string | null;
+  channel: string;
+  buyer_username: string | null;
+  shipping_courier: string | null;
+  order_status: string | null;
+  info_gudang: string | null;
+  est_net_income: number | string | null;
+  dpp_number: string | null;
+}
 
-/** Perubahan dibanding hari sebelumnya, ditulis kecil di bawah angka utama. */
-function GrowthNote({ value, tone = 'light' }: { value: number | null; tone?: 'light' | 'dark' }) {
-    if (value === null) {
-        return <span className={`text-[11px] font-semibold ${tone === 'dark' ? 'text-white/70' : 'text-gray-400'}`}>Data baru</span>;
+interface SystemStats {
+  totalUsers: number;
+  activeUsers: number;
+  totalRoles: number;
+  database: string;
+  appName: string;
+}
+
+interface DashboardProps {
+  filters?: FilterState;
+  todayStats: TodayStats;
+  periodStats: PeriodStats;
+  channelBreakdown: ChannelItem[];
+  courierBreakdown: CourierItem[];
+  dailyTrend: DailyTrendItem[];
+  recentOrders: RecentOrder[];
+  stats: SystemStats;
+  cutOff?: PeriodStats & { channelBreakdown: ChannelItem[] };
+}
+
+function formatRupiah(val: number | string | null | undefined): string {
+  if (val === null || val === undefined || val === '') return 'Rp 0';
+  const num = typeof val === 'string' ? parseFloat(val) : val;
+  if (isNaN(num)) return 'Rp 0';
+  return 'Rp ' + Math.round(num).toLocaleString('id-ID');
+}
+
+function formatDateIndo(dateStr: string | null | undefined): string {
+  if (!dateStr) return '-';
+  try {
+    const parts = dateStr.split(' ')[0].split('-');
+    if (parts.length === 3) {
+      const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+      return new Intl.DateTimeFormat('id-ID', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      }).format(d);
     }
-
-    const positive = value >= 0;
-    const color = tone === 'dark'
-        ? (positive ? 'text-white' : 'text-rose-100')
-        : (positive ? 'text-emerald-600' : 'text-rose-500');
-
-    return (
-        <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${color}`}>
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={`w-3 h-3 ${positive ? '' : 'rotate-180'}`}>
-                <path d="M12 4.5l7.5 10.5H4.5L12 4.5z" />
-            </svg>
-            {Math.abs(value).toLocaleString('id-ID', { maximumFractionDigits: 2 })}% dari kemarin
-        </span>
-    );
+    return dateStr;
+  } catch {
+    return dateStr;
+  }
 }
 
-export default function Dashboard({ metrics, filters }: Props) {
-    const [selectedRange, setSelectedRange] = useState(filters.range ?? 'this_month');
-    const [channel, setChannel] = useState(filters.channel ?? '');
-    const [refreshing, setRefreshing] = useState(false);
+export default function Dashboard({
+  filters = { range: 'all', date_from: '', date_to: '' },
+  todayStats,
+  periodStats,
+  channelBreakdown = [],
+  courierBreakdown = [],
+  dailyTrend = [],
+  recentOrders = [],
+  stats,
+}: DashboardProps) {
+  const { auth } = usePage<PageProps>().props;
+  const user = auth.user;
+  const isManagement = user?.role?.name === 'Management';
 
-    const navigate = (params: Record<string, string | undefined>) => {
-        router.get('/dashboard', {
-            range: selectedRange,
-            channel: channel || undefined,
-            ...params,
-        }, { preserveState: true, preserveScroll: true });
-    };
+  const [activeRange, setActiveRange] = useState<string>(filters.range || 'all');
+  const [isCalendarOpen, setIsCalendarOpen] = useState<boolean>(false);
+  const [hoveredTrend, setHoveredTrend] = useState<DailyTrendItem | null>(null);
 
-    const refresh = () => {
-        setRefreshing(true);
-        router.reload({ onFinish: () => setRefreshing(false) });
-    };
+  const rangePresets = [
+    { key: 'all', label: 'Semua Waktu' },
+    { key: 'today', label: 'Hari Ini' },
+    { key: 'yesterday', label: 'Kemarin' },
+    { key: '7days', label: '7 Hari Terakhir' },
+    { key: '30days', label: '30 Hari Terakhir' },
+    { key: 'this_month', label: 'Bulan Ini' },
+    { key: 'custom', label: 'Kustom Tanggal' },
+  ];
 
-    const { today, profit_funnel: funnel, period, top_products: topProducts } = metrics;
-    const maxProfit = Math.max(...topProducts.map(p => Math.abs(p.profit)), 1);
-
-    // Corong laba — blok pertama paling besar, sisanya menyusut seperti referensi.
-    const funnelSteps = [
-        { label: 'Laba Kotor', value: funnel.gross_profit, gradient: 'from-teal-500 to-emerald-500', width: 'lg:flex-[2.2]' },
-        { label: 'Omset', value: funnel.revenue, gradient: 'from-teal-600 to-teal-500', width: 'lg:flex-[1.6]' },
-        { label: 'HPP / Modal', value: funnel.cogs, gradient: 'from-cyan-600 to-cyan-500', width: 'lg:flex-[1.3]' },
-        { label: 'Biaya Operasional', value: funnel.expenses, gradient: 'from-teal-700 to-teal-600', width: 'lg:flex-1' },
-        { label: 'Ongkir', value: funnel.shipping, gradient: 'from-slate-500 to-slate-400', width: 'lg:flex-[0.8]' },
-    ];
-
-    const kpis = [
-        {
-            key: 'omset',
-            label: 'Omset Hari Ini',
-            value: <CountUp value={today.revenue} format={fmt} />,
-            growth: today.growth.revenue,
-            filled: true,
-            icon: 'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 20.25z',
-        },
-        {
-            key: 'laba',
-            label: 'Laba Bersih Hari Ini',
-            value: <CountUp value={today.net_profit} format={fmt} />,
-            sub: <span className="text-[10px] text-gray-400">Periode: {fmt(period?.net_profit ?? 0)}</span>,
-            growth: today.growth.net_profit,
-            filled: true,
-            icon: 'M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
-        },
-        {
-            key: 'order',
-            label: 'Total Order',
-            value: <CountUp value={today.orders} />,
-            growth: today.growth.orders,
-            filled: false,
-            icon: 'M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12A1.125 1.125 0 0119.75 21.75H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z',
-        },
-        {
-            key: 'kirim',
-            label: 'Pengiriman',
-            value: <CountUp value={today.shipped} />,
-            growth: today.growth.shipped,
-            filled: false,
-            icon: 'M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-6',
-        },
-    ];
-
-    return (
-        <AppLayout>
-            <Head title="Dashboard" />
-
-            <div className="space-y-5">
-                {/* Header — pemilih channel, judul, ringkasan periode */}
-                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 anim-fade-down">
-                    <div className="flex items-center gap-4">
-                        {/* Pemilih channel/toko */}
-                        <div className="relative">
-                            <select
-                                value={channel}
-                                onChange={(e) => { setChannel(e.target.value); navigate({ channel: e.target.value || undefined }); }}
-                                className="appearance-none pl-4 pr-10 py-2.5 rounded-2xl bg-white border border-gray-200 text-sm font-bold text-gray-900 shadow-sm hover:border-teal-300 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 focus:outline-none transition-all cursor-pointer"
-                            >
-                                <option value="">Semua Channel</option>
-                                {metrics.channels.map(c => (
-                                    <option key={c} value={c}>{CHANNEL_LABELS[c] ?? c}</option>
-                                ))}
-                            </select>
-                            <span className="absolute left-4 -top-2 px-1 bg-white text-[9px] font-bold uppercase tracking-wider text-gray-400">
-                                Channel
-                            </span>
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
-                                className="w-4 h-4 text-gray-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                            </svg>
-                        </div>
-
-                        <div>
-                            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Performa Hari Ini</h1>
-                            <p className="text-gray-500 text-xs mt-1">
-                                {new Date(today.date).toLocaleDateString('id-ID', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Ringkasan laporan */}
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[11px] font-semibold text-gray-400 hidden sm:inline">Ringkasan Laporan</span>
-
-                        <div className="flex items-center gap-1 bg-white border border-gray-200 p-1.5 rounded-2xl shadow-sm">
-                            {['today', 'this_week', 'this_month', 'this_year'].map(r => (
-                                <button
-                                    key={r}
-                                    onClick={() => { setSelectedRange(r); navigate({ range: r }); }}
-                                    className={`px-3 py-1.5 text-xs rounded-xl font-semibold transition-all duration-150 ${
-                                        selectedRange === r
-                                            ? 'bg-gradient-to-r from-teal-600 to-cyan-600 text-white shadow-md shadow-teal-200/50'
-                                            : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
-                                    }`}
-                                >
-                                    {RANGE_LABELS[r]}
-                                </button>
-                            ))}
-                        </div>
-
-                        <button
-                            onClick={refresh}
-                            disabled={refreshing}
-                            title="Muat ulang data"
-                            className="p-2.5 rounded-2xl bg-white border border-gray-200 text-gray-500 hover:text-teal-600 hover:border-teal-300 transition-all shadow-sm disabled:opacity-60"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
-                                className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992V4.356m-.001 0v4.99m0-4.99a48.417 48.417 0 00-15.919 4.5A8.967 8.967 0 003 12c0 4.97 4.03 9 9 9a8.967 8.967 0 006.362-2.639M4.031 9.865a8.967 8.967 0 00-.53 3.135" />
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-
-                {/* KPI hari ini */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-                    {kpis.map((kpi, index) => (
-                        <div
-                            key={kpi.key}
-                            className={`anim-fade-up anim-d${index + 1} relative overflow-hidden rounded-2xl p-5 transition-all duration-200 hover:-translate-y-0.5 ${
-                                kpi.filled
-                                    ? 'bg-gradient-to-br from-teal-500 via-teal-500 to-emerald-500 shadow-lg shadow-teal-200/50'
-                                    : 'bg-white border border-gray-200 shadow-sm hover:border-teal-300 hover:shadow-md'
-                            }`}
-                        >
-                            {kpi.filled && <div className="absolute -right-10 -top-12 w-40 h-40 rounded-full bg-white/15 blur-2xl pointer-events-none" />}
-
-                            <div className="relative flex items-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor"
-                                    className={`w-4 h-4 ${kpi.filled ? 'text-white/80' : 'text-teal-500'}`}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d={kpi.icon} />
-                                </svg>
-                                <span className={`text-[11px] font-bold uppercase tracking-wider ${kpi.filled ? 'text-white/85' : 'text-gray-400'}`}>
-                                    {kpi.label}
-                                </span>
-                            </div>
-
-                            <p className={`relative text-[26px] leading-tight font-bold font-mono tracking-tight mt-3 ${
-                                kpi.filled ? 'text-white' : 'text-gray-900'
-                            }`}>
-                                {kpi.value}
-                            </p>
-
-                            <div className="relative mt-2">
-                                <GrowthNote value={kpi.growth} tone={kpi.filled ? 'dark' : 'light'} />
-                            </div>
-                        </div>
-                    ))}
-                </div>
-
-                {/* Profit Funnel */}
-                <div className="anim-fade-up anim-d2 bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                        <div>
-                            <h2 className="text-sm font-bold text-gray-900 tracking-tight">Profit Funnel</h2>
-                            <p className="text-[11px] text-gray-400 mt-0.5">
-                                {RANGE_LABELS[selectedRange]} · {fmtDate(metrics.date_from)} – {fmtDate(metrics.date_to)}
-                            </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span className={`px-3 py-1 rounded-full text-xs font-bold ${funnel.margin >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-                                Margin {funnel.margin.toLocaleString('id-ID', { maximumFractionDigits: 1 })}%
-                            </span>
-                            <span className="px-3 py-1 rounded-full bg-teal-50 text-teal-700 text-xs font-bold">
-                                Laba Bersih {fmtCompact(funnel.net_profit)}
-                            </span>
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col lg:flex-row lg:items-stretch gap-2 lg:gap-0">
-                        {funnelSteps.map((step, index) => (
-                            <div
-                                key={step.label}
-                                style={{
-                                    clipPath: index === 0
-                                        ? 'polygon(0 0, calc(100% - 20px) 0, 100% 50%, calc(100% - 20px) 100%, 0 100%)'
-                                        : 'polygon(0 0, calc(100% - 20px) 0, 100% 50%, calc(100% - 20px) 100%, 0 100%, 20px 50%)',
-                                    marginLeft: index === 0 ? 0 : '-14px',
-                                }}
-                                className={`group relative min-w-0 ${step.width} bg-gradient-to-br ${step.gradient}
-                                    pl-8 pr-9 py-4 text-white transition-all duration-200 hover:brightness-110 cursor-default`}
-                            >
-                                <p className="text-[10px] font-bold uppercase tracking-wider text-white/75 truncate">{step.label}</p>
-                                <p className="text-lg font-bold font-mono tracking-tight mt-1 truncate" title={fmt(step.value)}>
-                                    {fmtCompact(step.value)}
-                                </p>
-                                {funnel.revenue > 0 && (
-                                    <p className="text-[10px] text-white/70 mt-0.5">
-                                        {((Math.abs(step.value) / funnel.revenue) * 100).toLocaleString('id-ID', { maximumFractionDigits: 1 })}% dari omset
-                                    </p>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Produk Paling Menguntungkan */}
-                <div className="anim-fade-up anim-d3 bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                    <div className="flex justify-between items-center mb-4">
-                        <div>
-                            <h2 className="text-sm font-bold text-gray-900 tracking-tight">Produk Paling Menguntungkan</h2>
-                            <p className="text-[11px] text-gray-400 mt-0.5">Laba = omset item − modal · {RANGE_LABELS[selectedRange]}</p>
-                        </div>
-                        <Link href="/reports/product-velocity" className="text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors">
-                            Analisis produk →
-                        </Link>
-                    </div>
-
-                    {topProducts.length === 0 ? (
-                        <p className="text-gray-400 text-xs text-center py-12">Belum ada penjualan produk pada periode ini.</p>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                            {topProducts.map((product, index) => (
-                                <div
-                                    key={product.product_id}
-                                    className="group flex items-center gap-3 rounded-xl border border-gray-100 hover:border-teal-300 bg-gray-50/70 hover:bg-white px-3.5 py-3 transition-all duration-200"
-                                >
-                                    <span className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold ${
-                                        index === 0
-                                            ? 'bg-gradient-to-br from-teal-500 to-emerald-500 text-white'
-                                            : 'bg-white border border-gray-200 text-gray-500 group-hover:border-teal-200 group-hover:text-teal-600'
-                                    }`}>
-                                        {index + 1}
-                                    </span>
-
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-xs font-semibold text-gray-800 truncate" title={product.name}>
-                                            {product.name}
-                                        </p>
-                                        <div className="w-full h-1.5 bg-gray-200/70 rounded-full overflow-hidden mt-1.5">
-                                            <div
-                                                style={{ width: `${Math.max(4, Math.round((Math.abs(product.profit) / maxProfit) * 100))}%` }}
-                                                className="h-full bg-gradient-to-r from-teal-500 to-emerald-400 rounded-full transition-all duration-500"
-                                            />
-                                        </div>
-                                        <p className="text-[10px] text-gray-400 font-mono mt-1 truncate">
-                                            {product.sku ?? '—'} · {product.qty} pcs · omset {fmtCompact(product.revenue)}
-                                        </p>
-                                    </div>
-
-                                    <span className={`shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold font-mono ${
-                                        product.profit >= 0 ? 'bg-teal-50 text-teal-700' : 'bg-rose-50 text-rose-600'
-                                    }`}>
-                                        {fmtCompact(product.profit)}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-                {/* Penjualan per channel — grafik garis */}
-                <div className="anim-fade-up anim-d4 bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                    <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-                        <div>
-                            <h2 className="text-sm font-bold text-gray-900 tracking-tight">Penjualan per Channel</h2>
-                            <p className="text-[11px] text-gray-400 mt-0.5">
-                                Omset harian tiap channel · klik legenda untuk menyembunyikan garis
-                            </p>
-                        </div>
-                        <Link href="/reports/sales" className="text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors">
-                            Laporan lengkap →
-                        </Link>
-                    </div>
-
-                    <LineChart
-                        labels={metrics.channel_trend.dates}
-                        series={metrics.channel_trend.series.map(item => ({
-                            key: item.channel,
-                            label: CHANNEL_LABELS[item.channel] ?? item.channel,
-                            values: item.points,
-                        }))}
-                        formatValue={fmtCompact}
-                        formatLabel={fmtDate}
-                    />
-                </div>
-
-                {/* Ringkasan operasional */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                    {[
-                        {
-                            label: 'Piutang Customer',
-                            value: fmtCompact(metrics.financial.total_receivables),
-                            note: `${metrics.financial.unpaid_invoices_count} invoice belum lunas`,
-                            accent: 'text-gray-900',
-                            href: '/invoices',
-                        },
-                        {
-                            label: 'Saldo Kas & Bank',
-                            value: fmtCompact(metrics.financial.total_cash_balance),
-                            note: `Utang pabrik ${fmtCompact(metrics.financial.total_payables)}`,
-                            accent: 'text-teal-600',
-                            href: '/cash-bank/accounts',
-                        },
-                        {
-                            label: 'Stok Tersedia',
-                            value: `${metrics.inventory.available_stock.toLocaleString('id-ID')} unit`,
-                            note: `${metrics.inventory.low_stock_count} SKU menipis`,
-                            accent: 'text-gray-900',
-                            href: '/stock-movements',
-                        },
-                        {
-                            label: 'Order Marketplace',
-                            value: `${metrics.marketplace.total_orders} order`,
-                            note: `${metrics.marketplace.shipped_count} sudah dikirim`,
-                            accent: 'text-gray-900',
-                            href: '/marketplace/orders',
-                        },
-                    ].map(card => (
-                        <Link
-                            key={card.label}
-                            href={card.href}
-                            className="rounded-2xl bg-white border border-gray-200 p-5 shadow-sm hover:border-teal-300 hover:shadow-md transition-all duration-200 hover:-translate-y-0.5"
-                        >
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{card.label}</p>
-                            <p className={`text-lg font-bold font-mono tracking-tight mt-2 ${card.accent}`}>{card.value}</p>
-                            <p className="text-[11px] text-gray-400 mt-2 pt-2 border-t border-gray-100">{card.note}</p>
-                        </Link>
-                    ))}
-                </div>
-            </div>
-        </AppLayout>
+  const handleSelectRange = (rangeKey: string) => {
+    if (rangeKey === 'custom') {
+      setIsCalendarOpen((prev) => !prev);
+      return;
+    }
+    setIsCalendarOpen(false);
+    setActiveRange(rangeKey);
+    router.get(
+      '/dashboard',
+      { range: rangeKey },
+      { preserveScroll: true, preserveState: true }
     );
+  };
+
+  const handleApplyRangePicker = (start: string, end: string) => {
+    setActiveRange('custom');
+    setIsCalendarOpen(false);
+    router.get(
+      '/dashboard',
+      {
+        range: 'custom',
+        date_from: start,
+        date_to: end,
+      },
+      { preserveScroll: true, preserveState: true }
+    );
+  };
+
+  const handleResetFilter = () => {
+    setActiveRange('all');
+    setIsCalendarOpen(false);
+    router.get('/dashboard', { range: 'all' }, { preserveScroll: true, preserveState: true });
+  };
+
+  // Max count for daily trend visual chart
+  const maxTrendCount = Math.max(...dailyTrend.map((t) => t.order_count), 1);
+
+  // Total orders in period for percentages
+  const periodTotal = periodStats?.totalOrders || 1;
+
+  return (
+    <AppLayout>
+      <Head title="Executive Dashboard - Koding ERP" />
+
+      <div className="space-y-6 max-w-7xl mx-auto pb-10">
+        {/* Welcome & Role Header */}
+        <div className="bg-gradient-to-r from-[#070D1E] via-[#0B132B] to-[#132043] rounded-2xl p-6 sm:p-8 text-white shadow-lg relative overflow-hidden border border-slate-800">
+          <div className="absolute right-0 top-0 bottom-0 w-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+                  Selamat Datang, {user?.name ?? 'User'}
+                </h1>
+                {isManagement ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Akses Eksekutif (Read-Only)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                    {user?.role?.name ?? 'Administrator'}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs sm:text-sm text-slate-300 mt-2 max-w-2xl leading-relaxed">
+                {isManagement
+                  ? 'Panel analitik manajemen untuk monitoring performa penjualan harian, omzet toko, kendala stok, dan pergerakan logistik.'
+                  : 'Dashboard terpadu operasional dan cut off order. Pantau status harian dan kelola pesanan dengan cepat.'}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <Link
+                href="/cut-off-orders"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs tracking-wide shadow-md transition-all active:scale-95"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
+                </svg>
+                Buka Data Pesanan Cut Off
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* Realtime Live Highlight: PENJUALAN HARI INI */}
+        <div className="bg-white border-2 border-slate-900/10 rounded-2xl p-5 sm:p-6 shadow-sm relative overflow-hidden bg-gradient-to-br from-white via-slate-50/50 to-blue-50/20">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+            <div className="flex items-center gap-2.5">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+              </span>
+              <div>
+                <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                  Live Monitoring: Penjualan Hari Ini
+                  <span className="text-[11px] font-normal normal-case text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                    {formatDateIndo(todayStats?.date)}
+                  </span>
+                </h2>
+              </div>
+            </div>
+
+            <Link
+              href={`/cut-off-orders?date_from=${todayStats?.date}&date_to=${todayStats?.date}`}
+              className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 self-start sm:self-auto transition-colors"
+            >
+              Rincian Pesanan Hari Ini ({todayStats?.orders ?? 0}) &rarr;
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
+            {/* Today Orders */}
+            <div className="p-3.5 rounded-xl bg-white border border-slate-100 shadow-xs">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                Pesanan Masuk
+              </span>
+              <p className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">
+                {(todayStats?.orders ?? 0).toLocaleString('id-ID')}
+              </p>
+              <span className="text-[11px] text-slate-500 mt-0.5 block">
+                Update transaksi tanggal berjalan
+              </span>
+            </div>
+
+            {/* Today Income */}
+            <div className="p-3.5 rounded-xl bg-white border border-slate-100 shadow-xs">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                Est. Pendapatan Bersih
+              </span>
+              <p className="text-xl sm:text-2xl font-extrabold text-emerald-600 mt-1 truncate">
+                {formatRupiah(todayStats?.estNetIncome)}
+              </p>
+              <span className="text-[11px] text-emerald-700/80 mt-0.5 block font-medium">
+                Pencairan: {formatRupiah(todayStats?.netPayout)}
+              </span>
+            </div>
+
+            {/* Today OOS / RJ Issues */}
+            <div className="p-3.5 rounded-xl bg-white border border-slate-100 shadow-xs">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                Kendala Gudang / Retur
+              </span>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-xl sm:text-2xl font-extrabold text-rose-600">
+                  {todayStats?.oos ?? 0}
+                </span>
+                <span className="text-xs text-slate-400 font-bold">OOS</span>
+                <span className="text-slate-300">•</span>
+                <span className="text-xl sm:text-2xl font-extrabold text-amber-600">
+                  {todayStats?.rj ?? 0}
+                </span>
+                <span className="text-xs text-slate-400 font-bold">Retur</span>
+              </div>
+              <span className="text-[11px] text-slate-500 mt-0.5 block">
+                {todayStats?.oos === 0 && todayStats?.rj === 0 ? 'Semua pesanan aman' : 'Perlu perhatian tim'}
+              </span>
+            </div>
+
+            {/* Today DPP */}
+            <div className="p-3.5 rounded-xl bg-white border border-slate-100 shadow-xs">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                No. DPP Terbit
+              </span>
+              <p className="text-2xl sm:text-3xl font-extrabold text-blue-700 mt-1">
+                {(todayStats?.dpp ?? 0).toLocaleString('id-ID')}
+              </p>
+              <span className="text-[11px] text-slate-500 mt-0.5 block">
+                Klaim pencairan diproses
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Custom Date Filter Section */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-slate-500">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+              </svg>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                Filter Periode Analitik:
+              </span>
+              {filters.range === 'custom' && filters.date_from && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
+                  {formatDateIndo(filters.date_from)} s/d {formatDateIndo(filters.date_to)}
+                </span>
+              )}
+            </div>
+
+            {(filters.range !== 'all' || filters.date_from) && (
+              <button
+                onClick={handleResetFilter}
+                className="text-xs text-rose-600 hover:text-rose-800 font-semibold self-start md:self-auto flex items-center gap-1 cursor-pointer"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Reset ke Semua Waktu
+              </button>
+            )}
+          </div>
+
+          {/* Preset Buttons & Dual Calendar Popover */}
+          <div className="relative flex items-center gap-2 flex-wrap">
+            {rangePresets.map((preset) => {
+              const isActive = activeRange === preset.key;
+
+              if (preset.key === 'custom') {
+                const hasCustomDate = filters.range === 'custom' && filters.date_from;
+                return (
+                  <div key={preset.key} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectRange('custom')}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        isActive
+                          ? 'bg-[#EA3829] text-white shadow-xs'
+                          : isCalendarOpen
+                          ? 'bg-slate-800 text-white shadow-xs'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                      </svg>
+                      {hasCustomDate
+                        ? `${formatDateIndo(filters.date_from)} – ${formatDateIndo(filters.date_to)}`
+                        : 'Kustom Tanggal'}
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                        stroke="currentColor"
+                        className={`w-3 h-3 transition-transform ${isCalendarOpen ? 'rotate-180' : ''}`}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                      </svg>
+                    </button>
+
+                    {/* Dual Month Calendar Popover matching reference screenshot */}
+                    <DualCalendarRangePicker
+                      initialStartDate={filters.date_from || undefined}
+                      initialEndDate={filters.date_to || undefined}
+                      maxDate={todayStats?.date || undefined}
+                      isOpen={isCalendarOpen}
+                      onClose={() => setIsCalendarOpen(false)}
+                      onApply={handleApplyRangePicker}
+                    />
+                  </div>
+                );
+              }
+
+              return (
+                <button
+                  key={preset.key}
+                  onClick={() => handleSelectRange(preset.key)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-[#0B132B] text-white shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 4 Main Cut Off Live Metric Cards for Selected Period */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Card 1: Total Orders */}
+          <Link
+            href="/cut-off-orders"
+            className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs hover:border-[#0B132B] hover:shadow-md transition-all group"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 group-hover:text-slate-900 transition-colors">
+                Total Pesanan
+              </span>
+              <span className="p-2 bg-blue-50 text-blue-700 rounded-xl group-hover:bg-[#0B132B] group-hover:text-white transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
+                </svg>
+              </span>
+            </div>
+            <div className="mt-3">
+              <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
+                {periodStats.totalOrders.toLocaleString('id-ID')}
+              </span>
+              <p className="text-xs text-blue-600 mt-1 flex items-center gap-1 font-semibold">
+                Buka Data Pesanan &rarr;
+              </p>
+            </div>
+          </Link>
+
+          {/* Card 2: Est Net Income */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs hover:border-emerald-400 hover:shadow-md transition-all">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Est. Pendapatan Bersih
+              </span>
+              <span className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+                </svg>
+              </span>
+            </div>
+            <div className="mt-3">
+              <span className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight truncate block">
+                {formatRupiah(periodStats.estNetIncome)}
+              </span>
+              <p className="text-xs text-emerald-600 font-semibold mt-1">
+                Pencairan Marketplace: {formatRupiah(periodStats.netPayout)}
+              </p>
+            </div>
+          </div>
+
+          {/* Card 3: Stok Habis (OOS) */}
+          <Link
+            href="/cut-off-orders?info_gudang=oos"
+            className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs hover:border-rose-400 hover:shadow-md transition-all group"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 group-hover:text-rose-600 transition-colors">
+                Stok Habis (OOS)
+              </span>
+              <span className="p-2 bg-rose-50 text-rose-600 rounded-xl group-hover:bg-rose-600 group-hover:text-white transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+              </span>
+            </div>
+            <div className="mt-3">
+              <span className="text-3xl font-extrabold text-rose-600 tracking-tight">
+                {periodStats.totalOos.toLocaleString('id-ID')}
+              </span>
+              <p className="text-xs text-slate-500 mt-1">
+                {((periodStats.totalOos / periodTotal) * 100).toFixed(1)}% dari total pesanan
+              </p>
+            </div>
+          </Link>
+
+          {/* Card 4: Retur Jual (RJ) */}
+          <Link
+            href="/cut-off-orders?order_status=rj"
+            className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs hover:border-amber-400 hover:shadow-md transition-all group"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 group-hover:text-amber-600 transition-colors">
+                Retur Jual (RJ)
+              </span>
+              <span className="p-2 bg-amber-50 text-amber-600 rounded-xl group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+                </svg>
+              </span>
+            </div>
+            <div className="mt-3">
+              <span className="text-3xl font-extrabold text-amber-600 tracking-tight">
+                {periodStats.totalRj.toLocaleString('id-ID')}
+              </span>
+              <p className="text-xs text-slate-500 mt-1">
+                {periodStats.totalDpp.toLocaleString('id-ID')} pesanan ber-DPP
+              </p>
+            </div>
+          </Link>
+        </div>
+
+        {/* Visual Daily Sales Trend Chart (14 Hari) */}
+        {dailyTrend.length > 0 && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                  Tren Volume & Penjualan Harian
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Grafik riwayat volume pesanan dalam 14 hari terakhir. Arahkan kursor pada batang untuk melihat nominal.
+                </p>
+              </div>
+
+              {hoveredTrend && (
+                <div className="text-xs bg-slate-900 text-white px-3 py-1.5 rounded-lg font-mono">
+                  <span className="text-slate-300">{formatDateIndo(hoveredTrend.date)}: </span>
+                  <strong className="text-emerald-400">{hoveredTrend.order_count} pesanan</strong>
+                  <span className="text-slate-400"> ({formatRupiah(hoveredTrend.total_income)})</span>
+                </div>
+              )}
+            </div>
+
+            {/* Custom Bar Chart Visual */}
+            <div className="pt-4 pb-2">
+              <div className="flex items-end gap-2 h-44 border-b border-slate-200 px-2">
+                {dailyTrend.map((item, idx) => {
+                  const heightPercent = Math.max(Math.round((item.order_count / maxTrendCount) * 100), 8);
+                  const isHovered = hoveredTrend?.date === item.date;
+
+                  return (
+                    <div
+                      key={idx}
+                      className="flex-1 flex flex-col items-center h-full justify-end group cursor-pointer relative"
+                      onMouseEnter={() => setHoveredTrend(item)}
+                      onMouseLeave={() => setHoveredTrend(null)}
+                    >
+                      {/* Tooltip on hover */}
+                      {isHovered && (
+                        <div className="absolute -top-12 z-20 bg-slate-900 text-white text-[10px] py-1 px-2 rounded-md shadow-lg whitespace-nowrap pointer-events-none">
+                          <p className="font-bold">{item.order_count} pesanan</p>
+                          <p className="text-emerald-300">{formatRupiah(item.total_income)}</p>
+                        </div>
+                      )}
+
+                      {/* Bar */}
+                      <div
+                        style={{ height: `${heightPercent}%` }}
+                        className={`w-full rounded-t-lg transition-all duration-200 ${
+                          isHovered
+                            ? 'bg-[#0B132B] shadow-md scale-y-105'
+                            : 'bg-gradient-to-t from-blue-700 to-blue-500 hover:from-blue-800 hover:to-blue-600'
+                        }`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* X Axis Labels */}
+              <div className="flex items-center gap-2 px-2 pt-2 text-[10px] text-slate-400 font-mono">
+                {dailyTrend.map((item, idx) => {
+                  const day = item.date.split('-')[2];
+                  return (
+                    <div key={idx} className="flex-1 text-center truncate">
+                      {day}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Breakdown Toko & Kurir (Two Column) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Marketplace / Channel Breakdown */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                  Performa Toko & Marketplace
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Distribusi pesanan & omzet per channel penjualan
+                </p>
+              </div>
+              <Link
+                href="/cut-off-orders"
+                className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+              >
+                Lihat Semua &rarr;
+              </Link>
+            </div>
+
+            <div className="space-y-3">
+              {channelBreakdown.length === 0 ? (
+                <p className="text-xs text-slate-400 py-6 text-center">Tidak ada data channel pada periode ini.</p>
+              ) : (
+                channelBreakdown.map((item) => {
+                  const pct = Math.round((item.count / periodTotal) * 100);
+                  return (
+                    <Link
+                      key={item.channel}
+                      href={`/cut-off-orders?channel=${item.channel}`}
+                      className="block p-3.5 rounded-xl border border-slate-100 hover:border-slate-300 hover:bg-slate-50/70 transition-all group"
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold px-2 py-0.5 rounded bg-[#0B132B] text-white text-[11px]">
+                            {item.channel}
+                          </span>
+                          <span className="font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">
+                            {item.count.toLocaleString('id-ID')} pesanan
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-bold text-slate-900 block">
+                            {formatRupiah(item.total_income)}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            {pct}% kontribusi
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Progress bar */}
+                      <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                          style={{ width: `${Math.min(pct, 100)}%` }}
+                        />
+                      </div>
+                    </Link>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Courier Breakdown */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                  Performa Jasa Pengiriman (Kurir)
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Volume pesanan berdasarkan kurir dan ekspedisi
+                </p>
+              </div>
+              <Link
+                href="/cut-off-orders"
+                className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+              >
+                Filter Kurir &rarr;
+              </Link>
+            </div>
+
+            <div className="space-y-3">
+              {courierBreakdown.length === 0 ? (
+                <p className="text-xs text-slate-400 py-6 text-center">Tidak ada data kurir pada periode ini.</p>
+              ) : (
+                courierBreakdown.map((item) => {
+                  const pct = Math.round((item.count / periodTotal) * 100);
+                  return (
+                    <Link
+                      key={item.shipping_courier}
+                      href={`/cut-off-orders?shipping_courier=${encodeURIComponent(item.shipping_courier)}`}
+                      className="block p-3.5 rounded-xl border border-slate-100 hover:border-slate-300 hover:bg-slate-50/70 transition-all group"
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="truncate max-w-[200px] sm:max-w-xs">
+                          <span className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors block truncate">
+                            {item.shipping_courier}
+                          </span>
+                          <span className="text-[11px] text-slate-500">
+                            {item.count.toLocaleString('id-ID')} paket terkirim
+                          </span>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <span className="font-bold text-slate-900 block">
+                            {formatRupiah(item.total_income)}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            {pct}% volume
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Progress bar */}
+                      <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="bg-indigo-600 h-1.5 rounded-full transition-all duration-300"
+                          style={{ width: `${Math.min(pct, 100)}%` }}
+                        />
+                      </div>
+                    </Link>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Live Activity Stream / Pesanan Terkini */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                Pesanan Terkini (Live Feed)
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Monitoring transaksi cut off terbaru yang masuk ke dalam sistem
+              </p>
+            </div>
+            <Link
+              href="/cut-off-orders"
+              className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+            >
+              Buka Semua di Cut Off Order &rarr;
+            </Link>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-700">
+              <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-y border-slate-200">
+                <tr>
+                  <th className="py-2.5 px-3">Tgl & Toko</th>
+                  <th className="py-2.5 px-3">No. Pesanan</th>
+                  <th className="py-2.5 px-3">Pembeli & Kurir</th>
+                  <th className="py-2.5 px-3">Status Pesanan</th>
+                  <th className="py-2.5 px-3 text-right">Est. Pendapatan</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {recentOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-6 text-center text-slate-400">
+                      Belum ada data transaksi cut off.
+                    </td>
+                  </tr>
+                ) : (
+                  recentOrders.map((ord) => {
+                    const isOos = ord.info_gudang?.toUpperCase().includes('OOS');
+                    const isRj =
+                      ord.order_status?.toUpperCase().includes('RJ') ||
+                      ord.order_status?.toUpperCase().includes('RETUR');
+
+                    return (
+                      <tr key={ord.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3 px-3">
+                          <div className="font-semibold text-slate-900">
+                            {formatDateIndo(ord.order_date)}
+                          </div>
+                          <span className="inline-block mt-0.5 px-1.5 py-0.5 text-[10px] font-extrabold rounded bg-[#0B132B] text-white">
+                            {ord.channel}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="font-mono font-medium text-slate-900 block">
+                            {ord.order_number}
+                          </span>
+                          {ord.dpp_number && (
+                            <span className="text-[10px] font-mono text-blue-700 bg-blue-50 px-1 py-0.5 rounded border border-blue-200 mt-0.5 inline-block">
+                              DPP: {ord.dpp_number}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="font-medium text-slate-900 block truncate max-w-[150px]">
+                            {ord.buyer_username || '-'}
+                          </span>
+                          <span className="text-[11px] text-slate-500 block truncate max-w-[180px]">
+                            {ord.shipping_courier || '-'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          {isOos ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                              OOS (Habis)
+                            </span>
+                          ) : isRj ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                              Retur Jual
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              {ord.order_status || 'Normal'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <span className="font-bold text-slate-900 block">
+                            {formatRupiah(ord.est_net_income)}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </AppLayout>
+  );
 }

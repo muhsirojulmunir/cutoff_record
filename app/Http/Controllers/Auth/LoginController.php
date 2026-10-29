@@ -24,25 +24,39 @@ class LoginController extends Controller
      */
     public function login(Request $request): RedirectResponse
     {
-        $credentials = $request->validate([
-            'email'    => ['required', 'email'],
-            'password' => ['required'],
+        $request->validate([
+            'username' => ['required', 'string'],
+            'password' => ['required', 'string'],
         ]);
 
+        $username = trim($request->input('username'));
+        $password = $request->input('password');
         $remember = $request->boolean('remember');
 
-        if (!Auth::attempt($credentials, $remember)) {
+        // Cek login via username (pada kolom email)
+        $attempt = Auth::attempt(['email' => $username, 'password' => $password], $remember);
+
+        if (!$attempt) {
+            if (!str_contains($username, '@')) {
+                $attempt = Auth::attempt(['email' => $username . '@company.com', 'password' => $password], $remember);
+            } else {
+                $stripped = explode('@', $username)[0];
+                $attempt = Auth::attempt(['email' => $stripped, 'password' => $password], $remember);
+            }
+        }
+
+        if (!$attempt) {
             return back()->withErrors([
-                'email' => 'Email atau password yang Anda masukkan tidak sesuai.',
-            ])->onlyInput('email');
+                'username' => 'Username atau password yang Anda masukkan tidak sesuai.',
+            ])->onlyInput('username');
         }
 
         // Block inactive accounts
         if (!Auth::user()->isActive()) {
             Auth::logout();
             return back()->withErrors([
-                'email' => 'Akun Anda telah dinonaktifkan. Hubungi administrator.',
-            ])->onlyInput('email');
+                'username' => 'Akun Anda telah dinonaktifkan. Hubungi administrator.',
+            ])->onlyInput('username');
         }
 
         $request->session()->regenerate();
