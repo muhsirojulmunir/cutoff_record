@@ -22,7 +22,7 @@ class UserRequest extends FormRequest
             // User yang sudah dihapus tidak ikut dihitung supaya emailnya
             // bisa didaftarkan lagi; controller memulihkan akun lamanya.
             'email'    => [
-                'required', 'email', 'max:150',
+                'required', 'string', 'max:150',
                 Rule::unique('users', 'email')->ignore($userId)->whereNull('deleted_at'),
             ],
             'password' => $userId

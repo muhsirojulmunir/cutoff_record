@@ -46,4 +46,8 @@ return [
         'root_folder' => env('GOOGLE_DRIVE_ROOT_FOLDER'),
     ],
 
+    'shopee' => [
+        'host' => env('SHOPEE_API_HOST', 'https://partner.shopeemobile.com'),
+    ],
+
 ];
