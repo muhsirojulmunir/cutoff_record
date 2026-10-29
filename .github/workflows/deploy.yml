@@ -17,7 +17,7 @@ jobs:
       - name: ⚙️ Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3'
+          php-version: '8.4'
           extensions: mbstring, xml, ctype, iconv, pdo_mysql, bcmath, curl, zip, fileinfo
           coverage: none
 
@@ -25,7 +25,7 @@ jobs:
         run: cp .env.example .env
 
       - name: 📦 Install Composer Dependencies
-        run: composer install --no-dev --optimize-autoloader --prefer-dist --no-interaction --no-scripts
+        run: composer install --no-dev --optimize-autoloader --prefer-dist --no-interaction --no-scripts --ignore-platform-reqs
 
       - name: ⚙️ Setup Node.js
         uses: actions/setup-node@v4
