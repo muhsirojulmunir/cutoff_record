@@ -75,18 +75,6 @@ export default function Login() {
       {/* Panel kanan — Form Putih Bersih dengan Aksen Biru Navy */}
       <div className="flex-1 flex items-center justify-center p-6 sm:p-10 bg-white">
         <div className="w-full max-w-[400px]">
-          {/* Logo Mobile */}
-          <div className="flex lg:hidden items-center gap-3 mb-8 anim-fade-down">
-            <div className="h-10 w-10 rounded-xl bg-[#0B132B] flex items-center justify-center shadow-md shadow-black/20">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-white">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
-              </svg>
-            </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-slate-900 text-base tracking-wide">KODING APP</span>
-              <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Core Platform</span>
-            </div>
-          </div>
 
           {/* Heading */}
           <div className="mb-8 anim-fade-up anim-d1">
