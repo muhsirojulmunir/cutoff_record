@@ -34,7 +34,7 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans">
       {/* Panel kiri — Deep Navy Branding (#0B132B) */}
-      <div className="hidden lg:flex lg:w-[46%] xl:w-5/12 flex-col justify-between p-12 xl:p-14 bg-gradient-to-br from-[#070D1E] via-[#0B132B] to-[#132043] relative overflow-hidden text-white shadow-2xl">
+      <div className="hidden lg:flex lg:w-[46%] xl:w-5/12 flex-col justify-center p-12 xl:p-14 bg-gradient-to-br from-[#070D1E] via-[#0B132B] to-[#132043] relative overflow-hidden text-white shadow-2xl">
         {/* Ornamen latar Navy Glow */}
         <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
         <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-indigo-600/10 rounded-full blur-3xl translate-x-1/4 translate-y-1/4 pointer-events-none" />
@@ -67,7 +67,7 @@ export default function Login() {
           </div>
         </div>
 
-        <p className="text-slate-400 text-xs relative z-10 anim-fade-in anim-d6">
+        <p className="text-slate-400 text-xs absolute bottom-10 left-12 xl:left-14 z-10 anim-fade-in anim-d6">
           Sistem internal terproteksi &bull; Hak Cipta dilindungi.
         </p>
       </div>
