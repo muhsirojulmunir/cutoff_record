@@ -7,25 +7,12 @@ on:
 
 jobs:
   deploy:
-    name: Build & Deploy
+    name: Build & Deploy Kilat
     runs-on: ubuntu-latest
 
     steps:
       - name: 🚚 Checkout Repository
         uses: actions/checkout@v4
-
-      - name: ⚙️ Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.4'
-          extensions: mbstring, xml, ctype, iconv, pdo_mysql, bcmath, curl, zip, fileinfo
-          coverage: none
-
-      - name: 📄 Copy Environment File
-        run: cp .env.example .env
-
-      - name: 📦 Install Composer Dependencies
-        run: composer install --no-dev --optimize-autoloader --prefer-dist --no-interaction --no-scripts --ignore-platform-reqs
 
       - name: ⚙️ Setup Node.js
         uses: actions/setup-node@v4
@@ -38,7 +25,7 @@ jobs:
           npm ci
           npm run build
 
-      - name: 🚀 Sync Files to cPanel via FTP
+      - name: 🚀 Sync Files ke cPanel via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -51,6 +38,7 @@ jobs:
             **/.git*
             **/.git*/**
             **/node_modules/**
+            vendor/**
             .env
             .env.*
             tests/**
