@@ -39,19 +39,6 @@ export default function Login() {
         <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
         <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-indigo-600/10 rounded-full blur-3xl translate-x-1/4 translate-y-1/4 pointer-events-none" />
 
-        {/* Wordmark */}
-        <div className="flex items-center gap-3 relative z-10 anim-fade-down">
-          <div className="h-10 w-10 rounded-xl bg-[#1C2D5A] border border-blue-400/30 flex items-center justify-center shadow-lg shadow-black/40">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-blue-200">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
-            </svg>
-          </div>
-          <div className="flex flex-col">
-            <span className="font-bold text-lg text-white tracking-wide">KODING APP</span>
-            <span className="text-[10px] text-blue-300 uppercase tracking-widest font-semibold">Core Platform</span>
-          </div>
-        </div>
-
         {/* Hero content */}
         <div className="relative z-10 space-y-9">
           <div className="space-y-4">
