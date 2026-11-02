@@ -158,6 +158,48 @@ class ShopeeSyncService
     }
 
     /**
+     * Get Shop Info from Shopee API v2 to verify credentials and shop status.
+     */
+    public function getShopInfo(ShopeeAccount $account): array
+    {
+        $path        = '/api/v2/shop/get_shop_info';
+        $timestamp   = time();
+        $accessToken = (string) ($account->access_token ?? '');
+        $shopId      = (int) $account->shop_id;
+        $partnerId   = (int) $account->partner_id;
+        $partnerKey  = (string) $account->partner_key;
+
+        $baseStr = sprintf('%s%s%s%s%s', $partnerId, $path, $timestamp, $accessToken, $shopId);
+        $sign    = hash_hmac('sha256', $baseStr, $partnerKey);
+
+        $queryParams = [
+            'partner_id'   => $partnerId,
+            'timestamp'    => $timestamp,
+            'sign'         => $sign,
+            'access_token' => $accessToken,
+            'shop_id'      => $shopId,
+        ];
+
+        $url = $this->host . $path . '?' . http_build_query($queryParams);
+
+        $response = Http::timeout(15)->get($url);
+        $data = $response->json();
+
+        if ($response->failed() || ! empty($data['error'])) {
+            $err = $data['message'] ?? ($data['error'] ?? 'Gagal mengambil informasi toko Shopee');
+            throw new RuntimeException("Shopee API Error: {$err}");
+        }
+
+        $shopData = $data['response'] ?? [];
+
+        if (! empty($shopData['shop_name'])) {
+            $account->update(['account_name' => $shopData['shop_name']]);
+        }
+
+        return $shopData;
+    }
+
+    /**
      * Test connection to Shopee API.
      */
     public function testConnection(ShopeeAccount $account): array
@@ -171,11 +213,12 @@ class ShopeeSyncService
         }
 
         try {
-            $now = time();
-            $from = $now - 86400; // 1 day
-            $orders = $this->fetchOrderListRaw($account, $from, $now, 1);
+            $shopInfo = $this->getShopInfo($account);
+            $shopName = $shopInfo['shop_name'] ?? $account->account_name ?? 'Toko Shopee';
+            $shopId   = $account->shop_id ?: '-';
+
             $account->update(['connection_status' => 'connected', 'last_sync_error' => null]);
-            return ['success' => true, 'message' => 'Koneksi ke Shopee API berhasil! Akun toko terhubung normal.'];
+            return ['success' => true, 'message' => "Koneksi ke Shopee API berhasil! Toko '{$shopName}' (ID: {$shopId}) terhubung normal."];
         } catch (\Exception $e) {
             $account->update(['connection_status' => 'error', 'last_sync_error' => $e->getMessage()]);
             return ['success' => false, 'message' => $e->getMessage()];
@@ -309,26 +352,29 @@ class ShopeeSyncService
     {
         $path        = '/api/v2/order/get_order_list';
         $timestamp   = time();
-        $accessToken = $account->access_token ?? '';
-        $shopId      = $account->shop_id;
-        $partnerId   = $account->partner_id;
-        $partnerKey  = $account->partner_key;
+        $accessToken = (string) ($account->access_token ?? '');
+        $shopId      = (int) $account->shop_id;
+        $partnerId   = (int) $account->partner_id;
+        $partnerKey  = (string) $account->partner_key;
 
         $baseStr = sprintf('%s%s%s%s%s', $partnerId, $path, $timestamp, $accessToken, $shopId);
         $sign    = hash_hmac('sha256', $baseStr, $partnerKey);
 
-        $url = sprintf(
-            '%s%s?partner_id=%s&timestamp=%s&sign=%s&access_token=%s&shop_id=%s',
-            $this->host, $path, $partnerId, $timestamp, $sign, $accessToken, $shopId
-        );
-
-        $response = Http::timeout(20)->get($url, [
+        $queryParams = [
+            'partner_id'       => $partnerId,
+            'timestamp'        => $timestamp,
+            'sign'             => $sign,
+            'access_token'     => $accessToken,
+            'shop_id'          => $shopId,
             'time_range_field' => 'create_time',
             'time_from'        => $timeFrom,
             'time_to'          => $timeTo,
             'page_size'        => $pageSize,
-        ]);
+        ];
 
+        $url = $this->host . $path . '?' . http_build_query($queryParams);
+
+        $response = Http::timeout(20)->get($url);
         $data = $response->json();
 
         if ($response->failed() || ! empty($data['error'])) {
@@ -347,24 +393,27 @@ class ShopeeSyncService
 
         $path        = '/api/v2/order/get_order_detail';
         $timestamp   = time();
-        $accessToken = $account->access_token ?? '';
-        $shopId      = $account->shop_id;
-        $partnerId   = $account->partner_id;
-        $partnerKey  = $account->partner_key;
+        $accessToken = (string) ($account->access_token ?? '');
+        $shopId      = (int) $account->shop_id;
+        $partnerId   = (int) $account->partner_id;
+        $partnerKey  = (string) $account->partner_key;
 
         $baseStr = sprintf('%s%s%s%s%s', $partnerId, $path, $timestamp, $accessToken, $shopId);
         $sign    = hash_hmac('sha256', $baseStr, $partnerKey);
 
-        $url = sprintf(
-            '%s%s?partner_id=%s&timestamp=%s&sign=%s&access_token=%s&shop_id=%s',
-            $this->host, $path, $partnerId, $timestamp, $sign, $accessToken, $shopId
-        );
-
-        $response = Http::timeout(25)->get($url, [
+        $queryParams = [
+            'partner_id'               => $partnerId,
+            'timestamp'                => $timestamp,
+            'sign'                     => $sign,
+            'access_token'             => $accessToken,
+            'shop_id'                  => $shopId,
             'order_sn_list'            => implode(',', $orderSns),
             'response_optional_fields' => 'buyer_user_id,buyer_username,item_list,total_amount,shipping_carrier,order_status',
-        ]);
+        ];
 
+        $url = $this->host . $path . '?' . http_build_query($queryParams);
+
+        $response = Http::timeout(25)->get($url);
         $data = $response->json();
 
         if ($response->failed() || ! empty($data['error'])) {
