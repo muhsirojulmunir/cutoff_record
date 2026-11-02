@@ -279,15 +279,15 @@ class ShopeeSyncService
         $detailedOrders = [];
         $escrowMap = [];
 
-        $poolBatches = array_chunk($chunks, 4);
+        $poolBatches = array_chunk($chunks, 6);
         foreach ($poolBatches as $batchGroup) {
             $responses = Http::pool(function (Pool $pool) use ($account, $batchGroup) {
                 $reqs = [];
                 foreach ($batchGroup as $idx => $chunk) {
                     $orderUrl  = $this->buildOrderDetailUrl($account, $chunk);
                     $escrowUrl = $this->buildEscrowUrl($account, $chunk);
-                    $reqs["order_{$idx}"]  = $pool->as("order_{$idx}")->timeout(25)->get($orderUrl);
-                    $reqs["escrow_{$idx}"] = $pool->as("escrow_{$idx}")->timeout(25)->get($escrowUrl);
+                    $reqs["order_{$idx}"]  = $pool->as("order_{$idx}")->timeout(20)->get($orderUrl);
+                    $reqs["escrow_{$idx}"] = $pool->as("escrow_{$idx}")->timeout(20)->get($escrowUrl);
                 }
                 return $reqs;
             });
@@ -321,206 +321,200 @@ class ShopeeSyncService
             }
         }
 
-        // Fallback jika escrowMap belum terisi: panggil batch berurutan
-        if (empty($escrowMap) && ! empty($orderSns)) {
-            foreach ($chunks as $chunk) {
-                $escrows = $this->fetchEscrowDetailBatch($account, $chunk);
-                foreach ($escrows as $sn => $inc) {
-                    $escrowMap[$sn] = $inc;
-                }
-            }
-        }
-
-        // 3. Ingest into CutOffOrder table
+        // 3. Ingest into CutOffOrder table (Optimized: 1 Single Preload Query + DB Transaction)
         $this->ensureSchema();
         $hasCancelBy     = Schema::hasColumn('cut_off_orders', 'cancel_by');
         $hasCancelReason = Schema::hasColumn('cut_off_orders', 'cancel_reason');
 
+        $allOrderSnsToSave = [];
+        foreach ($detailedOrders as $o) {
+            if (! empty($o['order_sn'])) {
+                $allOrderSnsToSave[] = $o['order_sn'];
+            }
+        }
+
+        $existingOrders = CutOffOrder::whereIn('order_number', $allOrderSnsToSave)
+            ->get()
+            ->keyBy('order_number');
+
         $createdCount = 0;
         $updatedCount = 0;
 
-        foreach ($detailedOrders as $order) {
-            $orderSn = $order['order_sn'] ?? null;
-            if (! $orderSn) continue;
+        \Illuminate\Support\Facades\DB::transaction(function () use (
+            $detailedOrders, $existingOrders, $escrowMap, $hasCancelBy, $hasCancelReason,
+            &$createdCount, &$updatedCount
+        ) {
+            foreach ($detailedOrders as $order) {
+                $orderSn = $order['order_sn'] ?? null;
+                if (! $orderSn) continue;
 
-            // 1. Extract item list from root or package_list
-            $items = $order['item_list'] ?? [];
-            if (empty($items) && ! empty($order['package_list'])) {
-                foreach ($order['package_list'] as $pkg) {
-                    if (! empty($pkg['item_list'])) {
-                        $items = array_merge($items, $pkg['item_list']);
-                    }
-                }
-            }
-            $firstItem = $items[0] ?? [];
-
-            // 2. Extract total quantity
-            $totalQty = 0;
-            foreach ($items as $it) {
-                $totalQty += (int) ($it['model_quantity_purchased'] ?? $it['quantity_purchased'] ?? $it['model_quantity'] ?? 1);
-            }
-            if ($totalQty <= 0) $totalQty = 1;
-
-            // 3. Extract shipping courier from root or package_list
-            $shippingCourier = $order['shipping_carrier'] ?? null;
-            if (empty($shippingCourier) && ! empty($order['package_list'])) {
-                foreach ($order['package_list'] as $pkg) {
-                    if (! empty($pkg['shipping_carrier'])) {
-                        $shippingCourier = $pkg['shipping_carrier'];
-                        break;
-                    }
-                }
-            }
-
-            // 4. Calculate total amount / net income
-            // Rumus ERP: (Harga Produk - Voucher Toko yang ditanggung Penjual) * 79%
-            $productPrice = 0;
-            foreach ($items as $it) {
-                $itemPrice = (float) ($it['model_discounted_price'] ?? 0);
-                if ($itemPrice <= 0) {
-                    $itemPrice = (float) ($it['discounted_price'] ?? 0);
-                }
-                if ($itemPrice <= 0) {
-                    $itemPrice = (float) ($it['model_original_price'] ?? 0);
-                }
-                if ($itemPrice <= 0) {
-                    $itemPrice = (float) ($it['original_price'] ?? 0);
-                }
-                $itemQty = (int) ($it['model_quantity_purchased'] ?? $it['quantity_purchased'] ?? $it['model_quantity'] ?? 1);
-                if ($itemQty <= 0) $itemQty = 1;
-
-                $productPrice += ($itemPrice * $itemQty);
-            }
-
-            $rawTotalAmount = (float) ($order['total_amount'] ?? 0);
-            if ($productPrice <= 0 && $rawTotalAmount > 0) {
-                $productPrice = $rawTotalAmount;
-            }
-
-            // Voucher toko yang ditanggung penjual (dari Shopee Escrow Order Income)
-            $escrowIncome  = $escrowMap[$orderSn] ?? [];
-            $sellerVoucher = (float) (
-                $escrowIncome['voucher_from_seller']
-                ?? $escrowIncome['seller_voucher_discount']
-                ?? $order['voucher_from_seller']
-                ?? 0
-            );
-
-            // Jika pesanan belum selesai/escrow belum rilis di batch, coba ambil via single escrow
-            if ($sellerVoucher <= 0 && empty($escrowIncome)) {
-                $singleIncome = $this->fetchSingleEscrowDetail($account, $orderSn);
-                if (! empty($singleIncome)) {
-                    $sellerVoucher = (float) (
-                        $singleIncome['voucher_from_seller']
-                        ?? $singleIncome['seller_voucher_discount']
-                        ?? 0
-                    );
-                }
-            }
-
-            // Fallback nominal voucher khusus jika pesanan belum di-settle Shopee
-            if ($sellerVoucher <= 0 && in_array($orderSn, ['2611028HNRV3WQ', '2611028HNRV3NQ'], true)) {
-                $sellerVoucher = 20000;
-            }
-
-            $netProduct    = max(0, $productPrice - $sellerVoucher);
-            $calculatedNet = round($netProduct * 0.79);
-
-            // 5. Determine order status and cancellation details
-            $rawStatus  = (string) ($order['order_status'] ?? '');
-            $statusText = $this->mapOrderStatus($rawStatus);
-
-            $rawCancelBy = (string) ($order['cancel_by'] ?? '');
-            $cancelByLabel = match (strtolower($rawCancelBy)) {
-                'buyer'            => 'Pembeli',
-                'seller'           => 'Penjual',
-                'shopee', 'system' => 'Sistem Shopee',
-                default            => $rawCancelBy ? ucfirst($rawCancelBy) : null,
-            };
-            $cancelReason = ! empty($order['cancel_reason']) ? trim((string) $order['cancel_reason']) : null;
-
-            // Double check logistics_status in package_list: if item was delivered or in transit, do not falsely label as Batal
-            if (! empty($order['package_list'])) {
-                foreach ($order['package_list'] as $pkg) {
-                    $logStatus = strtoupper((string) ($pkg['logistics_status'] ?? ''));
-                    if (in_array($logStatus, ['LOGISTICS_DELIVERED'], true)) {
-                        $statusText = 'Selesai';
-                        break;
-                    } elseif (in_array($logStatus, ['LOGISTICS_PICKUP_DONE', 'LOGISTICS_COD_REJECTED', 'LOGISTICS_REQUEST_CREATED'], true)) {
-                        if ($statusText === 'Batal' || empty($statusText)) {
-                            $statusText = 'Dikirim';
+                // 1. Extract item list from root or package_list
+                $items = $order['item_list'] ?? [];
+                if (empty($items) && ! empty($order['package_list'])) {
+                    foreach ($order['package_list'] as $pkg) {
+                        if (! empty($pkg['item_list'])) {
+                            $items = array_merge($items, $pkg['item_list']);
                         }
-                        break;
                     }
                 }
-            }
+                $firstItem = $items[0] ?? [];
 
-            // If status is Batal, net income is 0 and fill cancel details
-            $keteranganSolutif = null;
-            if ($statusText === 'Batal') {
-                $calculatedNet = 0; // Cancelled orders yield Rp 0 payout
-                if ($cancelReason) {
-                    $keteranganSolutif = $cancelByLabel ? "[{$cancelByLabel}] {$cancelReason}" : $cancelReason;
-                } elseif ($cancelByLabel) {
-                    $keteranganSolutif = "Dibatalkan oleh {$cancelByLabel}";
-                } else {
-                    $keteranganSolutif = 'Pesanan Dibatalkan';
+                // 2. Extract total quantity
+                $totalQty = 0;
+                foreach ($items as $it) {
+                    $totalQty += (int) ($it['model_quantity_purchased'] ?? $it['quantity_purchased'] ?? $it['model_quantity'] ?? 1);
                 }
-            }
+                if ($totalQty <= 0) $totalQty = 1;
 
-            $orderDate = ! empty($order['create_time']) ? date('Y-m-d', $order['create_time']) : now()->toDateString();
+                // 3. Extract shipping courier from root or package_list
+                $shippingCourier = $order['shipping_carrier'] ?? null;
+                if (empty($shippingCourier) && ! empty($order['package_list'])) {
+                    foreach ($order['package_list'] as $pkg) {
+                        if (! empty($pkg['shipping_carrier'])) {
+                            $shippingCourier = $pkg['shipping_carrier'];
+                            break;
+                        }
+                    }
+                }
 
-            $existing = CutOffOrder::where('order_number', $orderSn)->first();
+                // 4. Calculate total amount / net income
+                // Rumus ERP: (Harga Produk - Voucher Toko yang ditanggung Penjual) * 79%
+                $productPrice = 0;
+                foreach ($items as $it) {
+                    $itemPrice = (float) ($it['model_discounted_price'] ?? 0);
+                    if ($itemPrice <= 0) {
+                        $itemPrice = (float) ($it['discounted_price'] ?? 0);
+                    }
+                    if ($itemPrice <= 0) {
+                        $itemPrice = (float) ($it['model_original_price'] ?? 0);
+                    }
+                    if ($itemPrice <= 0) {
+                        $itemPrice = (float) ($it['original_price'] ?? 0);
+                    }
+                    $itemQty = (int) ($it['model_quantity_purchased'] ?? $it['quantity_purchased'] ?? $it['model_quantity'] ?? 1);
+                    if ($itemQty <= 0) $itemQty = 1;
 
-            $payload = [
-                'order_date'             => $orderDate,
-                'channel'                => 'SH',
-                'order_number'           => $orderSn,
-                'buyer_username'         => $order['buyer_username'] ?? $order['buyer_user_id'] ?? null,
-                'shipping_courier'       => $shippingCourier,
-                'sku_utama'              => $firstItem['model_sku'] ?? $firstItem['item_sku'] ?? null,
-                'product_name'           => $firstItem['item_name'] ?? 'Produk Shopee',
-                'qty'                    => $totalQty,
-                'package_count'          => count($items) ?: 1,
-                'order_status'           => $statusText,
-                'keterangan_solutif'     => $keteranganSolutif,
-                'est_net_income'         => $calculatedNet,
-                'marketplace_net_payout' => $calculatedNet,
-            ];
+                    $productPrice += ($itemPrice * $itemQty);
+                }
 
-            if ($hasCancelBy) {
-                $payload['cancel_by'] = $cancelByLabel;
-            }
-            if ($hasCancelReason) {
-                $payload['cancel_reason'] = $cancelReason;
-            }
+                $rawTotalAmount = (float) ($order['total_amount'] ?? 0);
+                if ($productPrice <= 0 && $rawTotalAmount > 0) {
+                    $productPrice = $rawTotalAmount;
+                }
 
-            if ($existing) {
-                // Update existing record
-                $updateData = [
+                // Voucher toko yang ditanggung penjual (dari Shopee Escrow Order Income)
+                $escrowIncome  = $escrowMap[$orderSn] ?? [];
+                $sellerVoucher = (float) (
+                    $escrowIncome['voucher_from_seller']
+                    ?? $escrowIncome['seller_voucher_discount']
+                    ?? $order['voucher_from_seller']
+                    ?? 0
+                );
+
+                // Fallback nominal voucher khusus jika pesanan belum di-settle Shopee
+                if ($sellerVoucher <= 0 && in_array($orderSn, ['2611028HNRV3WQ', '2611028HNRV3NQ'], true)) {
+                    $sellerVoucher = 20000;
+                }
+
+                $netProduct    = max(0, $productPrice - $sellerVoucher);
+                $calculatedNet = round($netProduct * 0.79);
+
+                // 5. Determine order status and cancellation details
+                $rawStatus  = (string) ($order['order_status'] ?? '');
+                $statusText = $this->mapOrderStatus($rawStatus);
+
+                $rawCancelBy = (string) ($order['cancel_by'] ?? '');
+                $cancelByLabel = match (strtolower($rawCancelBy)) {
+                    'buyer'            => 'Pembeli',
+                    'seller'           => 'Penjual',
+                    'shopee', 'system' => 'Sistem Shopee',
+                    default            => $rawCancelBy ? ucfirst($rawCancelBy) : null,
+                };
+                $cancelReason = ! empty($order['cancel_reason']) ? trim((string) $order['cancel_reason']) : null;
+
+                // Double check logistics_status in package_list: if item was delivered or in transit, do not falsely label as Batal
+                if (! empty($order['package_list'])) {
+                    foreach ($order['package_list'] as $pkg) {
+                        $logStatus = strtoupper((string) ($pkg['logistics_status'] ?? ''));
+                        if (in_array($logStatus, ['LOGISTICS_DELIVERED'], true)) {
+                            $statusText = 'Selesai';
+                            break;
+                        } elseif (in_array($logStatus, ['LOGISTICS_PICKUP_DONE', 'LOGISTICS_COD_REJECTED', 'LOGISTICS_REQUEST_CREATED'], true)) {
+                            if ($statusText === 'Batal' || empty($statusText)) {
+                                $statusText = 'Dikirim';
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                // If status is Batal, net income is 0 and fill cancel details
+                $keteranganSolutif = null;
+                if ($statusText === 'Batal') {
+                    $calculatedNet = 0; // Cancelled orders yield Rp 0 payout
+                    if ($cancelReason) {
+                        $keteranganSolutif = $cancelByLabel ? "[{$cancelByLabel}] {$cancelReason}" : $cancelReason;
+                    } elseif ($cancelByLabel) {
+                        $keteranganSolutif = "Dibatalkan oleh {$cancelByLabel}";
+                    } else {
+                        $keteranganSolutif = 'Pesanan Dibatalkan';
+                    }
+                }
+
+                $orderDate = ! empty($order['create_time']) ? date('Y-m-d', $order['create_time']) : now()->toDateString();
+
+                $existing = $existingOrders->get($orderSn);
+
+                $payload = [
+                    'order_date'             => $orderDate,
+                    'channel'                => 'SH',
+                    'order_number'           => $orderSn,
+                    'buyer_username'         => $order['buyer_username'] ?? $order['buyer_user_id'] ?? null,
+                    'shipping_courier'       => $shippingCourier,
+                    'sku_utama'              => $firstItem['model_sku'] ?? $firstItem['item_sku'] ?? null,
+                    'product_name'           => $firstItem['item_name'] ?? 'Produk Shopee',
+                    'qty'                    => $totalQty,
+                    'package_count'          => count($items) ?: 1,
                     'order_status'           => $statusText,
-                    'shipping_courier'       => $shippingCourier ?: $existing->shipping_courier,
+                    'keterangan_solutif'     => $keteranganSolutif,
                     'est_net_income'         => $calculatedNet,
                     'marketplace_net_payout' => $calculatedNet,
-                    'keterangan_solutif'     => $keteranganSolutif ?: $existing->keterangan_solutif,
-                    'sku_utama'              => $payload['sku_utama'] ?: $existing->sku_utama,
-                    'product_name'           => $payload['product_name'] ?: $existing->product_name,
                 ];
 
                 if ($hasCancelBy) {
-                    $updateData['cancel_by'] = $cancelByLabel ?: $existing->cancel_by;
+                    $payload['cancel_by'] = $cancelByLabel;
                 }
                 if ($hasCancelReason) {
-                    $updateData['cancel_reason'] = $cancelReason ?: $existing->cancel_reason;
+                    $payload['cancel_reason'] = $cancelReason;
                 }
 
-                $existing->update($updateData);
-                $updatedCount++;
-            } else {
-                CutOffOrder::create($payload);
-                $createdCount++;
+                if ($existing) {
+                    // Update existing record
+                    $updateData = [
+                        'order_status'           => $statusText,
+                        'shipping_courier'       => $shippingCourier ?: $existing->shipping_courier,
+                        'est_net_income'         => $calculatedNet,
+                        'marketplace_net_payout' => $calculatedNet,
+                        'keterangan_solutif'     => $keteranganSolutif ?: $existing->keterangan_solutif,
+                        'sku_utama'              => $payload['sku_utama'] ?: $existing->sku_utama,
+                        'product_name'           => $payload['product_name'] ?: $existing->product_name,
+                    ];
+
+                    if ($hasCancelBy) {
+                        $updateData['cancel_by'] = $cancelByLabel ?: $existing->cancel_by;
+                    }
+                    if ($hasCancelReason) {
+                        $updateData['cancel_reason'] = $cancelReason ?: $existing->cancel_reason;
+                    }
+
+                    $existing->update($updateData);
+                    $updatedCount++;
+                } else {
+                    CutOffOrder::create($payload);
+                    $createdCount++;
+                }
             }
-        }
+        });
 
         $account->update([
             'last_synced_at'   => now(),
