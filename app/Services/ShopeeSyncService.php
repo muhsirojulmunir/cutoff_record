@@ -287,13 +287,70 @@ class ShopeeSyncService
             $orderSn = $order['order_sn'] ?? null;
             if (! $orderSn) continue;
 
+            // 1. Extract item list from root or package_list
             $items = $order['item_list'] ?? [];
+            if (empty($items) && ! empty($order['package_list'])) {
+                foreach ($order['package_list'] as $pkg) {
+                    if (! empty($pkg['item_list'])) {
+                        $items = array_merge($items, $pkg['item_list']);
+                    }
+                }
+            }
             $firstItem = $items[0] ?? [];
-            $totalQty = array_sum(array_column($items, 'model_quantity_purchased')) ?: 1;
 
+            // 2. Extract total quantity
+            $totalQty = 0;
+            foreach ($items as $it) {
+                $totalQty += (int) ($it['model_quantity_purchased'] ?? $it['model_quantity'] ?? 1);
+            }
+            if ($totalQty <= 0) $totalQty = 1;
+
+            // 3. Extract shipping courier from root or package_list
+            $shippingCourier = $order['shipping_carrier'] ?? null;
+            if (empty($shippingCourier) && ! empty($order['package_list'])) {
+                foreach ($order['package_list'] as $pkg) {
+                    if (! empty($pkg['shipping_carrier'])) {
+                        $shippingCourier = $pkg['shipping_carrier'];
+                        break;
+                    }
+                }
+            }
+
+            // 4. Calculate total amount / net income
             $totalAmount = (float) ($order['total_amount'] ?? 0);
-            $statusText  = $this->mapOrderStatus($order['order_status'] ?? '');
-            $orderDate   = ! empty($order['create_time']) ? date('Y-m-d', $order['create_time']) : now()->toDateString();
+            if ($totalAmount <= 0) {
+                $calcSum = 0;
+                foreach ($items as $it) {
+                    $itemPrice = (float) ($it['model_discounted_price'] ?? $it['model_original_price'] ?? 0);
+                    $itemQty   = (int) ($it['model_quantity_purchased'] ?? $it['model_quantity'] ?? 1);
+                    $calcSum += ($itemPrice * $itemQty);
+                }
+                if ($calcSum > 0) {
+                    $totalAmount = $calcSum;
+                }
+            }
+
+            // 5. Determine order status
+            $rawStatus  = (string) ($order['order_status'] ?? '');
+            $statusText = $this->mapOrderStatus($rawStatus);
+
+            // Double check logistics_status in package_list: if item was delivered or in transit, do not falsely label as Batal
+            if (! empty($order['package_list'])) {
+                foreach ($order['package_list'] as $pkg) {
+                    $logStatus = strtoupper((string) ($pkg['logistics_status'] ?? ''));
+                    if (in_array($logStatus, ['LOGISTICS_DELIVERED'], true)) {
+                        $statusText = 'Selesai';
+                        break;
+                    } elseif (in_array($logStatus, ['LOGISTICS_PICKUP_DONE', 'LOGISTICS_COD_REJECTED', 'LOGISTICS_REQUEST_CREATED'], true)) {
+                        if ($statusText === 'Batal' || empty($statusText)) {
+                            $statusText = 'Dikirim';
+                        }
+                        break;
+                    }
+                }
+            }
+
+            $orderDate = ! empty($order['create_time']) ? date('Y-m-d', $order['create_time']) : now()->toDateString();
 
             $existing = CutOffOrder::where('order_number', $orderSn)->first();
 
@@ -302,7 +359,7 @@ class ShopeeSyncService
                 'channel'                => 'SH',
                 'order_number'           => $orderSn,
                 'buyer_username'         => $order['buyer_username'] ?? $order['buyer_user_id'] ?? null,
-                'shipping_courier'       => $order['shipping_carrier'] ?? null,
+                'shipping_courier'       => $shippingCourier,
                 'sku_utama'              => $firstItem['model_sku'] ?? $firstItem['item_sku'] ?? null,
                 'product_name'           => $firstItem['item_name'] ?? 'Produk Shopee',
                 'qty'                    => $totalQty,
@@ -316,9 +373,11 @@ class ShopeeSyncService
                 // Update existing record
                 $existing->update([
                     'order_status'           => $statusText,
-                    'shipping_courier'       => $payload['shipping_courier'] ?? $existing->shipping_courier,
+                    'shipping_courier'       => $shippingCourier ?: $existing->shipping_courier,
                     'est_net_income'         => $totalAmount ?: $existing->est_net_income,
                     'marketplace_net_payout' => $totalAmount ?: $existing->marketplace_net_payout,
+                    'sku_utama'              => $payload['sku_utama'] ?: $existing->sku_utama,
+                    'product_name'           => $payload['product_name'] ?: $existing->product_name,
                 ]);
                 $updatedCount++;
             } else {
@@ -441,7 +500,7 @@ class ShopeeSyncService
             'access_token'             => $accessToken,
             'shop_id'                  => $shopId,
             'order_sn_list'            => implode(',', $orderSns),
-            'response_optional_fields' => 'buyer_user_id,buyer_username,item_list,total_amount,shipping_carrier,order_status',
+            'response_optional_fields' => 'buyer_user_id,buyer_username,item_list,package_list,shipping_carrier,total_amount',
         ];
 
         $url = $this->host . $path . '?' . http_build_query($queryParams);
