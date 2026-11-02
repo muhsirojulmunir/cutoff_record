@@ -349,18 +349,34 @@ class ShopeeSyncService
             }
 
             // 4. Calculate total amount / net income
-            $totalAmount = (float) ($order['total_amount'] ?? 0);
-            if ($totalAmount <= 0) {
-                $calcSum = 0;
-                foreach ($items as $it) {
-                    $itemPrice = (float) ($it['model_discounted_price'] ?? $it['model_original_price'] ?? 0);
-                    $itemQty   = (int) ($it['model_quantity_purchased'] ?? $it['model_quantity'] ?? 1);
-                    $calcSum += ($itemPrice * $itemQty);
-                }
-                if ($calcSum > 0) {
-                    $totalAmount = $calcSum;
-                }
+            // Rumus ERP: (Harga Produk - Voucher Toko yang ditanggung Penjual) * 79%
+            $productPrice = 0;
+            foreach ($items as $it) {
+                $itemPrice = (float) ($it['model_discounted_price'] ?? $it['model_original_price'] ?? 0);
+                $itemQty   = (int) ($it['model_quantity_purchased'] ?? $it['model_quantity'] ?? 1);
+                $productPrice += ($itemPrice * $itemQty);
             }
+
+            $rawTotalAmount = (float) ($order['total_amount'] ?? 0);
+            if ($productPrice <= 0 && $rawTotalAmount > 0) {
+                $productPrice = $rawTotalAmount;
+            }
+
+            // Voucher toko yang ditanggung penjual
+            $sellerVoucher = (float) (
+                $order['voucher_from_seller']
+                ?? $order['discount_from_voucher_seller']
+                ?? $order['seller_voucher_discount']
+                ?? 0
+            );
+
+            // Jika field voucher_from_seller tidak spesifik di root, cek apakah total_amount lebih kecil dari subtotal produk
+            if ($sellerVoucher <= 0 && $rawTotalAmount > 0 && $rawTotalAmount < $productPrice) {
+                $sellerVoucher = $productPrice - $rawTotalAmount;
+            }
+
+            $netProduct    = max(0, $productPrice - $sellerVoucher);
+            $calculatedNet = round($netProduct * 0.79);
 
             // 5. Determine order status and cancellation details
             $rawStatus  = (string) ($order['order_status'] ?? '');
@@ -394,7 +410,7 @@ class ShopeeSyncService
             // If status is Batal, net income is 0 and fill cancel details
             $keteranganSolutif = null;
             if ($statusText === 'Batal') {
-                $totalAmount = 0; // Cancelled orders yield Rp 0 payout
+                $calculatedNet = 0; // Cancelled orders yield Rp 0 payout
                 if ($cancelReason) {
                     $keteranganSolutif = $cancelByLabel ? "[{$cancelByLabel}] {$cancelReason}" : $cancelReason;
                 } elseif ($cancelByLabel) {
@@ -420,8 +436,8 @@ class ShopeeSyncService
                 'package_count'          => count($items) ?: 1,
                 'order_status'           => $statusText,
                 'keterangan_solutif'     => $keteranganSolutif,
-                'est_net_income'         => $totalAmount,
-                'marketplace_net_payout' => $totalAmount,
+                'est_net_income'         => $calculatedNet,
+                'marketplace_net_payout' => $calculatedNet,
             ];
 
             if ($hasCancelBy) {
@@ -436,8 +452,8 @@ class ShopeeSyncService
                 $updateData = [
                     'order_status'           => $statusText,
                     'shipping_courier'       => $shippingCourier ?: $existing->shipping_courier,
-                    'est_net_income'         => $totalAmount ?: $existing->est_net_income,
-                    'marketplace_net_payout' => $totalAmount ?: $existing->marketplace_net_payout,
+                    'est_net_income'         => $calculatedNet,
+                    'marketplace_net_payout' => $calculatedNet,
                     'keterangan_solutif'     => $keteranganSolutif ?: $existing->keterangan_solutif,
                     'sku_utama'              => $payload['sku_utama'] ?: $existing->sku_utama,
                     'product_name'           => $payload['product_name'] ?: $existing->product_name,
