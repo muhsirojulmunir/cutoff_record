@@ -99,6 +99,17 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
   const { auth } = usePage<any>().props;
   const isManagement = auth?.user?.role?.name === 'Management';
   const canManage = !isManagement;
+  const isSuperAdmin = auth?.user?.role?.name === 'Super Admin' || auth?.user?.roles?.includes('Super Admin');
+  const [isTruncating, setIsTruncating] = useState(false);
+
+  function handleTruncate() {
+    if (confirm('PERINGATAN: Apakah Anda yakin ingin MENGOSONGKAN SELURUH data Pesanan Cut Off?\n\nTindakan ini akan menghapus semua riwayat pesanan cut off agar Anda bisa menarik data murni dari API marketplace.\n\nTabel lain (Akun Toko, Returan Online, User Management) TIDAK akan terhapus.')) {
+      setIsTruncating(true);
+      router.post('/cut-off-orders/truncate', {}, {
+        onFinish: () => setIsTruncating(false),
+      });
+    }
+  }
 
   const [search, setSearch] = useState(filters.search ?? '');
   const [selectedChannel, setSelectedChannel] = useState(filters.channel ?? 'all');
@@ -371,6 +382,21 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                   </svg>
                   + Tambah Pesanan
                 </button>
+
+                {/* Kosongkan Seluruh Data Cut Off (Super Admin Only) */}
+                {isSuperAdmin && (
+                  <button
+                    onClick={handleTruncate}
+                    disabled={isTruncating}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
+                    title="Kosongkan seluruh data Pesanan Cut Off untuk mulai bersih dari marketplace"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-rose-600">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                    </svg>
+                    {isTruncating ? 'Mengosongkan...' : 'Kosongkan Data'}
+                  </button>
+                )}
               </>
             )}
 
@@ -599,8 +625,34 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
               <tbody className="divide-y divide-slate-100">
                 {orders.data.length === 0 ? (
                   <tr>
-                    <td colSpan={canManage ? 7 : 6} className="py-12 text-center text-slate-400">
-                      Tidak ada data pesanan yang sesuai dengan filter.
+                    <td colSpan={canManage ? 7 : 6} className="py-16 text-center">
+                      <div className="max-w-md mx-auto flex flex-col items-center">
+                        <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0l-3-3m3 3l3-3M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+                          </svg>
+                        </div>
+                        <p className="text-sm font-semibold text-slate-700">Tabel Pesanan Cut Off Kosong</p>
+                        <p className="text-xs text-slate-400 mt-1 max-w-sm text-center">
+                          Data pesanan siap ditarik langsung dari API Shopee atau TikTok untuk data yang bersih dan akurat.
+                        </p>
+                        {canManage && (
+                          <div className="mt-4 flex items-center gap-2">
+                            <Link
+                              href="/marketplace/shopee"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#EE4D2D] text-white text-xs font-semibold hover:bg-[#d83f21] transition-colors"
+                            >
+                              Tarik Data Shopee
+                            </Link>
+                            <Link
+                              href="/marketplace/tiktok"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black text-white text-xs font-semibold hover:bg-slate-800 transition-colors"
+                            >
+                              Tarik Data TikTok
+                            </Link>
+                          </div>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ) : (

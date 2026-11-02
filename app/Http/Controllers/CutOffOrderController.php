@@ -295,4 +295,24 @@ class CutOffOrderController extends Controller
             'synced'  => $synced,
         ]);
     }
+
+    /**
+     * Kosongkan seluruh data tabel Cut Off Orders (Super Admin only).
+     */
+    public function truncate(Request $request): RedirectResponse
+    {
+        $user = $request->user();
+        $isSuperAdmin = $user && (
+            (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) ||
+            $user->role?->name === 'Super Admin'
+        );
+
+        if (! $isSuperAdmin) {
+            abort(403, 'Hanya Super Admin yang diizinkan mengosongkan seluruh data pesanan.');
+        }
+
+        DB::table('cut_off_orders')->truncate();
+
+        return redirect()->route('cut-off-orders.index')->with('success', 'Semua data Pesanan Cut Off berhasil dikosongkan. Tabel kini bersih dan siap diisi data murni dari API.');
+    }
 }
