@@ -95,6 +95,30 @@ function formatDate(dateStr: string | null | undefined): string {
   }
 }
 
+function formatTime(dateStr: string | null | undefined): string | null {
+  if (!dateStr) return null;
+  try {
+    const timePart = dateStr.includes('T')
+      ? dateStr.split('T')[1]
+      : (dateStr.includes(' ') ? dateStr.split(' ')[1] : null);
+
+    if (!timePart) return null;
+
+    const parts = timePart.split(':');
+    if (parts.length >= 2) {
+      const hh = parts[0].padStart(2, '0');
+      const mm = parts[1].padStart(2, '0');
+      if (hh === '00' && mm === '00' && (parts.length < 3 || parts[2].startsWith('00'))) {
+        return null;
+      }
+      return `${hh}:${mm}`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export default function CutOffIndex({ orders, filters, summary, channels, couriers = [] }: Props) {
   const { auth } = usePage<any>().props;
   const isManagement = auth?.user?.role?.name === 'Management';
@@ -159,7 +183,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
   // Modal Create Manual
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const createForm = useForm({
-    order_date: new Date().toISOString().split('T')[0],
+    order_date: new Date().toISOString().slice(0, 16),
     channel: 'TT',
     order_number: '',
     jl_number: '',
@@ -652,9 +676,19 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                       <tr key={order.id} className="hover:bg-slate-50/80 transition-colors">
                         {/* Toko & Tanggal */}
                         <td className="py-3.5 px-4 whitespace-nowrap">
-                          <span className="inline-block px-2.5 py-1 rounded-md bg-[#0B132B] text-white font-bold text-[10px] tracking-wide mb-1">
-                            {order.channel}
-                          </span>
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="inline-block px-2.5 py-0.5 rounded-md bg-[#0B132B] text-white font-bold text-[10px] tracking-wide">
+                              {order.channel}
+                            </span>
+                            {formatTime(order.order_date) && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200" title={`Pukul ${formatTime(order.order_date)}`}>
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3 text-slate-400">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                {formatTime(order.order_date)}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-slate-800 text-xs font-semibold">
                             {formatDate(order.order_date)}
                           </p>
@@ -1010,11 +1044,11 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                     />
                   </div>
 
-                  {/* Tanggal Pesanan */}
+                  {/* Tanggal & Jam Pesanan */}
                   <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">Tanggal Pesanan</label>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">Tanggal & Jam</label>
                     <input
-                      type="date"
+                      type="datetime-local"
                       value={createForm.data.order_date}
                       onChange={(e) => createForm.setData('order_date', e.target.value)}
                       className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"

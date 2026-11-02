@@ -461,7 +461,7 @@ class ShopeeSyncService
                     }
                 }
 
-                $orderDate = ! empty($order['create_time']) ? date('Y-m-d', $order['create_time']) : now()->toDateString();
+                $orderDate = ! empty($order['create_time']) ? date('Y-m-d H:i:s', $order['create_time']) : now()->toDateTimeString();
 
                 $existing = $existingOrders->get($orderSn);
 
@@ -489,8 +489,9 @@ class ShopeeSyncService
                 }
 
                 if ($existing) {
-                    // Update existing record
+                    // Update existing record (including exact order_date with time)
                     $updateData = [
+                        'order_date'             => $orderDate,
                         'order_status'           => $statusText,
                         'shipping_courier'       => $shippingCourier ?: $existing->shipping_courier,
                         'est_net_income'         => $calculatedNet,
@@ -767,6 +768,12 @@ class ShopeeSyncService
      */
     public function ensureSchema(): void
     {
+        try {
+            \Illuminate\Support\Facades\DB::statement("ALTER TABLE cut_off_orders MODIFY order_date DATETIME NULL");
+        } catch (\Throwable $e) {
+            // Ignore if already datetime or not supported
+        }
+
         try {
             if (! Schema::hasColumn('cut_off_orders', 'cancel_by')) {
                 Schema::table('cut_off_orders', function (Blueprint $table) {
