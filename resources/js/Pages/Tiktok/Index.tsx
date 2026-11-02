@@ -31,6 +31,8 @@ export default function TiktokIndex({ account, callbackUrl }: Props) {
   const [syncDays, setSyncDays] = useState<number>(7);
   const [syncing, setSyncing] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [manualCode, setManualCode] = useState('');
+  const [manualExchanging, setManualExchanging] = useState(false);
 
   const { data, setData, post, processing, errors } = useForm({
     account_name: account.account_name || 'RecordShoesOfficial',
@@ -49,6 +51,23 @@ export default function TiktokIndex({ account, callbackUrl }: Props) {
 
   const handleConnectShop = () => {
     window.location.href = '/marketplace/tiktok/auth';
+  };
+
+  const handleManualExchange = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualCode.trim()) return;
+    setManualExchanging(true);
+    router.post(
+      '/marketplace/tiktok/manual-exchange',
+      { code_or_url: manualCode.trim() },
+      {
+        preserveScroll: true,
+        onFinish: () => {
+          setManualExchanging(false);
+          setManualCode('');
+        },
+      }
+    );
   };
 
   const handleTestConnection = () => {
@@ -294,6 +313,32 @@ export default function TiktokIndex({ account, callbackUrl }: Props) {
                   </svg>
                   {isConnected ? 'Hubungkan Ulang Toko TikTok' : 'Hubungkan Toko TikTok Sekarang'}
                 </button>
+
+                {/* Alternatif: Input Manual Kode Otorisasi */}
+                <form onSubmit={handleManualExchange} className="pt-3 border-t border-slate-200/80 space-y-1.5">
+                  <label className="block text-[11px] font-bold text-slate-700">
+                    Atau Tempel Kode Otorisasi (Auth Code) / Tautan Callback:
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={manualCode}
+                      onChange={(e) => setManualCode(e.target.value)}
+                      placeholder="Tempel auth_code atau URL browser setelah otorisasi..."
+                      className="flex-1 px-3 py-2 rounded-xl text-xs border border-slate-300 font-mono focus:outline-none focus:border-[#0B132B]"
+                    />
+                    <button
+                      type="submit"
+                      disabled={manualExchanging || !manualCode.trim() || !account.has_credentials}
+                      className="px-4 py-2 rounded-xl text-xs font-bold bg-[#0B132B] hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 text-white transition-colors cursor-pointer shrink-0"
+                    >
+                      {manualExchanging ? 'Menghubungkan...' : 'Hubungkan'}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-tight">
+                    Jika setelah otorisasi di TikTok browser Anda tidak otomatis kembali ke ERP, salin alamat URL dari browser lalu tempel di atas.
+                  </p>
+                </form>
               </div>
             </div>
           </div>
