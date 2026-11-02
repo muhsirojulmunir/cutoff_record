@@ -169,6 +169,7 @@ class TiktokSyncService
 
     /**
      * Generate HMAC-SHA256 signature for TikTok Shop Open API request.
+     * Official specification: app_secret + path + sorted_params + body + app_secret
      */
     public function generateSignature(string $path, array $params, string $appSecret, string $body = ''): string
     {
@@ -176,14 +177,12 @@ class TiktokSyncService
 
         ksort($params);
 
-        $stringToSign = $path;
+        $paramString = '';
         foreach ($params as $k => $v) {
-            $stringToSign .= (string) $k . (string) $v;
+            $paramString .= (string) $k . (string) $v;
         }
 
-        if (! empty($body)) {
-            $stringToSign .= $body;
-        }
+        $stringToSign = $appSecret . $path . $paramString . $body . $appSecret;
 
         return hash_hmac('sha256', $stringToSign, $appSecret);
     }
@@ -210,12 +209,15 @@ class TiktokSyncService
 
         $response = Http::timeout(15)
             ->withHeaders([
+                'Content-Type'       => 'application/json',
                 'x-tts-access-token' => $account->access_token,
             ])
             ->get($url);
 
         if (! $response->successful()) {
-            throw new RuntimeException("Gagal mengambil info toko TikTok: HTTP {$response->status()}");
+            $errData = $response->json();
+            $detail  = $errData['message'] ?? $response->body();
+            throw new RuntimeException("Gagal mengambil info toko TikTok: HTTP {$response->status()} - {$detail}");
         }
 
         $res = $response->json();
@@ -330,10 +332,12 @@ class TiktokSyncService
                 'Content-Type'       => 'application/json',
             ])
             ->withBody($bodyJson, 'application/json')
-            ->post($url);
+            ->send('POST', $url);
 
         if (! $response->successful()) {
-            throw new RuntimeException("Gagal mengambil pesanan TikTok: HTTP {$response->status()}");
+            $errData = $response->json();
+            $detail  = $errData['message'] ?? $response->body();
+            throw new RuntimeException("Gagal mengambil pesanan TikTok: HTTP {$response->status()} - {$detail}");
         }
 
         $res = $response->json();
@@ -364,10 +368,15 @@ class TiktokSyncService
             }
             if ($totalQty <= 0) $totalQty = 1;
 
-            $payment   = $order['payment'] ?? [];
-            $totalAmount = (float) ($payment['original_total_product_price'] ?? $payment['total_amount'] ?? 0);
-            $statusRaw = (string) ($order['status'] ?? '');
+            $statusRaw  = (string) ($order['status'] ?? '');
             $statusText = $this->mapOrderStatus($statusRaw);
+
+            // Rumus ERP: (Harga Produk - Voucher/Diskon Toko) * 79%
+            $payment        = $order['payment'] ?? [];
+            $productPrice   = (float) ($payment['original_total_product_price'] ?? $payment['total_amount'] ?? 0);
+            $sellerDiscount = (float) ($payment['seller_discount'] ?? 0);
+            $netProduct     = max(0, $productPrice - $sellerDiscount);
+            $calculatedNet  = $statusText === 'Batal' ? 0 : round($netProduct * 0.79);
 
             $createTime = $order['create_time'] ?? null;
             $orderDate  = $createTime ? date('Y-m-d H:i:s', (int) $createTime) : now()->toDateTimeString();
@@ -385,8 +394,8 @@ class TiktokSyncService
                 'qty'                    => $totalQty,
                 'package_count'          => count($lineItems) ?: 1,
                 'order_status'           => $statusText,
-                'est_net_income'         => $totalAmount,
-                'marketplace_net_payout' => $totalAmount,
+                'est_net_income'         => $calculatedNet,
+                'marketplace_net_payout' => $calculatedNet,
             ];
 
             if ($existing) {
@@ -394,8 +403,8 @@ class TiktokSyncService
                     'order_date'             => $orderDate,
                     'order_status'           => $statusText,
                     'shipping_courier'       => $payload['shipping_courier'] ?? $existing->shipping_courier,
-                    'est_net_income'         => $totalAmount ?: $existing->est_net_income,
-                    'marketplace_net_payout' => $totalAmount ?: $existing->marketplace_net_payout,
+                    'est_net_income'         => $calculatedNet,
+                    'marketplace_net_payout' => $calculatedNet,
                 ]);
                 $updatedCount++;
             } else {
