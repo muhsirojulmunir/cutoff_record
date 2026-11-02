@@ -64,4 +64,18 @@ Route::middleware('auth')->group(function () {
     Route::get('/marketplace/tiktok/callback', [\App\Http\Controllers\TiktokIntegrationController::class, 'handleCallback'])->name('tiktok.callback');
     Route::post('/marketplace/tiktok/test-connection', [\App\Http\Controllers\TiktokIntegrationController::class, 'testConnection'])->name('tiktok.test');
     Route::post('/marketplace/tiktok/sync-now', [\App\Http\Controllers\TiktokIntegrationController::class, 'syncNow'])->name('tiktok.sync');
+
+    // System Utilities (Super Admin)
+    Route::get('/system/migrate', function () {
+        $user = auth()->user();
+        if (! $user || (! (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) && $user->role?->name !== 'Super Admin')) {
+            abort(403, 'Hanya Super Admin yang diizinkan menjalankan migrasi sistem.');
+        }
+        \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Migrasi database berhasil dijalankan.',
+            'output'  => \Illuminate\Support\Facades\Artisan::output(),
+        ]);
+    })->name('system.migrate');
 });

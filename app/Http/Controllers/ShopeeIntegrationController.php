@@ -134,6 +134,12 @@ class ShopeeIntegrationController extends Controller
 
         @set_time_limit(300);
 
+        try {
+            \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Shopee auto-migrate notice: ' . $e->getMessage());
+        }
+
         $timeTo = time();
         $timeFrom = $timeTo - ($days * 86400);
 
