@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Models\CutOffOrder;
 use App\Models\ShopeeAccount;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 class ShopeeSyncService
@@ -280,6 +282,10 @@ class ShopeeSyncService
         }
 
         // 3. Ingest into CutOffOrder table
+        $this->ensureSchema();
+        $hasCancelBy     = Schema::hasColumn('cut_off_orders', 'cancel_by');
+        $hasCancelReason = Schema::hasColumn('cut_off_orders', 'cancel_reason');
+
         $createdCount = 0;
         $updatedCount = 0;
 
@@ -388,25 +394,37 @@ class ShopeeSyncService
                 'package_count'          => count($items) ?: 1,
                 'order_status'           => $statusText,
                 'keterangan_solutif'     => $keteranganSolutif,
-                'cancel_by'              => $cancelByLabel,
-                'cancel_reason'          => $cancelReason,
                 'est_net_income'         => $totalAmount,
                 'marketplace_net_payout' => $totalAmount,
             ];
 
+            if ($hasCancelBy) {
+                $payload['cancel_by'] = $cancelByLabel;
+            }
+            if ($hasCancelReason) {
+                $payload['cancel_reason'] = $cancelReason;
+            }
+
             if ($existing) {
                 // Update existing record
-                $existing->update([
+                $updateData = [
                     'order_status'           => $statusText,
                     'shipping_courier'       => $shippingCourier ?: $existing->shipping_courier,
                     'est_net_income'         => $totalAmount ?: $existing->est_net_income,
                     'marketplace_net_payout' => $totalAmount ?: $existing->marketplace_net_payout,
                     'keterangan_solutif'     => $keteranganSolutif ?: $existing->keterangan_solutif,
-                    'cancel_by'              => $cancelByLabel ?: $existing->cancel_by,
-                    'cancel_reason'          => $cancelReason ?: $existing->cancel_reason,
                     'sku_utama'              => $payload['sku_utama'] ?: $existing->sku_utama,
                     'product_name'           => $payload['product_name'] ?: $existing->product_name,
-                ]);
+                ];
+
+                if ($hasCancelBy) {
+                    $updateData['cancel_by'] = $cancelByLabel ?: $existing->cancel_by;
+                }
+                if ($hasCancelReason) {
+                    $updateData['cancel_reason'] = $cancelReason ?: $existing->cancel_reason;
+                }
+
+                $existing->update($updateData);
                 $updatedCount++;
             } else {
                 CutOffOrder::create($payload);
@@ -552,5 +570,27 @@ class ShopeeSyncService
             return $this->refreshAccessToken($account);
         }
         return $account;
+    }
+
+    /**
+     * Pastikan skema tabel cut_off_orders memiliki kolom cancel_by dan cancel_reason.
+     * Jika belum ada di production MySQL (karena deploy FTP tanpa shell), tambahkan otomatis.
+     */
+    public function ensureSchema(): void
+    {
+        try {
+            if (! Schema::hasColumn('cut_off_orders', 'cancel_by')) {
+                Schema::table('cut_off_orders', function (Blueprint $table) {
+                    if (! Schema::hasColumn('cut_off_orders', 'cancel_by')) {
+                        $table->string('cancel_by')->nullable()->after('keterangan_solutif');
+                    }
+                    if (! Schema::hasColumn('cut_off_orders', 'cancel_reason')) {
+                        $table->text('cancel_reason')->nullable()->after('cancel_by');
+                    }
+                });
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ShopeeSyncService ensureSchema notice: ' . $e->getMessage());
+        }
     }
 }
