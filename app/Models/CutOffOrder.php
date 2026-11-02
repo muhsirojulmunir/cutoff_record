@@ -41,7 +41,7 @@ class CutOffOrder extends Model
     protected function casts(): array
     {
         return [
-            'order_date'             => 'date:Y-m-d',
+            'order_date'             => 'datetime:Y-m-d H:i:s',
             'qty'                    => 'integer',
             'recheck_qty'            => 'integer',
             'est_net_income'         => 'decimal:2',

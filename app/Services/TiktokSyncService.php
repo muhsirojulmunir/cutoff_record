@@ -370,7 +370,7 @@ class TiktokSyncService
             $statusText = $this->mapOrderStatus($statusRaw);
 
             $createTime = $order['create_time'] ?? null;
-            $orderDate  = $createTime ? date('Y-m-d', (int) $createTime) : now()->toDateString();
+            $orderDate  = $createTime ? date('Y-m-d H:i:s', (int) $createTime) : now()->toDateTimeString();
 
             $existing = CutOffOrder::where('order_number', $orderId)->first();
 
@@ -391,6 +391,7 @@ class TiktokSyncService
 
             if ($existing) {
                 $existing->update([
+                    'order_date'             => $orderDate,
                     'order_status'           => $statusText,
                     'shipping_courier'       => $payload['shipping_courier'] ?? $existing->shipping_courier,
                     'est_net_income'         => $totalAmount ?: $existing->est_net_income,

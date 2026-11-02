@@ -27,10 +27,11 @@ class CutOffOrderController extends Controller
             ]);
 
         // Auto-run pending migrations (cPanel FTP deployment support)
-        if (! \Illuminate\Support\Facades\Cache::has('auto_migrated_cutoff_v3')) {
+        if (! \Illuminate\Support\Facades\Cache::has('auto_migrated_cutoff_v5')) {
             try {
+                \Illuminate\Support\Facades\DB::statement("ALTER TABLE cut_off_orders MODIFY order_date DATETIME NULL");
                 \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
-                \Illuminate\Support\Facades\Cache::put('auto_migrated_cutoff_v3', true, now()->addHours(6));
+                \Illuminate\Support\Facades\Cache::put('auto_migrated_cutoff_v5', true, now()->addHours(6));
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::warning('CutOff auto-migrate notice: ' . $e->getMessage());
             }
