@@ -26,6 +26,16 @@ class CutOffOrderController extends Controller
                 'marketplace_net_payout' => 107740,
             ]);
 
+        // Auto-fix order 26110171K7DQ80 to exact Rp 150.099 (189.999 * 79%)
+        CutOffOrder::where('order_number', '26110171K7DQ80')
+            ->where(function ($q) {
+                $q->whereNull('est_net_income')->orWhere('est_net_income', '!=', 150099);
+            })
+            ->update([
+                'est_net_income'         => 150099,
+                'marketplace_net_payout' => 150099,
+            ]);
+
         // Auto-run pending migrations (cPanel FTP deployment support)
         if (! \Illuminate\Support\Facades\Cache::has('auto_migrated_cutoff_v5')) {
             try {
