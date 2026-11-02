@@ -22,6 +22,8 @@ interface CutOffOrder {
   info_gudang: string | null;
   order_status: string | null;
   keterangan_solutif: string | null;
+  cancel_by?: string | null;
+  cancel_reason?: string | null;
   est_net_income: number | string | null;
   marketplace_net_payout: number | string | null;
   sheet_dpp: string | null;
@@ -697,17 +699,28 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                         {/* Status Pesanan */}
                         <td className="py-3.5 px-4">
                           {order.order_status ? (
-                            <span
-                              className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                                isRj
-                                  ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                  : order.order_status.toLowerCase().includes('selesai')
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : 'bg-slate-100 text-slate-700'
-                              }`}
-                            >
-                              {order.order_status}
-                            </span>
+                            <div>
+                              <span
+                                className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                                  isRj
+                                    ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                    : order.order_status.toLowerCase().includes('selesai')
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                    : order.order_status.toLowerCase().includes('batal') || order.order_status.toLowerCase().includes('cancel')
+                                    ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                    : 'bg-slate-100 text-slate-700'
+                                }`}
+                              >
+                                {order.order_status}
+                              </span>
+
+                              {(order.cancel_reason || order.cancel_by) && (
+                                <div className="mt-1 text-[10px] text-rose-600 leading-tight max-w-[200px]" title={order.cancel_reason || ''}>
+                                  {order.cancel_by && <span className="font-bold text-rose-700">[{order.cancel_by}] </span>}
+                                  <span>{order.cancel_reason || 'Pesanan dibatalkan'}</span>
+                                </div>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-slate-400">—</span>
                           )}
@@ -813,6 +826,17 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
               </div>
 
               <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
+                {(editingOrder.cancel_reason || editingOrder.cancel_by) && (
+                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-1">
+                    <p className="font-bold flex items-center gap-1.5 text-rose-900">
+                      <span className="w-2 h-2 rounded-full bg-rose-600" />
+                      Informasi Pembatalan {editingOrder.cancel_by ? `(${editingOrder.cancel_by})` : ''}
+                    </p>
+                    <p className="text-[11px] text-rose-700 leading-relaxed font-medium">
+                      {editingOrder.cancel_reason || 'Pesanan dibatalkan di platform marketplace.'}
+                    </p>
+                  </div>
+                )}
                 <div>
                   <label className="block font-bold text-slate-700 uppercase mb-1">Status Gudang (INFO GDG)</label>
                   <input

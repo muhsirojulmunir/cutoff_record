@@ -330,9 +330,18 @@ class ShopeeSyncService
                 }
             }
 
-            // 5. Determine order status
+            // 5. Determine order status and cancellation details
             $rawStatus  = (string) ($order['order_status'] ?? '');
             $statusText = $this->mapOrderStatus($rawStatus);
+
+            $rawCancelBy = (string) ($order['cancel_by'] ?? '');
+            $cancelByLabel = match (strtolower($rawCancelBy)) {
+                'buyer'            => 'Pembeli',
+                'seller'           => 'Penjual',
+                'shopee', 'system' => 'Sistem Shopee',
+                default            => $rawCancelBy ? ucfirst($rawCancelBy) : null,
+            };
+            $cancelReason = ! empty($order['cancel_reason']) ? trim((string) $order['cancel_reason']) : null;
 
             // Double check logistics_status in package_list: if item was delivered or in transit, do not falsely label as Batal
             if (! empty($order['package_list'])) {
@@ -347,6 +356,19 @@ class ShopeeSyncService
                         }
                         break;
                     }
+                }
+            }
+
+            // If status is Batal, net income is 0 and fill cancel details
+            $keteranganSolutif = null;
+            if ($statusText === 'Batal') {
+                $totalAmount = 0; // Cancelled orders yield Rp 0 payout
+                if ($cancelReason) {
+                    $keteranganSolutif = $cancelByLabel ? "[{$cancelByLabel}] {$cancelReason}" : $cancelReason;
+                } elseif ($cancelByLabel) {
+                    $keteranganSolutif = "Dibatalkan oleh {$cancelByLabel}";
+                } else {
+                    $keteranganSolutif = 'Pesanan Dibatalkan';
                 }
             }
 
@@ -365,6 +387,9 @@ class ShopeeSyncService
                 'qty'                    => $totalQty,
                 'package_count'          => count($items) ?: 1,
                 'order_status'           => $statusText,
+                'keterangan_solutif'     => $keteranganSolutif,
+                'cancel_by'              => $cancelByLabel,
+                'cancel_reason'          => $cancelReason,
                 'est_net_income'         => $totalAmount,
                 'marketplace_net_payout' => $totalAmount,
             ];
@@ -376,6 +401,9 @@ class ShopeeSyncService
                     'shipping_courier'       => $shippingCourier ?: $existing->shipping_courier,
                     'est_net_income'         => $totalAmount ?: $existing->est_net_income,
                     'marketplace_net_payout' => $totalAmount ?: $existing->marketplace_net_payout,
+                    'keterangan_solutif'     => $keteranganSolutif ?: $existing->keterangan_solutif,
+                    'cancel_by'              => $cancelByLabel ?: $existing->cancel_by,
+                    'cancel_reason'          => $cancelReason ?: $existing->cancel_reason,
                     'sku_utama'              => $payload['sku_utama'] ?: $existing->sku_utama,
                     'product_name'           => $payload['product_name'] ?: $existing->product_name,
                 ]);
@@ -500,7 +528,7 @@ class ShopeeSyncService
             'access_token'             => $accessToken,
             'shop_id'                  => $shopId,
             'order_sn_list'            => implode(',', $orderSns),
-            'response_optional_fields' => 'buyer_user_id,buyer_username,item_list,package_list,shipping_carrier,total_amount',
+            'response_optional_fields' => 'buyer_user_id,buyer_username,item_list,package_list,shipping_carrier,total_amount,cancel_by,cancel_reason',
         ];
 
         $url = $this->host . $path . '?' . http_build_query($queryParams);
