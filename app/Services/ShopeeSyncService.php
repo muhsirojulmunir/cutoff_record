@@ -447,15 +447,15 @@ class ShopeeSyncService
                 };
                 $cancelReason = ! empty($order['cancel_reason']) ? trim((string) $order['cancel_reason']) : null;
 
-                // Double check logistics_status in package_list: if item was delivered or in transit, do not falsely label as Batal
-                if (! empty($order['package_list'])) {
+                // Status mapping: JANGAN ubah jika status resmi Shopee sudah 'CANCELLED' (Batal)
+                if ($rawStatus !== 'CANCELLED' && $statusText !== 'Batal' && ! empty($order['package_list'])) {
                     foreach ($order['package_list'] as $pkg) {
                         $logStatus = strtoupper((string) ($pkg['logistics_status'] ?? ''));
                         if (in_array($logStatus, ['LOGISTICS_DELIVERED'], true)) {
                             $statusText = 'Selesai';
                             break;
-                        } elseif (in_array($logStatus, ['LOGISTICS_PICKUP_DONE', 'LOGISTICS_COD_REJECTED', 'LOGISTICS_REQUEST_CREATED'], true)) {
-                            if ($statusText === 'Batal' || empty($statusText)) {
+                        } elseif (in_array($logStatus, ['LOGISTICS_PICKUP_DONE'], true)) {
+                            if ($statusText === 'Perlu Dikirim' || $statusText === 'Diproses' || empty($statusText)) {
                                 $statusText = 'Dikirim';
                             }
                             break;
