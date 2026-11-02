@@ -281,13 +281,15 @@ class ShopeeSyncService
 
         $poolBatches = array_chunk($chunks, 6);
         foreach ($poolBatches as $batchGroup) {
-            $responses = Http::pool(function (Pool $pool) use ($account, $batchGroup) {
+            $escrowUrl = $this->buildEscrowUrl($account);
+            $responses = Http::pool(function (Pool $pool) use ($account, $batchGroup, $escrowUrl) {
                 $reqs = [];
                 foreach ($batchGroup as $idx => $chunk) {
                     $orderUrl  = $this->buildOrderDetailUrl($account, $chunk);
-                    $escrowUrl = $this->buildEscrowUrl($account, $chunk);
                     $reqs["order_{$idx}"]  = $pool->as("order_{$idx}")->timeout(20)->get($orderUrl);
-                    $reqs["escrow_{$idx}"] = $pool->as("escrow_{$idx}")->timeout(20)->get($escrowUrl);
+                    $reqs["escrow_{$idx}"] = $pool->as("escrow_{$idx}")->timeout(20)->post($escrowUrl, [
+                        'order_sn_list' => array_values($chunk),
+                    ]);
                 }
                 return $reqs;
             });
@@ -300,6 +302,9 @@ class ShopeeSyncService
                             $detailedOrders = array_merge($detailedOrders, $data['response']['order_list']);
                         }
                     } elseif (str_starts_with((string) $key, 'escrow_')) {
+                        if (! empty($data['error'])) {
+                            Log::warning('Shopee Escrow Pool Error: ' . ($data['message'] ?? $data['error']));
+                        }
                         if (! empty($data['response']['escrow_detail_list'])) {
                             foreach ($data['response']['escrow_detail_list'] as $escrow) {
                                 $sn = $escrow['order_sn'] ?? null;
@@ -318,6 +323,15 @@ class ShopeeSyncService
             foreach ($chunks as $chunk) {
                 $details = $this->fetchOrderDetailRaw($account, $chunk);
                 $detailedOrders = array_merge($detailedOrders, $details);
+            }
+        }
+
+        // Fallback jika Http::pool escrow gagal: panggil berurutan
+        if (empty($escrowMap) && ! empty($orderSns)) {
+            Log::info('Shopee escrowMap kosong dari Http::pool, mencoba fetchEscrowDetailBatch berurutan...');
+            foreach ($chunks as $chunk) {
+                $escrows = $this->fetchEscrowDetailBatch($account, $chunk);
+                $escrowMap = array_merge($escrowMap, $escrows);
             }
         }
 
@@ -380,12 +394,22 @@ class ShopeeSyncService
                 // 4. Calculate total amount / net income
                 // Rumus ERP: (Harga Produk - Voucher Toko yang ditanggung Penjual) * 79%
                 $escrowIncome  = $escrowMap[$orderSn] ?? [];
+
+                // Fallback single escrow jika batch tidak ada (hanya jika sync pesanan sedikit agar tidak lemot)
+                if (empty($escrowIncome) && count($detailedOrders) <= 5) {
+                    $escrowIncome = $this->fetchSingleEscrowDetail($account, $orderSn);
+                    if (! empty($escrowIncome)) {
+                        $escrowMap[$orderSn] = $escrowIncome;
+                    }
+                }
+
                 $cogs          = (float) ($escrowIncome['cost_of_goods_sold'] ?? 0);
                 $origCogs      = (float) ($escrowIncome['original_cost_of_goods_sold'] ?? 0);
                 $sellerDisc    = (float) ($escrowIncome['seller_discount'] ?? 0);
                 $sellerVoucher = (float) (
                     $escrowIncome['voucher_from_seller']
                     ?? $escrowIncome['seller_voucher_discount']
+                    ?? $escrowIncome['voucher_seller']
                     ?? $order['voucher_from_seller']
                     ?? 0
                 );
@@ -660,9 +684,9 @@ class ShopeeSyncService
     }
 
     /**
-     * Build signed URL for get_escrow_detail_batch (GET request).
+     * Build signed URL for get_escrow_detail_batch (POST request).
      */
-    public function buildEscrowUrl(ShopeeAccount $account, array $orderSns): string
+    public function buildEscrowUrl(ShopeeAccount $account): string
     {
         $path        = '/api/v2/payment/get_escrow_detail_batch';
         $timestamp   = time();
@@ -675,12 +699,11 @@ class ShopeeSyncService
         $sign    = hash_hmac('sha256', $baseStr, $partnerKey);
 
         $queryParams = [
-            'partner_id'    => $partnerId,
-            'timestamp'     => $timestamp,
-            'sign'          => $sign,
-            'access_token'  => $accessToken,
-            'shop_id'       => $shopId,
-            'order_sn_list' => implode(',', $orderSns),
+            'partner_id'   => $partnerId,
+            'timestamp'    => $timestamp,
+            'sign'         => $sign,
+            'access_token' => $accessToken,
+            'shop_id'      => $shopId,
         ];
 
         return $this->host . $path . '?' . http_build_query($queryParams);
@@ -695,10 +718,12 @@ class ShopeeSyncService
             return [];
         }
 
-        $url = $this->buildEscrowUrl($account, $orderSns);
+        $url = $this->buildEscrowUrl($account);
 
         try {
-            $response = Http::timeout(25)->get($url);
+            $response = Http::timeout(25)->post($url, [
+                'order_sn_list' => array_values($orderSns),
+            ]);
 
             $data = $response->json();
             if ($response->failed() || ! empty($data['error'])) {
