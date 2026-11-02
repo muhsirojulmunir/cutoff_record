@@ -37,6 +37,12 @@ const navSections: NavSection[] = [
         matchPrefix: true,
         icon: 'M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z',
       },
+      {
+        label: 'Retur Online',
+        href: '/cut-off-returns',
+        matchPrefix: true,
+        icon: 'M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3',
+      },
     ],
   },
   {
@@ -61,6 +67,13 @@ const navSections: NavSection[] = [
         permission: 'user.view',
         matchPrefix: true,
         icon: 'M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h5.25m-5.25 0v-7.5a.75.75 0 00-.75-.75h-3a.75.75 0 00-.75.75V21',
+      },
+      {
+        label: 'Integrasi TikTok',
+        href: '/marketplace/tiktok',
+        permission: 'user.view',
+        matchPrefix: true,
+        icon: 'M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z',
       },
     ],
   },
@@ -145,23 +158,23 @@ export default function AppLayout({ children }: Props) {
 
   return (
     <div className="h-screen overflow-hidden bg-slate-50 text-slate-900 flex font-sans">
-      {/* Sidebar (Deep Navy Blue #0f172a) */}
+      {/* Sidebar (Clean Crisp White Modern SaaS) */}
       <aside
-        className={`${sidebarOpen ? 'w-64' : 'w-[72px]'} ${justLoggedIn ? 'anim-slide-left' : ''} h-full bg-[#0B132B] border-r border-slate-800 transition-[width] duration-200 ease-in-out flex flex-col z-20 shrink-0 shadow-lg`}
+        className={`${sidebarOpen ? 'w-64' : 'w-[72px]'} ${justLoggedIn ? 'anim-slide-left' : ''} h-full bg-white border-r border-slate-200 transition-[width] duration-200 ease-in-out flex flex-col z-20 shrink-0 shadow-xs`}
       >
         {/* Logo Branding */}
-        <div className="h-16 flex items-center gap-3 px-4 border-b border-slate-800/80 shrink-0 overflow-hidden">
-          <div className="h-9 w-9 rounded-xl bg-blue-600 flex items-center justify-center shrink-0 shadow-md shadow-blue-500/30">
+        <div className="h-16 flex items-center gap-3 px-4 border-b border-slate-100 shrink-0 overflow-hidden">
+          <div className="h-9 w-9 rounded-xl bg-[#0B132B] flex items-center justify-center shrink-0 shadow-xs">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-white">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
             </svg>
           </div>
           {sidebarOpen && (
             <div className="flex flex-col min-w-0">
-              <span className="font-bold text-sm text-white tracking-wide uppercase truncate">
+              <span className="font-bold text-sm text-slate-900 tracking-wide uppercase truncate">
                 Koding App
               </span>
-              <span className="text-[10px] text-blue-300/70 uppercase tracking-wider font-semibold">
+              <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
                 Control Panel
               </span>
             </div>
@@ -182,14 +195,14 @@ export default function AppLayout({ children }: Props) {
                 onChange={(e) => setMenuSearch(e.target.value)}
                 placeholder="Cari menu..."
                 autoComplete="off"
-                className="w-full pl-8 pr-8 py-2 rounded-xl bg-slate-900/80 border border-slate-800 text-white text-xs placeholder-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full pl-8 pr-8 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-xs placeholder-slate-400 focus:outline-none focus:border-[#0B132B] focus:bg-white transition-all"
               />
               {menuSearch !== '' && (
                 <button
                   type="button"
                   onClick={() => setMenuSearch('')}
                   title="Hapus pencarian"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-slate-400 hover:text-white transition-colors"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-3 h-3">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -226,21 +239,21 @@ export default function AppLayout({ children }: Props) {
                         key={`${section.title}-${item.href}-${item.label}`}
                         href={item.href}
                         title={!sidebarOpen ? item.label : undefined}
-                        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 group
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 group cursor-pointer
                           ${isActive
-                            ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-semibold'
-                            : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                            ? 'bg-[#0B132B] text-white shadow-xs font-semibold'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
                           }`}
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor"
-                          className={`w-5 h-5 shrink-0 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-blue-300'} transition-colors`}>
+                          className={`w-5 h-5 shrink-0 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-700'} transition-colors`}>
                           <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
                         </svg>
                         {sidebarOpen && (
                           <span className="truncate flex-1">{item.label}</span>
                         )}
                         {sidebarOpen && item.soon && (
-                          <span className="ml-auto text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 shrink-0">
+                          <span className="ml-auto text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200 shrink-0">
                             Soon
                           </span>
                         )}
@@ -254,22 +267,22 @@ export default function AppLayout({ children }: Props) {
         </nav>
 
         {/* User profile (Bottom sidebar) */}
-        <div className="shrink-0 border-t border-slate-800/90 p-3 bg-slate-900/40">
+        <div className="shrink-0 border-t border-slate-100 p-3 bg-slate-50/60">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="h-9 w-9 rounded-xl bg-blue-900/60 border border-blue-700/50 flex items-center justify-center shrink-0 text-xs font-bold text-blue-200">
+            <div className="h-9 w-9 rounded-xl bg-[#0B132B] flex items-center justify-center shrink-0 text-xs font-bold text-white shadow-2xs">
               {initials}
             </div>
             {sidebarOpen && (
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white truncate">{user?.name ?? '—'}</p>
-                <p className="text-xs text-blue-300/70 truncate">{user?.role?.name ?? 'User'}</p>
+                <p className="text-sm font-semibold text-slate-900 truncate">{user?.name ?? '—'}</p>
+                <p className="text-xs text-slate-500 truncate">{user?.role?.name ?? 'User'}</p>
               </div>
             )}
             {sidebarOpen && (
               <button
                 onClick={handleLogout}
                 title="Keluar"
-                className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-all"
+                className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
@@ -304,8 +317,12 @@ export default function AppLayout({ children }: Props) {
             </span>
             <button
               onClick={handleLogout}
-              className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg px-2.5 py-1.5 transition-colors"
+              className="flex items-center gap-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 active:bg-rose-800 rounded-xl px-3.5 py-1.5 shadow-2xs transition-all cursor-pointer"
+              title="Keluar dari sistem"
             >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+              </svg>
               Keluar
             </button>
           </div>

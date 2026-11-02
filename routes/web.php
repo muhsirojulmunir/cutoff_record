@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\CutOffOrderController;
+use App\Http\Controllers\CutOffReturnController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\UserController;
@@ -34,6 +35,13 @@ Route::middleware('auth')->group(function () {
     Route::put('/cut-off-orders/{cutOffOrder}', [CutOffOrderController::class, 'update'])->name('cut-off-orders.update');
     Route::delete('/cut-off-orders/{cutOffOrder}', [CutOffOrderController::class, 'destroy'])->name('cut-off-orders.destroy');
 
+    // Retur Online (RETURAN ONLINE FIX)
+    Route::get('/cut-off-returns', [CutOffReturnController::class, 'index'])->name('cut-off-returns.index');
+    Route::post('/cut-off-returns', [CutOffReturnController::class, 'store'])->name('cut-off-returns.store');
+    Route::post('/cut-off-returns/import', [CutOffReturnController::class, 'importBatch'])->name('cut-off-returns.import');
+    Route::put('/cut-off-returns/{cutOffReturn}', [CutOffReturnController::class, 'update'])->name('cut-off-returns.update');
+    Route::delete('/cut-off-returns/{cutOffReturn}', [CutOffReturnController::class, 'destroy'])->name('cut-off-returns.destroy');
+
     // Users Management
     Route::resource('users', UserController::class)->except(['show']);
 
@@ -47,4 +55,12 @@ Route::middleware('auth')->group(function () {
     Route::get('/marketplace/shopee/callback', [\App\Http\Controllers\ShopeeIntegrationController::class, 'handleCallback'])->name('shopee.callback');
     Route::post('/marketplace/shopee/test-connection', [\App\Http\Controllers\ShopeeIntegrationController::class, 'testConnection'])->name('shopee.test');
     Route::post('/marketplace/shopee/sync-now', [\App\Http\Controllers\ShopeeIntegrationController::class, 'syncNow'])->name('shopee.sync');
+
+    // Integrasi TikTok Shop Open API
+    Route::get('/marketplace/tiktok', [\App\Http\Controllers\TiktokIntegrationController::class, 'index'])->name('tiktok.index');
+    Route::post('/marketplace/tiktok/credentials', [\App\Http\Controllers\TiktokIntegrationController::class, 'saveCredentials'])->name('tiktok.credentials');
+    Route::get('/marketplace/tiktok/auth', [\App\Http\Controllers\TiktokIntegrationController::class, 'authorizeShop'])->name('tiktok.auth');
+    Route::get('/marketplace/tiktok/callback', [\App\Http\Controllers\TiktokIntegrationController::class, 'handleCallback'])->name('tiktok.callback');
+    Route::post('/marketplace/tiktok/test-connection', [\App\Http\Controllers\TiktokIntegrationController::class, 'testConnection'])->name('tiktok.test');
+    Route::post('/marketplace/tiktok/sync-now', [\App\Http\Controllers\TiktokIntegrationController::class, 'syncNow'])->name('tiktok.sync');
 });
