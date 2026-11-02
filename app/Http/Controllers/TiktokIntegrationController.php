@@ -136,9 +136,13 @@ class TiktokIntegrationController extends Controller
         Gate::authorize('user.view');
 
         $days = (int) $request->input('days', 7);
-        if ($days < 1 || $days > 14) {
+        if ($days < 1) {
             $days = 7;
+        } elseif ($days > 90) {
+            $days = 90;
         }
+
+        @set_time_limit(300);
 
         $timeTo = time();
         $timeFrom = $timeTo - ($days * 86400);

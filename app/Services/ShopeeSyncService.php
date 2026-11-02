@@ -235,9 +235,25 @@ class ShopeeSyncService
 
         $account = $this->ensureValidToken($account);
 
-        // 1. Fetch Order List
-        $orderList = $this->fetchOrderListRaw($account, $timeFrom, $timeTo, 100);
-        $orderSns = array_column($orderList, 'order_sn');
+        // 1. Fetch Order List in 14-day chunks to respect Shopee's 15-day range limit
+        $maxWindow   = 14 * 86400;
+        $allOrderSns = [];
+        $currentTo   = $timeTo;
+
+        while ($currentTo > $timeFrom) {
+            $currentFrom = max($timeFrom, $currentTo - $maxWindow);
+            $chunkList   = $this->fetchOrderListRaw($account, $currentFrom, $currentTo, 100);
+
+            foreach ($chunkList as $ord) {
+                if (! empty($ord['order_sn'])) {
+                    $allOrderSns[$ord['order_sn']] = true;
+                }
+            }
+
+            $currentTo = $currentFrom;
+        }
+
+        $orderSns = array_keys($allOrderSns);
 
         if (empty($orderSns)) {
             $account->update([
@@ -346,42 +362,59 @@ class ShopeeSyncService
     }
 
     /**
-     * Fetch raw order list from Shopee API v2.
+     * Fetch raw order list from Shopee API v2 (supports cursor pagination).
      */
-    private function fetchOrderListRaw(ShopeeAccount $account, int $timeFrom, int $timeTo, int $pageSize = 50): array
+    private function fetchOrderListRaw(ShopeeAccount $account, int $timeFrom, int $timeTo, int $pageSize = 100): array
     {
         $path        = '/api/v2/order/get_order_list';
-        $timestamp   = time();
         $accessToken = (string) ($account->access_token ?? '');
         $shopId      = (int) $account->shop_id;
         $partnerId   = (int) $account->partner_id;
         $partnerKey  = (string) $account->partner_key;
 
-        $baseStr = sprintf('%s%s%s%s%s', $partnerId, $path, $timestamp, $accessToken, $shopId);
-        $sign    = hash_hmac('sha256', $baseStr, $partnerKey);
+        $allOrders = [];
+        $cursor    = '';
 
-        $queryParams = [
-            'partner_id'       => $partnerId,
-            'timestamp'        => $timestamp,
-            'sign'             => $sign,
-            'access_token'     => $accessToken,
-            'shop_id'          => $shopId,
-            'time_range_field' => 'create_time',
-            'time_from'        => $timeFrom,
-            'time_to'          => $timeTo,
-            'page_size'        => $pageSize,
-        ];
+        do {
+            $timestamp = time();
+            $baseStr   = sprintf('%s%s%s%s%s', $partnerId, $path, $timestamp, $accessToken, $shopId);
+            $sign      = hash_hmac('sha256', $baseStr, $partnerKey);
 
-        $url = $this->host . $path . '?' . http_build_query($queryParams);
+            $queryParams = [
+                'partner_id'       => $partnerId,
+                'timestamp'        => $timestamp,
+                'sign'             => $sign,
+                'access_token'     => $accessToken,
+                'shop_id'          => $shopId,
+                'time_range_field' => 'create_time',
+                'time_from'        => $timeFrom,
+                'time_to'          => $timeTo,
+                'page_size'        => $pageSize,
+            ];
 
-        $response = Http::timeout(20)->get($url);
-        $data = $response->json();
+            if (! empty($cursor)) {
+                $queryParams['cursor'] = $cursor;
+            }
 
-        if ($response->failed() || ! empty($data['error'])) {
-            throw new RuntimeException('Shopee API Error: ' . ($data['message'] ?? $data['error'] ?? 'Gagal mengambil order list'));
-        }
+            $url = $this->host . $path . '?' . http_build_query($queryParams);
 
-        return $data['response']['order_list'] ?? [];
+            $response = Http::timeout(25)->get($url);
+            $data = $response->json();
+
+            if ($response->failed() || ! empty($data['error'])) {
+                throw new RuntimeException('Shopee API Error: ' . ($data['message'] ?? $data['error'] ?? 'Gagal mengambil order list'));
+            }
+
+            $resList = $data['response']['order_list'] ?? [];
+            foreach ($resList as $item) {
+                $allOrders[] = $item;
+            }
+
+            $hasMore = ! empty($data['response']['more']);
+            $cursor  = (string) ($data['response']['next_cursor'] ?? '');
+        } while ($hasMore && ! empty($cursor));
+
+        return $allOrders;
     }
 
     /**
