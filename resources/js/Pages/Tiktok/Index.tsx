@@ -319,12 +319,14 @@ export default function TiktokIndex({ account, callbackUrl }: Props) {
                 <label className="block text-xs font-bold text-slate-700 mb-2">
                   Pilih Rentang Waktu Tarik Pesanan:
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {[
                     { label: 'Hari Ini', days: 1 },
-                    { label: '3 Hari', days: 3 },
                     { label: '7 Hari', days: 7 },
                     { label: '14 Hari', days: 14 },
+                    { label: '30 Hari (1 Bln)', days: 30 },
+                    { label: '60 Hari (2 Bln)', days: 60 },
+                    { label: '90 Hari (Maks)', days: 90 },
                   ].map((preset) => (
                     <button
                       key={preset.days}
