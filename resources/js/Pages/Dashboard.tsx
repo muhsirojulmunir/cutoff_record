@@ -1,84 +1,90 @@
 import React, { useState } from 'react';
-import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import AppLayout from '../Layouts/AppLayout';
-import { PageProps } from '../Types';
-import DualCalendarRangePicker from '../Components/DualCalendarRangePicker';
-
-interface FilterState {
-  range: string;
-  date_from: string;
-  date_to: string;
-}
-
-interface TodayStats {
-  date: string;
-  orders: number;
-  estNetIncome: number;
-  netPayout: number;
-  oos: number;
-  rj: number;
-  dpp: number;
-}
-
-interface PeriodStats {
-  range: string;
-  totalOrders: number;
-  totalOos: number;
-  totalRj: number;
-  totalDpp: number;
-  estNetIncome: number;
-  netPayout: number;
-}
 
 interface ChannelItem {
-  channel: string;
+  id: string;
+  name: string;
   count: number;
-  total_income: number | string;
 }
 
-interface CourierItem {
-  shipping_courier: string;
-  count: number;
-  total_income: number | string;
+interface SummaryProps {
+  omset: number;
+  omsetChange: string;
+  labaBersih: number;
+  labaChange: string;
+  totalOrders: number;
+  ordersChange: string;
+  pengiriman: number;
+  pengirimanChange: string;
+}
+
+interface ProfitFunnelProps {
+  period: string;
+  margin: number;
+  labaBersih: number;
+  labaKotor: number;
+  labaKotorPercent: number;
+  omset: number;
+  omsetPercent: number;
+  hpp: number;
+  hppPercent: number;
+  biayaOps: number;
+  biayaOpsPercent: number;
+  ongkir: number;
+  ongkirPercent: number;
 }
 
 interface DailyTrendItem {
   date: string;
   order_count: number;
-  total_income: number | string;
+  total_income: number;
 }
 
-interface RecentOrder {
-  id: number;
-  order_number: string;
-  order_date: string | null;
+interface ChannelBreakdownItem {
   channel: string;
-  buyer_username: string | null;
-  shipping_courier: string | null;
-  order_status: string | null;
-  info_gudang: string | null;
-  est_net_income: number | string | null;
-  dpp_number: string | null;
+  count: number;
+  total_income: number;
 }
 
-interface SystemStats {
-  totalUsers: number;
-  activeUsers: number;
-  totalRoles: number;
-  database: string;
-  appName: string;
+interface CourierBreakdownItem {
+  shipping_courier: string;
+  count: number;
+  total_income: number;
+}
+
+interface TopProductItem {
+  rank: number;
+  sku: string;
+  name: string;
+  orders: number;
+  qty: number;
+  omset: number;
+  modal: number;
+  laba: number;
+  percent: number;
 }
 
 interface DashboardProps {
-  filters?: FilterState;
-  todayStats: TodayStats;
-  periodStats: PeriodStats;
-  channelBreakdown: ChannelItem[];
-  courierBreakdown: CourierItem[];
-  dailyTrend: DailyTrendItem[];
-  recentOrders: RecentOrder[];
-  stats: SystemStats;
-  cutOff?: PeriodStats & { channelBreakdown: ChannelItem[] };
+  filters: {
+    range: string;
+    channel: string;
+  };
+  timeframeTitle: string;
+  dateSubtitle: string;
+  channels: ChannelItem[];
+  summary: SummaryProps;
+  profitFunnel: ProfitFunnelProps;
+  dailyTrend?: DailyTrendItem[];
+  channelBreakdown?: ChannelBreakdownItem[];
+  courierBreakdown?: CourierBreakdownItem[];
+  topProducts: TopProductItem[];
+  stats: {
+    totalUsers: number;
+    activeUsers: number;
+    totalRoles: number;
+    appName: string;
+  };
 }
 
 function formatRupiah(val: number | string | null | undefined): string {
@@ -88,12 +94,25 @@ function formatRupiah(val: number | string | null | undefined): string {
   return 'Rp ' + Math.round(num).toLocaleString('id-ID');
 }
 
+function formatCompactRupiah(val: number): string {
+  if (val >= 1_000_000_000) {
+    return 'Rp ' + (val / 1_000_000_000).toFixed(1).replace('.', ',') + ' M';
+  }
+  if (val >= 1_000_000) {
+    return 'Rp ' + (val / 1_000_000).toFixed(1).replace('.', ',') + ' jt';
+  }
+  if (val >= 1_000) {
+    return 'Rp ' + (val / 1_000).toFixed(0).replace('.', ',') + ' rb';
+  }
+  return formatRupiah(val);
+}
+
 function formatDateIndo(dateStr: string | null | undefined): string {
   if (!dateStr) return '-';
   try {
     const parts = dateStr.split(' ')[0].split('-');
     if (parts.length === 3) {
-      const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+      const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
       return new Intl.DateTimeFormat('id-ID', {
         day: 'numeric',
         month: 'short',
@@ -107,411 +126,277 @@ function formatDateIndo(dateStr: string | null | undefined): string {
 }
 
 export default function Dashboard({
-  filters = { range: 'all', date_from: '', date_to: '' },
-  todayStats,
-  periodStats,
+  filters,
+  timeframeTitle,
+  dateSubtitle,
+  channels = [],
+  summary,
+  profitFunnel,
+  dailyTrend = [],
   channelBreakdown = [],
   courierBreakdown = [],
-  dailyTrend = [],
-  recentOrders = [],
-  stats,
+  topProducts = [],
 }: DashboardProps) {
-  const { auth } = usePage<PageProps>().props;
-  const user = auth.user;
-  const isManagement = user?.role?.name === 'Management';
-
-  const [activeRange, setActiveRange] = useState<string>(filters.range || 'all');
-  const [isCalendarOpen, setIsCalendarOpen] = useState<boolean>(false);
+  const [selectedChannel, setSelectedChannel] = useState(filters.channel || 'all');
+  const [activeRange, setActiveRange] = useState(filters.range || 'year');
   const [hoveredTrend, setHoveredTrend] = useState<DailyTrendItem | null>(null);
 
-  const rangePresets = [
-    { key: 'all', label: 'Semua Waktu' },
+  const rangeOptions = [
     { key: 'today', label: 'Hari Ini' },
-    { key: 'yesterday', label: 'Kemarin' },
-    { key: '7days', label: '7 Hari Terakhir' },
-    { key: '30days', label: '30 Hari Terakhir' },
-    { key: 'this_month', label: 'Bulan Ini' },
-    { key: 'custom', label: 'Kustom Tanggal' },
+    { key: 'week', label: 'Minggu Ini' },
+    { key: 'month', label: 'Bulan Ini' },
+    { key: 'year', label: 'Tahun Ini' },
+    { key: 'all', label: 'Semua' },
   ];
 
-  const handleSelectRange = (rangeKey: string) => {
-    if (rangeKey === 'custom') {
-      setIsCalendarOpen((prev) => !prev);
-      return;
-    }
-    setIsCalendarOpen(false);
-    setActiveRange(rangeKey);
-    router.get(
-      '/dashboard',
-      { range: rangeKey },
-      { preserveScroll: true, preserveState: true }
-    );
-  };
+  function applyFilter(override: { range?: string; channel?: string }) {
+    const nextRange = override.range !== undefined ? override.range : activeRange;
+    const nextChannel = override.channel !== undefined ? override.channel : selectedChannel;
 
-  const handleApplyRangePicker = (start: string, end: string) => {
-    setActiveRange('custom');
-    setIsCalendarOpen(false);
+    if (override.range !== undefined) setActiveRange(nextRange);
+    if (override.channel !== undefined) setSelectedChannel(nextChannel);
+
     router.get(
       '/dashboard',
       {
-        range: 'custom',
-        date_from: start,
-        date_to: end,
+        range: nextRange,
+        channel: nextChannel,
       },
-      { preserveScroll: true, preserveState: true }
+      { preserveState: true, replace: true, preserveScroll: true }
     );
-  };
+  }
 
-  const handleResetFilter = () => {
-    setActiveRange('all');
-    setIsCalendarOpen(false);
-    router.get('/dashboard', { range: 'all' }, { preserveScroll: true, preserveState: true });
-  };
-
-  // Max count for daily trend visual chart
   const maxTrendCount = Math.max(...dailyTrend.map((t) => t.order_count), 1);
-
-  // Total orders in period for percentages
-  const periodTotal = periodStats?.totalOrders || 1;
+  const periodTotal = summary.totalOrders || 1;
 
   return (
     <AppLayout>
-      <Head title="Executive Dashboard - Koding ERP" />
+      <Head title="Dashboard Performa" />
 
       <div className="space-y-6 max-w-7xl mx-auto pb-10">
-        {/* Welcome & Role Header */}
-        <div className="bg-gradient-to-r from-[#070D1E] via-[#0B132B] to-[#132043] rounded-2xl p-6 sm:p-8 text-white shadow-lg relative overflow-hidden border border-slate-800">
-          <div className="absolute right-0 top-0 bottom-0 w-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-
-          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-                  Selamat Datang, {user?.name ?? 'User'}
-                </h1>
-                {isManagement ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    Akses Eksekutif (Read-Only)
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-300 border border-blue-400/30">
-                    {user?.role?.name ?? 'Administrator'}
-                  </span>
-                )}
-              </div>
-              <p className="text-xs sm:text-sm text-slate-300 mt-2 max-w-2xl leading-relaxed">
-                {isManagement
-                  ? 'Panel analitik manajemen untuk monitoring performa penjualan harian, omzet toko, kendala stok, dan pergerakan logistik.'
-                  : 'Dashboard terpadu operasional dan cut off order. Pantau status harian dan kelola pesanan dengan cepat.'}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              <Link
-                href="/cut-off-orders"
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs tracking-wide shadow-md transition-all active:scale-95"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
+        {/* Top Header Row */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Channel Dropdown Pill */}
+            <div className="relative">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                Channel
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedChannel}
+                  onChange={(e) => applyFilter({ channel: e.target.value })}
+                  className="appearance-none pl-3.5 pr-8 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#0B132B] shadow-2xs cursor-pointer"
+                >
+                  <option value="all">Semua Channel</option>
+                  {channels.map((ch) => (
+                    <option key={ch.id} value={ch.id}>
+                      {ch.name} ({ch.count.toLocaleString('id-ID')})
+                    </option>
+                  ))}
+                </select>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                 </svg>
-                Buka Data Pesanan Cut Off
-              </Link>
-            </div>
-          </div>
-        </div>
-
-        {/* Realtime Live Highlight: PENJUALAN HARI INI */}
-        <div className="bg-white border-2 border-slate-900/10 rounded-2xl p-5 sm:p-6 shadow-sm relative overflow-hidden bg-gradient-to-br from-white via-slate-50/50 to-blue-50/20">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
-            <div className="flex items-center gap-2.5">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-              </span>
-              <div>
-                <h2 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                  Live Monitoring: Penjualan Hari Ini
-                  <span className="text-[11px] font-normal normal-case text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                    {formatDateIndo(todayStats?.date)}
-                  </span>
-                </h2>
               </div>
             </div>
 
-            <Link
-              href={`/cut-off-orders?date_from=${todayStats?.date}&date_to=${todayStats?.date}`}
-              className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 self-start sm:self-auto transition-colors"
-            >
-              Rincian Pesanan Hari Ini ({todayStats?.orders ?? 0}) &rarr;
-            </Link>
+            {/* Performa Title & Subtitle */}
+            <div className="pt-2">
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+                {timeframeTitle}
+              </h1>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
+                {dateSubtitle}
+              </p>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
-            {/* Today Orders */}
-            <div className="p-3.5 rounded-xl bg-white border border-slate-100 shadow-xs">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                Pesanan Masuk
-              </span>
-              <p className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">
-                {(todayStats?.orders ?? 0).toLocaleString('id-ID')}
-              </p>
-              <span className="text-[11px] text-slate-500 mt-0.5 block">
-                Update transaksi tanggal berjalan
-              </span>
-            </div>
+          {/* Right Action & Range Switcher */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 font-medium hidden md:inline mr-1">
+              Ringkasan Laporan
+            </span>
 
-            {/* Today Income */}
-            <div className="p-3.5 rounded-xl bg-white border border-slate-100 shadow-xs">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                Est. Pendapatan Bersih
-              </span>
-              <p className="text-xl sm:text-2xl font-extrabold text-emerald-600 mt-1 truncate">
-                {formatRupiah(todayStats?.estNetIncome)}
-              </p>
-              <span className="text-[11px] text-emerald-700/80 mt-0.5 block font-medium">
-                Pencairan: {formatRupiah(todayStats?.netPayout)}
-              </span>
-            </div>
-
-            {/* Today OOS / RJ Issues */}
-            <div className="p-3.5 rounded-xl bg-white border border-slate-100 shadow-xs">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                Kendala Gudang / Retur
-              </span>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-xl sm:text-2xl font-extrabold text-rose-600">
-                  {todayStats?.oos ?? 0}
-                </span>
-                <span className="text-xs text-slate-400 font-bold">OOS</span>
-                <span className="text-slate-300">•</span>
-                <span className="text-xl sm:text-2xl font-extrabold text-amber-600">
-                  {todayStats?.rj ?? 0}
-                </span>
-                <span className="text-xs text-slate-400 font-bold">Retur</span>
-              </div>
-              <span className="text-[11px] text-slate-500 mt-0.5 block">
-                {todayStats?.oos === 0 && todayStats?.rj === 0 ? 'Semua pesanan aman' : 'Perlu perhatian tim'}
-              </span>
-            </div>
-
-            {/* Today DPP */}
-            <div className="p-3.5 rounded-xl bg-white border border-slate-100 shadow-xs">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                No. DPP Terbit
-              </span>
-              <p className="text-2xl sm:text-3xl font-extrabold text-blue-700 mt-1">
-                {(todayStats?.dpp ?? 0).toLocaleString('id-ID')}
-              </p>
-              <span className="text-[11px] text-slate-500 mt-0.5 block">
-                Klaim pencairan diproses
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Custom Date Filter Section */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-slate-500">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-              </svg>
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                Filter Periode Analitik:
-              </span>
-              {filters.range === 'custom' && filters.date_from && (
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
-                  {formatDateIndo(filters.date_from)} s/d {formatDateIndo(filters.date_to)}
-                </span>
-              )}
-            </div>
-
-            {(filters.range !== 'all' || filters.date_from) && (
-              <button
-                onClick={handleResetFilter}
-                className="text-xs text-rose-600 hover:text-rose-800 font-semibold self-start md:self-auto flex items-center gap-1 cursor-pointer"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-                Reset ke Semua Waktu
-              </button>
-            )}
-          </div>
-
-          {/* Preset Buttons & Dual Calendar Popover */}
-          <div className="relative flex items-center gap-2 flex-wrap">
-            {rangePresets.map((preset) => {
-              const isActive = activeRange === preset.key;
-
-              if (preset.key === 'custom') {
-                const hasCustomDate = filters.range === 'custom' && filters.date_from;
-                return (
-                  <div key={preset.key} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => handleSelectRange('custom')}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                        isActive
-                          ? 'bg-[#EA3829] text-white shadow-xs'
-                          : isCalendarOpen
-                          ? 'bg-slate-800 text-white shadow-xs'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                      }`}
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-                      </svg>
-                      {hasCustomDate
-                        ? `${formatDateIndo(filters.date_from)} – ${formatDateIndo(filters.date_to)}`
-                        : 'Kustom Tanggal'}
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        strokeWidth={2}
-                        stroke="currentColor"
-                        className={`w-3 h-3 transition-transform ${isCalendarOpen ? 'rotate-180' : ''}`}
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                      </svg>
-                    </button>
-
-                    {/* Dual Month Calendar Popover matching reference screenshot */}
-                    <DualCalendarRangePicker
-                      initialStartDate={filters.date_from || undefined}
-                      initialEndDate={filters.date_to || undefined}
-                      maxDate={todayStats?.date || undefined}
-                      isOpen={isCalendarOpen}
-                      onClose={() => setIsCalendarOpen(false)}
-                      onApply={handleApplyRangePicker}
-                    />
-                  </div>
-                );
-              }
-
-              return (
+            {/* Timeframe Presets */}
+            <div className="inline-flex items-center p-1 bg-white border border-slate-200 rounded-xl shadow-2xs">
+              {rangeOptions.map((opt) => (
                 <button
-                  key={preset.key}
-                  onClick={() => handleSelectRange(preset.key)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                    isActive
+                  key={opt.key}
+                  onClick={() => applyFilter({ range: opt.key })}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    activeRange === opt.key
                       ? 'bg-[#0B132B] text-white shadow-xs'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                   }`}
                 >
-                  {preset.label}
+                  {opt.label}
                 </button>
-              );
-            })}
+              ))}
+            </div>
+
+            {/* Refresh Button */}
+            <button
+              onClick={() => router.reload()}
+              title="Refresh Data"
+              className="p-2 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-[#0B132B] hover:bg-slate-50 shadow-2xs transition-all cursor-pointer"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+              </svg>
+            </button>
           </div>
         </div>
 
-        {/* 4 Main Cut Off Live Metric Cards for Selected Period */}
+        {/* 4 Cards Metrik Utama (Gaya Modern Navy Brand + Clean White) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Card 1: Total Orders */}
-          <Link
-            href="/cut-off-orders"
-            className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs hover:border-[#0B132B] hover:shadow-md transition-all group"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 group-hover:text-slate-900 transition-colors">
-                Total Pesanan
-              </span>
-              <span className="p-2 bg-blue-50 text-blue-700 rounded-xl group-hover:bg-[#0B132B] group-hover:text-white transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
-                </svg>
+          {/* Card 1: Omset (Aksen Utama Navy Gradient) */}
+          <div className="rounded-2xl p-6 bg-gradient-to-r from-[#0B132B] via-slate-900 to-blue-950 text-white shadow-xs border border-blue-950/60 relative overflow-hidden">
+            <div className="flex items-center gap-2 text-blue-200/90">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-blue-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+              </svg>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-blue-200">
+                Omset {timeframeTitle.replace('Performa ', '')}
               </span>
             </div>
-            <div className="mt-3">
-              <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
-                {periodStats.totalOrders.toLocaleString('id-ID')}
-              </span>
-              <p className="text-xs text-blue-600 mt-1 flex items-center gap-1 font-semibold">
-                Buka Data Pesanan &rarr;
-              </p>
-            </div>
-          </Link>
+            <p className="text-3xl font-extrabold mt-3 tracking-tight text-white">
+              {formatCompactRupiah(summary.omset)}
+            </p>
+            <p className="text-xs text-blue-300 font-medium mt-2 flex items-center gap-1">
+              <span>▲</span> {summary.omsetChange}
+            </p>
+          </div>
 
-          {/* Card 2: Est Net Income */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs hover:border-emerald-400 hover:shadow-md transition-all">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                Est. Pendapatan Bersih
-              </span>
-              <span className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
-                </svg>
+          {/* Card 2: Laba Bersih (Navy Blue Gradient) */}
+          <div className="rounded-2xl p-6 bg-gradient-to-r from-blue-950 via-blue-900 to-[#1E3A8A] text-white shadow-xs border border-blue-900/50 relative overflow-hidden">
+            <div className="flex items-center gap-2 text-blue-200/90">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-blue-300">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-blue-200">
+                Laba Bersih {timeframeTitle.replace('Performa ', '')}
               </span>
             </div>
-            <div className="mt-3">
-              <span className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight truncate block">
-                {formatRupiah(periodStats.estNetIncome)}
+            <p className="text-3xl font-extrabold mt-3 tracking-tight text-white">
+              {formatCompactRupiah(summary.labaBersih)}
+            </p>
+            <p className="text-xs text-blue-200 font-medium mt-2 flex items-center gap-1">
+              <span>▲</span> {summary.labaChange}
+            </p>
+          </div>
+
+          {/* Card 3: Total Order (Clean Card) */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
+            <div className="flex items-center gap-2 text-slate-500">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-slate-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+              </svg>
+              <span className="text-[11px] font-bold uppercase tracking-wider">
+                Total Order
               </span>
-              <p className="text-xs text-emerald-600 font-semibold mt-1">
-                Pencairan Marketplace: {formatRupiah(periodStats.netPayout)}
-              </p>
+            </div>
+            <p className="text-3xl font-extrabold text-slate-900 mt-3 tracking-tight">
+              {summary.totalOrders.toLocaleString('id-ID')}
+            </p>
+            <p className="text-xs text-blue-700 font-semibold mt-2 flex items-center gap-1">
+              <span>▲</span> {summary.ordersChange}
+            </p>
+          </div>
+
+          {/* Card 4: Pengiriman (Clean Card) */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
+            <div className="flex items-center gap-2 text-slate-500">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-slate-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h.375c.621 0 1.125-.504 1.125-1.125V11.25c0-.621-.504-1.125-1.125-1.125h-1.5M14.25 5.25v9.75m0 0h-6" />
+              </svg>
+              <span className="text-[11px] font-bold uppercase tracking-wider">
+                Pengiriman
+              </span>
+            </div>
+            <p className="text-3xl font-extrabold text-slate-900 mt-3 tracking-tight">
+              {summary.pengiriman.toLocaleString('id-ID')}
+            </p>
+            <p className="text-xs text-blue-700 font-semibold mt-2 flex items-center gap-1">
+              <span>▲</span> {summary.pengirimanChange}
+            </p>
+          </div>
+        </div>
+
+        {/* Profit Funnel Arrow Section */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Profit Funnel</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{profitFunnel.period}</p>
+            </div>
+            <div className="flex items-center gap-4 text-xs">
+              <span className="font-semibold text-blue-900 bg-blue-50 border border-blue-200 px-3 py-1 rounded-full">
+                Margin {profitFunnel.margin}%
+              </span>
+              <span className="font-bold text-blue-900">
+                Laba Bersih {formatRupiah(profitFunnel.labaBersih)}
+              </span>
             </div>
           </div>
 
-          {/* Card 3: Stok Habis (OOS) */}
-          <Link
-            href="/cut-off-orders?info_gudang=oos"
-            className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs hover:border-rose-400 hover:shadow-md transition-all group"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 group-hover:text-rose-600 transition-colors">
-                Stok Habis (OOS)
-              </span>
-              <span className="p-2 bg-rose-50 text-rose-600 rounded-xl group-hover:bg-rose-600 group-hover:text-white transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                </svg>
-              </span>
+          {/* Chevron / Funnel Step Cards (Responsive) */}
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-2 md:gap-0 overflow-hidden rounded-xl border border-slate-200">
+            {/* Step 1: Laba Kotor */}
+            <div className="bg-blue-600 text-white p-4 relative flex flex-col justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-blue-100">Laba Kotor</p>
+                <p className="text-base font-extrabold mt-1 truncate">{formatCompactRupiah(profitFunnel.labaKotor)}</p>
+              </div>
+              <p className="text-[11px] text-blue-100/90 mt-3 font-medium">{profitFunnel.labaKotorPercent}% dari omset</p>
             </div>
-            <div className="mt-3">
-              <span className="text-3xl font-extrabold text-rose-600 tracking-tight">
-                {periodStats.totalOos.toLocaleString('id-ID')}
-              </span>
-              <p className="text-xs text-slate-500 mt-1">
-                {((periodStats.totalOos / periodTotal) * 100).toFixed(1)}% dari total pesanan
-              </p>
-            </div>
-          </Link>
 
-          {/* Card 4: Retur Jual (RJ) */}
-          <Link
-            href="/cut-off-orders?order_status=rj"
-            className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs hover:border-amber-400 hover:shadow-md transition-all group"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 group-hover:text-amber-600 transition-colors">
-                Retur Jual (RJ)
-              </span>
-              <span className="p-2 bg-amber-50 text-amber-600 rounded-xl group-hover:bg-amber-600 group-hover:text-white transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
-                </svg>
-              </span>
+            {/* Step 2: Omset */}
+            <div className="bg-[#0B132B] text-white p-4 relative flex flex-col justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Omset</p>
+                <p className="text-base font-extrabold mt-1 truncate">{formatCompactRupiah(profitFunnel.omset)}</p>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-3 font-medium">100% dari omset</p>
             </div>
-            <div className="mt-3">
-              <span className="text-3xl font-extrabold text-amber-600 tracking-tight">
-                {periodStats.totalRj.toLocaleString('id-ID')}
-              </span>
-              <p className="text-xs text-slate-500 mt-1">
-                {periodStats.totalDpp.toLocaleString('id-ID')} pesanan ber-DPP
-              </p>
+
+            {/* Step 3: HPP / Modal */}
+            <div className="bg-slate-800 text-white p-4 relative flex flex-col justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-300">HPP / Modal</p>
+                <p className="text-base font-extrabold mt-1 truncate">{formatCompactRupiah(profitFunnel.hpp)}</p>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-3 font-medium">{profitFunnel.hppPercent}% dari omset</p>
             </div>
-          </Link>
+
+            {/* Step 4: Biaya Operasional */}
+            <div className="bg-slate-700 text-white p-4 relative flex flex-col justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Biaya Operasional</p>
+                <p className="text-base font-extrabold mt-1 truncate">{formatCompactRupiah(profitFunnel.biayaOps)}</p>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-3 font-medium">0% dari omset</p>
+            </div>
+
+            {/* Step 5: Ongkir */}
+            <div className="bg-slate-900 text-white p-4 relative flex flex-col justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Ongkir</p>
+                <p className="text-base font-extrabold mt-1 truncate">{formatCompactRupiah(profitFunnel.ongkir)}</p>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-3 font-medium">0% dari omset</p>
+            </div>
+          </div>
         </div>
 
-        {/* Visual Daily Sales Trend Chart (14 Hari) */}
+        {/* Tren Volume & Penjualan Harian (Visual Bar Chart 14 Hari) */}
         {dailyTrend.length > 0 && (
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -525,9 +410,9 @@ export default function Dashboard({
               </div>
 
               {hoveredTrend && (
-                <div className="text-xs bg-slate-900 text-white px-3 py-1.5 rounded-lg font-mono">
+                <div className="text-xs bg-[#0B132B] text-white px-3 py-1.5 rounded-lg font-mono">
                   <span className="text-slate-300">{formatDateIndo(hoveredTrend.date)}: </span>
-                  <strong className="text-emerald-400">{hoveredTrend.order_count} pesanan</strong>
+                  <strong className="text-blue-300">{hoveredTrend.order_count} pesanan</strong>
                   <span className="text-slate-400"> ({formatRupiah(hoveredTrend.total_income)})</span>
                 </div>
               )}
@@ -549,9 +434,9 @@ export default function Dashboard({
                     >
                       {/* Tooltip on hover */}
                       {isHovered && (
-                        <div className="absolute -top-12 z-20 bg-slate-900 text-white text-[10px] py-1 px-2 rounded-md shadow-lg whitespace-nowrap pointer-events-none">
+                        <div className="absolute -top-12 z-20 bg-[#0B132B] text-white text-[10px] py-1 px-2.5 rounded-lg shadow-lg whitespace-nowrap pointer-events-none">
                           <p className="font-bold">{item.order_count} pesanan</p>
-                          <p className="text-emerald-300">{formatRupiah(item.total_income)}</p>
+                          <p className="text-blue-300 font-mono">{formatRupiah(item.total_income)}</p>
                         </div>
                       )}
 
@@ -574,7 +459,7 @@ export default function Dashboard({
                 {dailyTrend.map((item, idx) => {
                   const day = item.date.split('-')[2];
                   return (
-                    <div key={idx} className="flex-1 text-center truncate">
+                    <div key={idx} className="flex-1 text-center truncate font-semibold text-slate-500">
                       {day}
                     </div>
                   );
@@ -584,7 +469,7 @@ export default function Dashboard({
           </div>
         )}
 
-        {/* Breakdown Toko & Kurir (Two Column) */}
+        {/* Breakdown Toko & Kurir (Two Column Grid) */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Marketplace / Channel Breakdown */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
@@ -599,7 +484,7 @@ export default function Dashboard({
               </div>
               <Link
                 href="/cut-off-orders"
-                className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+                className="text-xs font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
               >
                 Lihat Semua &rarr;
               </Link>
@@ -663,7 +548,7 @@ export default function Dashboard({
               </div>
               <Link
                 href="/cut-off-orders"
-                className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+                className="text-xs font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
               >
                 Filter Kurir &rarr;
               </Link>
@@ -703,7 +588,7 @@ export default function Dashboard({
                       {/* Progress bar */}
                       <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                         <div
-                          className="bg-indigo-600 h-1.5 rounded-full transition-all duration-300"
+                          className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
                           style={{ width: `${Math.min(pct, 100)}%` }}
                         />
                       </div>
@@ -715,105 +600,72 @@ export default function Dashboard({
           </div>
         </div>
 
-        {/* Live Activity Stream / Pesanan Terkini */}
+        {/* Produk Paling Menguntungkan */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                Pesanan Terkini (Live Feed)
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Monitoring transaksi cut off terbaru yang masuk ke dalam sistem
-              </p>
+              <h2 className="text-base font-bold text-slate-900">Produk Paling Menguntungkan</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Laba = omset item – modal · {profitFunnel.period}</p>
             </div>
             <Link
               href="/cut-off-orders"
-              className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+              className="text-xs font-semibold text-blue-700 hover:text-blue-900 hover:underline flex items-center gap-1 cursor-pointer"
             >
-              Buka Semua di Cut Off Order &rarr;
+              Analisis produk →
             </Link>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-700">
-              <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-y border-slate-200">
-                <tr>
-                  <th className="py-2.5 px-3">Tgl & Toko</th>
-                  <th className="py-2.5 px-3">No. Pesanan</th>
-                  <th className="py-2.5 px-3">Pembeli & Kurir</th>
-                  <th className="py-2.5 px-3">Status Pesanan</th>
-                  <th className="py-2.5 px-3 text-right">Est. Pendapatan</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {recentOrders.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-6 text-center text-slate-400">
-                      Belum ada data transaksi cut off.
-                    </td>
-                  </tr>
-                ) : (
-                  recentOrders.map((ord) => {
-                    const isOos = ord.info_gudang?.toUpperCase().includes('OOS');
-                    const isRj =
-                      ord.order_status?.toUpperCase().includes('RJ') ||
-                      ord.order_status?.toUpperCase().includes('RETUR');
+          {/* Grid 2 Kolom Produk */}
+          {topProducts.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-400">
+              Tidak ada data produk pada periode ini.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {topProducts.map((prod) => (
+                <div
+                  key={prod.sku}
+                  className="p-4 rounded-xl border border-slate-100 hover:border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition-all flex items-center gap-3.5"
+                >
+                  {/* Badge Angka Ranking */}
+                  <div
+                    className={`h-8 w-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
+                      prod.rank === 1
+                        ? 'bg-[#0B132B] text-white shadow-2xs'
+                        : 'bg-white border border-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {prod.rank}
+                  </div>
 
-                    return (
-                      <tr key={ord.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-3 px-3">
-                          <div className="font-semibold text-slate-900">
-                            {formatDateIndo(ord.order_date)}
-                          </div>
-                          <span className="inline-block mt-0.5 px-1.5 py-0.5 text-[10px] font-extrabold rounded bg-[#0B132B] text-white">
-                            {ord.channel}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="font-mono font-medium text-slate-900 block">
-                            {ord.order_number}
-                          </span>
-                          {ord.dpp_number && (
-                            <span className="text-[10px] font-mono text-blue-700 bg-blue-50 px-1 py-0.5 rounded border border-blue-200 mt-0.5 inline-block">
-                              DPP: {ord.dpp_number}
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="font-medium text-slate-900 block truncate max-w-[150px]">
-                            {ord.buyer_username || '-'}
-                          </span>
-                          <span className="text-[11px] text-slate-500 block truncate max-w-[180px]">
-                            {ord.shipping_courier || '-'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3">
-                          {isOos ? (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                              OOS (Habis)
-                            </span>
-                          ) : isRj ? (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                              Retur Jual
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              {ord.order_status || 'Normal'}
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3 px-3 text-right">
-                          <span className="font-bold text-slate-900 block">
-                            {formatRupiah(ord.est_net_income)}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                  {/* Info SKU, Nama & Bar Progress */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-slate-800 truncate" title={prod.name}>
+                      {prod.name}
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-0.5 truncate font-mono">
+                      {prod.sku} · {prod.qty} pcs · omset {formatRupiah(prod.omset)}
+                    </p>
+
+                    {/* Progress Bar Laba */}
+                    <div className="w-full bg-slate-200 h-1.5 rounded-full mt-2 overflow-hidden">
+                      <div
+                        className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${prod.percent}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Nilai Laba */}
+                  <div className="text-right shrink-0">
+                    <span className="text-xs font-bold text-blue-900">
+                      {formatRupiah(prod.laba)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </AppLayout>

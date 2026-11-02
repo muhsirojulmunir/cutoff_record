@@ -50,4 +50,10 @@ return [
         'host' => env('SHOPEE_API_HOST', 'https://partner.shopeemobile.com'),
     ],
 
+    'tiktok' => [
+        'auth_host' => env('TIKTOK_AUTH_HOST', 'https://auth.tiktok-shops.com'),
+        'open_host' => env('TIKTOK_OPEN_HOST', 'https://open-api.tiktokglobalshop.com'),
+        'auth_url'  => env('TIKTOK_AUTH_URL', 'https://services.tiktokshop.com/open/authorize'),
+    ],
+
 ];
