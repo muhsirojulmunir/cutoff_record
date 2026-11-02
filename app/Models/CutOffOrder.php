@@ -30,6 +30,8 @@ class CutOffOrder extends Model
         'info_gudang',
         'order_status',
         'keterangan_solutif',
+        'cancel_by',
+        'cancel_reason',
         'est_net_income',
         'marketplace_net_payout',
         'sheet_dpp',
