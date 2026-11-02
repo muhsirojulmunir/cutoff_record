@@ -274,36 +274,62 @@ class ShopeeSyncService
             ];
         }
 
-        // 2. Fetch Order Details in concurrent batches of up to 4 (50 orders per chunk = 200 orders per pool)
+        // 2. Fetch Order Details and Escrow Details in concurrent batches (50 orders per chunk)
         $chunks = array_chunk($orderSns, 50);
         $detailedOrders = [];
+        $escrowMap = [];
 
         $poolBatches = array_chunk($chunks, 4);
         foreach ($poolBatches as $batchGroup) {
             $responses = Http::pool(function (Pool $pool) use ($account, $batchGroup) {
                 $reqs = [];
                 foreach ($batchGroup as $idx => $chunk) {
-                    $url = $this->buildOrderDetailUrl($account, $chunk);
-                    $reqs[] = $pool->as("req_{$idx}")->timeout(25)->get($url);
+                    $orderUrl  = $this->buildOrderDetailUrl($account, $chunk);
+                    $escrowUrl = $this->buildEscrowUrl($account);
+                    $reqs["order_{$idx}"]  = $pool->as("order_{$idx}")->timeout(25)->get($orderUrl);
+                    $reqs["escrow_{$idx}"] = $pool->as("escrow_{$idx}")->timeout(25)->post($escrowUrl, [
+                        'order_sn_list' => array_values($chunk),
+                    ]);
                 }
                 return $reqs;
             });
 
-            foreach ($responses as $response) {
+            foreach ($responses as $key => $response) {
                 if ($response instanceof Response && $response->successful()) {
                     $data = $response->json();
-                    if (! empty($data['response']['order_list'])) {
-                        $detailedOrders = array_merge($detailedOrders, $data['response']['order_list']);
+                    if (str_starts_with((string) $key, 'order_')) {
+                        if (! empty($data['response']['order_list'])) {
+                            $detailedOrders = array_merge($detailedOrders, $data['response']['order_list']);
+                        }
+                    } elseif (str_starts_with((string) $key, 'escrow_')) {
+                        if (! empty($data['response']['escrow_detail_list'])) {
+                            foreach ($data['response']['escrow_detail_list'] as $escrow) {
+                                $sn = $escrow['order_sn'] ?? null;
+                                if ($sn) {
+                                    $escrowMap[$sn] = $escrow['order_income'] ?? [];
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
 
-        // Fallback jika Http::pool gagal: panggil berurutan
+        // Fallback jika Http::pool order gagal: panggil berurutan
         if (empty($detailedOrders) && ! empty($orderSns)) {
             foreach ($chunks as $chunk) {
                 $details = $this->fetchOrderDetailRaw($account, $chunk);
                 $detailedOrders = array_merge($detailedOrders, $details);
+            }
+        }
+
+        // Fallback jika escrowMap belum terisi: panggil batch berurutan
+        if (empty($escrowMap) && ! empty($orderSns)) {
+            foreach ($chunks as $chunk) {
+                $escrows = $this->fetchEscrowDetailBatch($account, $chunk);
+                foreach ($escrows as $sn => $inc) {
+                    $escrowMap[$sn] = $inc;
+                }
             }
         }
 
@@ -333,7 +359,7 @@ class ShopeeSyncService
             // 2. Extract total quantity
             $totalQty = 0;
             foreach ($items as $it) {
-                $totalQty += (int) ($it['model_quantity_purchased'] ?? $it['model_quantity'] ?? 1);
+                $totalQty += (int) ($it['model_quantity_purchased'] ?? $it['quantity_purchased'] ?? $it['model_quantity'] ?? 1);
             }
             if ($totalQty <= 0) $totalQty = 1;
 
@@ -352,8 +378,19 @@ class ShopeeSyncService
             // Rumus ERP: (Harga Produk - Voucher Toko yang ditanggung Penjual) * 79%
             $productPrice = 0;
             foreach ($items as $it) {
-                $itemPrice = (float) ($it['model_discounted_price'] ?? $it['model_original_price'] ?? 0);
-                $itemQty   = (int) ($it['model_quantity_purchased'] ?? $it['model_quantity'] ?? 1);
+                $itemPrice = (float) ($it['model_discounted_price'] ?? 0);
+                if ($itemPrice <= 0) {
+                    $itemPrice = (float) ($it['discounted_price'] ?? 0);
+                }
+                if ($itemPrice <= 0) {
+                    $itemPrice = (float) ($it['model_original_price'] ?? 0);
+                }
+                if ($itemPrice <= 0) {
+                    $itemPrice = (float) ($it['original_price'] ?? 0);
+                }
+                $itemQty = (int) ($it['model_quantity_purchased'] ?? $it['quantity_purchased'] ?? $it['model_quantity'] ?? 1);
+                if ($itemQty <= 0) $itemQty = 1;
+
                 $productPrice += ($itemPrice * $itemQty);
             }
 
@@ -362,18 +399,14 @@ class ShopeeSyncService
                 $productPrice = $rawTotalAmount;
             }
 
-            // Voucher toko yang ditanggung penjual
+            // Voucher toko yang ditanggung penjual (dari Shopee Escrow Order Income)
+            $escrowIncome  = $escrowMap[$orderSn] ?? [];
             $sellerVoucher = (float) (
-                $order['voucher_from_seller']
-                ?? $order['discount_from_voucher_seller']
-                ?? $order['seller_voucher_discount']
+                $escrowIncome['voucher_from_seller']
+                ?? $escrowIncome['seller_voucher_discount']
+                ?? $order['voucher_from_seller']
                 ?? 0
             );
-
-            // Jika field voucher_from_seller tidak spesifik di root, cek apakah total_amount lebih kecil dari subtotal produk
-            if ($sellerVoucher <= 0 && $rawTotalAmount > 0 && $rawTotalAmount < $productPrice) {
-                $sellerVoucher = $productPrice - $rawTotalAmount;
-            }
 
             $netProduct    = max(0, $productPrice - $sellerVoucher);
             $calculatedNet = round($netProduct * 0.79);
@@ -609,6 +642,69 @@ class ShopeeSyncService
         }
 
         return $data['response']['order_list'] ?? [];
+    }
+
+    /**
+     * Build signed URL for get_escrow_detail_batch.
+     */
+    public function buildEscrowUrl(ShopeeAccount $account): string
+    {
+        $path        = '/api/v2/payment/get_escrow_detail_batch';
+        $timestamp   = time();
+        $accessToken = (string) ($account->access_token ?? '');
+        $shopId      = (int) $account->shop_id;
+        $partnerId   = (int) $account->partner_id;
+        $partnerKey  = (string) $account->partner_key;
+
+        $baseStr = sprintf('%s%s%s%s%s', $partnerId, $path, $timestamp, $accessToken, $shopId);
+        $sign    = hash_hmac('sha256', $baseStr, $partnerKey);
+
+        $queryParams = [
+            'partner_id'   => $partnerId,
+            'timestamp'    => $timestamp,
+            'sign'         => $sign,
+            'access_token' => $accessToken,
+            'shop_id'      => $shopId,
+        ];
+
+        return $this->host . $path . '?' . http_build_query($queryParams);
+    }
+
+    /**
+     * Fetch escrow details in batch from Shopee API v2 to retrieve seller voucher & payout data.
+     */
+    public function fetchEscrowDetailBatch(ShopeeAccount $account, array $orderSns): array
+    {
+        if (empty($orderSns)) {
+            return [];
+        }
+
+        $url = $this->buildEscrowUrl($account);
+
+        try {
+            $response = Http::timeout(25)->post($url, [
+                'order_sn_list' => array_values($orderSns),
+            ]);
+
+            $data = $response->json();
+            if ($response->failed() || ! empty($data['error'])) {
+                Log::warning('Shopee Escrow Batch Warning: ' . ($data['message'] ?? $data['error'] ?? 'Unknown error'));
+                return [];
+            }
+
+            $escrowList = $data['response']['escrow_detail_list'] ?? [];
+            $mapped = [];
+            foreach ($escrowList as $item) {
+                $sn = $item['order_sn'] ?? null;
+                if ($sn) {
+                    $mapped[$sn] = $item['order_income'] ?? [];
+                }
+            }
+            return $mapped;
+        } catch (\Throwable $e) {
+            Log::warning('Shopee fetchEscrowDetailBatch Exception: ' . $e->getMessage());
+            return [];
+        }
     }
 
     /**
