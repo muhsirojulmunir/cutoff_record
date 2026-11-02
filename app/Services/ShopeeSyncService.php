@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\CutOffOrder;
 use App\Models\ShopeeAccount;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\Client\Pool;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -272,13 +274,37 @@ class ShopeeSyncService
             ];
         }
 
-        // 2. Fetch Order Details in batches of up to 50
+        // 2. Fetch Order Details in concurrent batches of up to 4 (50 orders per chunk = 200 orders per pool)
         $chunks = array_chunk($orderSns, 50);
         $detailedOrders = [];
 
-        foreach ($chunks as $chunk) {
-            $details = $this->fetchOrderDetailRaw($account, $chunk);
-            $detailedOrders = array_merge($detailedOrders, $details);
+        $poolBatches = array_chunk($chunks, 4);
+        foreach ($poolBatches as $batchGroup) {
+            $responses = Http::pool(function (Pool $pool) use ($account, $batchGroup) {
+                $reqs = [];
+                foreach ($batchGroup as $idx => $chunk) {
+                    $url = $this->buildOrderDetailUrl($account, $chunk);
+                    $reqs[] = $pool->as("req_{$idx}")->timeout(25)->get($url);
+                }
+                return $reqs;
+            });
+
+            foreach ($responses as $response) {
+                if ($response instanceof Response && $response->successful()) {
+                    $data = $response->json();
+                    if (! empty($data['response']['order_list'])) {
+                        $detailedOrders = array_merge($detailedOrders, $data['response']['order_list']);
+                    }
+                }
+            }
+        }
+
+        // Fallback jika Http::pool gagal: panggil berurutan
+        if (empty($detailedOrders) && ! empty($orderSns)) {
+            foreach ($chunks as $chunk) {
+                $details = $this->fetchOrderDetailRaw($account, $chunk);
+                $detailedOrders = array_merge($detailedOrders, $details);
+            }
         }
 
         // 3. Ingest into CutOffOrder table
@@ -523,12 +549,10 @@ class ShopeeSyncService
     }
 
     /**
-     * Fetch raw order details in batch from Shopee API v2.
+     * Build signed URL for get_order_detail.
      */
-    private function fetchOrderDetailRaw(ShopeeAccount $account, array $orderSns): array
+    public function buildOrderDetailUrl(ShopeeAccount $account, array $orderSns): string
     {
-        if (empty($orderSns)) return [];
-
         $path        = '/api/v2/order/get_order_detail';
         $timestamp   = time();
         $accessToken = (string) ($account->access_token ?? '');
@@ -549,7 +573,17 @@ class ShopeeSyncService
             'response_optional_fields' => 'buyer_user_id,buyer_username,item_list,package_list,shipping_carrier,total_amount,cancel_by,cancel_reason',
         ];
 
-        $url = $this->host . $path . '?' . http_build_query($queryParams);
+        return $this->host . $path . '?' . http_build_query($queryParams);
+    }
+
+    /**
+     * Fetch raw order details in batch from Shopee API v2.
+     */
+    private function fetchOrderDetailRaw(ShopeeAccount $account, array $orderSns): array
+    {
+        if (empty($orderSns)) return [];
+
+        $url = $this->buildOrderDetailUrl($account, $orderSns);
 
         $response = Http::timeout(25)->get($url);
         $data = $response->json();
