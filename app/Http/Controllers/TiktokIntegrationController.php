@@ -118,6 +118,37 @@ class TiktokIntegrationController extends Controller
     }
 
     /**
+     * Manual exchange of authorization code or full callback URL.
+     */
+    public function manualExchange(Request $request): \Illuminate\Http\RedirectResponse
+    {
+        Gate::authorize('user.view');
+
+        $input = trim((string) $request->input('code_or_url', ''));
+
+        if (empty($input)) {
+            return back()->with('error', 'Harap masukkan kode otorisasi (auth_code) atau tautan callback.');
+        }
+
+        // Ekstrak code jika user menempelkan full URL
+        $code = $input;
+        if (str_contains($input, 'code=') || str_contains($input, 'auth_code=')) {
+            parse_str(parse_url($input, PHP_URL_QUERY) ?? '', $queryParams);
+            $code = $queryParams['code'] ?? $queryParams['auth_code'] ?? $input;
+        }
+
+        $account = TiktokAccount::firstOrFail();
+
+        try {
+            $this->syncService->exchangeCode($account, $code);
+            $shopName = $account->account_name ?: 'Toko TikTok';
+            return back()->with('success', "Toko TikTok ({$shopName}) berhasil dihubungkan!");
+        } catch (\Exception $e) {
+            return back()->with('error', 'Gagal menukar kode otorisasi: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Test connection to TikTok API.
      */
     public function testConnection(Request $request): \Illuminate\Http\RedirectResponse
