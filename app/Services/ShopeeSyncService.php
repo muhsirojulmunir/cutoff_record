@@ -421,16 +421,6 @@ class ShopeeSyncService
                     $productPrice = $rawTotalAmount;
                 }
 
-                // Fallback nominal voucher khusus jika pesanan belum di-settle Shopee
-                if ($sellerVoucher <= 0 && in_array($orderSn, ['2611028HNRV3WQ', '2611028HNRV3NQ'], true)) {
-                    $sellerVoucher = 20000;
-                }
-
-                // Fallback harga produk pesanan 26110171K7DQ80 jika belum tersinkron escrow
-                if ($orderSn === '26110171K7DQ80' && $productPrice > 189999) {
-                    $productPrice = 189999;
-                }
-
                 $netProduct    = max(0, $productPrice - $sellerVoucher);
                 $calculatedNet = round($netProduct * 0.79);
 
