@@ -35,6 +35,7 @@ class CutOffOrderController extends Controller
 
         $orders = CutOffOrder::query()
             ->filter($filters)
+            ->orderBy('order_date', 'desc')
             ->orderBy('id', 'desc')
             ->paginate($perPage)
             ->withQueryString();
