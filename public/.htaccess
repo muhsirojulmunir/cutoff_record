@@ -5,6 +5,9 @@
 
     RewriteEngine On
 
+    # Prevent LiteSpeed Web Server connection timeout on long API sync requests
+    RewriteRule .* - [E=noconntimeout:1,E=noabort:1]
+
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]

@@ -124,15 +124,8 @@ class ShopeeIntegrationController extends Controller
     {
         Gate::authorize('user.view');
 
-        // Allow up to 90 days of historical data sync
-        $days = (int) $request->input('days', 7);
-        if ($days < 1) {
-            $days = 7;
-        } elseif ($days > 90) {
-            $days = 90;
-        }
-
-        @set_time_limit(300);
+        @ini_set('max_execution_time', '600');
+        @set_time_limit(600);
 
         try {
             \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
@@ -140,8 +133,27 @@ class ShopeeIntegrationController extends Controller
             \Illuminate\Support\Facades\Log::warning('Shopee auto-migrate notice: ' . $e->getMessage());
         }
 
-        $timeTo = time();
-        $timeFrom = $timeTo - ($days * 86400);
+        $startDate = $request->input('start_date');
+        $endDate   = $request->input('end_date');
+
+        if (! empty($startDate) && ! empty($endDate)) {
+            $timeFrom = strtotime($startDate . ' 00:00:00');
+            $timeTo   = strtotime($endDate . ' 23:59:59');
+            if ($timeFrom > $timeTo) {
+                [$timeFrom, $timeTo] = [$timeTo, $timeFrom];
+            }
+        } else {
+            // Preset days
+            $days = (int) $request->input('days', 7);
+            if ($days < 1) {
+                $days = 7;
+            } elseif ($days > 90) {
+                $days = 90;
+            }
+
+            $timeTo   = time();
+            $timeFrom = $timeTo - ($days * 86400);
+        }
 
         $account = ShopeeAccount::firstOrFail();
 

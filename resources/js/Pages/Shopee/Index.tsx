@@ -28,6 +28,9 @@ export default function ShopeeIndex({ account, callbackUrl }: Props) {
   const [showPartnerKey, setShowPartnerKey] = useState(false);
   const [copied, setCopied] = useState(false);
   const [syncDays, setSyncDays] = useState<number>(7);
+  const [useCustomRange, setUseCustomRange] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [testing, setTesting] = useState(false);
 
@@ -62,10 +65,17 @@ export default function ShopeeIndex({ account, callbackUrl }: Props) {
   };
 
   const handleSyncNow = () => {
+    if (useCustomRange && (!startDate || !endDate)) {
+      alert('Silakan tentukan Tanggal Mulai dan Tanggal Sampai terlebih dahulu.');
+      return;
+    }
+
     setSyncing(true);
     router.post(
       '/marketplace/shopee/sync-now',
-      { days: syncDays },
+      useCustomRange
+        ? { start_date: startDate, end_date: endDate }
+        : { days: syncDays },
       {
         preserveScroll: true,
         onFinish: () => setSyncing(false),
@@ -299,32 +309,75 @@ export default function ShopeeIndex({ account, callbackUrl }: Props) {
 
               {/* Sync Range Selector */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">
-                  Pilih Rentang Waktu Tarik Pesanan:
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {[
-                    { label: 'Hari Ini', days: 1 },
-                    { label: '7 Hari', days: 7 },
-                    { label: '14 Hari', days: 14 },
-                    { label: '30 Hari (1 Bln)', days: 30 },
-                    { label: '60 Hari (2 Bln)', days: 60 },
-                    { label: '90 Hari (Maks)', days: 90 },
-                  ].map((preset) => (
-                    <button
-                      key={preset.days}
-                      type="button"
-                      onClick={() => setSyncDays(preset.days)}
-                      className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                        syncDays === preset.days
-                          ? 'bg-[#0B132B] text-white shadow-xs'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Rentang Waktu Tarik Pesanan:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setUseCustomRange(!useCustomRange)}
+                    className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 underline cursor-pointer"
+                  >
+                    {useCustomRange ? '← Gunakan Preset Cepat' : 'Pilih Tanggal Manual →'}
+                  </button>
                 </div>
+
+                {!useCustomRange ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {[
+                      { label: 'Hari Ini', days: 1 },
+                      { label: '7 Hari', days: 7 },
+                      { label: '14 Hari (Cepat)', days: 14 },
+                      { label: '30 Hari (1 Bln)', days: 30 },
+                      { label: '60 Hari (2 Bln)', days: 60 },
+                      { label: '90 Hari (Maks)', days: 90 },
+                    ].map((preset) => (
+                      <button
+                        key={preset.days}
+                        type="button"
+                        onClick={() => setSyncDays(preset.days)}
+                        className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          syncDays === preset.days
+                            ? 'bg-[#0B132B] text-white shadow-xs'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      Tentukan rentang tanggal pesanan yang ingin ditarik (misal 1 bulan):
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Tanggal Mulai</span>
+                        <input
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Tanggal Sampai</span>
+                        <input
+                          type="date"
+                          value={endDate}
+                          onChange={(e) => setEndDate(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Tips Anti-Timeout */}
+              <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-100 text-[11px] text-blue-900 leading-relaxed">
+                <span className="font-bold text-blue-800">💡 Tips Penarikan Data:</span> Jika Anda ingin menarik data riwayat panjang, sangat disarankan menarik per <strong>14 atau 30 hari</strong> (atau per bulan via Tanggal Manual). Setiap kali ditarik, sistem otomatis menyimpan dan memperbarui pesanan tanpa membuat duplikasi.
               </div>
 
               {/* Trigger Button */}
@@ -351,7 +404,9 @@ export default function ShopeeIndex({ account, callbackUrl }: Props) {
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                     </svg>
-                    Tarik Pesanan ({syncDays} Hari Terakhir)
+                    {useCustomRange && startDate && endDate
+                      ? `Tarik Pesanan (${startDate} s/d ${endDate})`
+                      : `Tarik Pesanan (${syncDays} Hari Terakhir)`}
                   </>
                 )}
               </button>
