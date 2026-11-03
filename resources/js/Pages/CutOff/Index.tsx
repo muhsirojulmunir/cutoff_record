@@ -660,11 +660,11 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-slate-900 text-white font-semibold uppercase tracking-wider text-[11px]">
+                <tr className="bg-slate-900 text-white font-semibold uppercase tracking-wider text-[11px] whitespace-nowrap">
                   <th className="py-3 px-4">Toko & Tanggal</th>
                   <th className="py-3 px-4">Pesanan & Pengiriman</th>
                   <th className="py-3 px-4">Barang & SKU</th>
-                  <th className="py-3 px-4">SKU Pengganti</th>
+                  <th className="py-3 px-4 whitespace-nowrap">SKU Pengganti</th>
                   <th className="py-3 px-4">Info Gudang</th>
                   <th className="py-3 px-4">Status Pesanan</th>
                   <th className="py-3 px-4">Keuangan & DPP</th>
@@ -780,10 +780,10 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                         </td>
 
                         {/* SKU Pengganti */}
-                        <td className="py-3.5 px-4 max-w-[220px]">
+                        <td className="py-3.5 px-4 whitespace-nowrap max-w-[240px]">
                           {order.sku_pengganti ? (
                             <p
-                              className={`font-semibold text-emerald-700 truncate ${canManage ? 'cursor-pointer hover:underline' : ''}`}
+                              className={`font-semibold text-emerald-700 truncate whitespace-nowrap ${canManage ? 'cursor-pointer hover:underline' : ''}`}
                               title={`SKU Pengganti: ${order.sku_pengganti}${canManage ? ' (Klik untuk edit)' : ''}`}
                               onClick={() => canManage && openEditModal(order)}
                             >
