@@ -21,6 +21,7 @@ class CutOffOrder extends Model
         'jl_number',
         'buyer_username',
         'shipping_courier',
+        'payment_method',
         'sku_utama',
         'sku_pengganti',
         'product_name',
