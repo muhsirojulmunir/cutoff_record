@@ -21,6 +21,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        date_default_timezone_set('Asia/Jakarta');
         \Illuminate\Support\Facades\Schema::defaultStringLength(191);
 
         // Dynamically register a Gate for every permission stored in the database.
