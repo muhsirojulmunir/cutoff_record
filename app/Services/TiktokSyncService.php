@@ -3,8 +3,10 @@
 namespace App\Services;
 
 use App\Models\CutOffOrder;
+use App\Models\CutOffReturn;
 use App\Models\TiktokAccount;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -490,6 +492,229 @@ class TiktokSyncService
             'created'       => $createdCount,
             'updated'       => $updatedCount,
             'message'       => "Sinkronisasi TikTok berhasil! {$createdCount} pesanan baru ditambahkan, {$updatedCount} diperbarui.",
+        ];
+    }
+
+    /**
+     * Synchronize TikTok Shop returns into cut_off_returns and update matching cut_off_orders.
+     */
+    public function syncReturnsToCutOff(TiktokAccount $account, ?int $timeFrom = null, ?int $timeTo = null): array
+    {
+        $timeTo = $timeTo ?: time();
+        $timeFrom = $timeFrom ?: ($timeTo - (14 * 86400));
+
+        $this->ensureValidAccessToken($account);
+
+        if (empty($account->shop_cipher)) {
+            $this->fetchAuthorizedShops($account);
+        }
+
+        $shopCipher = $account->shop_cipher;
+        if (empty($shopCipher)) {
+            throw new RuntimeException('Shop Cipher TikTok tidak ditemukan. Pastikan toko sudah terhubung dengan benar.');
+        }
+
+        $allReturns = [];
+        $path = '/return_refund/202309/returns/search';
+        $pageToken = null;
+        $maxPages = 10;
+        $pageCount = 0;
+
+        try {
+            do {
+                $pageCount++;
+                $timestamp = time();
+
+                $queryParams = [
+                    'app_key'     => $account->app_key,
+                    'timestamp'   => (string) $timestamp,
+                    'shop_cipher' => $shopCipher,
+                    'page_size'   => '50',
+                ];
+
+                $bodyPayload = [
+                    'create_time_ge' => $timeFrom,
+                    'create_time_lt' => $timeTo,
+                ];
+                if (! empty($pageToken)) {
+                    $bodyPayload['page_token'] = $pageToken;
+                }
+                $bodyJson = json_encode($bodyPayload);
+
+                $sign = $this->generateSignature($path, $queryParams, $account->app_secret, $bodyJson);
+                $queryParams['sign'] = $sign;
+
+                $url = $this->openHost . $path . '?' . http_build_query($queryParams);
+
+                $response = Http::timeout(25)
+                    ->withHeaders([
+                        'x-tts-access-token' => $account->access_token,
+                        'Content-Type'       => 'application/json',
+                    ])
+                    ->withBody($bodyJson, 'application/json')
+                    ->send('POST', $url);
+
+                if ($response->successful()) {
+                    $res = $response->json();
+                    if (($res['code'] ?? -1) === 0) {
+                        $pageReturns = $res['data']['returns'] ?? [];
+                        if (! empty($pageReturns)) {
+                            foreach ($pageReturns as $ret) {
+                                $retId = (string) ($ret['return_id'] ?? $ret['id'] ?? '');
+                                if (! empty($retId)) {
+                                    $allReturns[$retId] = $ret;
+                                }
+                            }
+                        }
+                        $pageToken = $res['data']['next_page_token'] ?? null;
+                    } else {
+                        Log::warning('TikTok Returns API returned non-zero code: ' . ($res['message'] ?? 'Unknown'));
+                        break;
+                    }
+                } else {
+                    Log::warning('TikTok Returns API request failed: HTTP ' . $response->status() . ' - ' . $response->body());
+                    break;
+                }
+            } while (! empty($pageToken) && $pageCount < $maxPages);
+        } catch (\Throwable $e) {
+            Log::warning('TikTok Returns API search exception: ' . $e->getMessage());
+        }
+
+        $createdCount = 0;
+        $updatedCount = 0;
+        $ordersLinkedCount = 0;
+
+        DB::transaction(function () use (
+            $allReturns, $timeFrom, $timeTo,
+            &$createdCount, &$updatedCount, &$ordersLinkedCount
+        ) {
+            $lastNoUrut = (int) (CutOffReturn::max('no_urut') ?? 0);
+
+            // 1. Proses retur resmi dari endpoint TikTok Returns API jika berhasil
+            foreach ($allReturns as $returnId => $ret) {
+                $orderId    = trim((string) ($ret['order_id'] ?? ''));
+                $createTime = ! empty($ret['create_time']) ? (int) $ret['create_time'] : time();
+                $returnDate = Carbon::createFromTimestamp($createTime, 'Asia/Jakarta')->format('Y-m-d');
+
+                $items = $ret['items'] ?? $ret['line_items'] ?? [];
+                $firstItem = $items[0] ?? [];
+                $totalQty = 0;
+                foreach ($items as $it) {
+                    $totalQty += (int) ($it['quantity'] ?? $it['amount'] ?? 1);
+                }
+                if ($totalQty <= 0) $totalQty = 1;
+
+                $itemName = (string) ($firstItem['sku_name'] ?? $firstItem['product_name'] ?? 'Produk TikTok Shop');
+                if (count($items) > 1) {
+                    $itemName .= ' (+' . (count($items) - 1) . ' item lainnya)';
+                }
+
+                $reason = trim((string) ($ret['return_reason'] ?? $ret['reason'] ?? ''));
+                $status = trim((string) ($ret['return_status'] ?? $ret['status'] ?? ''));
+                $keteranganParts = [];
+                if (! empty($status)) $keteranganParts[] = "[{$status}]";
+                if (! empty($reason)) $keteranganParts[] = $reason;
+                $keterangan = implode(' ', $keteranganParts);
+
+                $trackingNumber = $ret['tracking_number'] ?? $ret['return_tracking_number'] ?? null;
+
+                $existing = CutOffReturn::where('marketplace', 'TT')
+                    ->where(function ($q) use ($returnId, $orderId) {
+                        $q->where('no_retur', $returnId);
+                        if (! empty($orderId)) {
+                            $q->orWhere('no_invoice_mp', $orderId);
+                        }
+                    })
+                    ->first();
+
+                if ($existing) {
+                    $existing->update([
+                        'nama_barang_mp' => $itemName ?: $existing->nama_barang_mp,
+                        'jml_produk_mp'  => $totalQty ?: $existing->jml_produk_mp,
+                        'keterangan'     => $keterangan ?: $existing->keterangan,
+                        'barcode'        => $trackingNumber ?: $existing->barcode,
+                        'no_retur'       => $returnId ?: $existing->no_retur,
+                        'no_invoice_mp'  => $orderId ?: $existing->no_invoice_mp,
+                    ]);
+                    $updatedCount++;
+                } else {
+                    $lastNoUrut++;
+                    CutOffReturn::create([
+                        'no_urut'        => $lastNoUrut,
+                        'marketplace'    => 'TT',
+                        'tgl_input_mp'   => $returnDate,
+                        'nama_barang_mp' => $itemName,
+                        'jml_produk_mp'  => $totalQty,
+                        'no_invoice_mp'  => $orderId,
+                        'no_retur'       => $returnId,
+                        'tgl_rj'         => $returnDate,
+                        'keterangan'     => $keterangan,
+                        'barcode'        => $trackingNumber,
+                    ]);
+                    $createdCount++;
+                }
+
+                if (! empty($orderId)) {
+                    $cutOffOrder = CutOffOrder::where('order_number', $orderId)
+                        ->where('channel', 'TT')
+                        ->first();
+
+                    if ($cutOffOrder) {
+                        $cutOffOrder->update([
+                            'order_status'  => 'RJ (Retur)',
+                            'cancel_by'     => 'buyer',
+                            'cancel_reason' => $reason ?: "Retur TikTok ({$status})",
+                        ]);
+                        $ordersLinkedCount++;
+                    }
+                }
+            }
+
+            // 2. Proteksi Tambahan: Sinkronkan pesanan TikTok yang berstatus retur dari cut_off_orders
+            $startDateStr = Carbon::createFromTimestamp($timeFrom, 'Asia/Jakarta')->startOfDay()->toDateTimeString();
+            $endDateStr   = Carbon::createFromTimestamp($timeTo, 'Asia/Jakarta')->endOfDay()->toDateTimeString();
+
+            $returnedOrders = CutOffOrder::where('channel', 'TT')
+                ->where(function ($q) {
+                    $q->where('order_status', 'like', '%RJ%')
+                      ->orWhere('order_status', 'like', '%Retur%')
+                      ->orWhereNotNull('cancel_reason');
+                })
+                ->whereBetween('order_date', [$startDateStr, $endDateStr])
+                ->get();
+
+            foreach ($returnedOrders as $order) {
+                $orderNum = $order->order_number;
+                $existing = CutOffReturn::where('marketplace', 'TT')
+                    ->where('no_invoice_mp', $orderNum)
+                    ->first();
+
+                if (! $existing) {
+                    $lastNoUrut++;
+                    $orderDate = $order->order_date ? $order->order_date->format('Y-m-d') : now()->format('Y-m-d');
+                    CutOffReturn::create([
+                        'no_urut'        => $lastNoUrut,
+                        'marketplace'    => 'TT',
+                        'tgl_input_mp'   => $orderDate,
+                        'nama_barang_mp' => $order->product_name ?? 'Produk TikTok Shop',
+                        'jml_produk_mp'  => $order->qty ?: 1,
+                        'no_invoice_mp'  => $orderNum,
+                        'no_retur'       => 'RET-TT-' . $orderNum,
+                        'tgl_rj'         => $orderDate,
+                        'keterangan'     => "[{$order->order_status}] " . ($order->cancel_reason ?? 'Pengajuan retur TikTok'),
+                        'barcode'        => $order->shipping_courier,
+                    ]);
+                    $createdCount++;
+                }
+            }
+        });
+
+        return [
+            'total_fetched' => count($allReturns),
+            'created'       => $createdCount,
+            'updated'       => $updatedCount,
+            'orders_linked' => $ordersLinkedCount,
+            'message'       => "Sinkronisasi Retur TikTok sukses! {$createdCount} retur baru ditambahkan, {$updatedCount} diperbarui, dan {$ordersLinkedCount} pesanan di Pesanan Cut Off otomatis disinkronkan ke status 'RJ (Retur)'.",
         ];
     }
 

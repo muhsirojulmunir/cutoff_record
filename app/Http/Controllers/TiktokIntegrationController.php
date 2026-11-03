@@ -207,5 +207,41 @@ class TiktokIntegrationController extends Controller
             return back()->with('error', 'Gagal sinkronisasi pesanan TikTok: ' . $e->getMessage());
         }
     }
+
+    /**
+     * Trigger return sync from TikTok Shop API directly to cut_off_returns.
+     */
+    public function syncReturns(Request $request): \Illuminate\Http\RedirectResponse
+    {
+        Gate::authorize('user.view');
+
+        $startDate = $request->input('start_date');
+        $endDate   = $request->input('end_date');
+
+        if (! empty($startDate) && ! empty($endDate)) {
+            $timeFrom = Carbon::parse($startDate . ' 00:00:00', 'Asia/Jakarta')->timestamp;
+            $timeTo   = Carbon::parse($endDate . ' 23:59:59', 'Asia/Jakarta')->timestamp;
+        } else {
+            $days = (int) $request->input('days', 14);
+            $days = max(1, min(90, $days));
+            $timeTo   = time();
+            $timeFrom = $timeTo - ($days * 86400);
+        }
+
+        @set_time_limit(300);
+
+        $account = TiktokAccount::firstOrFail();
+
+        if (empty($account->app_key) || empty($account->access_token)) {
+            return back()->with('error', 'Akun TikTok Shop belum terhubung. Harap lengkapi kredensial dan hubungkan toko terlebih dahulu.');
+        }
+
+        try {
+            $result = $this->syncService->syncReturnsToCutOff($account, $timeFrom, $timeTo);
+            return back()->with('success', $result['message']);
+        } catch (\Exception $e) {
+            return back()->with('error', 'Gagal sinkronisasi retur TikTok: ' . $e->getMessage());
+        }
+    }
 }
 

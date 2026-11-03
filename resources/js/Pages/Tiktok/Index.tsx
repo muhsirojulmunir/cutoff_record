@@ -41,6 +41,7 @@ export default function TiktokIndex({ account, callbackUrl }: Props) {
   const [endDate, setEndDate] = useState(defaultEnd);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncingReturns, setSyncingReturns] = useState(false);
   const [testing, setTesting] = useState(false);
   const [manualCode, setManualCode] = useState('');
   const [manualExchanging, setManualExchanging] = useState(false);
@@ -113,6 +114,23 @@ export default function TiktokIndex({ account, callbackUrl }: Props) {
       {
         preserveScroll: true,
         onFinish: () => setSyncing(false),
+      }
+    );
+  };
+
+  const handleSyncReturns = () => {
+    if (!startDate || !endDate) {
+      alert('Silakan tentukan Rentang Tanggal terlebih dahulu.');
+      return;
+    }
+
+    setSyncingReturns(true);
+    router.post(
+      '/marketplace/tiktok/sync-returns',
+      { start_date: startDate, end_date: endDate },
+      {
+        preserveScroll: true,
+        onFinish: () => setSyncingReturns(false),
       }
     );
   };
@@ -488,7 +506,7 @@ export default function TiktokIndex({ account, callbackUrl }: Props) {
                 <span className="font-bold text-blue-800">💡 Tips Penarikan Data:</span> Jika Anda ingin menarik data riwayat panjang, sangat disarankan menarik per <strong>14 atau 30 hari</strong> via kalender. Setiap kali ditarik, sistem otomatis menyimpan dan memperbarui pesanan tanpa membuat duplikasi.
               </div>
 
-              {/* Trigger Button */}
+              {/* Trigger Button: Tarik Pesanan */}
               <button
                 type="button"
                 onClick={handleSyncNow}
@@ -513,6 +531,35 @@ export default function TiktokIndex({ account, callbackUrl }: Props) {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                     </svg>
                     Tarik Pesanan ({getDaysCount(startDate, endDate)} Hari Terpilih)
+                  </>
+                )}
+              </button>
+
+              {/* Trigger Button: Tarik Retur Online */}
+              <button
+                type="button"
+                onClick={handleSyncReturns}
+                disabled={syncingReturns || !isConnected}
+                className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border transition-all ${
+                  isConnected && !syncingReturns
+                    ? 'border-slate-800 bg-slate-900 hover:bg-black text-[#25F4EE] cursor-pointer active:scale-98 shadow-xs'
+                    : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                {syncingReturns ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-[#25F4EE]" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Sedang Menarik Data Retur dari TikTok...
+                  </>
+                ) : (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-[#25F4EE]">
+                      <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zm.53 5.47a.75.75 0 00-1.06 0l-3 3a.75.75 0 101.06 1.06l1.72-1.72v5.69a.75.75 0 001.5 0v-5.69l1.72 1.72a.75.75 0 101.06-1.06l-3-3z" clipRule="evenodd" />
+                    </svg>
+                    Tarik Data Retur TikTok ({formatDateIndo(startDate)} s/d {formatDateIndo(endDate)})
                   </>
                 )}
               </button>

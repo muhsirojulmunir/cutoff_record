@@ -282,6 +282,13 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
   const [isShopeeCalendarOpen, setIsShopeeCalendarOpen] = useState(false);
   const [isSyncingShopee, setIsSyncingShopee] = useState(false);
 
+  // Modal Tarik Retur TikTok
+  const [isTiktokSyncModalOpen, setIsTiktokSyncModalOpen] = useState(false);
+  const [tiktokStartDate, setTiktokStartDate] = useState(defaultShopeeStart);
+  const [tiktokEndDate, setTiktokEndDate] = useState(defaultShopeeEnd);
+  const [isTiktokCalendarOpen, setIsTiktokCalendarOpen] = useState(false);
+  const [isSyncingTiktok, setIsSyncingTiktok] = useState(false);
+
   const getShopeeDaysCount = (s: string, e: string): number => {
     if (!s || !e) return 0;
     const diff = new Date(e).getTime() - new Date(s).getTime();
@@ -308,9 +315,29 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
     );
   }
 
+  function handleTiktokSyncSubmit() {
+    if (!tiktokStartDate || !tiktokEndDate) {
+      alert('Silakan tentukan Rentang Tanggal terlebih dahulu.');
+      return;
+    }
+
+    setIsSyncingTiktok(true);
+    router.post(
+      '/marketplace/tiktok/sync-returns',
+      { start_date: tiktokStartDate, end_date: tiktokEndDate },
+      {
+        preserveScroll: true,
+        onFinish: () => {
+          setIsSyncingTiktok(false);
+          setIsTiktokSyncModalOpen(false);
+        },
+      }
+    );
+  }
+
   // Kunci scroll halaman saat modal aktif
   useEffect(() => {
-    if (editingRow || isCreateModalOpen || isImportModalOpen || isShopeeSyncModalOpen) {
+    if (editingRow || isCreateModalOpen || isImportModalOpen || isShopeeSyncModalOpen || isTiktokSyncModalOpen) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
@@ -318,7 +345,7 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
     return () => {
       document.body.style.overflow = 'unset';
     };
-  }, [editingRow, isCreateModalOpen, isImportModalOpen, isShopeeSyncModalOpen]);
+  }, [editingRow, isCreateModalOpen, isImportModalOpen, isShopeeSyncModalOpen, isTiktokSyncModalOpen]);
 
   function handleExcelFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -498,6 +525,18 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
                     <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zm.53 5.47a.75.75 0 00-1.06 0l-3 3a.75.75 0 101.06 1.06l1.72-1.72v5.69a.75.75 0 001.5 0v-5.69l1.72 1.72a.75.75 0 101.06-1.06l-3-3z" clipRule="evenodd" />
                   </svg>
                   Tarik Retur Shopee
+                </button>
+
+                {/* Tarik Retur TikTok API */}
+                <button
+                  type="button"
+                  onClick={() => setIsTiktokSyncModalOpen(true)}
+                  className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-700 bg-slate-900 hover:bg-black text-[#25F4EE] text-xs font-bold transition-colors shadow-2xs cursor-pointer active:scale-98"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-[#25F4EE]">
+                    <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zm.53 5.47a.75.75 0 00-1.06 0l-3 3a.75.75 0 101.06 1.06l1.72-1.72v5.69a.75.75 0 001.5 0v-5.69l1.72 1.72a.75.75 0 101.06-1.06l-3-3z" clipRule="evenodd" />
+                  </svg>
+                  Tarik Retur TikTok
                 </button>
 
                 {/* Upload Excel (.xlsx) */}
@@ -1610,6 +1649,180 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
                   </>
                 ) : (
                   `Tarik Retur Sekarang (${formatDateIndo(shopeeStartDate)} s/d ${formatDateIndo(shopeeEndDate)})`
+                )}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal Tarik Retur TikTok API */}
+      {isTiktokSyncModalOpen && createPortal(
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto"
+          onClick={() => !isSyncingTiktok && setIsTiktokSyncModalOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-100 p-6 space-y-5 animate-in zoom-in-95 duration-150 my-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="p-2 rounded-xl bg-slate-900 text-[#25F4EE]">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                    <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zm.53 5.47a.75.75 0 00-1.06 0l-3 3a.75.75 0 101.06 1.06l1.72-1.72v5.69a.75.75 0 001.5 0v-5.69l1.72 1.72a.75.75 0 101.06-1.06l-3-3z" clipRule="evenodd" />
+                  </svg>
+                </span>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Tarik Retur dari TikTok Shop API</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Ambil data pengajuan retur/refund pembeli langsung dari TikTok Shop</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isSyncingTiktok}
+                onClick={() => setIsTiktokSyncModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer disabled:opacity-40"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 leading-relaxed space-y-1">
+              <p className="font-bold flex items-center gap-1.5 text-slate-900">
+                <span>🔄</span> Otomatisasi Sinkronisasi Retur TikTok:
+              </p>
+              <p>1. Data pengajuan retur TikTok akan langsung dicatat ke tabel <strong>Retur Online</strong> (Marketplace: TT).</p>
+              <p>2. Nomor pesanan yang cocok di <strong>Pesanan Cut Off</strong> akan otomatis diubah statusnya menjadi <strong>RJ (Retur)</strong>.</p>
+            </div>
+
+            {/* Mode Rentang Waktu */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700">Pilih Rentang Waktu Tarik Retur:</label>
+                <span className="text-[11px] font-bold text-[#25F4EE] bg-slate-900 px-2 py-0.5 rounded-md">
+                  {getShopeeDaysCount(tiktokStartDate, tiktokEndDate)} Hari Terpilih
+                </span>
+              </div>
+
+              {/* Preset Buttons */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { label: 'Hari Ini', days: 1 },
+                  { label: '7 Hari Terakhir', days: 7 },
+                  { label: '14 Hari (Rekomendasi)', days: 14 },
+                  { label: '30 Hari (1 Bln)', days: 30 },
+                ].map((p) => {
+                  const isSelected = getShopeeDaysCount(tiktokStartDate, tiktokEndDate) === p.days && tiktokEndDate === defaultShopeeEnd;
+                  return (
+                    <button
+                      key={p.days}
+                      type="button"
+                      onClick={() => {
+                        const sObj = new Date();
+                        sObj.setDate(sObj.getDate() - (p.days - 1));
+                        const s = formatYMD(sObj.getFullYear(), sObj.getMonth(), sObj.getDate());
+                        setTiktokStartDate(s);
+                        setTiktokEndDate(defaultShopeeEnd);
+                      }}
+                      className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#0B132B] text-white shadow-xs'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Trigger Bar Buka/Tutup Kalender */}
+              <button
+                type="button"
+                onClick={() => setIsTiktokCalendarOpen(!isTiktokCalendarOpen)}
+                className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/90 border border-slate-200 hover:border-slate-300 rounded-xl text-left transition-all cursor-pointer group shadow-2xs"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="p-2 rounded-xl bg-white border border-slate-200 text-slate-900 group-hover:scale-105 transition-transform shadow-2xs shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-5 h-5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" />
+                    </svg>
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Pilih Tanggal di Kalender Dua Bulan
+                    </div>
+                    <div className="text-xs font-bold text-slate-900 mt-0.5 truncate">
+                      {formatDateIndo(tiktokStartDate)} — {formatDateIndo(tiktokEndDate)}
+                      <span className="ml-2 text-[11px] font-bold text-slate-700">
+                        ({getShopeeDaysCount(tiktokStartDate, tiktokEndDate)} hari)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0 pl-2">
+                  <span className="text-[11px] font-bold text-slate-700 hidden sm:inline">
+                    {isTiktokCalendarOpen ? 'Tutup Kalender' : 'Buka Kalender'}
+                  </span>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    stroke="currentColor"
+                    className={`w-4 h-4 text-slate-500 transition-transform ${isTiktokCalendarOpen ? 'rotate-180' : ''}`}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                  </svg>
+                </div>
+              </button>
+
+              {/* Inline Dual Calendar Visual Picker */}
+              {isTiktokCalendarOpen && (
+                <div className="pt-1">
+                  <DualCalendarRangePicker
+                    initialStartDate={tiktokStartDate}
+                    initialEndDate={tiktokEndDate}
+                    inline={true}
+                    onApply={(start, end) => {
+                      setTiktokStartDate(start);
+                      setTiktokEndDate(end);
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isSyncingTiktok}
+                onClick={() => setIsTiktokSyncModalOpen(false)}
+                className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold cursor-pointer disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isSyncingTiktok}
+                onClick={handleTiktokSyncSubmit}
+                className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-black text-[#25F4EE] text-xs font-bold shadow-xs cursor-pointer flex items-center gap-2 disabled:opacity-50"
+              >
+                {isSyncingTiktok ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin text-[#25F4EE]" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Sedang Menarik Retur dari TikTok...
+                  </>
+                ) : (
+                  `Tarik Retur TikTok (${formatDateIndo(tiktokStartDate)} s/d {formatDateIndo(tiktokEndDate)})`
                 )}
               </button>
             </div>
