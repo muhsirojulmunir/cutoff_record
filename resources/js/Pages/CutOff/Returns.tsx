@@ -3,6 +3,7 @@ import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import AppLayout from '../../Layouts/AppLayout';
+import DualCalendarRangePicker, { formatDateIndo, formatYMD } from '../../Components/DualCalendarRangePicker';
 
 // ---------------------------------------------------------------------------
 // Interfaces
@@ -270,24 +271,33 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
 
   // Modal Tarik Retur Shopee
   const [isShopeeSyncModalOpen, setIsShopeeSyncModalOpen] = useState(false);
-  const [shopeeSyncDays, setShopeeSyncDays] = useState(14);
-  const [shopeeCustomRange, setShopeeCustomRange] = useState(false);
-  const [shopeeStartDate, setShopeeStartDate] = useState('');
-  const [shopeeEndDate, setShopeeEndDate] = useState('');
+  const now = new Date();
+  const defaultShopeeEnd = formatYMD(now.getFullYear(), now.getMonth(), now.getDate());
+  const d14 = new Date(now);
+  d14.setDate(d14.getDate() - 13);
+  const defaultShopeeStart = formatYMD(d14.getFullYear(), d14.getMonth(), d14.getDate());
+
+  const [shopeeStartDate, setShopeeStartDate] = useState(defaultShopeeStart);
+  const [shopeeEndDate, setShopeeEndDate] = useState(defaultShopeeEnd);
+  const [isShopeeCalendarOpen, setIsShopeeCalendarOpen] = useState(false);
   const [isSyncingShopee, setIsSyncingShopee] = useState(false);
 
+  const getShopeeDaysCount = (s: string, e: string): number => {
+    if (!s || !e) return 0;
+    const diff = new Date(e).getTime() - new Date(s).getTime();
+    return Math.max(1, Math.round(diff / (1000 * 60 * 60 * 24)) + 1);
+  };
+
   function handleShopeeSyncSubmit() {
-    if (shopeeCustomRange && (!shopeeStartDate || !shopeeEndDate)) {
-      alert('Silakan tentukan Tanggal Mulai dan Tanggal Sampai terlebih dahulu.');
+    if (!shopeeStartDate || !shopeeEndDate) {
+      alert('Silakan tentukan Rentang Tanggal terlebih dahulu.');
       return;
     }
 
     setIsSyncingShopee(true);
     router.post(
       '/marketplace/shopee/sync-returns',
-      shopeeCustomRange
-        ? { start_date: shopeeStartDate, end_date: shopeeEndDate }
-        : { days: shopeeSyncDays },
+      { start_date: shopeeStartDate, end_date: shopeeEndDate },
       {
         preserveScroll: true,
         onFinish: () => {
@@ -1437,11 +1447,11 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
       {/* Modal Tarik Retur Shopee API */}
       {isShopeeSyncModalOpen && createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto"
           onClick={() => !isSyncingShopee && setIsShopeeSyncModalOpen(false)}
         >
           <div
-            className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 p-6 space-y-5 animate-in zoom-in-95 duration-150"
+            className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-100 p-6 space-y-5 animate-in zoom-in-95 duration-150 my-8"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -1453,7 +1463,7 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
                 </span>
                 <div>
                   <h3 className="font-bold text-slate-900 text-base">Tarik Retur dari Shopee API</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Ambil data pengajuan retur pembeli langsung dari Shopee</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Ambil data pengajuan retur pembeli langsung dari Shopee Open API</p>
                 </div>
               </div>
               <button
@@ -1470,7 +1480,7 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
 
             <div className="p-3.5 rounded-xl bg-orange-50/70 border border-orange-200/60 text-xs text-orange-950 leading-relaxed space-y-1">
               <p className="font-bold flex items-center gap-1.5 text-[#EE4D2D]">
-                <span>🔄</span> Otomatisasi Sinkronisasi:
+                <span>🔄</span> Otomatisasi Sinkronisasi Retur:
               </p>
               <p>1. Data pengajuan retur Shopee akan langsung dicatat ke tabel <strong>Retur Online</strong>.</p>
               <p>2. Nomor pesanan yang cocok di <strong>Pesanan Cut Off</strong> akan otomatis diubah statusnya menjadi <strong>RJ (Retur)</strong>.</p>
@@ -1479,62 +1489,103 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
             {/* Mode Rentang Waktu */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-700">Pilih Rentang Waktu:</label>
-                <button
-                  type="button"
-                  onClick={() => setShopeeCustomRange(!shopeeCustomRange)}
-                  className="text-[11px] font-bold text-blue-600 hover:text-blue-800 underline cursor-pointer"
-                >
-                  {shopeeCustomRange ? 'Gunakan Pilihan Hari' : 'Gunakan Tanggal Tertentu'}
-                </button>
+                <label className="text-xs font-bold text-slate-700">Pilih Rentang Waktu Tarik Retur:</label>
+                <span className="text-[11px] font-bold text-[#EE4D2D]">
+                  {getShopeeDaysCount(shopeeStartDate, shopeeEndDate)} Hari Terpilih
+                </span>
               </div>
 
-              {!shopeeCustomRange ? (
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { label: '7 Hari', days: 7 },
-                    { label: '14 Hari (Rekomendasi)', days: 14 },
-                    { label: '30 Hari', days: 30 },
-                  ].map((p) => (
+              {/* Preset Buttons */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { label: 'Hari Ini', days: 1 },
+                  { label: '7 Hari Terakhir', days: 7 },
+                  { label: '14 Hari (Rekomendasi)', days: 14 },
+                  { label: '30 Hari (1 Bln)', days: 30 },
+                ].map((p) => {
+                  const isSelected = getShopeeDaysCount(shopeeStartDate, shopeeEndDate) === p.days && shopeeEndDate === defaultShopeeEnd;
+                  return (
                     <button
                       key={p.days}
                       type="button"
-                      onClick={() => setShopeeSyncDays(p.days)}
+                      onClick={() => {
+                        const sObj = new Date();
+                        sObj.setDate(sObj.getDate() - (p.days - 1));
+                        const s = formatYMD(sObj.getFullYear(), sObj.getMonth(), sObj.getDate());
+                        setShopeeStartDate(s);
+                        setShopeeEndDate(defaultShopeeEnd);
+                      }}
                       className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                        shopeeSyncDays === p.days
+                        isSelected
                           ? 'bg-[#EE4D2D] text-white shadow-xs'
                           : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                       }`}
                     >
                       {p.label}
                     </button>
-                  ))}
+                  );
+                })}
+              </div>
+
+              {/* Trigger Bar Buka/Tutup Kalender */}
+              <button
+                type="button"
+                onClick={() => setIsShopeeCalendarOpen(!isShopeeCalendarOpen)}
+                className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/90 border border-slate-200 hover:border-slate-300 rounded-xl text-left transition-all cursor-pointer group shadow-2xs"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="p-2 rounded-xl bg-white border border-slate-200 text-[#EE4D2D] group-hover:scale-105 transition-transform shadow-2xs shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-5 h-5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" />
+                    </svg>
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Pilih Tanggal di Kalender Dua Bulan
+                    </div>
+                    <div className="text-xs font-bold text-slate-900 mt-0.5 truncate">
+                      {formatDateIndo(shopeeStartDate)} — {formatDateIndo(shopeeEndDate)}
+                      <span className="ml-2 text-[11px] font-bold text-[#EE4D2D]">
+                        ({getShopeeDaysCount(shopeeStartDate, shopeeEndDate)} hari)
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  <div>
-                    <span className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Mulai:</span>
-                    <input
-                      type="date"
-                      value={shopeeStartDate}
-                      onChange={(e) => setShopeeStartDate(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
-                    />
-                  </div>
-                  <div>
-                    <span className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Sampai:</span>
-                    <input
-                      type="date"
-                      value={shopeeEndDate}
-                      onChange={(e) => setShopeeEndDate(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
-                    />
-                  </div>
+
+                <div className="flex items-center gap-1.5 shrink-0 pl-2">
+                  <span className="text-[11px] font-bold text-[#EE4D2D] hidden sm:inline">
+                    {isShopeeCalendarOpen ? 'Tutup Kalender' : 'Buka Kalender'}
+                  </span>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    stroke="currentColor"
+                    className={`w-4 h-4 text-slate-500 transition-transform ${isShopeeCalendarOpen ? 'rotate-180' : ''}`}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                  </svg>
+                </div>
+              </button>
+
+              {/* Inline Dual Calendar Visual Picker */}
+              {isShopeeCalendarOpen && (
+                <div className="pt-1">
+                  <DualCalendarRangePicker
+                    initialStartDate={shopeeStartDate}
+                    initialEndDate={shopeeEndDate}
+                    inline={true}
+                    onApply={(start, end) => {
+                      setShopeeStartDate(start);
+                      setShopeeEndDate(end);
+                    }}
+                  />
                 </div>
               )}
             </div>
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
               <button
                 type="button"
                 disabled={isSyncingShopee}
@@ -1547,7 +1598,7 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
                 type="button"
                 disabled={isSyncingShopee}
                 onClick={handleShopeeSyncSubmit}
-                className="px-5 py-2 rounded-xl bg-[#EE4D2D] hover:bg-[#d83d1e] text-white text-xs font-bold shadow-xs cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                className="px-5 py-2.5 rounded-xl bg-[#EE4D2D] hover:bg-[#d83d1e] text-white text-xs font-bold shadow-xs cursor-pointer flex items-center gap-2 disabled:opacity-50"
               >
                 {isSyncingShopee ? (
                   <>
@@ -1558,7 +1609,7 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
                     Sedang Menarik Retur dari Shopee...
                   </>
                 ) : (
-                  'Tarik Retur Sekarang'
+                  `Tarik Retur Sekarang (${formatDateIndo(shopeeStartDate)} s/d ${formatDateIndo(shopeeEndDate)})`
                 )}
               </button>
             </div>

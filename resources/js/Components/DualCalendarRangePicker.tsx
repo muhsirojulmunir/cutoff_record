@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-interface DualCalendarRangePickerProps {
+export interface DualCalendarRangePickerProps {
   initialStartDate?: string; // YYYY-MM-DD
   initialEndDate?: string;   // YYYY-MM-DD
   maxDate?: string;          // YYYY-MM-DD (maksimal tanggal yang boleh dipilih, default: hari ini)
-  isOpen: boolean;
-  onClose: () => void;
+  allowFuture?: boolean;     // jika true, tidak membatasi pemilihan tanggal ke masa depan
+  isOpen?: boolean;          // untuk popover mode
+  onClose?: () => void;      // untuk popover mode
   onApply: (startDate: string, endDate: string) => void;
+  inline?: boolean;          // jika true, ditampilkan langsung di halaman (bukan popover absolut)
+  align?: 'left' | 'right' | 'center'; // alignment popover
 }
 
 const MONTH_NAMES = [
@@ -16,13 +19,13 @@ const MONTH_NAMES = [
 
 const DAY_NAMES = ['M', 'S', 'S', 'R', 'K', 'J', 'S']; // Minggu, Senin, Selasa, Rabu, Kamis, Jumat, Sabtu
 
-function formatYMD(year: number, month: number, day: number): string {
+export function formatYMD(year: number, month: number, day: number): string {
   const m = String(month + 1).padStart(2, '0');
   const d = String(day).padStart(2, '0');
   return `${year}-${m}-${d}`;
 }
 
-function parseYMD(dateStr?: string): { year: number; month: number; day: number } | null {
+export function parseYMD(dateStr?: string): { year: number; month: number; day: number } | null {
   if (!dateStr) return null;
   const parts = dateStr.split(' ')[0].split('-');
   if (parts.length !== 3) return null;
@@ -33,7 +36,7 @@ function parseYMD(dateStr?: string): { year: number; month: number; day: number 
   return { year: y, month: m, day: d };
 }
 
-function formatDateIndo(dateStr: string | null): string {
+export function formatDateIndo(dateStr: string | null): string {
   if (!dateStr) return '-';
   const parsed = parseYMD(dateStr);
   if (!parsed) return dateStr;
@@ -44,16 +47,20 @@ export default function DualCalendarRangePicker({
   initialStartDate,
   initialEndDate,
   maxDate,
-  isOpen,
+  allowFuture = false,
+  isOpen = true,
   onClose,
   onApply,
+  inline = false,
+  align = 'right',
 }: DualCalendarRangePickerProps) {
   const popoverRef = useRef<HTMLDivElement>(null);
 
-  // Default max date to today if not provided
+  // Default max date to today if not provided and allowFuture is false
   const now = new Date();
-  const effectiveMaxDate = maxDate || formatYMD(now.getFullYear(), now.getMonth(), now.getDate());
-  const maxParsed = parseYMD(effectiveMaxDate) || {
+  const todayYMD = formatYMD(now.getFullYear(), now.getMonth(), now.getDate());
+  const effectiveMaxDate = allowFuture ? '' : (maxDate !== undefined ? maxDate : todayYMD);
+  const maxParsed = parseYMD(effectiveMaxDate || todayYMD) || {
     year: now.getFullYear(),
     month: now.getMonth(),
     day: now.getDate(),
@@ -64,7 +71,7 @@ export default function DualCalendarRangePicker({
   const [endDate, setEndDate] = useState<string | null>(initialEndDate || null);
   const [hoverDate, setHoverDate] = useState<string | null>(null);
 
-  // Left month state (default: 1 month before current month so both past month & current month are visible)
+  // Left month state (default: 1 month before max month so both previous & current months are visible)
   const defaultLeftMonth = maxParsed.month === 0 ? 11 : maxParsed.month - 1;
   const defaultLeftYear = maxParsed.month === 0 ? maxParsed.year - 1 : maxParsed.year;
 
@@ -75,20 +82,22 @@ export default function DualCalendarRangePicker({
   const rightYear = leftMonth === 11 ? leftYear + 1 : leftYear;
   const rightMonth = leftMonth === 11 ? 0 : leftMonth + 1;
 
-  // Determine if next month / year navigation is disabled (cannot go into the future)
+  // Determine if next month / year navigation is disabled (cannot go into the future unless allowFuture is true)
   const nextRightYear = rightMonth === 11 ? rightYear + 1 : rightYear;
   const nextRightMonth = rightMonth === 11 ? 0 : rightMonth + 1;
-  const isNextMonthDisabled =
+  const isNextMonthDisabled = !allowFuture && (
     nextRightYear > maxParsed.year ||
-    (nextRightYear === maxParsed.year && nextRightMonth > maxParsed.month);
+    (nextRightYear === maxParsed.year && nextRightMonth > maxParsed.month)
+  );
 
-  const isNextYearDisabled =
+  const isNextYearDisabled = !allowFuture && (
     rightYear + 1 > maxParsed.year ||
-    (rightYear + 1 === maxParsed.year && rightMonth > maxParsed.month);
+    (rightYear + 1 === maxParsed.year && rightMonth > maxParsed.month)
+  );
 
-  // Sync state on open
+  // Sync state on open or props change
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen || inline) {
       setStartDate(initialStartDate || null);
       setEndDate(initialEndDate || null);
       setHoverDate(null);
@@ -96,7 +105,7 @@ export default function DualCalendarRangePicker({
       if (initialStartDate) {
         const parsed = parseYMD(initialStartDate);
         if (parsed) {
-          // If start date is in the current/max month, keep left month as (maxMonth - 1) so current month is on the right
+          // If start date is in the current month, show previous month on the left and current month on the right
           if (parsed.year === maxParsed.year && parsed.month === maxParsed.month) {
             setLeftMonth(defaultLeftMonth);
             setLeftYear(defaultLeftYear);
@@ -110,26 +119,26 @@ export default function DualCalendarRangePicker({
         setLeftYear(defaultLeftYear);
       }
     }
-  }, [isOpen, initialStartDate, initialEndDate, effectiveMaxDate]);
+  }, [isOpen, inline, initialStartDate, initialEndDate, effectiveMaxDate]);
 
-  // Click outside to close
+  // Click outside to close (popover mode only)
   useEffect(() => {
+    if (inline || !isOpen) return;
+
     const handleClickOutside = (e: MouseEvent) => {
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        onClose();
+        if (onClose) onClose();
       }
     };
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
+    document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isOpen, onClose]);
+  }, [inline, isOpen, onClose]);
 
-  if (!isOpen) return null;
+  if (!inline && !isOpen) return null;
 
-  // Navigation handlers (restricted by maxDate)
+  // Navigation handlers
   const handlePrevYear = () => setLeftYear((y) => y - 1);
   const handlePrevMonth = () => {
     if (leftMonth === 0) {
@@ -154,8 +163,9 @@ export default function DualCalendarRangePicker({
     if (isNextYearDisabled) return;
     const candidateRightYear = rightYear + 1;
     if (
-      candidateRightYear > maxParsed.year ||
-      (candidateRightYear === maxParsed.year && rightMonth > maxParsed.month)
+      !allowFuture &&
+      (candidateRightYear > maxParsed.year ||
+        (candidateRightYear === maxParsed.year && rightMonth > maxParsed.month))
     ) {
       setLeftMonth(defaultLeftMonth);
       setLeftYear(defaultLeftYear);
@@ -164,9 +174,9 @@ export default function DualCalendarRangePicker({
     setLeftYear((y) => y + 1);
   };
 
-  // Date selection logic with future date protection
+  // Date selection logic
   const handleDateClick = (dateStr: string) => {
-    if (dateStr > effectiveMaxDate) return; // Prevent selecting future dates!
+    if (effectiveMaxDate && dateStr > effectiveMaxDate) return;
 
     if (!startDate || (startDate && endDate)) {
       setStartDate(dateStr);
@@ -181,26 +191,78 @@ export default function DualCalendarRangePicker({
       setStartDate(finalStart);
       setEndDate(finalEnd);
 
-      // Auto-apply selection with brief visual confirmation
-      setTimeout(() => {
-        onApply(finalStart, finalEnd);
-        onClose();
-      }, 220);
+      // Auto-apply selection
+      onApply(finalStart, finalEnd);
+
+      if (!inline && onClose) {
+        setTimeout(() => {
+          onClose();
+        }, 220);
+      }
     }
   };
 
   const handleApplyClick = () => {
     if (startDate && endDate) {
       onApply(startDate, endDate);
-      onClose();
+      if (!inline && onClose) onClose();
     } else if (startDate && !endDate) {
       onApply(startDate, startDate);
-      onClose();
+      if (!inline && onClose) onClose();
+    }
+  };
+
+  // Quick preset shortcuts
+  const applyPreset = (days: number) => {
+    const today = new Date();
+    const end = formatYMD(today.getFullYear(), today.getMonth(), today.getDate());
+    const startDateObj = new Date(today);
+    startDateObj.setDate(startDateObj.getDate() - (days - 1));
+    const start = formatYMD(startDateObj.getFullYear(), startDateObj.getMonth(), startDateObj.getDate());
+
+    setStartDate(start);
+    setEndDate(end);
+    onApply(start, end);
+
+    const parsed = parseYMD(start);
+    if (parsed) {
+      if (parsed.year === maxParsed.year && parsed.month === maxParsed.month) {
+        setLeftMonth(defaultLeftMonth);
+        setLeftYear(defaultLeftYear);
+      } else {
+        setLeftYear(parsed.year);
+        setLeftMonth(parsed.month);
+      }
+    }
+
+    if (!inline && onClose) {
+      setTimeout(() => {
+        onClose();
+      }, 200);
+    }
+  };
+
+  const applyThisMonth = () => {
+    const today = new Date();
+    const start = formatYMD(today.getFullYear(), today.getMonth(), 1);
+    const end = formatYMD(today.getFullYear(), today.getMonth(), today.getDate());
+
+    setStartDate(start);
+    setEndDate(end);
+    onApply(start, end);
+
+    setLeftMonth(defaultLeftMonth);
+    setLeftYear(defaultLeftYear);
+
+    if (!inline && onClose) {
+      setTimeout(() => {
+        onClose();
+      }, 200);
     }
   };
 
   // Render Single Calendar Month
-  const renderMonth = (year: number, month: number) => {
+  const renderMonth = (year: number, month: number, isRightMonth: boolean = false) => {
     const firstDayOfWeek = new Date(year, month, 1).getDay(); // 0 = Sunday
     const daysInMonth = new Date(year, month + 1, 0).getDate();
 
@@ -212,13 +274,13 @@ export default function DualCalendarRangePicker({
 
     // Empty spaces before day 1
     for (let i = 0; i < firstDayOfWeek; i++) {
-      cells.push(<div key={`empty-${i}`} className="h-8 w-8" />);
+      cells.push(<div key={`empty-${i}`} className="h-9 w-9" />);
     }
 
     // Days in current month
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = formatYMD(year, month, day);
-      const isFuture = dateStr > effectiveMaxDate;
+      const isFuture = effectiveMaxDate ? dateStr > effectiveMaxDate : false;
       const isStart = startDate === dateStr;
       const isEnd = endDate === dateStr || (hoverDate === dateStr && !endDate && startDate && startDate !== dateStr);
       const isEndpoint = !isFuture && (isStart || isEnd);
@@ -229,22 +291,6 @@ export default function DualCalendarRangePicker({
         dateStr >= effectiveStart &&
         dateStr <= finalEnd;
 
-      let cellStyle = 'h-8 w-8 text-xs flex items-center justify-center font-medium transition-colors select-none ';
-
-      if (isFuture) {
-        // Disabled future dates
-        cellStyle += 'text-slate-300 opacity-40 cursor-not-allowed';
-      } else if (isEndpoint) {
-        // Selected start / end date
-        cellStyle += 'bg-[#EA3829] text-white font-bold rounded-lg shadow-sm z-10 cursor-pointer';
-      } else if (isInRange) {
-        // Range in between
-        cellStyle += 'bg-[#FFF1F0] text-slate-800 font-semibold cursor-pointer';
-      } else {
-        // Available past date
-        cellStyle += 'text-slate-800 hover:bg-slate-100 rounded-lg cursor-pointer';
-      }
-
       cells.push(
         <div
           key={dateStr}
@@ -254,21 +300,41 @@ export default function DualCalendarRangePicker({
               setHoverDate(dateStr);
             }
           }}
-          className="flex items-center justify-center p-0.5"
+          className={`h-9 flex items-center justify-center relative select-none ${
+            isFuture ? 'cursor-not-allowed' : 'cursor-pointer'
+          } ${
+            isInRange && !isEndpoint ? 'bg-[#FFF1EE]' : ''
+          } ${
+            isStart && finalEnd && finalEnd !== dateStr ? 'bg-gradient-to-r from-transparent 50% via-[#FFF1EE] 50% to-[#FFF1EE]' : ''
+          } ${
+            isEnd && effectiveStart && effectiveStart !== dateStr ? 'bg-gradient-to-l from-transparent 50% via-[#FFF1EE] 50% to-[#FFF1EE]' : ''
+          }`}
         >
-          <div className={cellStyle}>{day}</div>
+          <div
+            className={`h-8 w-8 text-xs flex items-center justify-center font-medium transition-all rounded-lg ${
+              isFuture
+                ? 'text-slate-300 opacity-40'
+                : isEndpoint
+                ? 'bg-[#EE4D2D] text-white font-bold shadow-xs scale-105 z-10'
+                : isInRange
+                ? 'text-slate-900 font-semibold'
+                : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+          >
+            {day}
+          </div>
         </div>
       );
     }
 
-    // Trailing days for grid alignment (always disabled / muted)
+    // Trailing days for grid alignment
     const totalFilled = firstDayOfWeek + daysInMonth;
     const targetCells = totalFilled <= 35 ? 35 : 42;
     const trailingCount = targetCells - totalFilled;
     for (let i = 1; i <= trailingCount; i++) {
       cells.push(
-        <div key={`trail-${i}`} className="flex items-center justify-center p-0.5">
-          <div className="h-8 w-8 text-xs flex items-center justify-center text-slate-300 font-medium select-none opacity-40">
+        <div key={`trail-${i}`} className="h-9 flex items-center justify-center">
+          <div className="h-8 w-8 text-xs flex items-center justify-center text-slate-300 font-medium select-none opacity-30">
             {i}
           </div>
         </div>
@@ -276,10 +342,10 @@ export default function DualCalendarRangePicker({
     }
 
     return (
-      <div className="w-[280px] shrink-0">
+      <div className="w-full sm:w-[270px] shrink-0">
         {/* Month Navigation Header */}
         <div className="flex items-center justify-between pb-3 px-1 text-slate-700">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={handlePrevYear}
@@ -299,10 +365,10 @@ export default function DualCalendarRangePicker({
           </div>
 
           <div className="font-bold text-sm text-slate-900 tracking-tight">
-            {MONTH_NAMES[month]}{year}
+            {MONTH_NAMES[month]} {year}
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <button
               type="button"
               disabled={isNextMonthDisabled}
@@ -332,7 +398,7 @@ export default function DualCalendarRangePicker({
           </div>
         </div>
 
-        {/* Days Header */}
+        {/* Days Header: M S S R K J S */}
         <div className="grid grid-cols-7 mb-1 text-center">
           {DAY_NAMES.map((d, idx) => (
             <div key={idx} className="h-7 flex items-center justify-center text-xs font-semibold text-slate-500">
@@ -347,50 +413,102 @@ export default function DualCalendarRangePicker({
     );
   };
 
-  return (
-    <div
-      ref={popoverRef}
-      className="absolute top-full right-0 mt-2 z-50 bg-white rounded-2xl shadow-2xl border border-slate-200/90 p-5 animate-in fade-in zoom-in-95 duration-150 w-[610px] max-w-[calc(100vw-2rem)]"
-    >
-      {/* Dual Month Calendars Side by Side */}
-      <div className="flex flex-row gap-5 justify-between items-start">
-        {/* Left Calendar (e.g. September) */}
-        {renderMonth(leftYear, leftMonth)}
+  const containerStyle = inline
+    ? 'w-full bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs'
+    : `absolute top-full mt-2 z-50 bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 sm:p-5 animate-in fade-in zoom-in-95 duration-150 w-full sm:w-[600px] max-w-[calc(100vw-2rem)] ${
+        align === 'left' ? 'left-0' : align === 'center' ? 'left-1/2 -translate-x-1/2' : 'right-0'
+      }`;
 
-        {/* Right Calendar (e.g. Oktober) */}
-        {renderMonth(rightYear, rightMonth)}
+  return (
+    <div ref={popoverRef} className={containerStyle}>
+      {/* Quick Presets Header */}
+      <div className="pb-3 mb-3 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+          Preset Cepat:
+        </span>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => applyPreset(1)}
+            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer transition-colors"
+          >
+            Hari Ini
+          </button>
+          <button
+            type="button"
+            onClick={() => applyPreset(7)}
+            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer transition-colors"
+          >
+            7 Hari
+          </button>
+          <button
+            type="button"
+            onClick={() => applyPreset(14)}
+            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer transition-colors"
+          >
+            14 Hari
+          </button>
+          <button
+            type="button"
+            onClick={() => applyPreset(30)}
+            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer transition-colors"
+          >
+            30 Hari
+          </button>
+          <button
+            type="button"
+            onClick={applyThisMonth}
+            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer transition-colors"
+          >
+            Bulan Ini
+          </button>
+        </div>
+      </div>
+
+      {/* Dual Month Calendars Side by Side */}
+      <div className="flex flex-col sm:flex-row gap-5 justify-between items-center sm:items-start overflow-x-auto pb-1">
+        {/* Left Calendar */}
+        {renderMonth(leftYear, leftMonth, false)}
+
+        {/* Vertical divider on desktop */}
+        <div className="hidden sm:block w-px self-stretch bg-slate-100 my-1" />
+
+        {/* Right Calendar */}
+        {renderMonth(rightYear, rightMonth, true)}
       </div>
 
       {/* Footer Bar */}
-      <div className="mt-4 pt-3.5 border-t border-slate-100 flex items-center justify-between gap-3">
+      <div className="mt-4 pt-3.5 border-t border-slate-100 flex items-center justify-between gap-3 flex-wrap">
         <div className="text-xs text-slate-600 truncate">
           {startDate ? (
             <div className="flex items-center gap-1.5 truncate">
               <span className="font-semibold text-slate-500">Rentang:</span>
-              <span className="font-bold text-[#EA3829] bg-[#FFF1F0] px-2 py-0.5 rounded-md border border-rose-200 truncate">
+              <span className="font-bold text-[#EE4D2D] bg-[#FFF1EE] px-2.5 py-1 rounded-lg border border-orange-200/80 truncate">
                 {formatDateIndo(startDate)} {endDate ? `– ${formatDateIndo(endDate)}` : '(Pilih tanggal akhir)'}
               </span>
             </div>
           ) : (
-            <span className="text-slate-400 italic">Pilih tanggal awal & tanggal akhir</span>
+            <span className="text-slate-400 italic">Pilih tanggal awal & tanggal akhir di kalender</span>
           )}
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-          >
-            Batal
-          </button>
+          {!inline && onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+            >
+              Tutup
+            </button>
+          )}
           <button
             type="button"
             disabled={!startDate}
             onClick={handleApplyClick}
-            className={`px-3.5 py-1 text-xs font-bold rounded-lg transition-all shadow-xs cursor-pointer ${
+            className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all shadow-xs cursor-pointer ${
               startDate
-                ? 'bg-[#EA3829] hover:bg-[#d63022] text-white active:scale-95'
+                ? 'bg-[#EE4D2D] hover:bg-[#d63f20] text-white active:scale-95'
                 : 'bg-slate-200 text-slate-400 cursor-not-allowed'
             }`}
           >
