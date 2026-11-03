@@ -13,6 +13,7 @@ interface CutOffOrder {
   jl_number: string | null;
   buyer_username: string | null;
   shipping_courier: string | null;
+  payment_method?: string | null;
   sku_utama: string | null;
   sku_pengganti: string | null;
   product_name: string | null;
@@ -1026,6 +1027,13 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                     const isOos = order.info_gudang && order.info_gudang.includes('OOS');
                     const isRj = order.order_status && (order.order_status.includes('RJ') || order.order_status.includes('Retur'));
                     const shippingTier = getShippingTier(order.shipping_courier);
+                    const isOrderCod = Boolean(
+                      (order.payment_method && (
+                        order.payment_method.toLowerCase().includes('cod') ||
+                        order.payment_method.toLowerCase().includes('cash on delivery')
+                      )) ||
+                      (order.order_status && order.order_status.toLowerCase().includes('cod'))
+                    );
 
                     return (
                       <tr key={order.id} className="hover:bg-slate-50/80 transition-colors">
@@ -1153,7 +1161,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                         </td>
 
                         {/* Status Pesanan */}
-                        <td className="py-3.5 px-4">
+                        <td className="py-3.5 px-4 whitespace-nowrap">
                           {order.order_status ? (
                             <div>
                               <span
@@ -1164,11 +1172,26 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                                     ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                                     : order.order_status.toLowerCase().includes('batal') || order.order_status.toLowerCase().includes('cancel')
                                     ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                    : isOrderCod
+                                    ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs font-bold'
                                     : 'bg-slate-100 text-slate-700'
                                 }`}
                               >
-                                {order.order_status}
+                                {isOrderCod && (order.order_status === 'Belum Bayar' || order.order_status.toLowerCase().includes('belum bayar'))
+                                  ? 'Perlu Dikirim [COD]'
+                                  : order.order_status}
                               </span>
+
+                              {/* Label Keterangan Metode Pembayaran */}
+                              {isOrderCod ? (
+                                <span className="block mt-1 text-[10px] font-bold text-amber-700 tracking-tight">
+                                  💵 Bayar di Tempat (COD)
+                                </span>
+                              ) : order.payment_method ? (
+                                <span className="block mt-1 text-[10px] text-slate-500 font-medium truncate max-w-[150px]" title={order.payment_method}>
+                                  💳 {order.payment_method}
+                                </span>
+                              ) : null}
 
                               {(order.cancel_reason || order.cancel_by) && (
                                 <div className="mt-1 text-[10px] text-rose-600 leading-tight max-w-[200px]" title={order.cancel_reason || ''}>
@@ -1183,17 +1206,19 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                         </td>
 
                         {/* Keuangan & DPP */}
-                        <td className="py-3.5 px-4">
+                        <td className="py-3.5 px-4 whitespace-nowrap">
                           <p className="font-semibold text-slate-900">
                             {formatRupiah(order.est_net_income)}
                           </p>
-                          {order.dpp_number ? (
-                            <span className="inline-block mt-1 font-mono text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
-                              {order.dpp_number}
-                            </span>
-                          ) : (
-                            <span className="text-[10px] text-slate-400 block mt-1">Belum DPP</span>
-                          )}
+                          <div className="flex flex-col gap-0.5 mt-1">
+                            {order.dpp_number ? (
+                              <span className="inline-block font-mono text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 w-fit">
+                                {order.dpp_number}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-400">Belum DPP</span>
+                            )}
+                          </div>
                         </td>
 
                         {/* Aksi */}

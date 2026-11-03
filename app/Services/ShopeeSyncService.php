@@ -449,9 +449,26 @@ class ShopeeSyncService
                 $netProduct    = max(0, $productPrice - $sellerVoucher);
                 $calculatedNet = round($netProduct * 0.79);
 
-                // 5. Determine order status and cancellation details
+                // 5. Determine order status, payment method, and cancellation details
                 $rawStatus  = (string) ($order['order_status'] ?? '');
                 $statusText = $this->mapOrderStatus($rawStatus);
+
+                // Deteksi metode pembayaran & status COD
+                $rawPayment = (string) ($order['payment_method'] ?? '');
+                $isCod = ! empty($order['cod'])
+                    || stripos($rawPayment, 'cash on delivery') !== false
+                    || stripos($rawPayment, 'cod') !== false;
+
+                if ($isCod) {
+                    $paymentMethod = 'COD (Bayar di Tempat)';
+                    if ($statusText === 'Belum Bayar' || $rawStatus === 'UNPAID') {
+                        $statusText = 'Perlu Dikirim [COD]';
+                    } elseif ($statusText === 'Perlu Dikirim') {
+                        $statusText = 'Perlu Dikirim [COD]';
+                    }
+                } else {
+                    $paymentMethod = $rawPayment ?: 'Non-COD (Lunas Online)';
+                }
 
                 $rawCancelBy = (string) ($order['cancel_by'] ?? '');
                 $cancelByLabel = match (strtolower($rawCancelBy)) {
@@ -470,7 +487,7 @@ class ShopeeSyncService
                             $statusText = 'Selesai';
                             break;
                         } elseif (in_array($logStatus, ['LOGISTICS_PICKUP_DONE'], true)) {
-                            if ($statusText === 'Perlu Dikirim' || $statusText === 'Diproses' || empty($statusText)) {
+                            if (str_contains($statusText, 'Perlu Dikirim') || $statusText === 'Diproses' || empty($statusText)) {
                                 $statusText = 'Dikirim';
                             }
                             break;
@@ -501,6 +518,7 @@ class ShopeeSyncService
                     'order_number'           => $orderSn,
                     'buyer_username'         => $order['buyer_username'] ?? $order['buyer_user_id'] ?? null,
                     'shipping_courier'       => $shippingCourier,
+                    'payment_method'         => $paymentMethod,
                     'sku_utama'              => $firstItem['model_sku'] ?? $firstItem['item_sku'] ?? null,
                     'product_name'           => $firstItem['item_name'] ?? 'Produk Shopee',
                     'qty'                    => $totalQty,
@@ -524,6 +542,7 @@ class ShopeeSyncService
                         'order_date'             => $orderDate,
                         'order_status'           => $statusText,
                         'shipping_courier'       => $shippingCourier ?: $existing->shipping_courier,
+                        'payment_method'         => $paymentMethod,
                         'est_net_income'         => $calculatedNet,
                         'marketplace_net_payout' => $calculatedNet,
                         'keterangan_solutif'     => $keteranganSolutif ?: $existing->keterangan_solutif,
@@ -659,7 +678,7 @@ class ShopeeSyncService
             'access_token'             => $accessToken,
             'shop_id'                  => $shopId,
             'order_sn_list'            => implode(',', $orderSns),
-            'response_optional_fields' => 'buyer_user_id,buyer_username,item_list,package_list,shipping_carrier,total_amount,cancel_by,cancel_reason,payment_info',
+            'response_optional_fields' => 'buyer_user_id,buyer_username,item_list,package_list,shipping_carrier,total_amount,cancel_by,cancel_reason,payment_info,payment_method',
         ];
 
         return $this->host . $path . '?' . http_build_query($queryParams);
@@ -814,6 +833,12 @@ class ShopeeSyncService
                     if (! Schema::hasColumn('cut_off_orders', 'cancel_reason')) {
                         $table->text('cancel_reason')->nullable()->after('cancel_by');
                     }
+                });
+            }
+
+            if (! Schema::hasColumn('cut_off_orders', 'payment_method')) {
+                Schema::table('cut_off_orders', function (Blueprint $table) {
+                    $table->string('payment_method')->nullable()->after('shipping_courier');
                 });
             }
         } catch (\Throwable $e) {
