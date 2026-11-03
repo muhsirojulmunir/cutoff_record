@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\CutOffOrder;
+use App\Models\CutOffReturn;
 use App\Models\ShopeeAccount;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Client\Pool;
@@ -818,5 +819,239 @@ class ShopeeSyncService
         } catch (\Throwable $e) {
             Log::warning('ShopeeSyncService ensureSchema notice: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Fetch raw return list from Shopee API v2.
+     * Endpoint: /api/v2/returns/get_return_list
+     */
+    public function fetchReturnListRaw(ShopeeAccount $account, int $timeFrom, int $timeTo, int $pageNo = 0, int $pageSize = 40): array
+    {
+        $path        = '/api/v2/returns/get_return_list';
+        $timestamp   = time();
+        $accessToken = (string) ($account->access_token ?? '');
+        $shopId      = (int) $account->shop_id;
+        $partnerId   = (int) $account->partner_id;
+        $partnerKey  = (string) $account->partner_key;
+
+        $baseStr = sprintf('%s%s%s%s%s', $partnerId, $path, $timestamp, $accessToken, $shopId);
+        $sign    = hash_hmac('sha256', $baseStr, $partnerKey);
+
+        $queryParams = [
+            'partner_id'       => $partnerId,
+            'timestamp'        => $timestamp,
+            'sign'             => $sign,
+            'access_token'     => $accessToken,
+            'shop_id'          => $shopId,
+            'page_no'          => $pageNo,
+            'page_size'        => min($pageSize, 50),
+            'create_time_from' => $timeFrom,
+            'create_time_to'   => $timeTo,
+        ];
+
+        $url = $this->host . $path . '?' . http_build_query($queryParams);
+
+        $response = Http::timeout(25)->get($url);
+        $data = $response->json();
+
+        if ($response->failed() || ! empty($data['error'])) {
+            $err = $data['message'] ?? ($data['error'] ?? 'Gagal mengambil daftar retur Shopee');
+            Log::warning("Shopee Return List Error: {$err}");
+            throw new RuntimeException("Shopee Return List Error: {$err}");
+        }
+
+        return $data['response'] ?? [];
+    }
+
+    /**
+     * Fetch return detail from Shopee API v2.
+     * Endpoint: /api/v2/returns/get_return_detail
+     */
+    public function fetchReturnDetailRaw(ShopeeAccount $account, string $returnSn): array
+    {
+        $path        = '/api/v2/returns/get_return_detail';
+        $timestamp   = time();
+        $accessToken = (string) ($account->access_token ?? '');
+        $shopId      = (int) $account->shop_id;
+        $partnerId   = (int) $account->partner_id;
+        $partnerKey  = (string) $account->partner_key;
+
+        $baseStr = sprintf('%s%s%s%s%s', $partnerId, $path, $timestamp, $accessToken, $shopId);
+        $sign    = hash_hmac('sha256', $baseStr, $partnerKey);
+
+        $queryParams = [
+            'partner_id'   => $partnerId,
+            'timestamp'    => $timestamp,
+            'sign'         => $sign,
+            'access_token' => $accessToken,
+            'shop_id'      => $shopId,
+            'return_sn'    => $returnSn,
+        ];
+
+        $url = $this->host . $path . '?' . http_build_query($queryParams);
+
+        $response = Http::timeout(20)->get($url);
+        $data = $response->json();
+
+        if ($response->failed() || ! empty($data['error'])) {
+            return [];
+        }
+
+        return $data['response'] ?? [];
+    }
+
+    /**
+     * Synchronize Shopee returns into cut_off_returns and update matching cut_off_orders.
+     */
+    public function syncReturnsToCutOff(ShopeeAccount $account, ?int $timeFrom = null, ?int $timeTo = null): array
+    {
+        $timeTo = $timeTo ?: time();
+        $timeFrom = $timeFrom ?: ($timeTo - (14 * 86400)); // Default 14 hari
+
+        $account = $this->ensureValidToken($account);
+
+        $maxWindow = 14 * 86400; // Limit Shopee 15 hari
+        $allReturns = [];
+        $currentTo = $timeTo;
+
+        while ($currentTo > $timeFrom) {
+            $currentFrom = max($timeFrom, $currentTo - $maxWindow);
+
+            $pageNo = 0;
+            $hasMore = true;
+
+            while ($hasMore && $pageNo < 30) {
+                $rawRes = $this->fetchReturnListRaw($account, $currentFrom, $currentTo, $pageNo, 40);
+                $returns = $rawRes['return'] ?? $rawRes['return_list'] ?? [];
+
+                foreach ($returns as $ret) {
+                    $returnSn = $ret['return_sn'] ?? null;
+                    if ($returnSn) {
+                        $allReturns[$returnSn] = $ret;
+                    }
+                }
+
+                $hasMore = ! empty($rawRes['more']);
+                $pageNo++;
+            }
+
+            $currentTo = $currentFrom;
+        }
+
+        if (empty($allReturns)) {
+            return [
+                'total_fetched' => 0,
+                'created'       => 0,
+                'updated'       => 0,
+                'orders_linked' => 0,
+                'message'       => 'Tidak ditemukan data pengajuan retur Shopee pada rentang waktu tersebut.',
+            ];
+        }
+
+        $createdCount = 0;
+        $updatedCount = 0;
+        $ordersLinkedCount = 0;
+
+        \Illuminate\Support\Facades\DB::transaction(function () use (
+            $allReturns, &$createdCount, &$updatedCount, &$ordersLinkedCount
+        ) {
+            $lastNoUrut = (int) (CutOffReturn::max('no_urut') ?? 0);
+
+            foreach ($allReturns as $returnSn => $ret) {
+                $orderSn    = trim((string) ($ret['order_sn'] ?? ''));
+                $createTime = ! empty($ret['create_time']) ? (int) $ret['create_time'] : time();
+                $returnDate = date('Y-m-d', $createTime);
+
+                // Ekstraksi produk
+                $items = $ret['item'] ?? [];
+                $firstItem = $items[0] ?? [];
+                $totalQty = 0;
+                foreach ($items as $it) {
+                    $totalQty += (int) ($it['amount'] ?? 1);
+                }
+                if ($totalQty <= 0) {
+                    $totalQty = 1;
+                }
+
+                $itemName = (string) ($firstItem['name'] ?? $firstItem['item_sku'] ?? 'Produk Shopee');
+                if (count($items) > 1) {
+                    $itemName .= ' (+' . (count($items) - 1) . ' item lainnya)';
+                }
+
+                $reason = trim((string) ($ret['text_reason'] ?? $ret['reason'] ?? ''));
+                $status = trim((string) ($ret['status'] ?? ''));
+                $keteranganParts = [];
+                if (! empty($status)) {
+                    $keteranganParts[] = "[{$status}]";
+                }
+                if (! empty($reason)) {
+                    $keteranganParts[] = $reason;
+                }
+                $keterangan = implode(' ', $keteranganParts);
+
+                $trackingNumber = $ret['tracking_number'] ?? null;
+
+                // Cek apakah data retur sudah ada
+                $existing = CutOffReturn::where('marketplace', 'SH')
+                    ->where(function ($q) use ($returnSn, $orderSn) {
+                        $q->where('no_retur', $returnSn);
+                        if (! empty($orderSn)) {
+                            $q->orWhere('no_invoice_mp', $orderSn);
+                        }
+                    })
+                    ->first();
+
+                if ($existing) {
+                    $existing->update([
+                        'nama_barang_mp' => $itemName,
+                        'jml_produk_mp'  => $totalQty,
+                        'keterangan'     => $keterangan ?: $existing->keterangan,
+                        'barcode'        => $trackingNumber ?: $existing->barcode,
+                        'no_retur'       => $returnSn ?: $existing->no_retur,
+                        'no_invoice_mp'  => $orderSn ?: $existing->no_invoice_mp,
+                    ]);
+                    $updatedCount++;
+                } else {
+                    $lastNoUrut++;
+                    CutOffReturn::create([
+                        'no_urut'        => $lastNoUrut,
+                        'marketplace'    => 'SH',
+                        'tgl_input_mp'   => $returnDate,
+                        'nama_barang_mp' => $itemName,
+                        'jml_produk_mp'  => $totalQty,
+                        'no_invoice_mp'  => $orderSn,
+                        'no_retur'       => $returnSn,
+                        'tgl_rj'         => $returnDate,
+                        'keterangan'     => $keterangan,
+                        'barcode'        => $trackingNumber,
+                    ]);
+                    $createdCount++;
+                }
+
+                // Sinkronkan ke Pesanan Cut Off jika ada pesanan dengan order_number tersebut
+                if (! empty($orderSn)) {
+                    $cutOffOrder = CutOffOrder::where('order_number', $orderSn)
+                        ->where('channel', 'SH')
+                        ->first();
+
+                    if ($cutOffOrder) {
+                        $cutOffOrder->update([
+                            'order_status'  => 'RJ (Retur)',
+                            'cancel_by'     => 'buyer',
+                            'cancel_reason' => $reason ?: "Retur Shopee ({$status})",
+                        ]);
+                        $ordersLinkedCount++;
+                    }
+                }
+            }
+        });
+
+        return [
+            'total_fetched' => count($allReturns),
+            'created'       => $createdCount,
+            'updated'       => $updatedCount,
+            'orders_linked' => $ordersLinkedCount,
+            'message'       => "Sinkronisasi Retur Shopee sukses! {$createdCount} retur baru ditambahkan, {$updatedCount} diperbarui, dan {$ordersLinkedCount} pesanan di Pesanan Cut Off otomatis disinkronkan ke status 'RJ (Retur)'.",
+        ];
     }
 }

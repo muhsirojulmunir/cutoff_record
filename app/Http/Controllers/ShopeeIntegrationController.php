@@ -168,4 +168,49 @@ class ShopeeIntegrationController extends Controller
             return back()->with('error', 'Gagal sinkronisasi: ' . $e->getMessage());
         }
     }
+
+    /**
+     * Trigger return sync from Shopee API directly to cut_off_returns and cut_off_orders.
+     */
+    public function syncReturns(Request $request): \Illuminate\Http\RedirectResponse
+    {
+        Gate::authorize('user.view');
+
+        @ini_set('max_execution_time', '600');
+        @set_time_limit(600);
+
+        $startDate = $request->input('start_date');
+        $endDate   = $request->input('end_date');
+
+        if (! empty($startDate) && ! empty($endDate)) {
+            $timeFrom = strtotime($startDate . ' 00:00:00');
+            $timeTo   = strtotime($endDate . ' 23:59:59');
+            if ($timeFrom > $timeTo) {
+                [$timeFrom, $timeTo] = [$timeTo, $timeFrom];
+            }
+        } else {
+            $days = (int) $request->input('days', 14);
+            if ($days < 1) {
+                $days = 14;
+            } elseif ($days > 90) {
+                $days = 90;
+            }
+
+            $timeTo   = time();
+            $timeFrom = $timeTo - ($days * 86400);
+        }
+
+        $account = ShopeeAccount::firstOrFail();
+
+        if (empty($account->partner_id) || empty($account->access_token)) {
+            return back()->with('error', 'Akun Shopee belum terhubung. Harap isi kredensial dan hubungkan toko terlebih dahulu.');
+        }
+
+        try {
+            $result = $this->syncService->syncReturnsToCutOff($account, $timeFrom, $timeTo);
+            return back()->with('success', $result['message']);
+        } catch (\Exception $e) {
+            return back()->with('error', 'Gagal sinkronisasi retur: ' . $e->getMessage());
+        }
+    }
 }
