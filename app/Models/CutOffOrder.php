@@ -16,6 +16,7 @@ class CutOffOrder extends Model
     protected $fillable = [
         'row_no',
         'order_date',
+        'ship_by_date',
         'channel',
         'order_number',
         'jl_number',
@@ -43,6 +44,7 @@ class CutOffOrder extends Model
     {
         return [
             'order_date'             => 'datetime:Y-m-d H:i:s',
+            'ship_by_date'           => 'datetime:Y-m-d H:i:s',
             'qty'                    => 'integer',
             'recheck_qty'            => 'integer',
             'est_net_income'         => 'decimal:2',

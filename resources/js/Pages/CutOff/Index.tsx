@@ -8,6 +8,7 @@ interface CutOffOrder {
   id: number;
   row_no: string | null;
   order_date: string | null;
+  ship_by_date?: string | null;
   channel: string;
   order_number: string;
   jl_number: string | null;
@@ -208,6 +209,137 @@ function formatTime(dateStr: string | null | undefined): string | null {
   }
 }
 
+function parseDateToMs(dateStr: string | null | undefined): number | null {
+  if (!dateStr) return null;
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (match) {
+    const [, y, m, d, hh, mm, ss] = match;
+    const dateObj = new Date(
+      parseInt(y, 10),
+      parseInt(m, 10) - 1,
+      parseInt(d, 10),
+      parseInt(hh, 10),
+      parseInt(mm, 10),
+      ss ? parseInt(ss, 10) : 0
+    );
+    return dateObj.getTime();
+  }
+  const timestamp = Date.parse(dateStr);
+  return isNaN(timestamp) ? null : timestamp;
+}
+
+function getRelativeTime(
+  dateStr: string | null | undefined,
+  nowMs: number
+): { label: string; isRecent: boolean } | null {
+  const ms = parseDateToMs(dateStr);
+  if (!ms) return null;
+
+  const diffSec = Math.floor((nowMs - ms) / 1000);
+  if (diffSec < 60) {
+    return { label: 'Baru saja', isRecent: true };
+  }
+
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) {
+    return {
+      label: `${diffMin} mnt lalu`,
+      isRecent: diffMin <= 30,
+    };
+  }
+
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) {
+    return {
+      label: `${diffHour} jam lalu`,
+      isRecent: false,
+    };
+  }
+
+  const diffDays = Math.floor(diffHour / 24);
+  return {
+    label: `${diffDays} hari lalu`,
+    isRecent: false,
+  };
+}
+
+interface ShippingSlaInfo {
+  deadlineTime: string;
+  remainingText: string;
+  isUrgent: boolean;
+  isOverdue: boolean;
+  passedMinutes?: number;
+}
+
+function getShippingSla(
+  order: CutOffOrder,
+  shippingTier: { label: string },
+  nowMs: number
+): ShippingSlaInfo | null {
+  if (shippingTier.label !== 'INSTAN' && shippingTier.label !== 'SAMEDAY') {
+    return null;
+  }
+
+  const st = (order.order_status ?? '').toLowerCase();
+  if (
+    st.includes('batal') ||
+    st.includes('cancel') ||
+    st.includes('selesai') ||
+    st.includes('delivered') ||
+    st.includes('dikirim') ||
+    st.includes('shipped')
+  ) {
+    return null;
+  }
+
+  let deadlineMs: number | null = null;
+
+  if (order.ship_by_date) {
+    deadlineMs = parseDateToMs(order.ship_by_date);
+  }
+
+  if (!deadlineMs && order.order_date) {
+    const orderMs = parseDateToMs(order.order_date);
+    if (orderMs) {
+      const windowHours = shippingTier.label === 'INSTAN' ? 2 : 6;
+      deadlineMs = orderMs + windowHours * 60 * 60 * 1000;
+    }
+  }
+
+  if (!deadlineMs) return null;
+
+  const dDate = new Date(deadlineMs);
+  const hh = String(dDate.getHours()).padStart(2, '0');
+  const mm = String(dDate.getMinutes()).padStart(2, '0');
+  const deadlineTime = `${hh}:${mm}`;
+
+  const diffSec = Math.floor((deadlineMs - nowMs) / 1000);
+
+  if (diffSec <= 0) {
+    const passedMinutes = Math.max(1, Math.abs(Math.floor(diffSec / 60)));
+    return {
+      deadlineTime,
+      remainingText: `Lewat ${passedMinutes}m`,
+      isUrgent: true,
+      isOverdue: true,
+      passedMinutes,
+    };
+  }
+
+  const hours = Math.floor(diffSec / 3600);
+  const minutes = Math.floor((diffSec % 3600) / 60);
+
+  const remainingText = hours > 0 ? `${hours}j ${minutes}m` : `${minutes}m`;
+  const isUrgent = diffSec <= 30 * 60; // 30 minutes threshold
+
+  return {
+    deadlineTime,
+    remainingText,
+    isUrgent,
+    isOverdue: false,
+  };
+}
+
 export default function CutOffIndex({ orders, filters, summary, channels, couriers = [] }: Props) {
   const { auth } = usePage<any>().props;
   const isManagement = auth?.user?.role?.name === 'Management';
@@ -244,6 +376,11 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
   const [selectedCourier, setSelectedCourier] = useState(filters.shipping_courier ?? 'all');
   const [selectedTier, setSelectedTier] = useState(filters.shipping_tier ?? 'all');
   
+  // Live Monitor State (30s background auto-refresh & real-time clock)
+  const [isLiveActive, setIsLiveActive] = useState(true);
+  const [liveCountdown, setLiveCountdown] = useState(30);
+  const [currentTimeMs, setCurrentTimeMs] = useState(() => Date.now());
+
   // Modal Edit Order State
   const [editingOrder, setEditingOrder] = useState<CutOffOrder | null>(null);
 
@@ -339,6 +476,30 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
       document.body.style.overflow = 'unset';
     };
   }, [editingOrder, isCreateModalOpen, isImportModalOpen, isImportJlModalOpen]);
+
+  // Live Monitor: Real-time clock tick & silent periodic background refresh
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTimeMs(Date.now());
+
+      if (!isLiveActive) return;
+
+      // Don't auto-refresh if user has any modal/form active
+      if (editingOrder || isCreateModalOpen || isImportModalOpen || isImportJlModalOpen) {
+        return;
+      }
+
+      setLiveCountdown((prev) => {
+        if (prev <= 1) {
+          router.reload({ only: ['orders', 'summary'] });
+          return 30;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isLiveActive, editingOrder, isCreateModalOpen, isImportModalOpen, isImportJlModalOpen]);
 
   function handleExcelFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -759,6 +920,41 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
               </svg>
             </button>
 
+            {/* Live Auto-Refresh Monitor Button (30s) */}
+            <button
+              onClick={() => setIsLiveActive((prev) => !prev)}
+              className={`inline-flex items-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer shadow-2xs whitespace-nowrap ${
+                isLiveActive
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 ring-1 ring-emerald-400/30'
+                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+              }`}
+              title={
+                isLiveActive
+                  ? `Live Monitor Aktif: Data otomatis sinkron & refresh setiap ${liveCountdown}s. Klik untuk jeda.`
+                  : 'Live Monitor Dijeda. Klik untuk mengaktifkan kembali.'
+              }
+            >
+              <span className="relative flex h-2 w-2">
+                {isLiveActive && (
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                )}
+                <span
+                  className={`relative inline-flex rounded-full h-2 w-2 ${
+                    isLiveActive ? 'bg-emerald-500' : 'bg-slate-400'
+                  }`}
+                ></span>
+              </span>
+              <span>
+                {isLiveActive ? (
+                  <>
+                    Live: <strong className="font-mono">{liveCountdown}s</strong>
+                  </>
+                ) : (
+                  'Live: Jeda'
+                )}
+              </span>
+            </button>
+
             {/* Kosongkan Seluruh Data Cut Off (Super Admin Only) */}
             {canManage && isSuperAdmin && (
               <button
@@ -1068,9 +1264,17 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                       )) ||
                       (order.order_status && order.order_status.toLowerCase().includes('cod'))
                     );
+                    const relativeTime = getRelativeTime(order.order_date, currentTimeMs);
+                    const shippingSla = getShippingSla(order, shippingTier, currentTimeMs);
+                    const isPendingInstant = (shippingTier.label === 'INSTAN' || shippingTier.label === 'SAMEDAY') && shippingSla !== null;
 
                     return (
-                      <tr key={order.id} className="hover:bg-slate-50/80 transition-colors">
+                      <tr
+                        key={order.id}
+                        className={`transition-colors ${
+                          isPendingInstant ? 'bg-amber-50/30 hover:bg-amber-50/50' : 'hover:bg-slate-50/80'
+                        }`}
+                      >
                         {/* No */}
                         <td className="py-3.5 px-3 text-center text-xs font-bold text-slate-500 whitespace-nowrap">
                           {rowNumber}
@@ -1094,6 +1298,24 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                           <p className="text-slate-800 text-xs font-semibold">
                             {formatDate(order.order_date)}
                           </p>
+                          {/* Relative Time Badge */}
+                          {relativeTime && (
+                            <div className="mt-1 flex items-center gap-1.5">
+                              {relativeTime.isRecent && (
+                                <span className="relative flex h-2 w-2">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                </span>
+                              )}
+                              <span
+                                className={`text-[10px] font-medium ${
+                                  relativeTime.isRecent ? 'text-emerald-700 font-semibold' : 'text-slate-400'
+                                }`}
+                              >
+                                {relativeTime.label}
+                              </span>
+                            </div>
+                          )}
                         </td>
 
                         {/* Pesanan & Pengiriman */}
@@ -1114,23 +1336,57 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
 
                           {/* Ekspedisi & Tipe Layanan Badge */}
                           {order.shipping_courier ? (
-                            <div className="flex flex-wrap items-center gap-1.5 mt-1.5 font-sans">
-                              {/* Tipe Layanan Badge (Instan / Sameday / Reguler / Hemat / Kargo) */}
-                              <span
-                                className={`inline-flex items-center gap-1 text-[10px] uppercase font-bold px-2 py-0.5 rounded-md border tracking-wide whitespace-nowrap ${shippingTier.badgeClass}`}
-                                title={`Tipe Pengiriman: ${shippingTier.label}`}
-                              >
-                                <span>{shippingTier.icon}</span>
-                                <span>{shippingTier.label}</span>
-                              </span>
+                            <div className="flex flex-col gap-1 mt-1.5 font-sans">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {/* Tipe Layanan Badge (Instan / Sameday / Reguler / Hemat / Kargo) */}
+                                <span
+                                  className={`inline-flex items-center gap-1 text-[10px] uppercase font-bold px-2 py-0.5 rounded-md border tracking-wide whitespace-nowrap ${shippingTier.badgeClass}`}
+                                  title={`Tipe Pengiriman: ${shippingTier.label}`}
+                                >
+                                  <span>{shippingTier.icon}</span>
+                                  <span>{shippingTier.label}</span>
+                                </span>
 
-                              {/* Nama Kurir */}
-                              <span
-                                className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-700 bg-slate-100 border border-slate-200 rounded-md px-2 py-0.5 max-w-[150px] truncate"
-                                title={`Ekspedisi: ${order.shipping_courier}`}
-                              >
-                                <span className="truncate">{order.shipping_courier}</span>
-                              </span>
+                                {/* Nama Kurir */}
+                                <span
+                                  className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-700 bg-slate-100 border border-slate-200 rounded-md px-2 py-0.5 max-w-[150px] truncate"
+                                  title={`Ekspedisi: ${order.shipping_courier}`}
+                                >
+                                  <span className="truncate">{order.shipping_courier}</span>
+                                </span>
+                              </div>
+
+                              {/* SLA Batas Waktu Pickup Driver Realtime (Untuk Instan & Sameday) */}
+                              {shippingSla && (
+                                <div className="mt-0.5">
+                                  {shippingSla.isOverdue ? (
+                                    <span
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-300"
+                                      title={`Batas pickup driver telah lewat ${shippingSla.passedMinutes} menit yang lalu!`}
+                                    >
+                                      <span>⚠️</span>
+                                      <span>Lewat Batas ({shippingSla.passedMinutes}m)</span>
+                                    </span>
+                                  ) : shippingSla.isUrgent ? (
+                                    <span
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500 text-white border border-amber-600 shadow-2xs animate-pulse"
+                                      title={`Batas Penyerahan Driver: Pukul ${shippingSla.deadlineTime} WIB (Sisa ${shippingSla.remainingText})`}
+                                    >
+                                      <span>⚡ Batas: {shippingSla.deadlineTime} (Sisa {shippingSla.remainingText}!)</span>
+                                    </span>
+                                  ) : (
+                                    <span
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200"
+                                      title={`Batas Penyerahan Driver: Pukul ${shippingSla.deadlineTime} WIB`}
+                                    >
+                                      <span>⏰ Pickup: {shippingSla.deadlineTime}</span>
+                                      <span className="text-slate-500 font-mono text-[9px] font-semibold">
+                                        (Sisa {shippingSla.remainingText})
+                                      </span>
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           ) : (
                             <span className="text-slate-400 font-sans text-[10px] block mt-1">— Kurir belum ada</span>
