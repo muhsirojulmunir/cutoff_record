@@ -253,9 +253,8 @@ interface ShippingSlaInfo {
   deadlineTime: string;
   remainingText: string;
   courierSearchText?: string | null;
+  isReadyForPickup: boolean;
   isUrgent: boolean;
-  isOverdue: boolean;
-  passedMinutes?: number;
 }
 
 function getShippingSla(
@@ -291,8 +290,10 @@ function getShippingSla(
     deadlineMs = orderMs + windowHours * 60 * 60 * 1000;
   }
 
-  // Courier Auto-Search countdown for Instant orders (Shopee 40-minute window)
+  // Countdown Mencari Kurir Otomatis (Shopee 40-minute window)
   let courierSearchText: string | null = null;
+  let isReadyForPickup = false;
+
   if (shippingTier.label === 'INSTAN' && orderMs) {
     const autoSearchDeadlineMs = orderMs + 40 * 60 * 1000;
     const searchDiffSec = Math.floor((autoSearchDeadlineMs - nowMs) / 1000);
@@ -301,7 +302,8 @@ function getShippingSla(
       const ss = searchDiffSec % 60;
       courierSearchText = `Mencari Kurir dalam ${sm}m ${String(ss).padStart(2, '0')}d`;
     } else {
-      courierSearchText = 'Menunggu Driver Pickup';
+      courierSearchText = 'Driver Segera Tiba (Pastikan Paket Siap)';
+      isReadyForPickup = true;
     }
   }
 
@@ -310,8 +312,8 @@ function getShippingSla(
       deadlineTime: '—',
       remainingText: courierSearchText,
       courierSearchText,
+      isReadyForPickup,
       isUrgent: true,
-      isOverdue: false,
     } : null;
   }
 
@@ -323,14 +325,12 @@ function getShippingSla(
   const diffSec = Math.floor((deadlineMs - nowMs) / 1000);
 
   if (diffSec <= 0) {
-    const passedMinutes = Math.max(1, Math.abs(Math.floor(diffSec / 60)));
     return {
       deadlineTime,
-      remainingText: `Lewat ${passedMinutes}m`,
-      courierSearchText,
+      remainingText: 'Driver Menuju Lokasi',
+      courierSearchText: courierSearchText || 'Driver Segera Tiba (Pastikan Paket Siap)',
+      isReadyForPickup: true,
       isUrgent: true,
-      isOverdue: true,
-      passedMinutes,
     };
   }
 
@@ -341,14 +341,14 @@ function getShippingSla(
   const remainingText = hours > 0
     ? `${hours}j ${minutes}m`
     : `${minutes}m ${String(seconds).padStart(2, '0')}d`;
-  const isUrgent = diffSec <= 30 * 60; // 30 minutes threshold
+  const isUrgent = diffSec <= 30 * 60;
 
   return {
     deadlineTime,
     remainingText,
     courierSearchText,
+    isReadyForPickup,
     isUrgent,
-    isOverdue: false,
   };
 }
 
@@ -1426,30 +1426,23 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                                 </span>
                               </div>
 
-                              {/* SLA Batas Waktu Pickup Driver Realtime (Untuk Instan & Sameday) */}
+                              {/* Pengingat Persiapan Barang (Shopee Auto-Pickup Kurir) */}
                               {shippingSla && (
                                 <div className="mt-0.5">
-                                  {shippingSla.isOverdue ? (
+                                  {shippingSla.isReadyForPickup ? (
                                     <span
-                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-300"
-                                      title={`Batas pickup driver telah lewat ${shippingSla.passedMinutes} menit yang lalu!`}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300 shadow-2xs font-sans animate-pulse"
+                                      title="Auto-pickup Shopee: Kurir segera tiba. Pastikan barang sudah dipacking dan siap diserahkan."
                                     >
-                                      <span>⚠️</span>
-                                      <span>Lewat Batas ({shippingSla.passedMinutes}m)</span>
-                                    </span>
-                                  ) : shippingSla.isUrgent ? (
-                                    <span
-                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500 text-white border border-amber-600 shadow-2xs animate-pulse"
-                                      title={`Batas Penyerahan Driver: Pukul ${shippingSla.deadlineTime} WIB (Sisa ${shippingSla.remainingText})`}
-                                    >
-                                      <span>⚡ Batas: {shippingSla.deadlineTime} (Sisa {shippingSla.remainingText}!)</span>
+                                      <span>🛵</span>
+                                      <span>Driver Segera Tiba (Paket Harus Siap)</span>
                                     </span>
                                   ) : (
                                     <span
                                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200"
-                                      title={`Batas Penyerahan Driver: Pukul ${shippingSla.deadlineTime} WIB`}
+                                      title={`Pengingat packing: Siapkan barang sebelum kurir tiba sekitar pukul ${shippingSla.deadlineTime} WIB`}
                                     >
-                                      <span>⏰ Pickup: {shippingSla.deadlineTime}</span>
+                                      <span>📦 Siapkan s/d: {shippingSla.deadlineTime}</span>
                                       <span className="text-slate-500 font-mono text-[9px] font-semibold">
                                         (Sisa {shippingSla.remainingText})
                                       </span>
