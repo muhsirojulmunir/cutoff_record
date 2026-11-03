@@ -268,9 +268,39 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
   const [isParsing, setIsParsing] = useState(false);
   const [isSubmittingImport, setIsSubmittingImport] = useState(false);
 
+  // Modal Tarik Retur Shopee
+  const [isShopeeSyncModalOpen, setIsShopeeSyncModalOpen] = useState(false);
+  const [shopeeSyncDays, setShopeeSyncDays] = useState(14);
+  const [shopeeCustomRange, setShopeeCustomRange] = useState(false);
+  const [shopeeStartDate, setShopeeStartDate] = useState('');
+  const [shopeeEndDate, setShopeeEndDate] = useState('');
+  const [isSyncingShopee, setIsSyncingShopee] = useState(false);
+
+  function handleShopeeSyncSubmit() {
+    if (shopeeCustomRange && (!shopeeStartDate || !shopeeEndDate)) {
+      alert('Silakan tentukan Tanggal Mulai dan Tanggal Sampai terlebih dahulu.');
+      return;
+    }
+
+    setIsSyncingShopee(true);
+    router.post(
+      '/marketplace/shopee/sync-returns',
+      shopeeCustomRange
+        ? { start_date: shopeeStartDate, end_date: shopeeEndDate }
+        : { days: shopeeSyncDays },
+      {
+        preserveScroll: true,
+        onFinish: () => {
+          setIsSyncingShopee(false);
+          setIsShopeeSyncModalOpen(false);
+        },
+      }
+    );
+  }
+
   // Kunci scroll halaman saat modal aktif
   useEffect(() => {
-    if (editingRow || isCreateModalOpen || isImportModalOpen) {
+    if (editingRow || isCreateModalOpen || isImportModalOpen || isShopeeSyncModalOpen) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
@@ -278,7 +308,7 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
     return () => {
       document.body.style.overflow = 'unset';
     };
-  }, [editingRow, isCreateModalOpen, isImportModalOpen]);
+  }, [editingRow, isCreateModalOpen, isImportModalOpen, isShopeeSyncModalOpen]);
 
   function handleExcelFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -448,6 +478,18 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
 
             {canManage && (
               <>
+                {/* Tarik Retur Shopee API */}
+                <button
+                  type="button"
+                  onClick={() => setIsShopeeSyncModalOpen(true)}
+                  className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-orange-300 bg-orange-50 hover:bg-orange-100 text-[#EE4D2D] text-xs font-bold transition-colors shadow-2xs cursor-pointer active:scale-98"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-[#EE4D2D]">
+                    <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zm.53 5.47a.75.75 0 00-1.06 0l-3 3a.75.75 0 101.06 1.06l1.72-1.72v5.69a.75.75 0 001.5 0v-5.69l1.72 1.72a.75.75 0 101.06-1.06l-3-3z" clipRule="evenodd" />
+                  </svg>
+                  Tarik Retur Shopee
+                </button>
+
                 {/* Upload Excel (.xlsx) */}
                 <button
                   onClick={() => setIsImportModalOpen(true)}
@@ -1376,6 +1418,139 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal Tarik Retur Shopee API */}
+      {isShopeeSyncModalOpen && createPortal(
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => !isSyncingShopee && setIsShopeeSyncModalOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 p-6 space-y-5 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="p-2 rounded-xl bg-orange-100 text-[#EE4D2D]">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                    <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zm.53 5.47a.75.75 0 00-1.06 0l-3 3a.75.75 0 101.06 1.06l1.72-1.72v5.69a.75.75 0 001.5 0v-5.69l1.72 1.72a.75.75 0 101.06-1.06l-3-3z" clipRule="evenodd" />
+                  </svg>
+                </span>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Tarik Retur dari Shopee API</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Ambil data pengajuan retur pembeli langsung dari Shopee</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isSyncingShopee}
+                onClick={() => setIsShopeeSyncModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer disabled:opacity-40"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-orange-50/70 border border-orange-200/60 text-xs text-orange-950 leading-relaxed space-y-1">
+              <p className="font-bold flex items-center gap-1.5 text-[#EE4D2D]">
+                <span>🔄</span> Otomatisasi Sinkronisasi:
+              </p>
+              <p>1. Data pengajuan retur Shopee akan langsung dicatat ke tabel <strong>Retur Online</strong>.</p>
+              <p>2. Nomor pesanan yang cocok di <strong>Pesanan Cut Off</strong> akan otomatis diubah statusnya menjadi <strong>RJ (Retur)</strong>.</p>
+            </div>
+
+            {/* Mode Rentang Waktu */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700">Pilih Rentang Waktu:</label>
+                <button
+                  type="button"
+                  onClick={() => setShopeeCustomRange(!shopeeCustomRange)}
+                  className="text-[11px] font-bold text-blue-600 hover:text-blue-800 underline cursor-pointer"
+                >
+                  {shopeeCustomRange ? 'Gunakan Pilihan Hari' : 'Gunakan Tanggal Tertentu'}
+                </button>
+              </div>
+
+              {!shopeeCustomRange ? (
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: '7 Hari', days: 7 },
+                    { label: '14 Hari (Rekomendasi)', days: 14 },
+                    { label: '30 Hari', days: 30 },
+                  ].map((p) => (
+                    <button
+                      key={p.days}
+                      type="button"
+                      onClick={() => setShopeeSyncDays(p.days)}
+                      className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        shopeeSyncDays === p.days
+                          ? 'bg-[#EE4D2D] text-white shadow-xs'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Mulai:</span>
+                    <input
+                      type="date"
+                      value={shopeeStartDate}
+                      onChange={(e) => setShopeeStartDate(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
+                    />
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Sampai:</span>
+                    <input
+                      type="date"
+                      value={shopeeEndDate}
+                      onChange={(e) => setShopeeEndDate(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isSyncingShopee}
+                onClick={() => setIsShopeeSyncModalOpen(false)}
+                className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold cursor-pointer disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isSyncingShopee}
+                onClick={handleShopeeSyncSubmit}
+                className="px-5 py-2 rounded-xl bg-[#EE4D2D] hover:bg-[#d83d1e] text-white text-xs font-bold shadow-xs cursor-pointer flex items-center gap-2 disabled:opacity-50"
+              >
+                {isSyncingShopee ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Sedang Menarik Retur dari Shopee...
+                  </>
+                ) : (
+                  'Tarik Retur Sekarang'
+                )}
+              </button>
             </div>
           </div>
         </div>,

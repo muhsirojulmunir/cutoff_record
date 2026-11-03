@@ -63,6 +63,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/marketplace/shopee/auth', [\App\Http\Controllers\ShopeeIntegrationController::class, 'authorizeShop'])->name('shopee.auth');
     Route::post('/marketplace/shopee/test-connection', [\App\Http\Controllers\ShopeeIntegrationController::class, 'testConnection'])->name('shopee.test');
     Route::post('/marketplace/shopee/sync-now', [\App\Http\Controllers\ShopeeIntegrationController::class, 'syncNow'])->name('shopee.sync');
+    Route::post('/marketplace/shopee/sync-returns', [\App\Http\Controllers\ShopeeIntegrationController::class, 'syncReturns'])->name('shopee.sync-returns');
 
     // Integrasi TikTok Shop Open API
     Route::get('/marketplace/tiktok', [\App\Http\Controllers\TiktokIntegrationController::class, 'index'])->name('tiktok.index');
