@@ -708,6 +708,7 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-900 text-white font-semibold uppercase tracking-wider text-[11px]">
+                  <th className="py-3 px-3 text-center w-12">No</th>
                   <th className="py-3 px-4">MP & Tanggal</th>
                   <th className="py-3 px-4">Retur & Invoice</th>
                   <th className="py-3 px-4">Barang (Data MP)</th>
@@ -720,24 +721,32 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
               <tbody className="divide-y divide-slate-100">
                 {returns.data.length === 0 ? (
                   <tr>
-                    <td colSpan={canManage ? 7 : 6} className="py-12 text-center text-slate-400">
+                    <td colSpan={canManage ? 8 : 7} className="py-12 text-center text-slate-400">
                       Tidak ada data retur yang sesuai dengan filter.
                     </td>
                   </tr>
                 ) : (
-                  returns.data.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
-                      {/* MP & Tanggal */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <ChannelBadge mp={row.marketplace} />
-                        <p className="text-slate-800 text-xs font-semibold">
-                          {formatDate(row.tgl_terima_brg)}
-                        </p>
-                        <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-400 font-mono">
-                          {row.no_urut && <span>Row #{row.no_urut}</span>}
-                          {row.tgl_rj && <span>• RJ: {formatDate(row.tgl_rj)}</span>}
-                        </div>
-                      </td>
+                  returns.data.map((row, index) => {
+                    const rowNumber = (returns.current_page - 1) * returns.per_page + index + 1;
+                    return (
+                      <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
+                        {/* No */}
+                        <td className="py-3.5 px-3 text-center text-xs font-bold text-slate-500 whitespace-nowrap">
+                          {rowNumber}
+                        </td>
+
+                        {/* MP & Tanggal */}
+                        <td className="py-3.5 px-4 whitespace-nowrap">
+                          <ChannelBadge mp={row.marketplace} />
+                          <p className="text-slate-800 text-xs font-semibold">
+                            {formatDate(row.tgl_terima_brg)}
+                          </p>
+                          {row.tgl_rj && (
+                            <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                              RJ: {formatDate(row.tgl_rj)}
+                            </p>
+                          )}
+                        </td>
 
                       {/* Retur & Invoice */}
                       <td className="py-3.5 px-4 font-mono max-w-[220px]">
@@ -859,7 +868,8 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
                         </td>
                       )}
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>

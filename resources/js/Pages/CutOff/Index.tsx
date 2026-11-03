@@ -901,6 +901,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-900 text-white font-semibold uppercase tracking-wider text-[11px] whitespace-nowrap">
+                  <th className="py-3 px-3 text-center w-12">No</th>
                   <th className="py-3 px-4">Toko & Tanggal</th>
                   <th className="py-3 px-4">Pesanan & Pengiriman</th>
                   <th className="py-3 px-4">Barang & SKU</th>
@@ -914,7 +915,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
               <tbody className="divide-y divide-slate-100">
                 {orders.data.length === 0 ? (
                   <tr>
-                    <td colSpan={canManage ? 8 : 7} className="py-16 text-center">
+                    <td colSpan={canManage ? 9 : 8} className="py-16 text-center">
                       <div className="max-w-md mx-auto flex flex-col items-center">
                         <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
@@ -945,12 +946,18 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                     </td>
                   </tr>
                 ) : (
-                  orders.data.map((order) => {
+                  orders.data.map((order, index) => {
+                    const rowNumber = (orders.current_page - 1) * orders.per_page + index + 1;
                     const isOos = order.info_gudang && order.info_gudang.includes('OOS');
                     const isRj = order.order_status && (order.order_status.includes('RJ') || order.order_status.includes('Retur'));
 
                     return (
                       <tr key={order.id} className="hover:bg-slate-50/80 transition-colors">
+                        {/* No */}
+                        <td className="py-3.5 px-3 text-center text-xs font-bold text-slate-500 whitespace-nowrap">
+                          {rowNumber}
+                        </td>
+
                         {/* Toko & Tanggal */}
                         <td className="py-3.5 px-4 whitespace-nowrap">
                           <div className="flex items-center gap-1.5 mb-1">
@@ -969,9 +976,6 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                           <p className="text-slate-800 text-xs font-semibold">
                             {formatDate(order.order_date)}
                           </p>
-                          {order.row_no && (
-                            <span className="text-[10px] text-slate-400 block mt-0.5 font-mono">Row #{order.row_no}</span>
-                          )}
                         </td>
 
                         {/* Pesanan & Pengiriman */}
