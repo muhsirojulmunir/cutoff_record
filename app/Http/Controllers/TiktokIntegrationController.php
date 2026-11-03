@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\TiktokAccount;
 use App\Services\TiktokSyncService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -172,11 +173,17 @@ class TiktokIntegrationController extends Controller
     {
         Gate::authorize('user.view');
 
-        $days = (int) $request->input('days', 7);
-        if ($days < 1) {
-            $days = 7;
-        } elseif ($days > 90) {
-            $days = 90;
+        $startDate = $request->input('start_date');
+        $endDate   = $request->input('end_date');
+
+        if (! empty($startDate) && ! empty($endDate)) {
+            $timeFrom = Carbon::parse($startDate . ' 00:00:00', 'Asia/Jakarta')->timestamp;
+            $timeTo   = Carbon::parse($endDate . ' 23:59:59', 'Asia/Jakarta')->timestamp;
+        } else {
+            $days = (int) $request->input('days', 7);
+            $days = max(1, min(90, $days));
+            $timeTo   = time();
+            $timeFrom = $timeTo - ($days * 86400);
         }
 
         @set_time_limit(300);
@@ -186,9 +193,6 @@ class TiktokIntegrationController extends Controller
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('TikTok syncNow auto-migrate notice: ' . $e->getMessage());
         }
-
-        $timeTo = time();
-        $timeFrom = $timeTo - ($days * 86400);
 
         $account = TiktokAccount::firstOrFail();
 

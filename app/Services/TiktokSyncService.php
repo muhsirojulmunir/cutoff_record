@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Models\CutOffOrder;
 use App\Models\TiktokAccount;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 class TiktokSyncService
@@ -305,58 +307,77 @@ class TiktokSyncService
             throw new RuntimeException('Shop Cipher TikTok tidak ditemukan. Pastikan toko sudah terhubung dengan benar.');
         }
 
-        $path      = '/order/202309/orders/search';
-        $timestamp = time();
+        $path = '/order/202309/orders/search';
+        $allOrders = [];
+        $pageToken = null;
+        $maxPages  = 10;
+        $pageCount = 0;
 
-        $queryParams = [
-            'app_key'     => $account->app_key,
-            'timestamp'   => (string) $timestamp,
-            'shop_cipher' => $shopCipher,
-            'page_size'   => '50',
-        ];
+        do {
+            $pageCount++;
+            $timestamp = time();
 
-        $bodyPayload = [
-            'create_time_ge' => $timeFrom,
-            'create_time_lt' => $timeTo,
-        ];
-        $bodyJson = json_encode($bodyPayload);
+            $queryParams = [
+                'app_key'     => $account->app_key,
+                'timestamp'   => (string) $timestamp,
+                'shop_cipher' => $shopCipher,
+                'page_size'   => '50',
+            ];
 
-        $sign = $this->generateSignature($path, $queryParams, $account->app_secret, $bodyJson);
-        $queryParams['sign'] = $sign;
+            $bodyPayload = [
+                'create_time_ge' => $timeFrom,
+                'create_time_lt' => $timeTo,
+            ];
+            if (! empty($pageToken)) {
+                $bodyPayload['page_token'] = $pageToken;
+            }
+            $bodyJson = json_encode($bodyPayload);
 
-        $url = $this->openHost . $path . '?' . http_build_query($queryParams);
+            $sign = $this->generateSignature($path, $queryParams, $account->app_secret, $bodyJson);
+            $queryParams['sign'] = $sign;
 
-        $response = Http::timeout(25)
-            ->withHeaders([
-                'x-tts-access-token' => $account->access_token,
-                'Content-Type'       => 'application/json',
-            ])
-            ->withBody($bodyJson, 'application/json')
-            ->send('POST', $url);
+            $url = $this->openHost . $path . '?' . http_build_query($queryParams);
 
-        if (! $response->successful()) {
-            $errData = $response->json();
-            $detail  = $errData['message'] ?? $response->body();
-            throw new RuntimeException("Gagal mengambil pesanan TikTok: HTTP {$response->status()} - {$detail}");
-        }
+            $response = Http::timeout(25)
+                ->withHeaders([
+                    'x-tts-access-token' => $account->access_token,
+                    'Content-Type'       => 'application/json',
+                ])
+                ->withBody($bodyJson, 'application/json')
+                ->send('POST', $url);
 
-        $res = $response->json();
+            if (! $response->successful()) {
+                $errData = $response->json();
+                $detail  = $errData['message'] ?? $response->body();
+                throw new RuntimeException("Gagal mengambil pesanan TikTok: HTTP {$response->status()} - {$detail}");
+            }
 
-        if (($res['code'] ?? -1) !== 0) {
-            $msg = $res['message'] ?? 'Gagal query pesanan TikTok';
-            $account->update([
-                'last_sync_status' => 'failed',
-                'last_sync_error'  => $msg,
-            ]);
-            throw new RuntimeException("TikTok Order API error ({$res['code']}): {$msg}");
-        }
+            $res = $response->json();
 
-        $orders = $res['data']['orders'] ?? [];
+            if (($res['code'] ?? -1) !== 0) {
+                $msg = $res['message'] ?? 'Gagal query pesanan TikTok';
+                $account->update([
+                    'last_sync_status' => 'failed',
+                    'last_sync_error'  => $msg,
+                ]);
+                throw new RuntimeException("TikTok Order API error ({$res['code']}): {$msg}");
+            }
+
+            $pageOrders = $res['data']['orders'] ?? [];
+            if (! empty($pageOrders)) {
+                $allOrders = array_merge($allOrders, $pageOrders);
+            }
+
+            $pageToken = $res['data']['next_page_token'] ?? null;
+        } while (! empty($pageToken) && $pageCount < $maxPages);
+
+        $hasCancelBy     = Schema::hasColumn('cut_off_orders', 'cancel_by');
+        $hasCancelReason = Schema::hasColumn('cut_off_orders', 'cancel_reason');
 
         $createdCount = 0;
         $updatedCount = 0;
 
-        foreach ($orders as $order) {
+        foreach ($allOrders as $order) {
             $orderId = (string) ($order['id'] ?? '');
             if (empty($orderId)) continue;
 
@@ -378,8 +399,27 @@ class TiktokSyncService
             $netProduct     = max(0, $productPrice - $sellerDiscount);
             $calculatedNet  = $statusText === 'Batal' ? 0 : round($netProduct * 0.79);
 
+            // Format tanggal tepat WIB (Asia/Jakarta)
             $createTime = $order['create_time'] ?? null;
-            $orderDate  = $createTime ? date('Y-m-d H:i:s', (int) $createTime) : now()->toDateTimeString();
+            $orderDate  = $createTime 
+                ? Carbon::createFromTimestamp((int) $createTime, 'Asia/Jakarta')->format('Y-m-d H:i:s')
+                : now('Asia/Jakarta')->toDateTimeString();
+
+            // Batas kirim (ship by date) WIB jika tersedia
+            $shipDueTime = $order['shipping_due_time'] ?? $order['rts_time'] ?? null;
+            $shipByDate  = $shipDueTime 
+                ? Carbon::createFromTimestamp((int) $shipDueTime, 'Asia/Jakarta')->format('Y-m-d H:i:s')
+                : null;
+
+            // Metode pembayaran & deteksi COD
+            $paymentMethod = $order['payment_method_name'] ?? $payment['payment_method_name'] ?? null;
+            if (! empty($order['is_cod']) || stripos((string) $paymentMethod, 'cod') !== false || stripos((string) $paymentMethod, 'cash on delivery') !== false) {
+                $paymentMethod = 'COD (Bayar di Tempat)';
+            }
+
+            // Alasan & pembatalan
+            $cancelReason = $order['cancel_reason'] ?? $order['cancellation']['cancel_reason'] ?? null;
+            $cancelBy     = ! empty($order['cancel_user']) ? ucfirst(strtolower($order['cancel_user'])) : null;
 
             $existing = CutOffOrder::where('order_number', $orderId)->first();
 
@@ -387,8 +427,9 @@ class TiktokSyncService
                 'order_date'             => $orderDate,
                 'channel'                => 'TT',
                 'order_number'           => $orderId,
-                'buyer_username'         => $order['buyer_email'] ?? $order['buyer_uid'] ?? null,
+                'buyer_username'         => $order['buyer_email'] ?? $order['recipient_address']['name'] ?? $order['buyer_uid'] ?? null,
                 'shipping_courier'       => $order['shipping_provider'] ?? $order['delivery_option_name'] ?? null,
+                'payment_method'         => $paymentMethod,
                 'sku_utama'              => $firstItem['seller_sku'] ?? $firstItem['sku_id'] ?? null,
                 'product_name'           => $firstItem['product_name'] ?? 'Produk TikTok Shop',
                 'qty'                    => $totalQty,
@@ -398,14 +439,39 @@ class TiktokSyncService
                 'marketplace_net_payout' => $calculatedNet,
             ];
 
+            if ($shipByDate) {
+                $payload['ship_by_date'] = $shipByDate;
+            }
+            if ($hasCancelBy && $cancelBy) {
+                $payload['cancel_by'] = $cancelBy;
+            }
+            if ($hasCancelReason && $cancelReason) {
+                $payload['cancel_reason'] = $cancelReason;
+            }
+
             if ($existing) {
-                $existing->update([
+                $updateFields = [
                     'order_date'             => $orderDate,
                     'order_status'           => $statusText,
                     'shipping_courier'       => $payload['shipping_courier'] ?? $existing->shipping_courier,
                     'est_net_income'         => $calculatedNet,
                     'marketplace_net_payout' => $calculatedNet,
-                ]);
+                ];
+
+                if ($shipByDate && empty($existing->ship_by_date)) {
+                    $updateFields['ship_by_date'] = $shipByDate;
+                }
+                if ($paymentMethod && empty($existing->payment_method)) {
+                    $updateFields['payment_method'] = $paymentMethod;
+                }
+                if ($hasCancelBy && $cancelBy) {
+                    $updateFields['cancel_by'] = $cancelBy;
+                }
+                if ($hasCancelReason && $cancelReason) {
+                    $updateFields['cancel_reason'] = $cancelReason;
+                }
+
+                $existing->update($updateFields);
                 $updatedCount++;
             } else {
                 CutOffOrder::create($payload);
@@ -420,7 +486,7 @@ class TiktokSyncService
         ]);
 
         return [
-            'total_fetched' => count($orders),
+            'total_fetched' => count($allOrders),
             'created'       => $createdCount,
             'updated'       => $updatedCount,
             'message'       => "Sinkronisasi TikTok berhasil! {$createdCount} pesanan baru ditambahkan, {$updatedCount} diperbarui.",
