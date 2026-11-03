@@ -229,12 +229,11 @@ class CutOffOrderController extends Controller
             abort(403, 'Akses ditolak. Akun Management hanya memiliki izin melihat data (read-only).');
         }
 
+        // Status Pesanan dan Ekspedisi dikunci (hanya sinkron dari marketplace / data awal, tidak bisa diubah lewat edit)
         $validated = $request->validate([
             'info_gudang'            => ['nullable', 'string', 'max:100'],
             'sku_pengganti'          => ['nullable', 'string', 'max:150'],
-            'shipping_courier'       => ['nullable', 'string', 'max:100'],
             'keterangan_solutif'     => ['nullable', 'string'],
-            'order_status'           => ['nullable', 'string', 'max:100'],
             'dpp_number'             => ['nullable', 'string', 'max:100'],
             'marketplace_net_payout' => ['nullable', 'numeric'],
             'recheck_qty'            => ['nullable', 'integer'],
