@@ -119,6 +119,40 @@ class CutOffOrder extends Model
             }
         });
 
+        $query->when($filters['shipping_tier'] ?? null, function ($q, $tier) {
+            if ($tier === 'instant') {
+                $q->where(function ($sub) {
+                    $sub->where('shipping_courier', 'like', '%instant%')
+                        ->orWhere('shipping_courier', 'like', '%instan%');
+                });
+            } elseif ($tier === 'sameday') {
+                $q->where(function ($sub) {
+                    $sub->where('shipping_courier', 'like', '%sameday%')
+                        ->orWhere('shipping_courier', 'like', '%same day%');
+                });
+            } elseif ($tier === 'hemat') {
+                $q->where(function ($sub) {
+                    $sub->where('shipping_courier', 'like', '%hemat%')
+                        ->orWhere('shipping_courier', 'like', '%economy%')
+                        ->orWhere('shipping_courier', 'like', '%halu%');
+                });
+            } elseif ($tier === 'kargo') {
+                $q->where(function ($sub) {
+                    $sub->where('shipping_courier', 'like', '%kargo%')
+                        ->orWhere('shipping_courier', 'like', '%cargo%')
+                        ->orWhere('shipping_courier', 'like', '%trucking%')
+                        ->orWhere('shipping_courier', 'like', '%jtr%')
+                        ->orWhere('shipping_courier', 'like', '%gokil%');
+                });
+            } elseif ($tier === 'reguler') {
+                $q->where(function ($sub) {
+                    $sub->where('shipping_courier', 'like', '%standard%')
+                        ->orWhere('shipping_courier', 'like', '%reguler%')
+                        ->orWhere('shipping_courier', 'like', '%reg%');
+                });
+            }
+        });
+
         $query->when($filters['date_from'] ?? null, function ($q, $from) {
             $q->whereDate('order_date', '>=', $from);
         });
