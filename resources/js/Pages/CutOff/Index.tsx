@@ -148,9 +148,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
   const editForm = useForm({
     info_gudang: '',
     sku_pengganti: '',
-    shipping_courier: '',
     keterangan_solutif: '',
-    order_status: '',
     dpp_number: '',
     marketplace_net_payout: '',
     recheck_qty: '',
@@ -161,9 +159,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
     editForm.setData({
       info_gudang: order.info_gudang ?? '',
       sku_pengganti: order.sku_pengganti ?? '',
-      shipping_courier: order.shipping_courier ?? '',
       keterangan_solutif: order.keterangan_solutif ?? '',
-      order_status: order.order_status ?? '',
       dpp_number: order.dpp_number ?? '',
       marketplace_net_payout: order.marketplace_net_payout ? String(order.marketplace_net_payout) : '',
       recheck_qty: order.recheck_qty !== null ? String(order.recheck_qty) : '',
@@ -957,17 +953,45 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
               </div>
 
               <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
-                {/* Referensi Barang & SKU Utama */}
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-                  <div className="min-w-0 pr-3">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Barang & SKU Utama</span>
-                    <span className="font-semibold text-slate-900 text-xs truncate block font-mono" title={editingOrder.sku_utama ?? ''}>
-                      {editingOrder.sku_utama || '—'}
-                    </span>
+                {/* Referensi Barang & Informasi Terkunci dari Marketplace */}
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-200/70">
+                    <div className="min-w-0 pr-3">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Barang & SKU Utama</span>
+                      <span className="font-semibold text-slate-900 text-xs truncate block font-mono" title={editingOrder.sku_utama ?? ''}>
+                        {editingOrder.sku_utama || '—'}
+                      </span>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Qty Pesanan</span>
+                      <span className="font-bold text-slate-900 text-xs">{editingOrder.qty} pcs</span>
+                    </div>
                   </div>
-                  <div className="text-right shrink-0">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Qty Pesanan</span>
-                    <span className="font-bold text-slate-900 text-xs">{editingOrder.qty} pcs</span>
+
+                  <div className="grid grid-cols-2 gap-3 pt-0.5">
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-0.5">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-slate-400">
+                          <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
+                        </svg>
+                        Ekspedisi (Terkunci)
+                      </span>
+                      <p className="font-medium text-slate-700 text-xs truncate" title={editingOrder.shipping_courier ?? '—'}>
+                        {editingOrder.shipping_courier || '—'}
+                      </p>
+                    </div>
+
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-0.5">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-slate-400">
+                          <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
+                        </svg>
+                        Status Pesanan (Terkunci)
+                      </span>
+                      <p className="font-semibold text-slate-800 text-xs truncate" title={editingOrder.order_status ?? '—'}>
+                        {editingOrder.order_status || '—'}
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -1005,17 +1029,6 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">Ekspedisi / Jasa Pengiriman</label>
-                  <input
-                    type="text"
-                    value={editForm.data.shipping_courier}
-                    onChange={(e) => editForm.setData('shipping_courier', e.target.value)}
-                    placeholder="Misal: Reguler (Cashless)-J&T Express, SPX Hemat..."
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
-                  />
-                </div>
-
-                <div>
                   <label className="block font-bold text-slate-700 uppercase mb-1">Keterangan Solutif</label>
                   <textarea
                     value={editForm.data.keterangan_solutif}
@@ -1026,28 +1039,15 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">Status Pesanan</label>
-                    <input
-                      type="text"
-                      value={editForm.data.order_status}
-                      onChange={(e) => editForm.setData('order_status', e.target.value)}
-                      placeholder="Transaksi Selesai, RJ/..."
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">No. DPP (Pencairan)</label>
-                    <input
-                      type="text"
-                      value={editForm.data.dpp_number}
-                      onChange={(e) => editForm.setData('dpp_number', e.target.value)}
-                      placeholder="DPP/000..."
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
-                    />
-                  </div>
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">No. DPP (Pencairan)</label>
+                  <input
+                    type="text"
+                    value={editForm.data.dpp_number}
+                    onChange={(e) => editForm.setData('dpp_number', e.target.value)}
+                    placeholder="DPP/000..."
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
+                  />
                 </div>
 
                 <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
