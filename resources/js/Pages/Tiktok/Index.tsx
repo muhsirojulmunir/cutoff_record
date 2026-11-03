@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import { PageProps } from '../../Types';
+import DualCalendarRangePicker, { formatDateIndo, formatYMD } from '../../Components/DualCalendarRangePicker';
 
 interface TiktokAccountData {
   id: number;
@@ -28,11 +29,28 @@ export default function TiktokIndex({ account, callbackUrl }: Props) {
 
   const [showSecret, setShowSecret] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [syncDays, setSyncDays] = useState<number>(7);
+
+  // Default rentang tanggal: 14 hari terakhir sampai hari ini
+  const now = new Date();
+  const defaultEnd = formatYMD(now.getFullYear(), now.getMonth(), now.getDate());
+  const d14 = new Date(now);
+  d14.setDate(d14.getDate() - 13);
+  const defaultStart = formatYMD(d14.getFullYear(), d14.getMonth(), d14.getDate());
+
+  const [startDate, setStartDate] = useState(defaultStart);
+  const [endDate, setEndDate] = useState(defaultEnd);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [testing, setTesting] = useState(false);
   const [manualCode, setManualCode] = useState('');
   const [manualExchanging, setManualExchanging] = useState(false);
+
+  // Menghitung jumlah hari dari rentang terpilih
+  const getDaysCount = (s: string, e: string): number => {
+    if (!s || !e) return 0;
+    const diff = new Date(e).getTime() - new Date(s).getTime();
+    return Math.max(1, Math.round(diff / (1000 * 60 * 60 * 24)) + 1);
+  };
 
   const { data, setData, post, processing, errors } = useForm({
     account_name: account.account_name || 'RecordShoesOfficial',
@@ -83,10 +101,15 @@ export default function TiktokIndex({ account, callbackUrl }: Props) {
   };
 
   const handleSyncNow = () => {
+    if (!startDate || !endDate) {
+      alert('Silakan tentukan Rentang Tanggal terlebih dahulu.');
+      return;
+    }
+
     setSyncing(true);
     router.post(
       '/marketplace/tiktok/sync-now',
-      { days: syncDays },
+      { start_date: startDate, end_date: endDate },
       {
         preserveScroll: true,
         onFinish: () => setSyncing(false),
@@ -360,33 +383,109 @@ export default function TiktokIndex({ account, callbackUrl }: Props) {
               </div>
 
               {/* Sync Range Selector */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">
-                  Pilih Rentang Waktu Tarik Pesanan:
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Rentang Waktu Tarik Pesanan TikTok:
+                  </label>
+                  <span className="text-[11px] font-bold text-[#25F4EE] bg-slate-900 px-2 py-0.5 rounded-md">
+                    {getDaysCount(startDate, endDate)} Hari Terpilih
+                  </span>
+                </div>
+
+                {/* Preset Buttons */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
                     { label: 'Hari Ini', days: 1 },
-                    { label: '7 Hari', days: 7 },
-                    { label: '14 Hari', days: 14 },
+                    { label: '7 Hari Terakhir', days: 7 },
+                    { label: '14 Hari (Cepat)', days: 14 },
                     { label: '30 Hari (1 Bln)', days: 30 },
-                    { label: '60 Hari (2 Bln)', days: 60 },
-                    { label: '90 Hari (Maks)', days: 90 },
-                  ].map((preset) => (
-                    <button
-                      key={preset.days}
-                      type="button"
-                      onClick={() => setSyncDays(preset.days)}
-                      className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                        syncDays === preset.days
-                          ? 'bg-[#0B132B] text-white shadow-xs'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
+                  ].map((preset) => {
+                    const isSelected = getDaysCount(startDate, endDate) === preset.days && endDate === defaultEnd;
+                    return (
+                      <button
+                        key={preset.days}
+                        type="button"
+                        onClick={() => {
+                          const sObj = new Date();
+                          sObj.setDate(sObj.getDate() - (preset.days - 1));
+                          const s = formatYMD(sObj.getFullYear(), sObj.getMonth(), sObj.getDate());
+                          setStartDate(s);
+                          setEndDate(defaultEnd);
+                        }}
+                        className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#0B132B] text-white shadow-xs'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
                 </div>
+
+                {/* Interactive Visual Date Range Trigger Bar & Dual Calendar */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsCalendarOpen(!isCalendarOpen)}
+                    className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/90 border border-slate-200 hover:border-slate-300 rounded-xl text-left transition-all cursor-pointer group shadow-2xs"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="p-2 rounded-xl bg-white border border-slate-200 text-slate-900 group-hover:scale-105 transition-transform shadow-2xs shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-5 h-5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" />
+                        </svg>
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Pilih Rentang di Kalender (Klik untuk Buka/Tutup)
+                        </div>
+                        <div className="text-xs font-bold text-slate-900 mt-0.5 truncate">
+                          {formatDateIndo(startDate)} — {formatDateIndo(endDate)}
+                          <span className="ml-2 text-[11px] font-bold text-[#0B132B]">
+                            ({getDaysCount(startDate, endDate)} hari)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0 pl-2">
+                      <span className="text-[11px] font-bold text-slate-700 hidden sm:inline">
+                        {isCalendarOpen ? 'Tutup Kalender' : 'Buka Kalender'}
+                      </span>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                        stroke="currentColor"
+                        className={`w-4 h-4 text-slate-500 transition-transform ${isCalendarOpen ? 'rotate-180' : ''}`}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                      </svg>
+                    </div>
+                  </button>
+
+                  {/* Dual Calendar Range Picker Popover */}
+                  <DualCalendarRangePicker
+                    initialStartDate={startDate}
+                    initialEndDate={endDate}
+                    isOpen={isCalendarOpen}
+                    onClose={() => setIsCalendarOpen(false)}
+                    onApply={(start, end) => {
+                      setStartDate(start);
+                      setEndDate(end);
+                    }}
+                    align="right"
+                  />
+                </div>
+              </div>
+
+              {/* Tips Penarikan Data */}
+              <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-100 text-[11px] text-blue-900 leading-relaxed">
+                <span className="font-bold text-blue-800">💡 Tips Penarikan Data:</span> Jika Anda ingin menarik data riwayat panjang, sangat disarankan menarik per <strong>14 atau 30 hari</strong> via kalender. Setiap kali ditarik, sistem otomatis menyimpan dan memperbarui pesanan tanpa membuat duplikasi.
               </div>
 
               {/* Trigger Button */}
@@ -394,7 +493,7 @@ export default function TiktokIndex({ account, callbackUrl }: Props) {
                 type="button"
                 onClick={handleSyncNow}
                 disabled={syncing || !isConnected}
-                className={`w-full py-3 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all ${
+                className={`w-full py-3 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all ${
                   isConnected && !syncing
                     ? 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-98'
                     : 'bg-slate-200 text-slate-400 cursor-not-allowed'
@@ -413,7 +512,7 @@ export default function TiktokIndex({ account, callbackUrl }: Props) {
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                     </svg>
-                    Tarik Pesanan ({syncDays} Hari Terakhir)
+                    Tarik Pesanan ({getDaysCount(startDate, endDate)} Hari Terpilih)
                   </>
                 )}
               </button>
