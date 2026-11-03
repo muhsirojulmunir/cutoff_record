@@ -55,6 +55,7 @@ class CutOffOrderController extends Controller
             'order_status',
             'dpp_status',
             'shipping_courier',
+            'shipping_tier',
             'date_from',
             'date_to',
             'per_page',

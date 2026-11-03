@@ -87,6 +87,7 @@ interface Props {
     order_status?: string;
     dpp_status?: string;
     shipping_courier?: string;
+    shipping_tier?: string;
     date_from?: string;
     date_to?: string;
     per_page?: string;
@@ -126,6 +127,60 @@ function formatDate(dateStr: string | null | undefined): string {
   } catch {
     return String(dateStr);
   }
+}
+
+function getShippingTier(courier: string | null | undefined): {
+  label: string;
+  badgeClass: string;
+  icon: string;
+} {
+  if (!courier) {
+    return {
+      label: 'Reguler',
+      badgeClass: 'bg-slate-100 text-slate-700 border-slate-200',
+      icon: '🚚',
+    };
+  }
+
+  const c = courier.toLowerCase();
+
+  if (c.includes('instant') || c.includes('instan')) {
+    return {
+      label: 'INSTAN',
+      badgeClass: 'bg-amber-500 text-white font-extrabold border-amber-600 shadow-xs ring-1 ring-amber-400',
+      icon: '⚡',
+    };
+  }
+
+  if (c.includes('sameday') || c.includes('same day')) {
+    return {
+      label: 'SAMEDAY',
+      badgeClass: 'bg-cyan-600 text-white font-bold border-cyan-700 shadow-xs',
+      icon: '⏱️',
+    };
+  }
+
+  if (c.includes('kargo') || c.includes('cargo') || c.includes('trucking') || c.includes('jtr') || c.includes('gokil')) {
+    return {
+      label: 'KARGO',
+      badgeClass: 'bg-purple-100 text-purple-900 border-purple-300 font-bold',
+      icon: '📦',
+    };
+  }
+
+  if (c.includes('hemat') || c.includes('economy') || c.includes('halu')) {
+    return {
+      label: 'HEMAT',
+      badgeClass: 'bg-emerald-100 text-emerald-900 border-emerald-300 font-bold',
+      icon: '🏷️',
+    };
+  }
+
+  return {
+    label: 'REGULER',
+    badgeClass: 'bg-blue-100 text-blue-900 border-blue-200 font-bold',
+    icon: '🚚',
+  };
 }
 
 function formatTime(dateStr: string | null | undefined): string | null {
@@ -174,6 +229,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
   const [selectedStatus, setSelectedStatus] = useState(filters.order_status ?? 'all');
   const [selectedDpp, setSelectedDpp] = useState(filters.dpp_status ?? 'all');
   const [selectedCourier, setSelectedCourier] = useState(filters.shipping_courier ?? 'all');
+  const [selectedTier, setSelectedTier] = useState(filters.shipping_tier ?? 'all');
   
   // Modal Edit Order State
   const [editingOrder, setEditingOrder] = useState<CutOffOrder | null>(null);
@@ -810,8 +866,27 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
               )}
             </form>
 
+            {/* Filter Tipe Layanan (Instan / Sameday / Reguler / Hemat / Kargo) */}
+            <div className="lg:col-span-2">
+              <select
+                value={selectedTier}
+                onChange={(e) => {
+                  setSelectedTier(e.target.value);
+                  applyFilters({ shipping_tier: e.target.value });
+                }}
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs font-medium focus:outline-none focus:border-[#0B132B]"
+              >
+                <option value="all">Semua Tipe Layanan</option>
+                <option value="instant">⚡ Instan (Prioritas)</option>
+                <option value="sameday">⏱️ Sameday</option>
+                <option value="reguler">🚚 Reguler / Standar</option>
+                <option value="hemat">🏷️ Hemat / Economy</option>
+                <option value="kargo">📦 Kargo / Trucking</option>
+              </select>
+            </div>
+
             {/* Filter Pengiriman / Kurir */}
-            <div className="lg:col-span-3">
+            <div className="lg:col-span-2">
               <select
                 value={selectedCourier}
                 onChange={(e) => {
@@ -820,7 +895,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                 }}
                 className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs focus:outline-none focus:border-[#0B132B]"
               >
-                <option value="all">Semua Pengiriman</option>
+                <option value="all">Semua Kurir</option>
                 <optgroup label="Ekspedisi Populer">
                   <option value="SPX">Shopee Xpress (SPX)</option>
                   <option value="J&T">J&T Express</option>
@@ -950,6 +1025,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                     const rowNumber = (orders.current_page - 1) * orders.per_page + index + 1;
                     const isOos = order.info_gudang && order.info_gudang.includes('OOS');
                     const isRj = order.order_status && (order.order_status.includes('RJ') || order.order_status.includes('Retur'));
+                    const shippingTier = getShippingTier(order.shipping_courier);
 
                     return (
                       <tr key={order.id} className="hover:bg-slate-50/80 transition-colors">
@@ -994,16 +1070,25 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                             </p>
                           )}
 
-                          {/* Ekspedisi / Pengiriman Badge */}
+                          {/* Ekspedisi & Tipe Layanan Badge */}
                           {order.shipping_courier ? (
-                            <div
-                              className="inline-flex items-center gap-1.5 mt-1.5 text-[11px] font-sans text-blue-900 bg-blue-50 border border-blue-200/80 rounded-md px-2 py-0.5 max-w-[220px] truncate"
-                              title={`Pengiriman: ${order.shipping_courier}`}
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-3.5 h-3.5 text-blue-700 shrink-0">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h.375c.621 0 1.125-.504 1.125-1.125V11.25c0-.621-.504-1.125-1.125-1.125h-1.5M14.25 5.25v9.75m0 0h-6" />
-                              </svg>
-                              <span className="truncate font-medium">{order.shipping_courier}</span>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1.5 font-sans">
+                              {/* Tipe Layanan Badge (Instan / Sameday / Reguler / Hemat / Kargo) */}
+                              <span
+                                className={`inline-flex items-center gap-1 text-[10px] uppercase font-bold px-2 py-0.5 rounded-md border tracking-wide whitespace-nowrap ${shippingTier.badgeClass}`}
+                                title={`Tipe Pengiriman: ${shippingTier.label}`}
+                              >
+                                <span>{shippingTier.icon}</span>
+                                <span>{shippingTier.label}</span>
+                              </span>
+
+                              {/* Nama Kurir */}
+                              <span
+                                className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-700 bg-slate-100 border border-slate-200 rounded-md px-2 py-0.5 max-w-[150px] truncate"
+                                title={`Ekspedisi: ${order.shipping_courier}`}
+                              >
+                                <span className="truncate">{order.shipping_courier}</span>
+                              </span>
                             </div>
                           ) : (
                             <span className="text-slate-400 font-sans text-[10px] block mt-1">— Kurir belum ada</span>
