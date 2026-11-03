@@ -113,22 +113,38 @@ function formatRupiah(val: number | string | null | undefined): string {
   return 'Rp ' + Math.round(num).toLocaleString('id-ID');
 }
 
+function parseDateToMs(dateStr: string | null | undefined): number | null {
+  if (!dateStr) return null;
+  // If ISO string with Z or timezone offset (+07:00), Date.parse converts UTC to local milliseconds
+  if (dateStr.includes('Z') || (dateStr.includes('+') && dateStr.includes(':'))) {
+    const timestamp = Date.parse(dateStr);
+    return isNaN(timestamp) ? null : timestamp;
+  }
+  // Otherwise it's a local SQL datetime string "YYYY-MM-DD HH:mm:ss"
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (match) {
+    const [, y, m, d, hh, mm, ss] = match;
+    const dateObj = new Date(
+      parseInt(y, 10),
+      parseInt(m, 10) - 1,
+      parseInt(d, 10),
+      parseInt(hh, 10),
+      parseInt(mm, 10),
+      ss ? parseInt(ss, 10) : 0
+    );
+    return dateObj.getTime();
+  }
+  const timestamp = Date.parse(dateStr);
+  return isNaN(timestamp) ? null : timestamp;
+}
+
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
-  try {
-    const raw = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr.split(' ')[0];
-    const parts = raw.split('-');
-    if (parts.length === 3) {
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-      const day = parseInt(parts[2], 10);
-      const monthIdx = parseInt(parts[1], 10) - 1;
-      const year = parts[0];
-      return `${day} ${months[monthIdx] || parts[1]} ${year}`;
-    }
-    return raw;
-  } catch {
-    return String(dateStr);
-  }
+  const ms = parseDateToMs(dateStr);
+  if (!ms) return dateStr;
+  const d = new Date(ms);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  return `${d.getDate()} ${months[d.getMonth()] || ''} ${d.getFullYear()}`;
 }
 
 function getShippingTier(courier: string | null | undefined): {
@@ -187,45 +203,15 @@ function getShippingTier(courier: string | null | undefined): {
 
 function formatTime(dateStr: string | null | undefined): string | null {
   if (!dateStr) return null;
-  try {
-    const timePart = dateStr.includes('T')
-      ? dateStr.split('T')[1]
-      : (dateStr.includes(' ') ? dateStr.split(' ')[1] : null);
-
-    if (!timePart) return null;
-
-    const parts = timePart.split(':');
-    if (parts.length >= 2) {
-      const hh = parts[0].padStart(2, '0');
-      const mm = parts[1].padStart(2, '0');
-      if (hh === '00' && mm === '00' && (parts.length < 3 || parts[2].startsWith('00'))) {
-        return null;
-      }
-      return `${hh}:${mm}`;
-    }
-    return null;
-  } catch {
+  const ms = parseDateToMs(dateStr);
+  if (!ms) return null;
+  const d = new Date(ms);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  if (hh === '00' && mm === '00' && !dateStr.includes(':')) {
     return null;
   }
-}
-
-function parseDateToMs(dateStr: string | null | undefined): number | null {
-  if (!dateStr) return null;
-  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/);
-  if (match) {
-    const [, y, m, d, hh, mm, ss] = match;
-    const dateObj = new Date(
-      parseInt(y, 10),
-      parseInt(m, 10) - 1,
-      parseInt(d, 10),
-      parseInt(hh, 10),
-      parseInt(mm, 10),
-      ss ? parseInt(ss, 10) : 0
-    );
-    return dateObj.getTime();
-  }
-  const timestamp = Date.parse(dateStr);
-  return isNaN(timestamp) ? null : timestamp;
+  return `${hh}:${mm}`;
 }
 
 function getRelativeTime(
@@ -266,6 +252,7 @@ function getRelativeTime(
 interface ShippingSlaInfo {
   deadlineTime: string;
   remainingText: string;
+  courierSearchText?: string | null;
   isUrgent: boolean;
   isOverdue: boolean;
   passedMinutes?: number;
@@ -292,21 +279,41 @@ function getShippingSla(
     return null;
   }
 
+  const orderMs = parseDateToMs(order.order_date);
   let deadlineMs: number | null = null;
 
   if (order.ship_by_date) {
     deadlineMs = parseDateToMs(order.ship_by_date);
   }
 
-  if (!deadlineMs && order.order_date) {
-    const orderMs = parseDateToMs(order.order_date);
-    if (orderMs) {
-      const windowHours = shippingTier.label === 'INSTAN' ? 2 : 6;
-      deadlineMs = orderMs + windowHours * 60 * 60 * 1000;
+  if (!deadlineMs && orderMs) {
+    const windowHours = shippingTier.label === 'INSTAN' ? 2 : 6;
+    deadlineMs = orderMs + windowHours * 60 * 60 * 1000;
+  }
+
+  // Courier Auto-Search countdown for Instant orders (Shopee 40-minute window)
+  let courierSearchText: string | null = null;
+  if (shippingTier.label === 'INSTAN' && orderMs) {
+    const autoSearchDeadlineMs = orderMs + 40 * 60 * 1000;
+    const searchDiffSec = Math.floor((autoSearchDeadlineMs - nowMs) / 1000);
+    if (searchDiffSec > 0) {
+      const sm = Math.floor(searchDiffSec / 60);
+      const ss = searchDiffSec % 60;
+      courierSearchText = `Mencari Kurir dalam ${sm}m ${String(ss).padStart(2, '0')}d`;
+    } else {
+      courierSearchText = 'Menunggu Driver Pickup';
     }
   }
 
-  if (!deadlineMs) return null;
+  if (!deadlineMs) {
+    return courierSearchText ? {
+      deadlineTime: '—',
+      remainingText: courierSearchText,
+      courierSearchText,
+      isUrgent: true,
+      isOverdue: false,
+    } : null;
+  }
 
   const dDate = new Date(deadlineMs);
   const hh = String(dDate.getHours()).padStart(2, '0');
@@ -320,6 +327,7 @@ function getShippingSla(
     return {
       deadlineTime,
       remainingText: `Lewat ${passedMinutes}m`,
+      courierSearchText,
       isUrgent: true,
       isOverdue: true,
       passedMinutes,
@@ -328,13 +336,17 @@ function getShippingSla(
 
   const hours = Math.floor(diffSec / 3600);
   const minutes = Math.floor((diffSec % 3600) / 60);
+  const seconds = diffSec % 60;
 
-  const remainingText = hours > 0 ? `${hours}j ${minutes}m` : `${minutes}m`;
+  const remainingText = hours > 0
+    ? `${hours}j ${minutes}m`
+    : `${minutes}m ${String(seconds).padStart(2, '0')}d`;
   const isUrgent = diffSec <= 30 * 60; // 30 minutes threshold
 
   return {
     deadlineTime,
     remainingText,
+    courierSearchText,
     isUrgent,
     isOverdue: false,
   };
@@ -1529,6 +1541,13 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                                   ? 'Perlu Dikirim [COD]'
                                   : order.order_status}
                               </span>
+
+                              {/* Indikator Realtime Mencari Kurir (Shopee Instant Style) */}
+                              {shippingSla?.courierSearchText && (
+                                <span className="block mt-1 text-[10px] font-bold text-rose-600 tracking-tight whitespace-nowrap font-mono animate-pulse" title="Hitung mundur pencarian kurir otomatis Shopee Instant">
+                                  {shippingSla.courierSearchText}
+                                </span>
+                              )}
 
                               {/* Label Keterangan Metode Pembayaran */}
                               {isOrderCod ? (

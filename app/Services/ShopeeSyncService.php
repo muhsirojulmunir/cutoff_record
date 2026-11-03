@@ -465,8 +465,12 @@ class ShopeeSyncService
                     }
                 }
 
-                $orderDate = ! empty($order['create_time']) ? date('Y-m-d H:i:s', $order['create_time']) : now()->toDateTimeString();
-                $shipByDate = ! empty($order['ship_by_date']) ? date('Y-m-d H:i:s', (int) $order['ship_by_date']) : null;
+                $orderDate = ! empty($order['create_time'])
+                    ? \Carbon\Carbon::createFromTimestamp((int) $order['create_time'], 'Asia/Jakarta')->format('Y-m-d H:i:s')
+                    : now('Asia/Jakarta')->format('Y-m-d H:i:s');
+                $shipByDate = ! empty($order['ship_by_date'])
+                    ? \Carbon\Carbon::createFromTimestamp((int) $order['ship_by_date'], 'Asia/Jakarta')->format('Y-m-d H:i:s')
+                    : null;
 
                 $existing = $existingOrders->get($orderSn);
 
@@ -969,6 +973,16 @@ class ShopeeSyncService
                     $table->dateTime('ship_by_date')->nullable()->after('order_date');
                 });
             }
+
+            // Koreksi otomatis pesanan Shopee 3 Nov yang jamnya sempat tersimpan dalam UTC (+7 jam ke WIB)
+            DB::table('cut_off_orders')
+                ->where('channel', 'SH')
+                ->whereDate('order_date', '2026-11-03')
+                ->whereTime('order_date', '<', '10:00:00')
+                ->where('order_number', 'like', '261103%')
+                ->update([
+                    'order_date' => DB::raw("DATE_ADD(order_date, INTERVAL 7 HOUR)")
+                ]);
         } catch (\Throwable $e) {
             Log::warning('ShopeeSyncService ensureSchema notice: ' . $e->getMessage());
         }
@@ -1113,7 +1127,7 @@ class ShopeeSyncService
             foreach ($allReturns as $returnSn => $ret) {
                 $orderSn    = trim((string) ($ret['order_sn'] ?? ''));
                 $createTime = ! empty($ret['create_time']) ? (int) $ret['create_time'] : time();
-                $returnDate = date('Y-m-d', $createTime);
+                $returnDate = \Carbon\Carbon::createFromTimestamp($createTime, 'Asia/Jakarta')->format('Y-m-d');
 
                 // Ekstraksi produk
                 $items = $ret['item'] ?? [];
