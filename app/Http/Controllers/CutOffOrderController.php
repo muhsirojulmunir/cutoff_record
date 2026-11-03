@@ -17,25 +17,15 @@ class CutOffOrderController extends Controller
      */
     public function index(Request $request): Response
     {
-        // Auto-fix specific order calculation to exact Rp 107.740
-        CutOffOrder::whereIn('order_number', ['2611028HNRV3WQ', '2611028HNRV3NQ'])
-            ->where(function ($q) {
-                $q->whereNull('est_net_income')->orWhere('est_net_income', '!=', 107740);
-            })
-            ->update([
-                'est_net_income'         => 107740,
-                'marketplace_net_payout' => 107740,
-            ]);
-
-        // Auto-fix order 26110171K7DQ80 to exact Rp 150.099 (189.999 * 79%)
-        CutOffOrder::where('order_number', '26110171K7DQ80')
-            ->where(function ($q) {
-                $q->whereNull('est_net_income')->orWhere('est_net_income', '!=', 150099);
-            })
-            ->update([
-                'est_net_income'         => 150099,
-                'marketplace_net_payout' => 150099,
-            ]);
+        // Auto-recalculate all orders using the authentic (Subtotal - Voucher) * 79% formula
+        if (! \Illuminate\Support\Facades\Cache::has('auto_recalculated_cutoff_79_formula_v3')) {
+            try {
+                app(\App\Services\ShopeeSyncService::class)->recalculateAllOrders();
+                \Illuminate\Support\Facades\Cache::put('auto_recalculated_cutoff_79_formula_v3', true, now()->addHours(12));
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('CutOff auto-recalculate notice: ' . $e->getMessage());
+            }
+        }
 
         // Auto-run pending migrations (cPanel FTP deployment support)
         if (! \Illuminate\Support\Facades\Cache::has('auto_migrated_cutoff_v5')) {
@@ -429,6 +419,19 @@ class CutOffOrderController extends Controller
             'message' => "Berhasil mensinkronkan {$synced} data pesanan dari Google Sheets.",
             'synced'  => $synced,
         ]);
+    }
+
+    /**
+     * Hitung ulang Est. Bersih untuk semua pesanan (Rumus: (Subtotal - Voucher Penjual) * 79%).
+     */
+    public function recalculateAll(Request $request): RedirectResponse
+    {
+        try {
+            $result = app(\App\Services\ShopeeSyncService::class)->recalculateAllOrders();
+            return back()->with('success', $result['message']);
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Gagal menghitung ulang pesanan: ' . $e->getMessage());
+        }
     }
 
     /**
