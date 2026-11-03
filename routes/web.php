@@ -73,6 +73,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/marketplace/tiktok/manual-exchange', [\App\Http\Controllers\TiktokIntegrationController::class, 'manualExchange'])->name('tiktok.manual-exchange');
     Route::post('/marketplace/tiktok/test-connection', [\App\Http\Controllers\TiktokIntegrationController::class, 'testConnection'])->name('tiktok.test');
     Route::post('/marketplace/tiktok/sync-now', [\App\Http\Controllers\TiktokIntegrationController::class, 'syncNow'])->name('tiktok.sync');
+    Route::post('/marketplace/tiktok/sync-returns', [\App\Http\Controllers\TiktokIntegrationController::class, 'syncReturns'])->name('tiktok.sync-returns');
 
     // System Utilities (Super Admin)
     Route::get('/system/migrate', function () {

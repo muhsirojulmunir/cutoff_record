@@ -77,6 +77,15 @@ class CutOffSyncOrdersCommand extends Command
                     $this->error("  Gagal sync TikTok orders: {$e->getMessage()}");
                     Log::error("[CutOffSync] TikTok orders error: " . $e->getMessage());
                 }
+
+                $this->info("Menarik data retur TikTok Shop...");
+                try {
+                    $ttReturnRes = $this->tiktokService->syncReturnsToCutOff($tiktokAccount, $timeFrom, $timeTo);
+                    $this->info("  TikTok Returns: {$ttReturnRes['message']}");
+                } catch (\Throwable $e) {
+                    $this->error("  Gagal sync TikTok returns: {$e->getMessage()}");
+                    Log::error("[CutOffSync] TikTok returns error: " . $e->getMessage());
+                }
             } else {
                 $this->warn("Toko TikTok belum terhubung.");
             }
