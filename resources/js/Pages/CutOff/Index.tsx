@@ -381,6 +381,25 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
   const [liveCountdown, setLiveCountdown] = useState(30);
   const [currentTimeMs, setCurrentTimeMs] = useState(() => Date.now());
 
+  // Menu Dropdown "Aksi Lainnya" State
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setIsMoreMenuOpen(false);
+      }
+    }
+    if (isMoreMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMoreMenuOpen]);
+
   // Modal Edit Order State
   const [editingOrder, setEditingOrder] = useState<CutOffOrder | null>(null);
 
@@ -817,8 +836,45 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
     return list;
   }, [jlPreviewData, jlFilterTab, jlSearchQuery]);
 
+  // Live Monitor Pill to place in top header navbar beside Super Admin
+  const liveMonitorButton = (
+    <button
+      onClick={() => setIsLiveActive((prev) => !prev)}
+      className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all cursor-pointer shadow-2xs whitespace-nowrap ${
+        isLiveActive
+          ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 ring-1 ring-emerald-400/30'
+          : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+      }`}
+      title={
+        isLiveActive
+          ? `Live Monitor Aktif: Data otomatis diperbarui dalam ${liveCountdown} detik. Klik untuk menjeda.`
+          : 'Live Monitor Dijeda. Klik untuk mengaktifkan kembali.'
+      }
+    >
+      <span className="relative flex h-2 w-2">
+        {isLiveActive && (
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+        )}
+        <span
+          className={`relative inline-flex rounded-full h-2 w-2 ${
+            isLiveActive ? 'bg-emerald-500' : 'bg-slate-400'
+          }`}
+        ></span>
+      </span>
+      <span>
+        {isLiveActive ? (
+          <>
+            Live: <strong className="font-mono">{liveCountdown}s</strong>
+          </>
+        ) : (
+          'Live: Jeda'
+        )}
+      </span>
+    </button>
+  );
+
   return (
-    <AppLayout>
+    <AppLayout headerRight={liveMonitorButton}>
       <Head title="Pesanan Cut Off 2026" />
 
       <div className="space-y-6 max-w-7xl mx-auto">
@@ -833,7 +889,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
             </p>
           </div>
 
-          <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
             {isManagement && (
               <span className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs font-semibold">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-blue-600">
@@ -850,6 +906,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                 <button
                   onClick={() => setIsImportModalOpen(true)}
                   className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap"
+                  title="Upload dan import data pesanan dari file Excel (.xlsx) 15 kolom"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-emerald-600">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
@@ -888,28 +945,6 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
             )}
 
             {/* Refresh */}
-            {/* Hitung Ulang Rumus 79% */}
-            {canManage && (
-              <button
-                onClick={handleRecalculateAll}
-                disabled={isRecalculating}
-                className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-2xs whitespace-nowrap"
-                title="Hitung ulang Est. Bersih seluruh pesanan dengan rumus: (Subtotal Pesanan - Voucher Ditanggung Penjual) × 79%"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.8}
-                  stroke="currentColor"
-                  className={`w-4 h-4 text-blue-600 ${isRecalculating ? 'animate-spin' : ''}`}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                </svg>
-                {isRecalculating ? 'Menghitung Ulang...' : 'Hitung Ulang (79%)'}
-              </button>
-            )}
-
             <button
               onClick={() => router.reload()}
               className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors cursor-pointer"
@@ -920,54 +955,77 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
               </svg>
             </button>
 
-            {/* Live Auto-Refresh Monitor Button (30s) */}
-            <button
-              onClick={() => setIsLiveActive((prev) => !prev)}
-              className={`inline-flex items-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer shadow-2xs whitespace-nowrap ${
-                isLiveActive
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 ring-1 ring-emerald-400/30'
-                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-              }`}
-              title={
-                isLiveActive
-                  ? `Live Monitor Aktif: Data otomatis sinkron & refresh setiap ${liveCountdown}s. Klik untuk jeda.`
-                  : 'Live Monitor Dijeda. Klik untuk mengaktifkan kembali.'
-              }
-            >
-              <span className="relative flex h-2 w-2">
-                {isLiveActive && (
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                )}
-                <span
-                  className={`relative inline-flex rounded-full h-2 w-2 ${
-                    isLiveActive ? 'bg-emerald-500' : 'bg-slate-400'
-                  }`}
-                ></span>
-              </span>
-              <span>
-                {isLiveActive ? (
-                  <>
-                    Live: <strong className="font-mono">{liveCountdown}s</strong>
-                  </>
-                ) : (
-                  'Live: Jeda'
-                )}
-              </span>
-            </button>
+            {/* Dropdown Menu Opsi Lanjutan / Aksi Lainnya */}
+            {canManage && (
+              <div className="relative" ref={moreMenuRef}>
+                <button
+                  onClick={() => setIsMoreMenuOpen((prev) => !prev)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors cursor-pointer shadow-2xs whitespace-nowrap"
+                  title="Opsi & Aksi Tambahan"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-slate-500">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM18.75 12a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
+                  </svg>
+                  <span className="hidden md:inline">Opsi</span>
+                </button>
 
-            {/* Kosongkan Seluruh Data Cut Off (Super Admin Only) */}
-            {canManage && isSuperAdmin && (
-              <button
-                onClick={handleTruncate}
-                disabled={isTruncating}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-2xs whitespace-nowrap"
-                title="Kosongkan seluruh data Pesanan Cut Off untuk mulai bersih dari marketplace"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-rose-600">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                </svg>
-                {isTruncating ? 'Mengosongkan...' : 'Kosongkan Data'}
-              </button>
+                {isMoreMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-white border border-slate-200 shadow-xl py-2 z-40">
+                    <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      Utilitas & Maintenance
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setIsMoreMenuOpen(false);
+                        handleRecalculateAll();
+                      }}
+                      disabled={isRecalculating}
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={1.8}
+                        stroke="currentColor"
+                        className={`w-4 h-4 text-blue-600 ${isRecalculating ? 'animate-spin' : ''}`}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                      </svg>
+                      <div>
+                        <p className="font-semibold text-slate-800">Hitung Ulang (79%)</p>
+                        <p className="text-[10px] text-slate-400">Sinkronkan rumus Est. Bersih</p>
+                      </div>
+                    </button>
+
+                    {isSuperAdmin && (
+                      <>
+                        <div className="my-1.5 border-t border-slate-100" />
+                        <div className="px-3 py-1 text-[11px] font-bold text-rose-500 uppercase tracking-wider">
+                          Zona Bahaya
+                        </div>
+                        <button
+                          onClick={() => {
+                            setIsMoreMenuOpen(false);
+                            handleTruncate();
+                          }}
+                          disabled={isTruncating}
+                          className="w-full flex items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-rose-600 shrink-0">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                          </svg>
+                          <div>
+                            <p className="font-semibold text-rose-700">Kosongkan Seluruh Data</p>
+                            <p className="text-[10px] text-rose-400">Hapus semua pesanan Cut Off</p>
+                          </div>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
