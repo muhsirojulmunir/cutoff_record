@@ -88,3 +88,36 @@ Route::middleware('auth')->group(function () {
         ]);
     })->name('system.migrate');
 });
+
+// Web Cron Trigger untuk sinkronisasi otomatis Cut Off dari cPanel (via curl / wget)
+Route::match(['get', 'post'], '/cron/cutoff-sync', function (\Illuminate\Http\Request $request) {
+    // Keamanan: verifikasi token rahasia
+    $token = $request->query('token') ?? $request->header('X-Cron-Token');
+    $expectedToken = env('CRON_SYNC_TOKEN', 'recordsh_cutoff_sync_2026');
+
+    if ($token !== $expectedToken) {
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'Unauthorized cron access: token tidak valid.',
+        ], 403);
+    }
+
+    try {
+        \Illuminate\Support\Facades\Artisan::call('cutoff:sync', ['--days' => 2]);
+        $output = \Illuminate\Support\Facades\Artisan::output();
+
+        return response()->json([
+            'status'    => 'success',
+            'message'   => 'Cut Off sync executed successfully.',
+            'timestamp' => now()->toIso8601String(),
+            'output'    => trim($output),
+        ]);
+    } catch (\Throwable $e) {
+        \Illuminate\Support\Facades\Log::error('[WebCron] Cut Off sync failed: ' . $e->getMessage());
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'Sync error: ' . $e->getMessage(),
+        ], 500);
+    }
+})->name('cron.cutoff-sync');
+

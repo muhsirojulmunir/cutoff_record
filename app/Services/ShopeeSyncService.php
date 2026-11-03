@@ -466,11 +466,13 @@ class ShopeeSyncService
                 }
 
                 $orderDate = ! empty($order['create_time']) ? date('Y-m-d H:i:s', $order['create_time']) : now()->toDateTimeString();
+                $shipByDate = ! empty($order['ship_by_date']) ? date('Y-m-d H:i:s', (int) $order['ship_by_date']) : null;
 
                 $existing = $existingOrders->get($orderSn);
 
                 $payload = [
                     'order_date'             => $orderDate,
+                    'ship_by_date'           => $shipByDate,
                     'channel'                => 'SH',
                     'order_number'           => $orderSn,
                     'buyer_username'         => $order['buyer_username'] ?? $order['buyer_user_id'] ?? null,
@@ -506,6 +508,10 @@ class ShopeeSyncService
                         'sku_utama'              => $payload['sku_utama'] ?: $existing->sku_utama,
                         'product_name'           => $payload['product_name'] ?: $existing->product_name,
                     ];
+
+                    if ($shipByDate) {
+                        $updateData['ship_by_date'] = $shipByDate;
+                    }
 
                     if ($hasCancelBy) {
                         $updateData['cancel_by'] = $cancelByLabel ?: $existing->cancel_by;
@@ -635,7 +641,7 @@ class ShopeeSyncService
             'access_token'             => $accessToken,
             'shop_id'                  => $shopId,
             'order_sn_list'            => implode(',', $orderSns),
-            'response_optional_fields' => 'buyer_user_id,buyer_username,item_list,package_list,shipping_carrier,total_amount,cancel_by,cancel_reason,payment_info,payment_method',
+            'response_optional_fields' => 'buyer_user_id,buyer_username,item_list,package_list,shipping_carrier,total_amount,cancel_by,cancel_reason,payment_info,payment_method,ship_by_date',
         ];
 
         return $this->host . $path . '?' . http_build_query($queryParams);
@@ -955,6 +961,12 @@ class ShopeeSyncService
             if (! Schema::hasColumn('cut_off_orders', 'payment_method')) {
                 Schema::table('cut_off_orders', function (Blueprint $table) {
                     $table->string('payment_method')->nullable()->after('shipping_courier');
+                });
+            }
+
+            if (! Schema::hasColumn('cut_off_orders', 'ship_by_date')) {
+                Schema::table('cut_off_orders', function (Blueprint $table) {
+                    $table->dateTime('ship_by_date')->nullable()->after('order_date');
                 });
             }
         } catch (\Throwable $e) {
