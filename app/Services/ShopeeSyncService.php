@@ -393,10 +393,9 @@ class ShopeeSyncService
                 }
 
                 // 4. Calculate total amount / net income
-                // Rumus ERP: (Harga Produk - Voucher Toko yang ditanggung Penjual) * 79%
-                $escrowIncome  = $escrowMap[$orderSn] ?? [];
-
-                // Fallback single escrow jika batch tidak ada (hanya jika sync pesanan sedikit agar tidak lemot)
+                // Rumus ERP: Est. Bersih = (Subtotal Pesanan - Voucher Ditanggung Penjual) * 79%
+                // Jika Voucher Ditanggung Penjual = 0, maka (Subtotal Pesanan - 0) * 79%
+                $escrowIncome = $escrowMap[$orderSn] ?? [];
                 if (empty($escrowIncome) && count($detailedOrders) <= 5) {
                     $escrowIncome = $this->fetchSingleEscrowDetail($account, $orderSn);
                     if (! empty($escrowIncome)) {
@@ -404,50 +403,8 @@ class ShopeeSyncService
                     }
                 }
 
-                $cogs          = (float) ($escrowIncome['cost_of_goods_sold'] ?? 0);
-                $origCogs      = (float) ($escrowIncome['original_cost_of_goods_sold'] ?? 0);
-                $sellerDisc    = (float) ($escrowIncome['seller_discount'] ?? 0);
-                $sellerVoucher = (float) (
-                    $escrowIncome['voucher_from_seller']
-                    ?? $escrowIncome['seller_voucher_discount']
-                    ?? $escrowIncome['voucher_seller']
-                    ?? $order['voucher_from_seller']
-                    ?? 0
-                );
-
-                // Prioritaskan Subtotal Produk (cost_of_goods_sold) resmi dari Shopee Escrow
-                if ($cogs > 0) {
-                    $productPrice = $cogs;
-                } elseif ($origCogs > 0) {
-                    $productPrice = max(0, $origCogs - $sellerDisc);
-                } else {
-                    // Fallback hitung dari item_list jika data escrow belum tersedia
-                    $productPrice = 0;
-                    foreach ($items as $it) {
-                        $itemPrice = (float) ($it['model_discounted_price'] ?? 0);
-                        if ($itemPrice <= 0) {
-                            $itemPrice = (float) ($it['discounted_price'] ?? 0);
-                        }
-                        if ($itemPrice <= 0) {
-                            $itemPrice = (float) ($it['model_original_price'] ?? 0);
-                        }
-                        if ($itemPrice <= 0) {
-                            $itemPrice = (float) ($it['original_price'] ?? 0);
-                        }
-                        $itemQty = (int) ($it['model_quantity_purchased'] ?? $it['quantity_purchased'] ?? $it['model_quantity'] ?? 1);
-                        if ($itemQty <= 0) $itemQty = 1;
-
-                        $productPrice += ($itemPrice * $itemQty);
-                    }
-                }
-
-                $rawTotalAmount = (float) ($order['total_amount'] ?? 0);
-                if ($productPrice <= 0 && $rawTotalAmount > 0) {
-                    $productPrice = $rawTotalAmount;
-                }
-
-                $netProduct    = max(0, $productPrice - $sellerVoucher);
-                $calculatedNet = round($netProduct * 0.79);
+                $calc          = $this->calculateNetIncome($order, $escrowIncome);
+                $calculatedNet = $calc['est_net_income'];
 
                 // 5. Determine order status, payment method, and cancellation details
                 $rawStatus  = (string) ($order['order_status'] ?? '');
@@ -810,6 +767,165 @@ class ShopeeSyncService
             return $this->refreshAccessToken($account);
         }
         return $account;
+    }
+
+    /**
+     * Hitung Subtotal Pesanan & Voucher Penjual, lalu terapkan rumus ERP:
+     * Est. Bersih = (Subtotal Pesanan - Voucher Ditanggung Penjual) * 79%
+     * Jika Voucher Ditanggung Penjual = 0, maka (Subtotal Pesanan - 0) * 79%
+     * Jika Status = 'Batal', Est. Bersih = 0
+     */
+    public function calculateNetIncome(array $order, array $escrowIncome = []): array
+    {
+        $items = $order['item_list'] ?? [];
+
+        // 1. Hitung Subtotal Pesanan (Harga produk yang dibeli sebelum voucher)
+        $subtotalOrder = 0.0;
+        foreach ($items as $it) {
+            $itemPrice = (float) ($it['model_discounted_price'] ?? 0);
+            if ($itemPrice <= 0) {
+                $itemPrice = (float) ($it['discounted_price'] ?? 0);
+            }
+            if ($itemPrice <= 0) {
+                $itemPrice = (float) ($it['model_original_price'] ?? 0);
+            }
+            if ($itemPrice <= 0) {
+                $itemPrice = (float) ($it['original_price'] ?? 0);
+            }
+            $itemQty = (int) ($it['model_quantity_purchased'] ?? $it['quantity_purchased'] ?? $it['model_quantity'] ?? 1);
+            if ($itemQty <= 0) $itemQty = 1;
+
+            $subtotalOrder += ($itemPrice * $itemQty);
+        }
+
+        // 2. Hitung Voucher Ditanggung Penjual
+        $paymentInfo = $order['payment_info'] ?? [];
+        $itemVouchers = 0.0;
+        foreach ($items as $it) {
+            if (! empty($it['discount_from_voucher_seller'])) {
+                $itemVouchers += (float) $it['discount_from_voucher_seller'];
+            }
+        }
+
+        $sellerVoucher = 0.0;
+        if (! empty($paymentInfo['voucher_from_seller']) && (float) $paymentInfo['voucher_from_seller'] > 0) {
+            $sellerVoucher = (float) $paymentInfo['voucher_from_seller'];
+        } elseif (! empty($paymentInfo['seller_voucher_discount']) && (float) $paymentInfo['seller_voucher_discount'] > 0) {
+            $sellerVoucher = (float) $paymentInfo['seller_voucher_discount'];
+        } elseif ($itemVouchers > 0) {
+            $sellerVoucher = $itemVouchers;
+        } elseif (! empty($escrowIncome['voucher_from_seller']) && (float) $escrowIncome['voucher_from_seller'] > 0) {
+            $sellerVoucher = (float) $escrowIncome['voucher_from_seller'];
+        } elseif (! empty($escrowIncome['seller_voucher_discount']) && (float) $escrowIncome['seller_voucher_discount'] > 0) {
+            $sellerVoucher = (float) $escrowIncome['seller_voucher_discount'];
+        } elseif (! empty($order['voucher_from_seller']) && (float) $order['voucher_from_seller'] > 0) {
+            $sellerVoucher = (float) $order['voucher_from_seller'];
+        }
+
+        if ($sellerVoucher < 0) {
+            $sellerVoucher = 0.0;
+        }
+
+        // Fallback jika subtotalOrder masih 0
+        if ($subtotalOrder <= 0) {
+            $cogs     = (float) ($escrowIncome['cost_of_goods_sold'] ?? 0);
+            $origCogs = (float) ($escrowIncome['original_cost_of_goods_sold'] ?? 0);
+            $sellerDisc = (float) ($escrowIncome['seller_discount'] ?? 0);
+
+            if ($origCogs > 0) {
+                $subtotalOrder = max(0, $origCogs - $sellerDisc);
+            } elseif ($cogs > 0) {
+                $subtotalOrder = $cogs;
+            } else {
+                $rawTotal = (float) ($order['total_amount'] ?? 0);
+                $subtotalOrder = $rawTotal;
+            }
+        }
+
+        // 3. Terapkan Rumus: Est. Bersih = (Subtotal Pesanan - Voucher Ditanggung Penjual) * 79%
+        // Jika Voucher Ditanggung Penjual = 0, maka (Subtotal Pesanan - 0) * 79%
+        $netBase = max(0, $subtotalOrder - $sellerVoucher);
+        $estBersih = (float) round($netBase * 0.79);
+
+        return [
+            'subtotal_order' => $subtotalOrder,
+            'seller_voucher' => $sellerVoucher,
+            'est_net_income' => $estBersih,
+        ];
+    }
+
+    /**
+     * Hitung ulang Est. Bersih untuk seluruh pesanan Cut Off di database
+     * menggunakan rumus resmi: (Subtotal Pesanan - Voucher Ditanggung Penjual) * 79%
+     * Jika Voucher Ditanggung Penjual = 0, maka (Subtotal Pesanan - 0) * 79%
+     */
+    public function recalculateAllOrders(?ShopeeAccount $account = null): array
+    {
+        if (! $account) {
+            $account = ShopeeAccount::where('status', 'active')
+                ->whereNotNull('access_token')
+                ->first();
+        }
+
+        // 1. Semua pesanan berstatus Batal otomatis Est. Bersih = 0
+        CutOffOrder::where('order_status', 'Batal')
+            ->update([
+                'est_net_income'         => 0,
+                'marketplace_net_payout' => 0,
+            ]);
+
+        $orders = CutOffOrder::where('channel', 'SH')->get();
+        if ($orders->isEmpty()) {
+            return [
+                'status'  => 'success',
+                'message' => 'Tidak ada pesanan Shopee di tabel Cut Off untuk dihitung ulang.',
+                'updated' => 0,
+            ];
+        }
+
+        $updatedCount = 0;
+
+        // 2. Ambil data pesanan langsung dari Shopee Open API v2 dalam batch 50 pesanan
+        if ($account && ! empty($account->access_token)) {
+            $account = $this->ensureValidToken($account);
+            $orderSns = $orders->pluck('order_number')->filter()->unique()->values()->toArray();
+
+            $chunks = array_chunk($orderSns, 50);
+            foreach ($chunks as $chunk) {
+                try {
+                    $detailedOrders = $this->fetchOrderDetailRaw($account, $chunk);
+                    foreach ($detailedOrders as $shopeeOrder) {
+                        $sn = $shopeeOrder['order_sn'] ?? null;
+                        if (! $sn) continue;
+
+                        $rawStatus  = (string) ($shopeeOrder['order_status'] ?? '');
+                        $statusText = $this->mapOrderStatus($rawStatus);
+
+                        if ($statusText === 'Batal' || $rawStatus === 'CANCELLED') {
+                            $calculatedNet = 0;
+                        } else {
+                            $calc = $this->calculateNetIncome($shopeeOrder);
+                            $calculatedNet = $calc['est_net_income'];
+                        }
+
+                        CutOffOrder::where('order_number', $sn)->update([
+                            'est_net_income'         => $calculatedNet,
+                            'marketplace_net_payout' => $calculatedNet,
+                        ]);
+
+                        $updatedCount++;
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning("Shopee recalculateAllOrders chunk error: " . $e->getMessage());
+                }
+            }
+        }
+
+        return [
+            'status'  => 'success',
+            'message' => "Berhasil menyesuaikan {$updatedCount} pesanan sesuai rumus (Subtotal Pesanan - Voucher Ditanggung Penjual) × 79%!",
+            'updated' => $updatedCount,
+        ];
     }
 
     /**

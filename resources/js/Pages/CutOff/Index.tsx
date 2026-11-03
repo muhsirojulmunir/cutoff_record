@@ -214,6 +214,18 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
   const canManage = !isManagement;
   const isSuperAdmin = auth?.user?.role?.name === 'Super Admin' || auth?.user?.roles?.includes('Super Admin');
   const [isTruncating, setIsTruncating] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
+
+  function handleRecalculateAll() {
+    if (!confirm('Hitung ulang Est. Bersih seluruh pesanan sesuai rumus resmi:\n\nEst. Bersih = (Subtotal Pesanan - Voucher Ditanggung Penjual) × 79%\n\nLanjutkan?')) {
+      return;
+    }
+    setIsRecalculating(true);
+    router.post('/cut-off-orders/recalculate-all', {}, {
+      preserveScroll: true,
+      onFinish: () => setIsRecalculating(false),
+    });
+  }
 
   function handleTruncate() {
     if (confirm('PERINGATAN: Apakah Anda yakin ingin MENGOSONGKAN SELURUH data Pesanan Cut Off?\n\nTindakan ini akan menghapus semua riwayat pesanan cut off agar Anda bisa menarik data murni dari API marketplace.\n\nTabel lain (Akun Toko, Returan Online, User Management) TIDAK akan terhapus.')) {
@@ -715,6 +727,28 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
             )}
 
             {/* Refresh */}
+            {/* Hitung Ulang Rumus 79% */}
+            {canManage && (
+              <button
+                onClick={handleRecalculateAll}
+                disabled={isRecalculating}
+                className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-2xs whitespace-nowrap"
+                title="Hitung ulang Est. Bersih seluruh pesanan dengan rumus: (Subtotal Pesanan - Voucher Ditanggung Penjual) × 79%"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.8}
+                  stroke="currentColor"
+                  className={`w-4 h-4 text-blue-600 ${isRecalculating ? 'animate-spin' : ''}`}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+                {isRecalculating ? 'Menghitung Ulang...' : 'Hitung Ulang (79%)'}
+              </button>
+            )}
+
             <button
               onClick={() => router.reload()}
               className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors cursor-pointer"
