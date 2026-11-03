@@ -81,6 +81,7 @@ const navSections: NavSection[] = [
 
 interface Props {
   children: ReactNode;
+  headerRight?: ReactNode;
 }
 
 function isNavActive(currentPath: string, item: NavItem): boolean {
@@ -90,7 +91,7 @@ function isNavActive(currentPath: string, item: NavItem): boolean {
   return currentPath === item.href;
 }
 
-export default function AppLayout({ children }: Props) {
+export default function AppLayout({ children, headerRight }: Props) {
   const { auth, workQueue } = usePage<PageProps>().props;
   const user = auth.user;
   const queue = workQueue ?? { items: [], total: 0, critical: 0 };
@@ -308,7 +309,8 @@ export default function AppLayout({ children }: Props) {
           </button>
 
           {/* Topbar right items */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            {headerRight}
             <NotificationBell queue={queue} />
             <div className="h-4 w-[1px] bg-slate-200 hidden sm:block" />
             <span className="hidden sm:flex items-center gap-2 text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-full px-3 py-1.5">
