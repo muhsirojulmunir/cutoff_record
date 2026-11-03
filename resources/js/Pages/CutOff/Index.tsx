@@ -953,6 +953,25 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
               </div>
 
               <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
+                {/* Informasi Barang & SKU */}
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                  <div className="min-w-0 pr-3">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Barang & SKU</span>
+                    <span className="font-semibold text-slate-900 text-xs truncate block font-mono select-all" title={editingOrder.sku_utama ?? ''}>
+                      {editingOrder.sku_utama || '—'}
+                    </span>
+                    {editingOrder.product_name && editingOrder.product_name !== editingOrder.sku_utama && (
+                      <span className="text-[11px] text-slate-500 truncate block mt-0.5" title={editingOrder.product_name}>
+                        {editingOrder.product_name}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Qty Pesanan</span>
+                    <span className="font-bold text-slate-900 text-xs">{editingOrder.qty} pcs</span>
+                  </div>
+                </div>
+
                 {(editingOrder.cancel_reason || editingOrder.cancel_by) && (
                   <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-1">
                     <p className="font-bold flex items-center gap-1.5 text-rose-900">
