@@ -665,7 +665,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                   <th className="py-3 px-4">Pesanan & Pengiriman</th>
                   <th className="py-3 px-4">Barang & SKU</th>
                   <th className="py-3 px-4">SKU Pengganti</th>
-                  <th className="py-3 px-4">Gudang & Solusi</th>
+                  <th className="py-3 px-4">Info Gudang</th>
                   <th className="py-3 px-4">Status Pesanan</th>
                   <th className="py-3 px-4">Keuangan & DPP</th>
                   {canManage && <th className="py-3 px-3 text-center">Aksi</th>}
