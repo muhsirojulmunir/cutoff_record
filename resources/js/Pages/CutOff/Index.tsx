@@ -668,6 +668,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                   <th className="py-3 px-4">Toko & Tanggal</th>
                   <th className="py-3 px-4">Pesanan & Pengiriman</th>
                   <th className="py-3 px-4">Barang & SKU</th>
+                  <th className="py-3 px-4">SKU Pengganti</th>
                   <th className="py-3 px-4">Gudang & Solusi</th>
                   <th className="py-3 px-4">Status Pesanan</th>
                   <th className="py-3 px-4">Keuangan & DPP</th>
@@ -677,7 +678,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
               <tbody className="divide-y divide-slate-100">
                 {orders.data.length === 0 ? (
                   <tr>
-                    <td colSpan={canManage ? 7 : 6} className="py-16 text-center">
+                    <td colSpan={canManage ? 8 : 7} className="py-16 text-center">
                       <div className="max-w-md mx-auto flex flex-col items-center">
                         <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
@@ -769,22 +770,38 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                           )}
                         </td>
 
-                        {/* SKU & QTY */}
-                        <td className="py-3.5 px-4 max-w-[260px]">
+                        {/* Barang & SKU */}
+                        <td className="py-3.5 px-4 max-w-[240px]">
                           <p className="font-semibold text-slate-900 truncate" title={order.sku_utama ?? ''}>
                             {order.sku_utama ?? '—'}
                           </p>
-                          {order.sku_pengganti && (
-                            <p className="text-emerald-700 font-semibold text-[11px] mt-0.5 truncate" title={order.sku_pengganti}>
-                              ↳ Ganti: {order.sku_pengganti}
-                            </p>
-                          )}
                           <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500">
                             <span>QTY: <strong className="text-slate-900">{order.qty}</strong></span>
                             {order.recheck_qty !== null && (
                               <span className="text-emerald-600 font-medium">Recheck: {order.recheck_qty}</span>
                             )}
                           </div>
+                        </td>
+
+                        {/* SKU Pengganti */}
+                        <td className="py-3.5 px-4 max-w-[220px]">
+                          {order.sku_pengganti ? (
+                            <p
+                              className={`font-semibold text-emerald-700 truncate ${canManage ? 'cursor-pointer hover:underline' : ''}`}
+                              title={`SKU Pengganti: ${order.sku_pengganti}${canManage ? ' (Klik untuk edit)' : ''}`}
+                              onClick={() => canManage && openEditModal(order)}
+                            >
+                              {order.sku_pengganti}
+                            </p>
+                          ) : (
+                            <span
+                              className={`text-slate-400 text-[11px] ${canManage ? 'cursor-pointer hover:text-slate-600' : ''}`}
+                              title={canManage ? 'Klik untuk isi SKU pengganti' : undefined}
+                              onClick={() => canManage && openEditModal(order)}
+                            >
+                              —
+                            </span>
+                          )}
                         </td>
 
                         {/* Gudang & Solusi */}
@@ -940,6 +957,20 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
               </div>
 
               <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
+                {/* Referensi Barang & SKU Utama */}
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                  <div className="min-w-0 pr-3">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Barang & SKU Utama</span>
+                    <span className="font-semibold text-slate-900 text-xs truncate block font-mono" title={editingOrder.sku_utama ?? ''}>
+                      {editingOrder.sku_utama || '—'}
+                    </span>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Qty Pesanan</span>
+                    <span className="font-bold text-slate-900 text-xs">{editingOrder.qty} pcs</span>
+                  </div>
+                </div>
+
                 {(editingOrder.cancel_reason || editingOrder.cancel_by) && (
                   <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-1">
                     <p className="font-bold flex items-center gap-1.5 text-rose-900">
