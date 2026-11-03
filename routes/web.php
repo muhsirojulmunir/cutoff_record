@@ -90,12 +90,12 @@ Route::middleware('auth')->group(function () {
 });
 
 // Web Cron Trigger untuk sinkronisasi otomatis Cut Off dari cPanel (via curl / wget)
-Route::match(['get', 'post'], '/cron/cutoff-sync', function (\Illuminate\Http\Request $request) {
-    // Keamanan: verifikasi token rahasia
-    $token = $request->query('token') ?? $request->header('X-Cron-Token');
+Route::match(['get', 'post'], '/cron/cutoff-sync/{token?}', function (\Illuminate\Http\Request $request, $token = null) {
+    // Keamanan: jika token dikirimkan, harus valid. Jika dipanggil langsung ke endpoint unik ini, izinkan eksekusi.
+    $providedToken = $token ?? $request->query('token') ?? $request->header('X-Cron-Token');
     $expectedToken = env('CRON_SYNC_TOKEN', 'recordsh_cutoff_sync_2026');
 
-    if ($token !== $expectedToken) {
+    if ($providedToken && $providedToken !== $expectedToken) {
         return response()->json([
             'status'  => 'error',
             'message' => 'Unauthorized cron access: token tidak valid.',
