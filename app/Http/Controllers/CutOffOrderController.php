@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\CutOffOrder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -218,6 +219,109 @@ class CutOffOrderController extends Controller
         }
 
         return back()->with('success', "Berhasil mengimpor {$inserted} data pesanan ke dalam database.");
+    }
+
+    /**
+     * Preview import nomor JL dari Excel.
+     * Mencocokkan nomor pesanan dari Excel dengan pesanan yang sudah ada di database ERP.
+     */
+    public function previewImportJl(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'items'                => ['required', 'array', 'min:1'],
+            'items.*.order_number' => ['required', 'string'],
+            'items.*.jl_number'    => ['required', 'string'],
+        ]);
+
+        $items = $validated['items'];
+        $orderNumbers = array_values(array_unique(array_filter(array_map(fn ($i) => trim($i['order_number']), $items))));
+
+        // Ambil data pesanan yang cocok dari DB
+        $dbOrders = CutOffOrder::query()
+            ->whereIn('order_number', $orderNumbers)
+            ->get(['id', 'order_number', 'channel', 'buyer_username', 'sku_utama', 'jl_number', 'order_status'])
+            ->keyBy('order_number');
+
+        $matched = [];
+        $unmatched = [];
+        $totalChanged = 0;
+
+        foreach ($items as $item) {
+            $orderNo = trim($item['order_number']);
+            $newJl   = trim($item['jl_number']);
+
+            if (isset($dbOrders[$orderNo])) {
+                $db = $dbOrders[$orderNo];
+                $currentJl = $db->jl_number;
+                $isChanged = ($currentJl !== $newJl);
+                if ($isChanged) {
+                    $totalChanged++;
+                }
+
+                $matched[] = [
+                    'id'             => $db->id,
+                    'order_number'   => $orderNo,
+                    'channel'        => $db->channel,
+                    'buyer_username' => $db->buyer_username,
+                    'sku_utama'      => $db->sku_utama,
+                    'current_jl'     => $currentJl,
+                    'new_jl'         => $newJl,
+                    'order_status'   => $db->order_status,
+                    'is_changed'     => $isChanged,
+                ];
+            } else {
+                $unmatched[] = [
+                    'order_number' => $orderNo,
+                    'jl_number'    => $newJl,
+                    'reason'       => 'Nomor pesanan belum ada di database ERP',
+                ];
+            }
+        }
+
+        return response()->json([
+            'success'         => true,
+            'total_excel'     => count($items),
+            'total_matched'   => count($matched),
+            'total_unmatched' => count($unmatched),
+            'total_changed'   => $totalChanged,
+            'matched'         => $matched,
+            'unmatched'       => $unmatched,
+        ]);
+    }
+
+    /**
+     * Terapkan dan simpan pembaruan nomor JL dari Excel ke database.
+     */
+    public function importJl(Request $request): RedirectResponse
+    {
+        if ($request->user() && $request->user()->role?->name === 'Management') {
+            abort(403, 'Akses ditolak. Akun Management hanya memiliki izin melihat data (read-only).');
+        }
+
+        $validated = $request->validate([
+            'items'                => ['required', 'array', 'min:1'],
+            'items.*.order_number' => ['required', 'string'],
+            'items.*.jl_number'    => ['required', 'string'],
+        ]);
+
+        $items = $validated['items'];
+        $updatedCount = 0;
+
+        DB::transaction(function () use ($items, &$updatedCount) {
+            foreach ($items as $item) {
+                $orderNumber = trim($item['order_number']);
+                $jlNumber    = trim($item['jl_number']);
+
+                $affected = CutOffOrder::where('order_number', $orderNumber)
+                    ->update([
+                        'jl_number' => $jlNumber,
+                    ]);
+
+                $updatedCount += $affected;
+            }
+        });
+
+        return back()->with('success', "Berhasil memperbarui Nomor JL untuk {$updatedCount} pesanan.");
     }
 
     /**

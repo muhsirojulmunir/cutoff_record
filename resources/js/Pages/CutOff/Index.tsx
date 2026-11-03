@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
@@ -28,6 +28,39 @@ interface CutOffOrder {
   marketplace_net_payout: number | string | null;
   sheet_dpp: string | null;
   dpp_number: string | null;
+}
+
+interface JlExcelRow {
+  order_number: string;
+  jl_number: string;
+}
+
+interface JlMatchedItem {
+  id: number;
+  order_number: string;
+  channel: string;
+  buyer_username: string | null;
+  sku_utama: string | null;
+  current_jl: string | null;
+  new_jl: string;
+  order_status: string | null;
+  is_changed: boolean;
+}
+
+interface JlUnmatchedItem {
+  order_number: string;
+  jl_number: string;
+  reason: string;
+}
+
+interface JlPreviewResult {
+  success: boolean;
+  total_excel: number;
+  total_matched: number;
+  total_unmatched: number;
+  total_changed: number;
+  matched: JlMatchedItem[];
+  unmatched: JlUnmatchedItem[];
 }
 
 interface PaginationLinks {
@@ -217,9 +250,18 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
   const [isParsing, setIsParsing] = useState(false);
   const [isSubmittingImport, setIsSubmittingImport] = useState(false);
 
+  // Modal Import No. JL State
+  const [isImportJlModalOpen, setIsImportJlModalOpen] = useState(false);
+  const [jlImportFile, setJlImportFile] = useState<File | null>(null);
+  const [isParsingJl, setIsParsingJl] = useState(false);
+  const [jlPreviewData, setJlPreviewData] = useState<JlPreviewResult | null>(null);
+  const [jlFilterTab, setJlFilterTab] = useState<'all' | 'matched' | 'unmatched'>('all');
+  const [isSubmittingJl, setIsSubmittingJl] = useState(false);
+  const [jlSearchQuery, setJlSearchQuery] = useState('');
+
   // Kunci scroll halaman saat modal aktif agar fokus tepat di viewport pengguna
   useEffect(() => {
-    if (editingOrder || isCreateModalOpen || isImportModalOpen) {
+    if (editingOrder || isCreateModalOpen || isImportModalOpen || isImportJlModalOpen) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
@@ -227,7 +269,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
     return () => {
       document.body.style.overflow = 'unset';
     };
-  }, [editingOrder, isCreateModalOpen, isImportModalOpen]);
+  }, [editingOrder, isCreateModalOpen, isImportModalOpen, isImportJlModalOpen]);
 
   function handleExcelFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -364,6 +406,187 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
     applyFilters({ search });
   }
 
+  function parseJlFile(file: File) {
+    setIsParsingJl(true);
+    setJlImportFile(file);
+    setJlPreviewData(null);
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const buffer = e.target?.result;
+        if (!buffer) throw new Error('File kosong atau tidak dapat dibaca');
+
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        let headerOrderIdx = -1;
+        let headerJlIdx = -1;
+
+        for (let r = 0; r < Math.min(25, rows.length); r++) {
+          const row = rows[r];
+          if (!row || !Array.isArray(row)) continue;
+          for (let c = 0; c < row.length; c++) {
+            const cellVal = String(row[c] || '').toLowerCase().trim();
+            if (/^(no|nomor)?\s*(pesanan|order|order_number|order_sn)\b/i.test(cellVal)) {
+              headerOrderIdx = c;
+            }
+            if (/^(no|nomor)?\s*(jl|jl_number|bukti|nomor_bukti)\b/i.test(cellVal)) {
+              headerJlIdx = c;
+            }
+          }
+        }
+
+        const extracted: JlExcelRow[] = [];
+
+        for (let r = 0; r < rows.length; r++) {
+          const row = rows[r];
+          if (!row || !Array.isArray(row)) continue;
+
+          let jl: string | null = null;
+          let orderNumber: string | null = null;
+
+          // Pendekatan 1: Kolom header eksplisit
+          if (headerOrderIdx !== -1 && headerJlIdx !== -1 && r > 0) {
+            const rawJl = String(row[headerJlIdx] || '').trim();
+            const rawOrder = String(row[headerOrderIdx] || '').trim();
+            if (/^JL/i.test(rawJl) && rawOrder.length >= 8) {
+              jl = rawJl;
+              const cleanOrder = rawOrder.replace(/\([0-9\-\.]+\)/g, '').trim().split(/\s+/)[0];
+              if (cleanOrder && cleanOrder.length >= 8 && !cleanOrder.toUpperCase().includes('DPP')) {
+                orderNumber = cleanOrder;
+              }
+            }
+          }
+
+          // Pendekatan 2: Universal Pattern Search (seperti Kartu Piutang Jaya Mandiri / dendy asoy)
+          if (!jl || !orderNumber) {
+            for (let c = 0; c < row.length; c++) {
+              const cell = row[c];
+              if (typeof cell === 'string') {
+                const val = cell.trim();
+                if (/^JL[\/\-_]?[0-9]+/i.test(val)) {
+                  jl = val;
+                }
+                if (val.includes('(1-') || /^[0-9A-Za-z]{12,25}$/.test(val)) {
+                  const stripped = val.replace(/\([0-9\-\.]+\)/g, '').trim();
+                  const token = stripped.split(/\s+/)[0];
+                  if (
+                    token &&
+                    token.length >= 10 &&
+                    !token.toUpperCase().includes('DPP') &&
+                    !token.toUpperCase().includes('SALDO') &&
+                    !token.toUpperCase().includes('SHOPEE') &&
+                    !token.toUpperCase().includes('TIKTOK')
+                  ) {
+                    orderNumber = token;
+                  }
+                }
+              }
+            }
+          }
+
+          if (jl && orderNumber) {
+            extracted.push({ order_number: orderNumber, jl_number: jl });
+          }
+        }
+
+        const unique: JlExcelRow[] = [];
+        const seen = new Set<string>();
+        for (const item of extracted) {
+          if (!seen.has(item.order_number)) {
+            seen.add(item.order_number);
+            unique.push(item);
+          }
+        }
+
+        if (unique.length === 0) {
+          alert('Tidak ditemukan data Nomor JL dan Nomor Pesanan yang cocok di dalam file Excel ini. Pastikan file berisi nomor bukti JL dan nomor pesanan.');
+          setIsParsingJl(false);
+          return;
+        }
+
+        const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
+        const response = await fetch('/cut-off-orders/import-jl/preview', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            'X-CSRF-TOKEN': csrfToken,
+          },
+          body: JSON.stringify({ items: unique }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Gagal memuat preview dari server: HTTP ${response.status}`);
+        }
+
+        const data: JlPreviewResult = await response.json();
+        setJlPreviewData(data);
+      } catch (err: any) {
+        alert(err.message || 'Gagal memproses file Excel.');
+      } finally {
+        setIsParsingJl(false);
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+  }
+
+  function handleSubmitImportJl() {
+    if (!jlPreviewData || jlPreviewData.matched.length === 0) return;
+    setIsSubmittingJl(true);
+
+    router.post(
+      '/cut-off-orders/import-jl',
+      {
+        items: jlPreviewData.matched.map((m) => ({
+          order_number: m.order_number,
+          jl_number: m.new_jl,
+        })),
+      },
+      {
+        preserveScroll: true,
+        onSuccess: () => {
+          setIsImportJlModalOpen(false);
+          setJlPreviewData(null);
+          setJlImportFile(null);
+          setIsSubmittingJl(false);
+        },
+        onError: () => {
+          setIsSubmittingJl(false);
+        },
+      }
+    );
+  }
+
+  // Baris preview JL setelah filter tab dan pencarian
+  const filteredJlRows = useMemo(() => {
+    if (!jlPreviewData) return [];
+    let list: (JlMatchedItem | JlUnmatchedItem)[] = [];
+    if (jlFilterTab === 'all') {
+      list = [...jlPreviewData.matched, ...jlPreviewData.unmatched];
+    } else if (jlFilterTab === 'matched') {
+      list = jlPreviewData.matched;
+    } else if (jlFilterTab === 'unmatched') {
+      list = jlPreviewData.unmatched;
+    }
+
+    if (jlSearchQuery.trim()) {
+      const q = jlSearchQuery.trim().toLowerCase();
+      list = list.filter((item) => {
+        const orderNo = item.order_number.toLowerCase();
+        const jl = ('new_jl' in item ? item.new_jl : item.jl_number).toLowerCase();
+        return orderNo.includes(q) || jl.includes(q);
+      });
+    }
+
+    return list;
+  }, [jlPreviewData, jlFilterTab, jlSearchQuery]);
+
   return (
     <AppLayout>
       <Head title="Pesanan Cut Off 2026" />
@@ -402,6 +625,23 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                   </svg>
                   Upload Excel (.xlsx)
+                </button>
+
+                {/* Import No. JL (.xlsx / .xls) */}
+                <button
+                  onClick={() => {
+                    setIsImportJlModalOpen(true);
+                    setJlPreviewData(null);
+                    setJlImportFile(null);
+                    setJlSearchQuery('');
+                  }}
+                  className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap"
+                  title="Import Nomor JL dari Excel (Kartu Piutang Jaya Mandiri / format internal)"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-blue-600">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                  </svg>
+                  Import No. JL
                 </button>
 
                 {/* Tambah Pesanan Manual */}
@@ -1446,6 +1686,301 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                 </div>
               )}
             </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal 3: Import & Deteksi Nomor JL dari Excel */}
+      {isImportJlModalOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] overflow-y-auto bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6"
+          onClick={() => {
+            if (!isSubmittingJl && !isParsingJl) {
+              setIsImportJlModalOpen(false);
+              setJlPreviewData(null);
+              setJlImportFile(null);
+            }
+          }}
+        >
+          <div
+            className="relative w-full max-w-4xl bg-white rounded-2xl border border-slate-200 shadow-2xl p-6 text-left transform transition-all animate-scale-up space-y-5 my-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-blue-100 text-blue-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                    </svg>
+                  </span>
+                  <h3 className="font-bold text-slate-900 text-base">Import & Deteksi Nomor JL dari Excel</h3>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Unggah file Excel (seperti Kartu Piutang Jaya Mandiri / dendy asoy.xls). Sistem akan otomatis mendeteksi Nomor Pesanan dan mencocokkan Nomor JL yang sesuai.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isSubmittingJl && !isParsingJl) {
+                    setIsImportJlModalOpen(false);
+                    setJlPreviewData(null);
+                    setJlImportFile(null);
+                  }
+                }}
+                disabled={isSubmittingJl || isParsingJl}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 disabled:opacity-50"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Step 1: Upload File Area (jika belum ada preview) */}
+            {!jlPreviewData && (
+              <div className="py-6">
+                {isParsingJl ? (
+                  <div className="flex flex-col items-center justify-center py-12 space-y-3">
+                    <div className="w-10 h-10 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    <p className="font-semibold text-slate-800 text-sm">Sedang Menganalisis File Excel...</p>
+                    <p className="text-xs text-slate-500">Mendeteksi pasangan Nomor JL dan mencocokkan dengan pesanan di database ERP</p>
+                  </div>
+                ) : (
+                  <label className="border-2 border-dashed border-slate-300 hover:border-blue-500 hover:bg-blue-50/30 rounded-2xl p-10 flex flex-col items-center justify-center cursor-pointer transition-all block text-center">
+                    <input
+                      type="file"
+                      accept=".xlsx, .xls, .csv"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) parseJlFile(f);
+                      }}
+                      className="hidden"
+                    />
+                    <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 mb-3 mx-auto">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-7 h-7">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                      </svg>
+                    </div>
+                    <p className="text-sm font-bold text-slate-800">
+                      Klik di sini atau pilih file Excel (.xls / .xlsx)
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                      Mendukung file <strong>.xls / .xlsx</strong> dari Kartu Piutang (seperti <em>dendy asoy.xls</em>) maupun spreadsheet kustom (No. Pesanan & No. JL).
+                    </p>
+                    <span className="inline-flex items-center gap-1.5 mt-4 px-3.5 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold shadow-xs hover:bg-blue-700 transition-colors">
+                      Pilih File Excel
+                    </span>
+                  </label>
+                )}
+              </div>
+            )}
+
+            {/* Step 2: Preview Hasil Deteksi & Pencocokan */}
+            {jlPreviewData && (
+              <div className="space-y-4">
+                {/* File info bar */}
+                <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-semibold text-slate-800 truncate">
+                      File: {jlImportFile?.name || 'Excel Terpilih'}
+                    </span>
+                    <span className="text-slate-400">•</span>
+                    <span className="text-slate-600">
+                      {jlPreviewData.total_excel} data terdeteksi
+                    </span>
+                  </div>
+                  <label className="text-blue-600 hover:text-blue-800 font-semibold cursor-pointer underline shrink-0">
+                    Ganti File
+                    <input
+                      type="file"
+                      accept=".xlsx, .xls, .csv"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) parseJlFile(f);
+                      }}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                {/* 3 Metric Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total di Excel</span>
+                    <p className="text-xl font-bold text-slate-900 mt-0.5">{jlPreviewData.total_excel}</p>
+                    <span className="text-[10px] text-slate-500">Baris Nomor JL terdeteksi</span>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200">
+                    <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">Cocok di ERP (Siap Update)</span>
+                    <p className="text-xl font-bold text-emerald-800 mt-0.5">{jlPreviewData.total_matched}</p>
+                    <span className="text-[10px] text-emerald-700 font-medium">
+                      {jlPreviewData.total_changed} pesanan akan diperbarui
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200">
+                    <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">Tidak Ditemukan</span>
+                    <p className="text-xl font-bold text-amber-800 mt-0.5">{jlPreviewData.total_unmatched}</p>
+                    <span className="text-[10px] text-amber-700">Dilewati (belum ada di ERP)</span>
+                  </div>
+                </div>
+
+                {/* Filter Tabs & Search */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-1">
+                  <div className="inline-flex rounded-xl bg-slate-100 p-1 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setJlFilterTab('all')}
+                      className={`px-3 py-1.5 rounded-lg font-semibold transition-colors ${
+                        jlFilterTab === 'all' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Semua ({jlPreviewData.total_excel})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setJlFilterTab('matched')}
+                      className={`px-3 py-1.5 rounded-lg font-semibold transition-colors ${
+                        jlFilterTab === 'matched' ? 'bg-white text-emerald-800 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Cocok ({jlPreviewData.total_matched})
+                    </button>
+                    {jlPreviewData.total_unmatched > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setJlFilterTab('unmatched')}
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition-colors ${
+                          jlFilterTab === 'unmatched' ? 'bg-white text-amber-800 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Tidak Ada ({jlPreviewData.total_unmatched})
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Search filter in preview */}
+                  <input
+                    type="text"
+                    value={jlSearchQuery}
+                    onChange={(e) => setJlSearchQuery(e.target.value)}
+                    placeholder="Cari nomor pesanan / JL..."
+                    className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-[#0B132B]"
+                  />
+                </div>
+
+                {/* Scrollable Table Preview */}
+                <div className="border border-slate-200 rounded-xl overflow-hidden max-h-[320px] overflow-y-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead className="sticky top-0 bg-slate-900 text-white font-semibold uppercase tracking-wider text-[10px] z-10">
+                      <tr>
+                        <th className="py-2.5 px-3">No. Pesanan</th>
+                        <th className="py-2.5 px-3">Toko</th>
+                        <th className="py-2.5 px-3">No. JL Saat Ini (Lama)</th>
+                        <th className="py-2.5 px-3">No. JL Baru (Excel)</th>
+                        <th className="py-2.5 px-3 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredJlRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-8 text-center text-slate-400 text-xs">
+                            Tidak ada data yang sesuai filter pencarian
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredJlRows.map((item, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
+                              {item.order_number}
+                              {'buyer_username' in item && item.buyer_username && (
+                                <span className="block text-[10px] font-sans font-normal text-slate-500">
+                                  @{item.buyer_username}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              {'channel' in item ? (
+                                <span className="px-2 py-0.5 rounded bg-slate-900 text-white font-bold text-[10px]">
+                                  {item.channel}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-600">
+                              {'current_jl' in item && item.current_jl ? item.current_jl : <span className="text-slate-400">— Kosong</span>}
+                            </td>
+                            <td className="py-2.5 px-3 font-mono font-bold text-blue-700">
+                              {'new_jl' in item ? item.new_jl : item.jl_number}
+                            </td>
+                            <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                              {'is_changed' in item ? (
+                                item.is_changed ? (
+                                  <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                    Siap Update
+                                  </span>
+                                ) : (
+                                  <span className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
+                                    Sudah Sama
+                                  </span>
+                                )
+                              ) : (
+                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                                  Tidak di ERP
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Footer Buttons */}
+                <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsImportJlModalOpen(false);
+                      setJlPreviewData(null);
+                      setJlImportFile(null);
+                    }}
+                    disabled={isSubmittingJl}
+                    className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 font-semibold text-xs disabled:opacity-50"
+                  >
+                    Batal
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSubmitImportJl}
+                    disabled={isSubmittingJl || jlPreviewData.total_matched === 0}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-xs disabled:opacity-50 cursor-pointer"
+                  >
+                    {isSubmittingJl ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Menyimpan...
+                      </>
+                    ) : (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                        </svg>
+                        Terapkan & Simpan No. JL ({jlPreviewData.total_matched} Pesanan)
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>,
         document.body
