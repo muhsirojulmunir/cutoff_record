@@ -1195,11 +1195,11 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                         </td>
 
                         {/* Status Pesanan */}
-                        <td className="py-3.5 px-4 whitespace-nowrap">
+                        <td className="py-3.5 px-4 max-w-[210px] align-top">
                           {order.order_status ? (
                             <div>
                               <span
-                                className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                                className={`inline-block whitespace-nowrap px-2.5 py-1 rounded-full text-[10px] font-bold ${
                                   isRj
                                     ? 'bg-amber-100 text-amber-800 border border-amber-200'
                                     : order.order_status.toLowerCase().includes('selesai')
@@ -1218,7 +1218,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
 
                               {/* Label Keterangan Metode Pembayaran */}
                               {isOrderCod ? (
-                                <span className="block mt-1 text-[10px] font-bold text-amber-700 tracking-tight">
+                                <span className="block mt-1 text-[10px] font-bold text-amber-700 tracking-tight whitespace-nowrap">
                                   💵 Bayar di Tempat (COD)
                                 </span>
                               ) : order.payment_method ? (
@@ -1228,9 +1228,12 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                               ) : null}
 
                               {(order.cancel_reason || order.cancel_by) && (
-                                <div className="mt-1 text-[10px] text-rose-600 leading-tight max-w-[200px]" title={order.cancel_reason || ''}>
+                                <div
+                                  className="mt-1.5 text-[10px] text-rose-600 leading-snug whitespace-normal break-words max-w-[190px]"
+                                  title={order.cancel_reason || ''}
+                                >
                                   {order.cancel_by && <span className="font-bold text-rose-700">[{order.cancel_by}] </span>}
-                                  <span>{order.cancel_reason || 'Pesanan dibatalkan'}</span>
+                                  <span className="whitespace-normal break-words">{order.cancel_reason || 'Pesanan dibatalkan'}</span>
                                 </div>
                               )}
                             </div>
