@@ -410,19 +410,6 @@ class CutOffOrderController extends Controller
     }
 
     /**
-     * Hitung ulang Est. Bersih untuk semua pesanan (Rumus: (Subtotal - Voucher Penjual) * 79%).
-     */
-    public function recalculateAll(Request $request): RedirectResponse
-    {
-        try {
-            $result = app(\App\Services\ShopeeSyncService::class)->recalculateAllOrders();
-            return back()->with('success', $result['message']);
-        } catch (\Throwable $e) {
-            return back()->with('error', 'Gagal menghitung ulang pesanan: ' . $e->getMessage());
-        }
-    }
-
-    /**
      * Kosongkan seluruh data tabel Cut Off Orders (Super Admin only).
      */
     public function truncate(Request $request): RedirectResponse
