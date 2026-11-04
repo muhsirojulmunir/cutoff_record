@@ -836,8 +836,12 @@ class ShopeeSyncService
             $sellerVoucher = 0.0;
         }
 
-        // Fallback jika subtotalOrder masih 0
-        if ($subtotalOrder <= 0) {
+        // Fallback / Koreksi dengan total_amount aktual dari Shopee
+        $rawTotal = (float) ($order['total_amount'] ?? 0);
+        if ($rawTotal > 0 && ($subtotalOrder <= 0 || $rawTotal < $subtotalOrder)) {
+            // Gunakan nilai transaksi aktual dari Shopee Seller Centre jika model_original_price katalog lebih tinggi
+            $subtotalOrder = $rawTotal;
+        } elseif ($subtotalOrder <= 0) {
             $cogs     = (float) ($escrowIncome['cost_of_goods_sold'] ?? 0);
             $origCogs = (float) ($escrowIncome['original_cost_of_goods_sold'] ?? 0);
             $sellerDisc = (float) ($escrowIncome['seller_discount'] ?? 0);
@@ -846,8 +850,7 @@ class ShopeeSyncService
                 $subtotalOrder = max(0, $origCogs - $sellerDisc);
             } elseif ($cogs > 0) {
                 $subtotalOrder = $cogs;
-            } else {
-                $rawTotal = (float) ($order['total_amount'] ?? 0);
+            } elseif ($rawTotal > 0) {
                 $subtotalOrder = $rawTotal;
             }
         }
