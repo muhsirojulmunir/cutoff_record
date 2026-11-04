@@ -410,6 +410,127 @@ class CutOffOrderController extends Controller
     }
 
     /**
+     * Export data pesanan hari ini / tanggal tertentu dalam format terstruktur
+     * khusus untuk Google Sheets (CUT OFF 2026).
+     * Memuat 11 kolom: TGL, NO, TOKO, NO.PESANAN, NAMA BARANG, SKU UTAMA, QTY, PAKET/RESI, USERPEMBELI, EST BERSIH, PENGIRIMAN.
+     * Mengelompokkan SH duluan, 1 baris kosong jeda, lalu TT.
+     */
+    public function exportForSheet(Request $request): JsonResponse
+    {
+        $token = $request->query('token') ?? $request->header('X-Sync-Token');
+        $expectedToken = env('CRON_SYNC_TOKEN', 'recordsh_cutoff_sync_2026');
+        if ($token && $token !== $expectedToken) {
+            return response()->json(['status' => 'error', 'message' => 'Token keamanan tidak valid.'], 403);
+        }
+
+        $dateInput = $request->query('date', now('Asia/Jakarta')->toDateString());
+        $sortOrder = strtolower($request->query('sort', 'asc')) === 'desc' ? 'desc' : 'asc';
+
+        // Ambil semua pesanan pada tanggal tersebut
+        $orders = CutOffOrder::query()
+            ->whereDate('order_date', $dateInput)
+            ->whereNull('deleted_at')
+            ->orderBy('order_date', $sortOrder)
+            ->orderBy('id', $sortOrder)
+            ->get();
+
+        $shOrders = $orders->filter(fn ($o) => strtoupper($o->channel) === 'SH' || str_contains(strtoupper($o->channel), 'SH'));
+        $ttOrders = $orders->filter(fn ($o) => strtoupper($o->channel) === 'TT' || str_contains(strtoupper($o->channel), 'TT'));
+        $otherOrders = $orders->filter(fn ($o) => ! $shOrders->contains('id', $o->id) && ! $ttOrders->contains('id', $o->id));
+
+        $formattedDate = \Carbon\Carbon::parse($dateInput)->format('d-m-y');
+        $rows = [];
+        $no = 1;
+
+        // 1. Blok Pesanan Shopee (SH)
+        foreach ($shOrders as $order) {
+            $rows[] = [
+                'tgl'          => $formattedDate,
+                'no'           => $no++,
+                'toko'         => 'SH',
+                'no_pesanan'   => (string) $order->order_number,
+                'nama_barang'  => (string) ($order->product_name ?? ''),
+                'sku_utama'    => (string) ($order->sku_utama ?? ''),
+                'qty'          => (int) ($order->qty ?? 1),
+                'paket_resi'   => (string) ($order->package_count ?: '1'),
+                'userpembeli'  => (string) ($order->buyer_username ?? ''),
+                'est_bersih'   => (float) ($order->est_net_income ?? 0),
+                'pengiriman'   => (string) ($order->shipping_courier ?? ''),
+                'is_separator' => false,
+            ];
+        }
+
+        // 2. Baris Jeda Kosong antara SH dan TT (jika ada pesanan TT atau SH)
+        if ($shOrders->isNotEmpty() && ($ttOrders->isNotEmpty() || $otherOrders->isNotEmpty())) {
+            $rows[] = [
+                'tgl'          => '',
+                'no'           => '',
+                'toko'         => '',
+                'no_pesanan'   => '',
+                'nama_barang'  => '',
+                'sku_utama'    => '',
+                'qty'          => '',
+                'paket_resi'   => '',
+                'userpembeli'  => '',
+                'est_bersih'   => '',
+                'pengiriman'   => '',
+                'is_separator' => true,
+            ];
+        }
+
+        // 3. Blok Pesanan TikTok (TT)
+        foreach ($ttOrders as $order) {
+            $rows[] = [
+                'tgl'          => $formattedDate,
+                'no'           => $no++,
+                'toko'         => 'TT',
+                'no_pesanan'   => (string) $order->order_number,
+                'nama_barang'  => (string) ($order->product_name ?? ''),
+                'sku_utama'    => (string) ($order->sku_utama ?? ''),
+                'qty'          => (int) ($order->qty ?? 1),
+                'paket_resi'   => (string) ($order->package_count ?: '1'),
+                'userpembeli'  => (string) ($order->buyer_username ?? ''),
+                'est_bersih'   => (float) ($order->est_net_income ?? 0),
+                'pengiriman'   => (string) ($order->shipping_courier ?? ''),
+                'is_separator' => false,
+            ];
+        }
+
+        // 4. Saluran Lain jika ada (Lazada, Manual, dll)
+        foreach ($otherOrders as $order) {
+            $rows[] = [
+                'tgl'          => $formattedDate,
+                'no'           => $no++,
+                'toko'         => (string) $order->channel,
+                'no_pesanan'   => (string) $order->order_number,
+                'nama_barang'  => (string) ($order->product_name ?? ''),
+                'sku_utama'    => (string) ($order->sku_utama ?? ''),
+                'qty'          => (int) ($order->qty ?? 1),
+                'paket_resi'   => (string) ($order->package_count ?: '1'),
+                'userpembeli'  => (string) ($order->buyer_username ?? ''),
+                'est_bersih'   => (float) ($order->est_net_income ?? 0),
+                'pengiriman'   => (string) ($order->shipping_courier ?? ''),
+                'is_separator' => false,
+            ];
+        }
+
+        return response()->json([
+            'status'         => 'success',
+            'date'           => $dateInput,
+            'date_formatted' => $formattedDate,
+            'total_orders'   => $orders->count(),
+            'total_sh'       => $shOrders->count(),
+            'total_tt'       => $ttOrders->count(),
+            'columns'        => [
+                'TGL', 'NO', 'TOKO', 'NO.PESANAN', 'NAMA BARANG',
+                'SKU UTAMA', 'QTY', 'PAKET/RESI', 'USERPEMBELI',
+                'EST BERSIH', 'PENGIRIMAN'
+            ],
+            'rows'           => $rows,
+        ]);
+    }
+
+    /**
      * Kosongkan seluruh data tabel Cut Off Orders (Super Admin only).
      */
     public function truncate(Request $request): RedirectResponse
