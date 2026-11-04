@@ -18,11 +18,45 @@ class ShopeeProductController extends Controller
      */
     public function index(Request $request): \Inertia\Response
     {
+        $this->syncService->ensureProductSchema();
+
         $search      = trim((string) $request->input('search', ''));
         $stockStatus = (string) $request->input('stock_status', 'all');
         $sort        = (string) $request->input('sort', 'stock_desc');
 
-        $account = ShopeeAccount::where('status', 'active')->first();
+        $account = ShopeeAccount::where('status', 'active')->first() ?? ShopeeAccount::first();
+
+        // Cek jika tabel shopee_products belum ada atau gagal dibuat
+        if (! \Illuminate\Support\Facades\Schema::hasTable('shopee_products')) {
+            return Inertia::render('Shopee/Products', [
+                'products' => [
+                    'data'         => [],
+                    'current_page' => 1,
+                    'last_page'    => 1,
+                    'per_page'     => 50,
+                    'total'        => 0,
+                    'links'        => [],
+                ],
+                'filters'  => [
+                    'search'       => $search,
+                    'stock_status' => $stockStatus,
+                    'sort'         => $sort,
+                ],
+                'summary'  => [
+                    'total_skus'        => 0,
+                    'total_stock'       => 0,
+                    'in_stock_skus'     => 0,
+                    'out_of_stock_skus' => 0,
+                    'last_synced_at'    => null,
+                ],
+                'account'  => $account ? [
+                    'id'           => $account->id,
+                    'account_name' => $account->account_name,
+                    'shop_id'      => $account->shop_id,
+                    'is_connected' => $account->isConnected() && ! empty($account->access_token),
+                ] : null,
+            ]);
+        }
 
         $query = ShopeeProduct::query();
         if ($account) {
@@ -205,3 +239,4 @@ class ShopeeProductController extends Controller
         ]);
     }
 }
+

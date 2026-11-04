@@ -14,9 +14,9 @@ return new class extends Migration
         if (! Schema::hasTable('shopee_products')) {
             Schema::create('shopee_products', function (Blueprint $table) {
                 $table->id();
-                $table->foreignId('shopee_account_id')->nullable()->constrained('shopee_accounts')->nullOnDelete();
+                $table->unsignedBigInteger('shopee_account_id')->nullable()->index();
                 $table->unsignedBigInteger('item_id')->index();
-                $table->unsignedBigInteger('model_id')->nullable()->index();
+                $table->unsignedBigInteger('model_id')->default(0)->index();
                 $table->string('item_name', 255);
                 $table->string('model_name', 255)->nullable();
                 $table->string('sku', 100)->nullable()->index();

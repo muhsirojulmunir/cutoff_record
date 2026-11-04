@@ -465,3 +465,4 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
     </AppLayout>
   );
 }
+

@@ -987,8 +987,43 @@ class ShopeeSyncService
                 ->update([
                     'order_date' => DB::raw("DATE_ADD(order_date, INTERVAL 7 HOUR)")
                 ]);
+            // Panggil juga pembuatan tabel produk Shopee secara otomatis jika belum ada
+            $this->ensureProductSchema();
         } catch (\Throwable $e) {
             Log::warning('ShopeeSyncService ensureSchema notice: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Memastikan tabel shopee_products sudah dibuat di database.
+     * Mencegah crash Error 500 jika user belum sempat menjalankan artisan migrate di server/cPanel.
+     */
+    public function ensureProductSchema(): void
+    {
+        try {
+            if (! Schema::hasTable('shopee_products')) {
+                Schema::create('shopee_products', function (Blueprint $table) {
+                    $table->id();
+                    $table->unsignedBigInteger('shopee_account_id')->nullable()->index();
+                    $table->unsignedBigInteger('item_id')->index();
+                    $table->unsignedBigInteger('model_id')->default(0)->index();
+                    $table->string('item_name', 255);
+                    $table->string('model_name', 255)->nullable();
+                    $table->string('sku', 100)->nullable()->index();
+                    $table->integer('stock')->default(0)->index();
+                    $table->integer('reserved_stock')->default(0);
+                    $table->decimal('price', 15, 2)->default(0);
+                    $table->string('item_status', 50)->default('NORMAL');
+                    $table->boolean('has_model')->default(false);
+                    $table->dateTime('last_synced_at')->nullable()->index();
+                    $table->json('raw_data')->nullable();
+                    $table->timestamps();
+
+                    $table->unique(['shopee_account_id', 'item_id', 'model_id'], 'shopee_prod_unique_variant');
+                });
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ShopeeSyncService ensureProductSchema notice: ' . $e->getMessage());
         }
     }
 
@@ -1479,7 +1514,7 @@ class ShopeeSyncService
                         [
                             'shopee_account_id' => $account->id,
                             'item_id'           => $itemId,
-                            'model_id'          => null,
+                            'model_id'          => 0,
                         ],
                         [
                             'item_name'         => $itemName,
