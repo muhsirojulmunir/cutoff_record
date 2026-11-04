@@ -14,3 +14,4 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::post('/cutoff/sync-sheet', [CutOffOrderController::class, 'syncFromSheet']);
+Route::match(['get', 'post'], '/cutoff/export-sheet', [CutOffOrderController::class, 'exportForSheet']);
