@@ -42,3 +42,4 @@ class ShopeeProduct extends Model
         return $this->belongsTo(ShopeeAccount::class, 'shopee_account_id');
     }
 }
+
