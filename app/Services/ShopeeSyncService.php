@@ -357,7 +357,7 @@ class ShopeeSyncService
         $updatedCount = 0;
 
         \Illuminate\Support\Facades\DB::transaction(function () use (
-            $detailedOrders, $existingOrders, $escrowMap, $hasCancelBy, $hasCancelReason,
+            $account, $detailedOrders, $existingOrders, &$escrowMap, $hasCancelBy, $hasCancelReason,
             &$createdCount, &$updatedCount
         ) {
             foreach ($detailedOrders as $order) {
