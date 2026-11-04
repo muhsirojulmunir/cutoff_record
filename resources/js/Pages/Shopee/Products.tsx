@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Head, router, usePage } from '@inertiajs/react';
+import * as XLSX from 'xlsx';
 import AppLayout from '../../Layouts/AppLayout';
 import { PageProps } from '../../Types';
 
@@ -57,6 +59,30 @@ interface Props {
   } | null;
 }
 
+interface AuditItem {
+  id: number | null;
+  item_id: number | null;
+  model_id: number | null;
+  sku: string;
+  item_name: string;
+  model_name: string | null;
+  warehouse_stock: number;
+  shopee_stock: number;
+  reserved_stock: number;
+  diff: number;
+  status: 'CRITICAL' | 'LOW_STOCK' | 'DISCREPANCY' | 'MATCHED' | 'UNMATCHED';
+  is_shopee_found: boolean;
+}
+
+interface AuditSummary {
+  total_rows: number;
+  critical_count: number;
+  low_stock_count: number;
+  discrepancy_count: number;
+  matched_count: number;
+  unmatched_count: number;
+}
+
 export default function ShopeeProductsIndex({ products, filters, summary, account }: Props) {
   const { flash } = usePage<PageProps>().props;
 
@@ -64,6 +90,20 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
   const [stockStatus, setStockStatus] = useState(filters.stock_status ?? 'all');
   const [sort, setSort] = useState(filters.sort ?? 'stock_desc');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [zeroingOutId, setZeroingOutId] = useState<number | null>(null);
+
+  // States untuk Modal Import Stok Internal
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importFileName, setImportFileName] = useState<string | null>(null);
+  const [isParsing, setIsParsing] = useState(false);
+  const [isComparing, setIsComparing] = useState(false);
+  const [auditSummary, setAuditSummary] = useState<AuditSummary | null>(null);
+  const [auditItems, setAuditItems] = useState<AuditItem[] | null>(null);
+  const [auditFilter, setAuditFilter] = useState<'all' | 'CRITICAL' | 'LOW_STOCK' | 'DISCREPANCY' | 'MATCHED' | 'UNMATCHED'>('all');
+  const [auditSearch, setAuditSearch] = useState('');
+  const [isZeroingOutAll, setIsZeroingOutAll] = useState(false);
+  const [copiedToast, setCopiedToast] = useState(false);
+  const [zeroOutSuccessMessage, setZeroOutSuccessMessage] = useState<string | null>(null);
 
   function handleFilter(newSearch = search, newStatus = stockStatus, newSort = sort) {
     router.get(
@@ -119,7 +159,306 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
     window.location.href = `/shopee-products/export?${params.toString()}`;
   }
 
+  // Parse Excel file dan bandingkan langsung via API
+  async function handleFileUpload(file: File) {
+    setIsParsing(true);
+    setImportFileName(file.name);
+    setZeroOutSuccessMessage(null);
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const buffer = e.target?.result;
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        if (rows.length <= 1) {
+          alert('File Excel kosong atau tidak memiliki baris data.');
+          setIsParsing(false);
+          return;
+        }
+
+        // Auto-detect header row
+        let skuColIdx = -1;
+        let stockColIdx = -1;
+        let headerRowIdx = -1;
+
+        for (let r = 0; r < Math.min(25, rows.length); r++) {
+          const row = rows[r];
+          if (!Array.isArray(row)) continue;
+
+          for (let c = 0; c < row.length; c++) {
+            const val = String(row[c] || '').toLowerCase().trim();
+
+            if (skuColIdx === -1 && (
+              val === 'sku' || val === 'kode' || val === 'kode barang' || val === 'kode_barang' ||
+              val === 'barcode' || val === 'model_sku' || val === 'item_sku' || val === 'article' || val === 'art'
+            )) {
+              skuColIdx = c;
+              headerRowIdx = r;
+            }
+
+            if (stockColIdx === -1 && (
+              val === 'stok' || val === 'stock' || val === 'qty' || val === 'jumlah' ||
+              val === 'kuantitas' || val === 'fisik' || val === 'stok fisik' || val === 'stok_fisik' ||
+              val === 'stok akhir' || val === 'stok_akhir' || val === 'sisa' || val === 'total stock' || val === 'saldo'
+            )) {
+              stockColIdx = c;
+              headerRowIdx = r;
+            }
+          }
+
+          if (skuColIdx !== -1 && stockColIdx !== -1) {
+            break;
+          }
+        }
+
+        // Fallback jika tidak terdeteksi nama kolom
+        if (skuColIdx === -1) skuColIdx = 0;
+        if (stockColIdx === -1) stockColIdx = 1;
+        if (headerRowIdx === -1) headerRowIdx = 0;
+
+        const extractedItems: { sku: string; warehouse_stock: number }[] = [];
+        for (let r = headerRowIdx + 1; r < rows.length; r++) {
+          const row = rows[r];
+          if (!row || !Array.isArray(row)) continue;
+          const rawSku = String(row[skuColIdx] || '').trim();
+          if (!rawSku || rawSku.toLowerCase() === 'total' || rawSku.toLowerCase() === 'grand total') continue;
+
+          const rawQty = row[stockColIdx];
+          const qtyNum = typeof rawQty === 'number'
+            ? rawQty
+            : parseInt(String(rawQty || '0').replace(/[^0-9-]/g, ''), 10) || 0;
+
+          extractedItems.push({
+            sku: rawSku,
+            warehouse_stock: Math.max(0, qtyNum),
+          });
+        }
+
+        if (extractedItems.length === 0) {
+          alert('Tidak ada baris SKU dan kuantitas stok yang berhasil dibaca dari file Excel ini.');
+          setIsParsing(false);
+          return;
+        }
+
+        // Kirim ke backend untuk audit perbandingan dengan katalog Shopee
+        setIsComparing(true);
+        const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
+        const resp = await fetch('/shopee-products/compare', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': csrfToken,
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({ items: extractedItems }),
+        });
+
+        const resJson = await resp.json();
+        if (resJson.status === 'success') {
+          setAuditSummary(resJson.summary);
+          setAuditItems(resJson.items);
+          if (resJson.summary.critical_count > 0) {
+            setAuditFilter('CRITICAL');
+          } else if (resJson.summary.discrepancy_count > 0) {
+            setAuditFilter('DISCREPANCY');
+          } else {
+            setAuditFilter('all');
+          }
+        } else {
+          alert(resJson.message || 'Gagal membandingkan stok dengan Shopee.');
+        }
+      } catch (err: any) {
+        console.error(err);
+        alert('Gagal memproses file Excel: ' + (err.message || 'Format tidak valid'));
+      } finally {
+        setIsParsing(false);
+        setIsComparing(false);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  // Kosongkan SEMUA SKU Kritis (Gudang = 0 & Shopee > 0)
+  async function handleZeroOutAllCritical() {
+    if (!auditItems) return;
+    const criticalItems = auditItems.filter(i => i.status === 'CRITICAL' && i.id && i.shopee_stock > 0);
+    if (criticalItems.length === 0) {
+      alert('Tidak ada produk berstatus Kritis dengan stok Shopee > 0.');
+      return;
+    }
+
+    if (!confirm(
+      `Konfirmasi: Kosongkan stok ${criticalItems.length} produk KRITIS di Shopee sekarang?\n\n` +
+      `Stok produk ini di gudang fisik Anda sudah HABIS (0). Sistem akan langsung mengatur stok Shopee menjadi 0 via API resmi agar tidak terjadi pesanan yang tidak dapat dipenuhi (overselling).`
+    )) {
+      return;
+    }
+
+    setIsZeroingOutAll(true);
+    setZeroOutSuccessMessage(null);
+
+    try {
+      const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
+      const productIds = criticalItems.map(i => i.id!);
+      const resp = await fetch('/shopee-products/zero-out', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': csrfToken,
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({ product_ids: productIds }),
+      });
+
+      const resJson = await resp.json();
+      if (resJson.status === 'success') {
+        setZeroOutSuccessMessage(resJson.message || `Berhasil mengosongkan stok ${resJson.updated_count} produk di Shopee!`);
+
+        // Update status audit item di modal
+        setAuditItems(prev => prev ? prev.map(item => {
+          if (productIds.includes(item.id!)) {
+            return {
+              ...item,
+              shopee_stock: 0,
+              diff: 0,
+              status: 'MATCHED',
+            };
+          }
+          return item;
+        }) : null);
+
+        if (auditSummary) {
+          setAuditSummary({
+            ...auditSummary,
+            critical_count: 0,
+            matched_count: auditSummary.matched_count + resJson.updated_count,
+          });
+        }
+
+        router.reload({ only: ['products', 'summary'] });
+      } else {
+        alert(resJson.message || 'Gagal mengosongkan stok di Shopee.');
+      }
+    } catch (err: any) {
+      alert('Terjadi kesalahan: ' + err.message);
+    } finally {
+      setIsZeroingOutAll(false);
+    }
+  }
+
+  // Kosongkan 1 produk tertentu (baik dari modal maupun dari tabel utama)
+  async function handleZeroOutSingle(id: number, sku: string) {
+    if (!confirm(`Konfirmasi: Atur stok untuk SKU "${sku}" di Shopee menjadi 0 sekarang?`)) {
+      return;
+    }
+
+    setZeroingOutId(id);
+    try {
+      const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
+      const resp = await fetch('/shopee-products/zero-out', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': csrfToken,
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({ product_ids: [id] }),
+      });
+
+      const resJson = await resp.json();
+      if (resJson.status === 'success') {
+        // Update di modal jika terbuka
+        setAuditItems(prev => prev ? prev.map(item => {
+          if (item.id === id) {
+            const newStatus = item.warehouse_stock <= 0 ? 'MATCHED' : (item.warehouse_stock <= 3 ? 'LOW_STOCK' : 'DISCREPANCY');
+            return {
+              ...item,
+              shopee_stock: 0,
+              diff: item.warehouse_stock,
+              status: newStatus,
+            };
+          }
+          return item;
+        }) : null);
+
+        router.reload({ only: ['products', 'summary'] });
+      } else {
+        alert(resJson.message || 'Gagal mengosongkan stok di Shopee.');
+      }
+    } catch (err: any) {
+      alert('Terjadi kesalahan: ' + err.message);
+    } finally {
+      setZeroingOutId(null);
+    }
+  }
+
+  // Salin semua SKU Kritis ke clipboard
+  function handleCopyCriticalSkus() {
+    if (!auditItems) return;
+    const critical = auditItems.filter(i => i.status === 'CRITICAL');
+    if (critical.length === 0) {
+      alert('Tidak ada SKU Kritis untuk disalin.');
+      return;
+    }
+
+    const text = critical.map(i => i.sku).join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedToast(true);
+      setTimeout(() => setCopiedToast(false), 2500);
+    });
+  }
+
+  // Download Laporan Audit Selisih Stok ke Excel (.xlsx)
+  function handleDownloadAuditReport() {
+    if (!auditItems || auditItems.length === 0) return;
+
+    const exportData = auditItems.map((item, idx) => ({
+      'No': idx + 1,
+      'SKU': item.sku,
+      'Nama Produk Shopee': item.item_name,
+      'Variasi': item.model_name || 'Single',
+      'Stok Fisik Gudang': item.warehouse_stock,
+      'Stok Tersedia Shopee': item.shopee_stock,
+      'Stok Terkunci Shopee': item.reserved_stock,
+      'Selisih (Gudang - Shopee)': item.diff,
+      'Status Audit': item.status === 'CRITICAL' ? '🔴 KRITIS (OOS di Gudang)' :
+                      item.status === 'LOW_STOCK' ? '🟡 Stok Menipis' :
+                      item.status === 'DISCREPANCY' ? '🔵 Selisih Stok' :
+                      item.status === 'UNMATCHED' ? '⚪ Tidak di Shopee' : '🟢 Sesuai',
+      'Rekomendasi Tindakan': item.status === 'CRITICAL' ? 'Wajib Kosongkan di Shopee Segera' :
+                              item.status === 'LOW_STOCK' ? 'Segera Restock Gudang' :
+                              item.status === 'DISCREPANCY' ? 'Sinkronkan Jumlah Stok' :
+                              item.status === 'UNMATCHED' ? 'Cek Apakah SKU Terdaftar' : 'Aman',
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Hasil Audit Stok');
+    const nowStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `Laporan_Audit_Stok_Shopee_${nowStr}.xlsx`);
+  }
+
   const isConnected = Boolean(account?.is_connected);
+
+  // Filter audit items
+  const filteredAuditItems = (auditItems || []).filter(item => {
+    if (auditFilter !== 'all' && item.status !== auditFilter) {
+      return false;
+    }
+    if (auditSearch.trim()) {
+      const q = auditSearch.toLowerCase();
+      return (
+        item.sku.toLowerCase().includes(q) ||
+        item.item_name.toLowerCase().includes(q) ||
+        (item.model_name && item.model_name.toLowerCase().includes(q))
+      );
+    }
+    return true;
+  });
 
   return (
     <AppLayout>
@@ -171,6 +510,22 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            {/* Import Stok Internal (.xlsx) - Permintaan Khusus User */}
+            <button
+              type="button"
+              onClick={() => {
+                setIsImportModalOpen(true);
+                setZeroOutSuccessMessage(null);
+              }}
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
+              title="Bandingkan stok fisik internal gudang dengan stok Shopee"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-indigo-600">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
+              <span>Import Stok Internal (.xlsx)</span>
+            </button>
+
             {/* Export CSV / Excel */}
             <button
               type="button"
@@ -243,18 +598,17 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
                 </svg>
               </span>
             </div>
-            <p className="text-2xl font-extrabold text-[#EE4D2D] mt-3 font-mono">
-              {(summary?.total_stock ?? 0).toLocaleString('id-ID')}{' '}
-              <span className="text-xs font-normal text-slate-500">pcs</span>
+            <p className="text-2xl font-extrabold text-slate-900 mt-3 font-mono">
+              {(summary?.total_stock ?? 0).toLocaleString('id-ID')} <span className="text-sm font-normal text-slate-500">pcs</span>
             </p>
-            <p className="text-xs text-slate-500 mt-1">Stok tersedia untuk dijual</p>
+            <p className="text-xs text-slate-500 mt-1">Total kuantitas stok tersedia</p>
           </div>
 
           {/* Card 3: SKU Ada Stok */}
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">SKU Ready / Ada Stok</span>
-              <span className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">SKU Ada Stok</span>
+              <span className="p-2 bg-emerald-50 text-emerald-700 rounded-xl">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -263,14 +617,14 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
             <p className="text-2xl font-extrabold text-emerald-600 mt-3 font-mono">
               {(summary?.in_stock_skus ?? 0).toLocaleString('id-ID')}
             </p>
-            <p className="text-xs text-slate-500 mt-1">Stok &gt; 0 pcs siap kirim</p>
+            <p className="text-xs text-slate-500 mt-1">Siap dijual di toko Shopee</p>
           </div>
 
-          {/* Card 4: SKU Stok Habis (OOS) */}
+          {/* Card 4: SKU Habis (0) */}
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Stok Habis (OOS)</span>
-              <span className="p-2 bg-rose-50 text-rose-600 rounded-xl">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">SKU Stok Habis (0)</span>
+              <span className="p-2 bg-rose-50 text-rose-700 rounded-xl">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
                 </svg>
@@ -279,21 +633,24 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
             <p className="text-2xl font-extrabold text-rose-600 mt-3 font-mono">
               {(summary?.out_of_stock_skus ?? 0).toLocaleString('id-ID')}
             </p>
-            <p className="text-xs text-slate-500 mt-1">Stok kosong (0 pcs) di Shopee</p>
+            <p className="text-xs text-slate-500 mt-1">Produk dengan stok fisik 0</p>
           </div>
         </div>
 
-        {/* Filter and Search Bar - Konsisten dengan Cut Off */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row gap-3 items-center justify-between">
+        {/* Filter & Search Bar - Konsisten dengan Cut Off */}
+        <div className="flex flex-col md:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
           <form onSubmit={handleSearchSubmit} className="flex items-center gap-2 w-full md:w-96">
-            <div className="relative flex-1">
+            <div className="relative w-full">
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Cari SKU, Nama Barang, atau Item ID..."
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs focus:outline-none focus:border-[#0B132B] pr-9 transition-colors"
+                placeholder="Cari SKU, Nama Produk, ID Item..."
+                className="w-full pl-9 pr-8 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 placeholder-slate-400 text-xs focus:outline-none focus:border-[#0B132B]"
               />
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
               {search && (
                 <button
                   type="button"
@@ -375,8 +732,9 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
                     <th className="py-3 px-4 text-right">Stok Tersedia</th>
                     <th className="py-3 px-4 text-right">Stok Terkunci</th>
                     <th className="py-3 px-4 text-right">Harga</th>
-                    <th className="py-3 px-4 text-center">Status</th>
+                    <th className="py-3 px-4 text-center">Status Toko</th>
                     <th className="py-3 px-4">Terakhir Sync</th>
+                    <th className="py-3 px-4 text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-sans">
@@ -444,7 +802,7 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
                           Rp {Math.round(Number(p.price) || 0).toLocaleString('id-ID')}
                         </td>
 
-                        {/* Status */}
+                        {/* Status Toko */}
                         <td className="py-3.5 px-4 text-center whitespace-nowrap">
                           <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
                             {p.item_status || 'NORMAL'}
@@ -454,6 +812,30 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
                         {/* Terakhir Sync */}
                         <td className="py-3.5 px-4 text-slate-500 text-[11px] whitespace-nowrap">
                           {p.last_synced_at ? new Date(p.last_synced_at).toLocaleString('id-ID') : '—'}
+                        </td>
+
+                        {/* Aksi: Kosongkan di Shopee */}
+                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                          {hasStock ? (
+                            <button
+                              type="button"
+                              onClick={() => handleZeroOutSingle(p.id, p.sku || p.item_name)}
+                              disabled={zeroingOutId === p.id}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                              title="Kosongkan stok produk ini di Shopee menjadi 0 via API"
+                            >
+                              {zeroingOutId === p.id ? (
+                                <span className="w-3 h-3 border-2 border-rose-600 border-t-transparent rounded-full animate-spin"></span>
+                              ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3 text-rose-600">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                                </svg>
+                              )}
+                              <span>Kosongkan</span>
+                            </button>
+                          ) : (
+                            <span className="text-[11px] font-medium text-slate-400">0 (Habis)</span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -508,6 +890,564 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
           )}
         </div>
       </div>
+
+      {/* MODAL DIALOG: Import & Audit Stok Internal (.xlsx) */}
+      {isImportModalOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] overflow-y-auto bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6"
+          onClick={() => {
+            if (!isZeroingOutAll && !isComparing) {
+              setIsImportModalOpen(false);
+            }
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-5xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-200">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                    <span>Audit & Sinkronisasi Stok Gudang ke Shopee</span>
+                    {importFileName && (
+                      <span className="text-xs font-mono font-medium text-slate-500 bg-slate-200/60 px-2 py-0.5 rounded">
+                        {importFileName}
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Bandingkan stok fisik internal gudang dari file Excel dengan stok aktif di Shopee untuk mencegah overselling.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsImportModalOpen(false)}
+                disabled={isZeroingOutAll}
+                className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 overflow-y-auto space-y-5 grow">
+              {/* Notifikasi Toast Sukses Kosongkan */}
+              {zeroOutSuccessMessage && (
+                <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center justify-between animate-fade-in">
+                  <div className="flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>{zeroOutSuccessMessage}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setZeroOutSuccessMessage(null)}
+                    className="text-emerald-600 hover:text-emerald-900 text-xs"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              {/* Toast Disalin */}
+              {copiedToast && (
+                <div className="p-3 rounded-xl bg-slate-900 text-white text-xs font-semibold flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-emerald-400">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                  </svg>
+                  <span>Daftar SKU Kritis berhasil disalin ke clipboard!</span>
+                </div>
+              )}
+
+              {/* Upload Zone jika belum ada data */}
+              {!auditItems || auditItems.length === 0 ? (
+                <div className="border-2 border-dashed border-slate-300 hover:border-indigo-400 rounded-2xl p-10 text-center transition-colors bg-slate-50/50">
+                  <input
+                    type="file"
+                    id="excelInternalInput"
+                    accept=".xlsx, .xls, .csv"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleFileUpload(file);
+                    }}
+                    className="hidden"
+                  />
+                  <label htmlFor="excelInternalInput" className="cursor-pointer space-y-3 block">
+                    <div className="w-14 h-14 bg-indigo-100 text-indigo-700 rounded-2xl flex items-center justify-center mx-auto transition-transform hover:scale-105">
+                      {isParsing || isComparing ? (
+                        <svg className="animate-spin h-7 w-7 text-indigo-600" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.7} stroke="currentColor" className="w-7 h-7">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                        </svg>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">
+                        {isParsing || isComparing ? 'Memproses dan Membandingkan Stok...' : 'Klik untuk Pilih File Excel Stok Gudang'}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Mendukung format <strong>.xlsx, .xls, .csv</strong> dari sistem internal gudang Anda.
+                      </p>
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors">
+                      Pilih Spreadsheet Excel
+                    </span>
+                  </label>
+                </div>
+              ) : (
+                /* Tampilan Hasil Audit & Action */
+                <div className="space-y-4">
+                  {/* Summary Metric Pills */}
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    {/* 1. Kritis */}
+                    <div
+                      onClick={() => setAuditFilter('CRITICAL')}
+                      className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                        auditFilter === 'CRITICAL'
+                          ? 'bg-rose-50 border-rose-400 ring-2 ring-rose-300'
+                          : 'bg-white border-rose-200 hover:bg-rose-50/50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-rose-700 uppercase tracking-wider">🔴 Kritis (OOS)</span>
+                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
+                      </div>
+                      <p className="text-2xl font-extrabold text-rose-700 mt-1 font-mono">
+                        {auditSummary?.critical_count ?? 0}
+                      </p>
+                      <p className="text-[10px] text-rose-600 font-medium">Gudang = 0 & Shopee &gt; 0</p>
+                    </div>
+
+                    {/* 2. Menipis */}
+                    <div
+                      onClick={() => setAuditFilter('LOW_STOCK')}
+                      className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                        auditFilter === 'LOW_STOCK'
+                          ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-300'
+                          : 'bg-white border-amber-200 hover:bg-amber-50/50'
+                      }`}
+                    >
+                      <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider">🟡 Menipis</span>
+                      <p className="text-2xl font-extrabold text-amber-700 mt-1 font-mono">
+                        {auditSummary?.low_stock_count ?? 0}
+                      </p>
+                      <p className="text-[10px] text-amber-600 font-medium">Stok fisik 1 s/d 3 pcs</p>
+                    </div>
+
+                    {/* 3. Selisih */}
+                    <div
+                      onClick={() => setAuditFilter('DISCREPANCY')}
+                      className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                        auditFilter === 'DISCREPANCY'
+                          ? 'bg-blue-50 border-blue-400 ring-2 ring-blue-300'
+                          : 'bg-white border-blue-200 hover:bg-blue-50/50'
+                      }`}
+                    >
+                      <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">🔵 Selisih Stok</span>
+                      <p className="text-2xl font-extrabold text-blue-700 mt-1 font-mono">
+                        {auditSummary?.discrepancy_count ?? 0}
+                      </p>
+                      <p className="text-[10px] text-blue-600 font-medium">Gudang ≠ Shopee</p>
+                    </div>
+
+                    {/* 4. Sesuai */}
+                    <div
+                      onClick={() => setAuditFilter('MATCHED')}
+                      className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                        auditFilter === 'MATCHED'
+                          ? 'bg-emerald-50 border-emerald-400 ring-2 ring-emerald-300'
+                          : 'bg-white border-emerald-200 hover:bg-emerald-50/50'
+                      }`}
+                    >
+                      <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">🟢 Sesuai</span>
+                      <p className="text-2xl font-extrabold text-emerald-700 mt-1 font-mono">
+                        {auditSummary?.matched_count ?? 0}
+                      </p>
+                      <p className="text-[10px] text-emerald-600 font-medium">Gudang = Shopee</p>
+                    </div>
+
+                    {/* 5. Tidak di Shopee */}
+                    <div
+                      onClick={() => setAuditFilter('UNMATCHED')}
+                      className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                        auditFilter === 'UNMATCHED'
+                          ? 'bg-slate-100 border-slate-400 ring-2 ring-slate-300'
+                          : 'bg-white border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">⚪ Non-Shopee</span>
+                      <p className="text-2xl font-extrabold text-slate-700 mt-1 font-mono">
+                        {auditSummary?.unmatched_count ?? 0}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium">Tidak terdaftar di toko</p>
+                    </div>
+                  </div>
+
+                  {/* Primary Action Banner: Kosongkan di Shopee */}
+                  {(auditSummary?.critical_count ?? 0) > 0 && (
+                    <div className="p-4 rounded-2xl bg-rose-50 border-2 border-rose-200 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-2xs">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-rose-600 text-white rounded-xl shrink-0 animate-bounce">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-rose-900">
+                            Peringatan: Ditemukan {auditSummary?.critical_count} SKU Kritis (Habis di Gudang tapi Masih Aktif di Shopee)
+                          </p>
+                          <p className="text-xs text-rose-700 mt-0.5">
+                            Segera kosongkan stok di Shopee sekarang agar pembeli tidak checkout barang yang kosong di gudang.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                        {/* Tombol Salin SKU Kritis */}
+                        <button
+                          type="button"
+                          onClick={handleCopyCriticalSkus}
+                          className="px-3 py-2 bg-white border border-rose-300 hover:bg-rose-100 text-rose-800 text-xs font-semibold rounded-xl transition-colors cursor-pointer whitespace-nowrap active:scale-98"
+                        >
+                          Salin SKU Kritis
+                        </button>
+
+                        {/* Tombol Kosongkan SEMUA di Shopee */}
+                        <button
+                          type="button"
+                          onClick={handleZeroOutAllCritical}
+                          disabled={isZeroingOutAll}
+                          className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer whitespace-nowrap flex items-center gap-2 active:scale-98 disabled:opacity-50"
+                        >
+                          {isZeroingOutAll ? (
+                            <>
+                              <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              <span>Mengosongkan di Shopee...</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                              </svg>
+                              <span>Kosongkan Semua di Shopee</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Filter Tabs & Search Bar dalam Modal */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                    <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setAuditFilter('all')}
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
+                          auditFilter === 'all'
+                            ? 'bg-slate-900 text-white'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        Semua ({auditSummary?.total_rows ?? 0})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAuditFilter('CRITICAL')}
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
+                          auditFilter === 'CRITICAL'
+                            ? 'bg-rose-600 text-white'
+                            : 'bg-rose-50 hover:bg-rose-100 text-rose-700'
+                        }`}
+                      >
+                        🔴 Kritis ({auditSummary?.critical_count ?? 0})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAuditFilter('LOW_STOCK')}
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
+                          auditFilter === 'LOW_STOCK'
+                            ? 'bg-amber-600 text-white'
+                            : 'bg-amber-50 hover:bg-amber-100 text-amber-700'
+                        }`}
+                      >
+                        🟡 Menipis ({auditSummary?.low_stock_count ?? 0})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAuditFilter('DISCREPANCY')}
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
+                          auditFilter === 'DISCREPANCY'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-blue-50 hover:bg-blue-100 text-blue-700'
+                        }`}
+                      >
+                        🔵 Selisih ({auditSummary?.discrepancy_count ?? 0})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAuditFilter('MATCHED')}
+                        className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
+                          auditFilter === 'MATCHED'
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'
+                        }`}
+                      >
+                        🟢 Sesuai ({auditSummary?.matched_count ?? 0})
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <input
+                        type="text"
+                        value={auditSearch}
+                        onChange={(e) => setAuditSearch(e.target.value)}
+                        placeholder="Filter tabel..."
+                        className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 w-full sm:w-48"
+                      />
+
+                      {/* Export Excel Laporan */}
+                      <button
+                        type="button"
+                        onClick={handleDownloadAuditReport}
+                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-semibold rounded-lg transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+                        title="Download Laporan Audit ke File Excel"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5 text-emerald-600">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                        <span>Unduh .xlsx</span>
+                      </button>
+
+                      {/* Ganti File */}
+                      <label
+                        htmlFor="excelInternalInputReplace"
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                      >
+                        Ganti File
+                        <input
+                          type="file"
+                          id="excelInternalInputReplace"
+                          accept=".xlsx, .xls, .csv"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleFileUpload(file);
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Tabel Perbandingan Audit */}
+                  <div className="border border-slate-200 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead className="sticky top-0 z-10">
+                        <tr className="bg-slate-900 text-white font-semibold uppercase tracking-wider text-[11px] whitespace-nowrap">
+                          <th className="py-2.5 px-3 text-center w-10">No</th>
+                          <th className="py-2.5 px-3">SKU</th>
+                          <th className="py-2.5 px-3">Nama Produk Shopee</th>
+                          <th className="py-2.5 px-3 text-right">Stok Gudang</th>
+                          <th className="py-2.5 px-3 text-right">Stok Shopee</th>
+                          <th className="py-2.5 px-3 text-right">Selisih</th>
+                          <th className="py-2.5 px-3 text-center">Status Audit</th>
+                          <th className="py-2.5 px-3 text-center">Aksi Shopee</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredAuditItems.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="py-8 text-center text-slate-400 text-xs">
+                              Tidak ada data yang sesuai dengan filter audit ini.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredAuditItems.map((item, idx) => {
+                            const isCritical = item.status === 'CRITICAL';
+                            const isLow = item.status === 'LOW_STOCK';
+                            const isDiscrepancy = item.status === 'DISCREPANCY';
+                            const isMatched = item.status === 'MATCHED';
+
+                            return (
+                              <tr
+                                key={idx}
+                                className={`transition-colors ${
+                                  isCritical
+                                    ? 'bg-rose-50/50 hover:bg-rose-50'
+                                    : isLow
+                                    ? 'bg-amber-50/30 hover:bg-amber-50/60'
+                                    : 'hover:bg-slate-50'
+                                }`}
+                              >
+                                <td className="py-2.5 px-3 text-center font-bold text-slate-400">
+                                  {idx + 1}
+                                </td>
+
+                                {/* SKU */}
+                                <td className="py-2.5 px-3 whitespace-nowrap font-mono font-bold text-slate-900 select-all">
+                                  {item.sku}
+                                </td>
+
+                                {/* Nama Produk & Variasi */}
+                                <td className="py-2.5 px-3 max-w-xs">
+                                  <p className="font-semibold text-slate-800 line-clamp-1" title={item.item_name}>
+                                    {item.item_name}
+                                  </p>
+                                  {item.model_name && (
+                                    <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 text-[10px] font-mono">
+                                      {item.model_name}
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* Stok Gudang */}
+                                <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                                  <span
+                                    className={`inline-block px-2 py-0.5 rounded font-mono font-bold text-xs ${
+                                      item.warehouse_stock === 0
+                                        ? 'bg-rose-100 text-rose-800'
+                                        : item.warehouse_stock <= 3
+                                        ? 'bg-amber-100 text-amber-800'
+                                        : 'bg-slate-100 text-slate-800'
+                                    }`}
+                                  >
+                                    {item.warehouse_stock}
+                                  </span>
+                                </td>
+
+                                {/* Stok Shopee */}
+                                <td className="py-2.5 px-3 text-right whitespace-nowrap font-mono font-bold">
+                                  {item.is_shopee_found ? (
+                                    <span className={item.shopee_stock > 0 ? 'text-emerald-700' : 'text-slate-400'}>
+                                      {item.shopee_stock}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 font-normal italic text-[10px]">—</span>
+                                  )}
+                                </td>
+
+                                {/* Selisih */}
+                                <td className="py-2.5 px-3 text-right whitespace-nowrap font-mono font-semibold">
+                                  {item.diff === 0 ? (
+                                    <span className="text-slate-400">0</span>
+                                  ) : item.diff > 0 ? (
+                                    <span className="text-blue-600">+{item.diff}</span>
+                                  ) : (
+                                    <span className="text-rose-600">{item.diff}</span>
+                                  )}
+                                </td>
+
+                                {/* Status Audit */}
+                                <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                  {isCritical && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300 animate-pulse">
+                                      🔴 KRITIS (OOS)
+                                    </span>
+                                  )}
+                                  {isLow && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                      🟡 Menipis ({item.warehouse_stock})
+                                    </span>
+                                  )}
+                                  {isDiscrepancy && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-300">
+                                      🔵 Selisih Stok
+                                    </span>
+                                  )}
+                                  {isMatched && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                      🟢 Sesuai
+                                    </span>
+                                  )}
+                                  {item.status === 'UNMATCHED' && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300">
+                                      ⚪ Non-Shopee
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* Aksi Shopee */}
+                                <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                  {item.id && item.shopee_stock > 0 ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleZeroOutSingle(item.id!, item.sku)}
+                                      disabled={zeroingOutId === item.id}
+                                      className="inline-flex items-center gap-1 px-2 py-1 rounded bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold transition-colors cursor-pointer disabled:opacity-50"
+                                      title="Set stok Shopee menjadi 0 via API"
+                                    >
+                                      {zeroingOutId === item.id ? (
+                                        <span className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                      ) : (
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3 h-3">
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                                        </svg>
+                                      )}
+                                      <span>Kosongkan</span>
+                                    </button>
+                                  ) : item.is_shopee_found ? (
+                                    <span className="text-[10px] text-slate-400">0 di Shopee</span>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400 italic">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+              <div className="text-xs text-slate-500">
+                {auditSummary ? (
+                  <span>
+                    Total <strong className="text-slate-900 font-bold">{auditSummary.total_rows}</strong> SKU diproses
+                    {auditSummary.critical_count > 0 && (
+                      <span className="text-rose-600 font-bold ml-1.5">
+                        • {auditSummary.critical_count} SKU Kritis
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  <span>Format yang didukung: Excel (.xlsx, .xls) & CSV</span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsImportModalOpen(false)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </AppLayout>
   );
 }

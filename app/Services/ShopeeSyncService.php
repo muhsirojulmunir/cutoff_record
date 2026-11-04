@@ -1555,4 +1555,166 @@ class ShopeeSyncService
             'message'        => "Sinkronisasi produk Shopee berhasil! {$savedCount} SKU tersinkron dari {$totalItems} produk dengan total {$totalStockSum} pcs stok tersedia.",
         ];
     }
+
+    /**
+     * Send update_stock request to Shopee Open API v2.
+     * Updates seller stock for a single item_id and its specified model_ids.
+     *
+     * @param ShopeeAccount $account
+     * @param int $itemId
+     * @param array $stockList Array of ['model_id' => int, 'stock' => int, 'location_id' => ?string]
+     * @return array
+     */
+    public function updateStockRaw(ShopeeAccount $account, int $itemId, array $stockList): array
+    {
+        $path        = '/api/v2/product/update_stock';
+        $timestamp   = time();
+        $accessToken = (string) ($account->access_token ?? '');
+        $shopId      = (int) $account->shop_id;
+        $partnerId   = (int) $account->partner_id;
+        $partnerKey  = (string) $account->partner_key;
+
+        $baseStr = sprintf('%s%s%s%s%s', $partnerId, $path, $timestamp, $accessToken, $shopId);
+        $sign    = hash_hmac('sha256', $baseStr, $partnerKey);
+
+        $queryParams = [
+            'partner_id'   => $partnerId,
+            'timestamp'    => $timestamp,
+            'sign'         => $sign,
+            'access_token' => $accessToken,
+            'shop_id'      => $shopId,
+        ];
+
+        $url = $this->host . $path . '?' . http_build_query($queryParams);
+
+        $formattedStockList = [];
+        foreach ($stockList as $entry) {
+            $sellerStock = [
+                'stock' => (int) ($entry['stock'] ?? 0),
+            ];
+            if (! empty($entry['location_id'])) {
+                $sellerStock['location_id'] = (string) $entry['location_id'];
+            }
+
+            $modelId = (int) ($entry['model_id'] ?? 0);
+            $itemPayload = [
+                'seller_stock' => [$sellerStock],
+            ];
+            if ($modelId > 0) {
+                $itemPayload['model_id'] = $modelId;
+            } else {
+                $itemPayload['model_id'] = 0;
+            }
+
+            $formattedStockList[] = $itemPayload;
+        }
+
+        $payload = [
+            'item_id'    => (int) $itemId,
+            'stock_list' => $formattedStockList,
+        ];
+
+        $response = Http::timeout(25)->post($url, $payload);
+        $data = $response->json();
+
+        if ($response->failed() || ! empty($data['error'])) {
+            $msg = $data['message'] ?? $data['error'] ?? 'Gagal mengubah stok di Shopee';
+            throw new RuntimeException("Shopee Update Stock API Error: {$msg}");
+        }
+
+        return $data['response'] ?? [];
+    }
+
+    /**
+     * Zero out stock on Shopee for given ShopeeProduct IDs.
+     * Groups by item_id and sends update_stock calls.
+     * Updates local ShopeeProduct records upon success.
+     *
+     * @param ShopeeAccount $account
+     * @param array $productIds
+     * @return array
+     */
+    public function zeroOutShopeeProducts(ShopeeAccount $account, array $productIds): array
+    {
+        if (empty($account->access_token)) {
+            throw new RuntimeException('Toko Shopee belum terhubung (access_token kosong).');
+        }
+
+        if ($account->token_expires_at && $account->token_expires_at->isPast()) {
+            $account = $this->refreshAccessToken($account);
+        }
+
+        $products = ShopeeProduct::where('shopee_account_id', $account->id)
+            ->whereIn('id', $productIds)
+            ->get();
+
+        if ($products->isEmpty()) {
+            return [
+                'success'       => false,
+                'message'       => 'Tidak ada produk Shopee yang ditemukan untuk dikosongkan.',
+                'updated_count' => 0,
+                'failures'      => [],
+            ];
+        }
+
+        // Group by item_id
+        $grouped = $products->groupBy('item_id');
+        $successCount = 0;
+        $failures = [];
+        $now = now();
+
+        foreach ($grouped as $itemId => $items) {
+            $stockList = [];
+            foreach ($items as $product) {
+                $stockList[] = [
+                    'model_id' => (int) ($product->model_id ?? 0),
+                    'stock'    => 0,
+                ];
+            }
+
+            try {
+                $apiRes = $this->updateStockRaw($account, (int) $itemId, $stockList);
+
+                // Cek jika Shopee mengembalikan failure_list untuk model tertentu
+                $apiFailures = $apiRes['failure_list'] ?? [];
+                $failedModelIds = [];
+                foreach ($apiFailures as $fail) {
+                    $mId = (int) ($fail['model_id'] ?? 0);
+                    $failedModelIds[] = $mId;
+                    $failures[] = [
+                        'item_id'  => $itemId,
+                        'model_id' => $mId,
+                        'reason'   => $fail['failed_reason'] ?? 'Gagal update stok di Shopee',
+                    ];
+                }
+
+                // Update lokal untuk produk yang berhasil
+                foreach ($items as $product) {
+                    if (! in_array((int) ($product->model_id ?? 0), $failedModelIds, true)) {
+                        $product->update([
+                            'stock'          => 0,
+                            'last_synced_at' => $now,
+                        ]);
+                        $successCount++;
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning("[ShopeeZeroOut] Gagal update stok item_id {$itemId}: " . $e->getMessage());
+                $failures[] = [
+                    'item_id' => $itemId,
+                    'sku'     => $items->pluck('sku')->filter()->implode(', '),
+                    'reason'  => $e->getMessage(),
+                ];
+            }
+        }
+
+        return [
+            'success'       => $successCount > 0,
+            'updated_count' => $successCount,
+            'failures'      => $failures,
+            'message'       => $successCount > 0
+                ? "Berhasil mengosongkan stok {$successCount} SKU variasi di Shopee!"
+                : "Gagal mengosongkan stok di Shopee. " . ($failures[0]['reason'] ?? 'Silakan periksa log.'),
+        ];
+    }
 }

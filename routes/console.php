@@ -14,3 +14,9 @@ Schedule::command('cutoff:sync --days=2')
     ->withoutOverlapping(5)
     ->runInBackground();
 
+// Auto-sync katalog produk & stok Shopee setiap 10 menit
+Schedule::command('shopee:sync-products')
+    ->everyTenMinutes()
+    ->withoutOverlapping(15)
+    ->runInBackground();
+
