@@ -492,8 +492,8 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
         )}
 
         {/* Header Title Banner */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
-          <div>
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+          <div className="max-w-xl">
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
               Retur Online Multi-Channel
             </h1>
@@ -502,9 +502,9 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
             {isManagement && (
-              <span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs font-semibold">
+              <span className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs font-semibold">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-blue-600">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -515,50 +515,60 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
 
             {canManage && (
               <>
-                {/* Tarik Retur Shopee API */}
-                <button
-                  type="button"
-                  onClick={() => setIsShopeeSyncModalOpen(true)}
-                  className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-orange-300 bg-orange-50 hover:bg-orange-100 text-[#EE4D2D] text-xs font-bold transition-colors shadow-2xs cursor-pointer active:scale-98"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-[#EE4D2D]">
-                    <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zm.53 5.47a.75.75 0 00-1.06 0l-3 3a.75.75 0 101.06 1.06l1.72-1.72v5.69a.75.75 0 001.5 0v-5.69l1.72 1.72a.75.75 0 101.06-1.06l-3-3z" clipRule="evenodd" />
-                  </svg>
-                  Tarik Retur Shopee
-                </button>
+                {/* Marketplace Sync Control Group */}
+                <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200/80">
+                  <span className="pl-2.5 pr-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider hidden sm:inline">
+                    Tarik API
+                  </span>
+                  {/* Tarik Retur Shopee API */}
+                  <button
+                    type="button"
+                    onClick={() => setIsShopeeSyncModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-orange-50 border border-slate-200/80 text-slate-700 hover:text-[#EE4D2D] text-xs font-semibold transition-colors shadow-2xs cursor-pointer active:scale-95"
+                    title="Tarik Retur dari Shopee Open API"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 text-[#EE4D2D]">
+                      <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zm.53 5.47a.75.75 0 00-1.06 0l-3 3a.75.75 0 101.06 1.06l1.72-1.72v5.69a.75.75 0 001.5 0v-5.69l1.72 1.72a.75.75 0 101.06-1.06l-3-3z" clipRule="evenodd" />
+                    </svg>
+                    <span>Shopee</span>
+                  </button>
 
-                {/* Tarik Retur TikTok API */}
-                <button
-                  type="button"
-                  onClick={() => setIsTiktokSyncModalOpen(true)}
-                  className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-700 bg-slate-900 hover:bg-black text-[#25F4EE] text-xs font-bold transition-colors shadow-2xs cursor-pointer active:scale-98"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-[#25F4EE]">
-                    <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zm.53 5.47a.75.75 0 00-1.06 0l-3 3a.75.75 0 101.06 1.06l1.72-1.72v5.69a.75.75 0 001.5 0v-5.69l1.72 1.72a.75.75 0 101.06-1.06l-3-3z" clipRule="evenodd" />
-                  </svg>
-                  Tarik Retur TikTok
-                </button>
+                  {/* Tarik Retur TikTok API */}
+                  <button
+                    type="button"
+                    onClick={() => setIsTiktokSyncModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200/80 text-slate-700 text-xs font-semibold transition-colors shadow-2xs cursor-pointer active:scale-95 ml-1"
+                    title="Tarik Retur dari TikTok Shop API"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 text-slate-900">
+                      <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zm.53 5.47a.75.75 0 00-1.06 0l-3 3a.75.75 0 101.06 1.06l1.72-1.72v5.69a.75.75 0 001.5 0v-5.69l1.72 1.72a.75.75 0 101.06-1.06l-3-3z" clipRule="evenodd" />
+                    </svg>
+                    <span>TikTok</span>
+                  </button>
+                </div>
 
                 {/* Upload Excel (.xlsx) */}
                 <button
                   onClick={() => setIsImportModalOpen(true)}
-                  className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold transition-colors shadow-2xs cursor-pointer"
+                  className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap"
+                  title="Upload dan import data retur dari file Excel (.xlsx)"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-emerald-600">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                   </svg>
-                  Upload Excel (.xlsx)
+                  <span>Upload Excel</span>
                 </button>
 
                 {/* Tambah Retur Manual */}
                 <button
                   onClick={() => setIsCreateModalOpen(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0B132B] hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition-colors"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0B132B] hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer whitespace-nowrap"
+                  title="Tambah data penerimaan retur secara manual"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                   </svg>
-                  + Tambah Retur
+                  <span>Tambah Retur</span>
                 </button>
               </>
             )}
@@ -566,7 +576,7 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
             {/* Refresh Button */}
             <button
               onClick={() => router.reload()}
-              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors"
+              className="inline-flex items-center justify-center p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors cursor-pointer shrink-0"
               title="Refresh data"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-slate-500">
