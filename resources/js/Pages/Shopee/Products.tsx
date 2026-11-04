@@ -95,6 +95,7 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
   // States untuk Modal Import Stok Internal
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importFileName, setImportFileName] = useState<string | null>(null);
+  const [detectedWarehouse, setDetectedWarehouse] = useState<'A' | 'G' | 'GENERAL' | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const [isComparing, setIsComparing] = useState(false);
   const [auditSummary, setAuditSummary] = useState<AuditSummary | null>(null);
@@ -180,6 +181,20 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
           return;
         }
 
+        // Deteksi tipe laporan gudang (Gudang A / Gudang G)
+        let whType: 'A' | 'G' | 'GENERAL' = 'GENERAL';
+        for (let r = 0; r < Math.min(6, rows.length); r++) {
+          const rowStr = JSON.stringify(rows[r] || '').toUpperCase();
+          if (rowStr.includes('GUDANG A')) {
+            whType = 'A';
+            break;
+          } else if (rowStr.includes('GUDANG G')) {
+            whType = 'G';
+            break;
+          }
+        }
+        setDetectedWarehouse(whType);
+
         // Auto-detect header row
         let skuColIdx = -1;
         let stockColIdx = -1;
@@ -203,6 +218,7 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
             if (stockColIdx === -1 && (
               val === 'stok' || val === 'stock' || val === 'qty' || val === 'jumlah' ||
               val === 'kuantitas' || val === 'fisik' || val === 'stok fisik' || val === 'stok_fisik' ||
+              val === 'total quantity' || val === 'total_quantity' ||
               val === 'stok akhir' || val === 'stok_akhir' || val === 'sisa' || val === 'total stock' || val === 'saldo'
             )) {
               stockColIdx = c;
@@ -215,22 +231,52 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
           }
         }
 
-        // Fallback jika tidak terdeteksi nama kolom
-        if (skuColIdx === -1) skuColIdx = 0;
-        if (stockColIdx === -1) stockColIdx = 1;
-        if (headerRowIdx === -1) headerRowIdx = 0;
+        // Fallback jika tidak terdeteksi nama kolom: coba kolom 2 (Kode Barang) & 7 (Total Quantity) seperti format Jaya Mandiri
+        if (skuColIdx === -1) skuColIdx = 2;
+        if (stockColIdx === -1) stockColIdx = 7;
+        if (headerRowIdx === -1) headerRowIdx = 4;
 
         const extractedItems: { sku: string; warehouse_stock: number }[] = [];
         for (let r = headerRowIdx + 1; r < rows.length; r++) {
           const row = rows[r];
           if (!row || !Array.isArray(row)) continue;
           const rawSku = String(row[skuColIdx] || '').trim();
-          if (!rawSku || rawSku.toLowerCase() === 'total' || rawSku.toLowerCase() === 'grand total') continue;
+
+          // Abaikan baris kosong, header berulang di tengah sheet, atau baris total
+          if (
+            !rawSku ||
+            rawSku.toLowerCase() === 'total' ||
+            rawSku.toLowerCase() === 'grand total' ||
+            rawSku.toLowerCase().includes('kode barang') ||
+            rawSku.toLowerCase().includes('laporan posisi')
+          ) {
+            continue;
+          }
 
           const rawQty = row[stockColIdx];
-          const qtyNum = typeof rawQty === 'number'
-            ? rawQty
-            : parseInt(String(rawQty || '0').replace(/[^0-9-]/g, ''), 10) || 0;
+          let qtyNum = 0;
+          let isLusin = whType === 'A';
+
+          if (typeof rawQty === 'number') {
+            qtyNum = rawQty;
+          } else if (rawQty) {
+            // Tangani string seperti "1.00 PSG ", "0.50 LSN ", "91.00 PSG ", "-1.00 LBR "
+            const match = String(rawQty).trim().match(/([0-9.-]+)\s*([A-Za-z]+)?/);
+            if (match) {
+              qtyNum = parseFloat(match[1]) || 0;
+              const unit = (match[2] || '').toUpperCase();
+              if (unit === 'LSN') {
+                isLusin = true;
+              } else if (unit === 'PSG' || unit === 'PCS' || unit === 'BJ') {
+                isLusin = false;
+              }
+            }
+          }
+
+          // Jika satuan Lusin (Gudang A), otomatis konversi ke Pcs (1 lusin = 12 pasang / pcs)
+          if (isLusin) {
+            qtyNum = Math.round(qtyNum * 12);
+          }
 
           extractedItems.push({
             sku: rawSku,
@@ -900,8 +946,18 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                  <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
                     <span>Audit & Sinkronisasi Stok Gudang ke Shopee</span>
+                    {detectedWarehouse === 'A' && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                        📦 Gudang A (Lusinan • Otomatis x12 Pcs)
+                      </span>
+                    )}
+                    {detectedWarehouse === 'G' && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                        🏷️ Gudang G (Eceran Satuan • Pcs)
+                      </span>
+                    )}
                     {importFileName && (
                       <span className="text-xs font-mono font-medium text-slate-500 bg-slate-200/60 px-2 py-0.5 rounded">
                         {importFileName}
