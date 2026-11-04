@@ -27,6 +27,8 @@ class ShopeeSyncProductsCommand extends Command
 
     public function handle(): int
     {
+        $this->syncService->ensureProductSchema();
+
         $accountId = $this->option('account');
 
         $query = ShopeeAccount::where('status', 'active')->whereNotNull('access_token');

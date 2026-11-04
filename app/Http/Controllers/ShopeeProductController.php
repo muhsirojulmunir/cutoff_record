@@ -6,6 +6,7 @@ use App\Models\ShopeeAccount;
 use App\Models\ShopeeProduct;
 use App\Services\ShopeeSyncService;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -237,6 +238,185 @@ class ShopeeProductController extends Controller
         }, $filename, [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    /**
+     * Compare internal warehouse stock (uploaded from Excel) against Shopee products stock.
+     */
+    public function compareStock(Request $request): JsonResponse
+    {
+        $this->syncService->ensureProductSchema();
+
+        $account = ShopeeAccount::where('status', 'active')->first() ?? ShopeeAccount::first();
+        if (! $account) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Toko Shopee belum terhubung di sistem ERP.',
+            ], 422);
+        }
+
+        $items = $request->input('items', []);
+        if (empty($items) || ! is_array($items)) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Data baris Excel tidak ditemukan atau kosong.',
+            ], 422);
+        }
+
+        // Ambil seluruh produk Shopee untuk akun ini
+        $shopeeProducts = ShopeeProduct::where('shopee_account_id', $account->id)->get();
+
+        // Buat map lookup berdasarkan SKU (case-insensitive & trimmed)
+        $productMap = [];
+        foreach ($shopeeProducts as $p) {
+            if (! empty($p->sku)) {
+                $productMap[strtoupper(trim($p->sku))] = $p;
+            }
+        }
+
+        $comparisonList   = [];
+        $criticalCount    = 0;
+        $lowStockCount    = 0;
+        $discrepancyCount = 0;
+        $matchedCount     = 0;
+        $unmatchedCount   = 0;
+
+        foreach ($items as $row) {
+            $rawSku = trim((string) ($row['sku'] ?? ''));
+            if ($rawSku === '') {
+                continue;
+            }
+
+            $warehouseStock = max(0, (int) ($row['warehouse_stock'] ?? $row['stock'] ?? 0));
+            $normSku        = strtoupper($rawSku);
+            $matchedProduct = $productMap[$normSku] ?? null;
+
+            if ($matchedProduct) {
+                $shopeeStock   = (int) $matchedProduct->stock;
+                $reservedStock = (int) $matchedProduct->reserved_stock;
+                $diff          = $warehouseStock - $shopeeStock;
+
+                // Status Audit:
+                // 1. CRITICAL: Stok gudang 0, tapi di Shopee masih > 0 (Bahaya Overselling!)
+                // 2. LOW_STOCK: Stok gudang menipis (1 s/d 3 pcs)
+                // 3. DISCREPANCY: Selisih stok gudang != shopee
+                // 4. MATCHED: Stok gudang sama persis dengan shopee
+                if ($warehouseStock <= 0 && $shopeeStock > 0) {
+                    $status = 'CRITICAL';
+                    $criticalCount++;
+                } elseif ($warehouseStock > 0 && $warehouseStock <= 3) {
+                    $status = 'LOW_STOCK';
+                    $lowStockCount++;
+                } elseif ($diff !== 0) {
+                    $status = 'DISCREPANCY';
+                    $discrepancyCount++;
+                } else {
+                    $status = 'MATCHED';
+                    $matchedCount++;
+                }
+
+                $comparisonList[] = [
+                    'id'              => $matchedProduct->id,
+                    'item_id'         => $matchedProduct->item_id,
+                    'model_id'        => $matchedProduct->model_id,
+                    'sku'             => $matchedProduct->sku ?: $rawSku,
+                    'item_name'       => $matchedProduct->item_name,
+                    'model_name'      => $matchedProduct->model_name,
+                    'warehouse_stock' => $warehouseStock,
+                    'shopee_stock'    => $shopeeStock,
+                    'reserved_stock'  => $reservedStock,
+                    'diff'            => $diff,
+                    'status'          => $status,
+                    'is_shopee_found' => true,
+                ];
+            } else {
+                $unmatchedCount++;
+                $comparisonList[] = [
+                    'id'              => null,
+                    'item_id'         => null,
+                    'model_id'        => null,
+                    'sku'             => $rawSku,
+                    'item_name'       => 'SKU Tidak Terdaftar di Toko Shopee',
+                    'model_name'      => null,
+                    'warehouse_stock' => $warehouseStock,
+                    'shopee_stock'    => 0,
+                    'reserved_stock'  => 0,
+                    'diff'            => $warehouseStock,
+                    'status'          => 'UNMATCHED',
+                    'is_shopee_found' => false,
+                ];
+            }
+        }
+
+        // Urutkan prioritas audit: CRITICAL (1), LOW_STOCK (2), DISCREPANCY (3), UNMATCHED (4), MATCHED (5)
+        $priorityOrder = [
+            'CRITICAL'    => 1,
+            'LOW_STOCK'   => 2,
+            'DISCREPANCY' => 3,
+            'UNMATCHED'   => 4,
+            'MATCHED'     => 5,
+        ];
+
+        usort($comparisonList, function ($a, $b) use ($priorityOrder) {
+            $pA = $priorityOrder[$a['status']] ?? 99;
+            $pB = $priorityOrder[$b['status']] ?? 99;
+            if ($pA !== $pB) {
+                return $pA <=> $pB;
+            }
+            return strcmp((string)$a['sku'], (string)$b['sku']);
+        });
+
+        return response()->json([
+            'status'  => 'success',
+            'summary' => [
+                'total_rows'        => count($comparisonList),
+                'critical_count'    => $criticalCount,
+                'low_stock_count'   => $lowStockCount,
+                'discrepancy_count' => $discrepancyCount,
+                'matched_count'     => $matchedCount,
+                'unmatched_count'   => $unmatchedCount,
+            ],
+            'items'   => $comparisonList,
+        ]);
+    }
+
+    /**
+     * Set stock to 0 on Shopee via API update_stock for selected products.
+     */
+    public function zeroOut(Request $request): JsonResponse
+    {
+        $account = ShopeeAccount::where('status', 'active')->whereNotNull('access_token')->first();
+
+        if (! $account) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Toko Shopee belum terhubung dengan token aktif.',
+            ], 422);
+        }
+
+        $productIds = $request->input('product_ids', []);
+        if (empty($productIds) || ! is_array($productIds)) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Pilih setidaknya 1 produk untuk dikosongkan.',
+            ], 422);
+        }
+
+        try {
+            $res = $this->syncService->zeroOutShopeeProducts($account, array_map('intval', $productIds));
+
+            return response()->json([
+                'status'        => $res['success'] ? 'success' : 'error',
+                'message'       => $res['message'],
+                'updated_count' => $res['updated_count'],
+                'failures'      => $res['failures'],
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Gagal mengosongkan stok di Shopee: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }
 
