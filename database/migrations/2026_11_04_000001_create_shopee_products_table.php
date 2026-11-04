@@ -43,3 +43,4 @@ return new class extends Migration
         Schema::dropIfExists('shopee_products');
     }
 };
+
