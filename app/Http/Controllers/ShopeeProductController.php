@@ -266,11 +266,23 @@ class ShopeeProductController extends Controller
         // Ambil seluruh produk Shopee untuk akun ini
         $shopeeProducts = ShopeeProduct::where('shopee_account_id', $account->id)->get();
 
-        // Buat map lookup berdasarkan SKU (case-insensitive & trimmed)
+        // Buat map lookup berdasarkan SKU Shopee dan kode barang internal 8 digit
         $productMap = [];
+        $codeMap    = [];
+
         foreach ($shopeeProducts as $p) {
             if (! empty($p->sku)) {
-                $productMap[strtoupper(trim($p->sku))] = $p;
+                $norm = strtoupper(trim($p->sku));
+                $productMap[$norm] = $p;
+
+                // 1. Ekstrak kode barang 8 digit di akhir SKU (misal: "RECORD-CARAVAN-HP-38_01247938" -> "01247938")
+                if (preg_match('/(\d{8})$/', $norm, $m)) {
+                    $codeMap[$m[1]] = $p;
+                }
+                // 2. Ekstrak kode angka setelah underscore (misal: "..._01247938")
+                if (preg_match('/_(\d{6,8})/i', $norm, $m)) {
+                    $codeMap[$m[1]] = $p;
+                }
             }
         }
 
@@ -289,7 +301,15 @@ class ShopeeProductController extends Controller
 
             $warehouseStock = max(0, (int) ($row['warehouse_stock'] ?? $row['stock'] ?? 0));
             $normSku        = strtoupper($rawSku);
-            $matchedProduct = $productMap[$normSku] ?? null;
+
+            // Pencarian fleksibel: exact SKU -> kode barang internal -> regex suffix
+            $matchedProduct = $productMap[$normSku]
+                ?? $codeMap[$normSku]
+                ?? null;
+
+            if (! $matchedProduct && preg_match('/(\d{8})$/', $normSku, $m)) {
+                $matchedProduct = $codeMap[$m[1]] ?? null;
+            }
 
             if ($matchedProduct) {
                 $shopeeStock   = (int) $matchedProduct->stock;
