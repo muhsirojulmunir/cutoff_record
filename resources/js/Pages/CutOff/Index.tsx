@@ -288,7 +288,7 @@ function getShippingSla(
   }
 
   if (!deadlineMs && orderMs) {
-    const windowHours = shippingTier.label === 'INSTAN' ? 2 : 6;
+    const windowHours = shippingTier.label === 'INSTAN' ? 1 : 6;
     deadlineMs = orderMs + windowHours * 60 * 60 * 1000;
   }
 
@@ -320,13 +320,20 @@ function getShippingSla(
   const autoSearchDeadlineMs = orderMs ? orderMs + 30 * 60 * 1000 : null;
   const searchDiffSec = autoSearchDeadlineMs ? Math.floor((autoSearchDeadlineMs - nowMs) / 1000) : 0;
 
-  if (shippingTier.label === 'INSTAN' && searchDiffSec > 0) {
-    // FASE 1 (Menit 0 - 30 sejak order): Persis Shopee Seller Center "Mencari Kurir dalam 0m 58d"
+  // Jam operasional pencarian kurir otomatis Shopee aktif jam 09:00 - 20:00 WIB.
+  // Jika order masuk di jam operasional dan masih dalam 30 menit awal: tampilkan "Mencari Kurir dalam Xm Xd".
+  // Jika di luar jam operasional (pesanan pagi sebelum jam 09:00), Shopee langsung menampilkan "Atur pickup dalam X jam Y menit".
+  const orderDateObj = orderMs ? new Date(orderMs) : null;
+  const orderHour = orderDateObj ? orderDateObj.getHours() : 9;
+  const isOperatingHours = orderHour >= 9 && orderHour < 20;
+
+  if (shippingTier.label === 'INSTAN' && isOperatingHours && searchDiffSec > 0) {
+    // FASE 1 (Menit 0 - 30 sejak order di jam operasional): Persis Shopee Seller Center "Mencari Kurir dalam 0m 58d"
     const sm = Math.floor(searchDiffSec / 60);
     const ss = searchDiffSec % 60;
     courierSearchText = `Mencari Kurir dalam ${sm}m ${String(ss).padStart(2, '0')}d`;
   } else {
-    // FASE 2: Setelah fase pencarian awal, tampilkan "Atur pickup dalam X jam Y menit"
+    // FASE 2: Setelah fase pencarian awal atau di luar jam operasional, tampilkan "Atur pickup dalam X jam Y menit"
     if (hours > 0) {
       courierSearchText = `Atur pickup dalam ${hours} jam ${minutes} menit`;
     } else if (minutes > 0) {
@@ -1489,14 +1496,18 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                               </span>
 
                               {/* Batas Waktu Pickup Ala Shopee Seller Center */}
-                              {shippingSla?.courierSearchText && (
+                              {shippingSla && (
                                 <span
-                                  className={`block mt-1 text-[11px] font-semibold text-rose-600 tracking-tight whitespace-nowrap font-sans ${
-                                    shippingSla.isReadyForPickup ? 'font-bold text-rose-700 animate-pulse' : ''
+                                  className={`block mt-1 text-[11px] tracking-tight whitespace-nowrap font-sans ${
+                                    shippingSla.isReadyForPickup
+                                      ? 'font-bold text-rose-700 animate-pulse'
+                                      : 'font-semibold text-rose-600'
                                   }`}
                                   title="Batas waktu atur pickup kurir Instant (Shopee)"
                                 >
-                                  {shippingSla.courierSearchText}
+                                  {shippingSla.isReadyForPickup
+                                    ? '🛵 Driver Segera Tiba (Paket Harus Siap)'
+                                    : shippingSla.courierSearchText}
                                 </span>
                               )}
 
