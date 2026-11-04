@@ -312,18 +312,29 @@ function getShippingSla(
   const minutes = Math.floor((diffSec % 3600) / 60);
   const seconds = diffSec % 60;
 
-  // Format teks ala Shopee Seller Center: "Atur pickup dalam 1 jam 34 menit"
-  let courierSearchText: string;
-  if (hours > 0) {
-    courierSearchText = `Atur pickup dalam ${hours} jam ${minutes} menit`;
-  } else if (minutes > 0) {
-    courierSearchText = `Atur pickup dalam ${minutes} menit ${seconds} detik`;
-  } else {
-    courierSearchText = `Atur pickup dalam ${seconds} detik`;
-  }
-
   // Notifikasi "Driver Segera Tiba (Paket Harus Siap)" HANYA muncul jika dalam kurun 2 menit (<= 120 detik) sebelum batas pickup
   const isReadyForPickup = diffSec <= 2 * 60;
+
+  // Cek apakah masih dalam fase 30 menit awal pencarian kurir otomatis Shopee ("Mencari Kurir dalam Xm Xd")
+  let courierSearchText: string;
+  const autoSearchDeadlineMs = orderMs ? orderMs + 30 * 60 * 1000 : null;
+  const searchDiffSec = autoSearchDeadlineMs ? Math.floor((autoSearchDeadlineMs - nowMs) / 1000) : 0;
+
+  if (shippingTier.label === 'INSTAN' && searchDiffSec > 0) {
+    // FASE 1 (Menit 0 - 30 sejak order): Persis Shopee Seller Center "Mencari Kurir dalam 0m 58d"
+    const sm = Math.floor(searchDiffSec / 60);
+    const ss = searchDiffSec % 60;
+    courierSearchText = `Mencari Kurir dalam ${sm}m ${String(ss).padStart(2, '0')}d`;
+  } else {
+    // FASE 2: Setelah fase pencarian awal, tampilkan "Atur pickup dalam X jam Y menit"
+    if (hours > 0) {
+      courierSearchText = `Atur pickup dalam ${hours} jam ${minutes} menit`;
+    } else if (minutes > 0) {
+      courierSearchText = `Atur pickup dalam ${minutes} menit ${seconds} detik`;
+    } else {
+      courierSearchText = `Atur pickup dalam ${seconds} detik`;
+    }
+  }
 
   const remainingText = hours > 0
     ? `${hours}j ${minutes}m`
