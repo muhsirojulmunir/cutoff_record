@@ -100,3 +100,4 @@ class CutOffRecalculateNetIncomeCommand extends Command
         return self::SUCCESS;
     }
 }
+

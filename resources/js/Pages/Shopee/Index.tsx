@@ -21,13 +21,26 @@ interface ShopeeAccountData {
 interface Props {
   account: ShopeeAccountData;
   callbackUrl: string;
+  productSummary?: {
+    total_skus: number;
+    total_stock: number;
+    last_synced_at: string | null;
+  };
 }
 
-export default function ShopeeIndex({ account, callbackUrl }: Props) {
+export default function ShopeeIndex({ account, callbackUrl, productSummary }: Props) {
   const { flash } = usePage<PageProps>().props;
 
   const [showPartnerKey, setShowPartnerKey] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // State untuk Sinkronisasi Produk & Stok
+  const [syncingProducts, setSyncingProducts] = useState(false);
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [productsList, setProductsList] = useState<any[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
+  const [productPagination, setProductPagination] = useState<any>(null);
 
   // Default rentang tanggal: 14 hari terakhir sampai hari ini
   const now = new Date();
@@ -118,6 +131,75 @@ export default function ShopeeIndex({ account, callbackUrl }: Props) {
     navigator.clipboard.writeText(callbackUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSyncProducts = () => {
+    if (!confirm('Tarik data seluruh produk, SKU, dan stok dari Shopee sekarang?\n\nSistem akan mengambil semua produk aktif dan menyimpan rincian SKU serta stok ke database.')) {
+      return;
+    }
+    setSyncingProducts(true);
+    router.post(
+      '/marketplace/shopee/sync-products',
+      {},
+      {
+        preserveScroll: true,
+        onFinish: () => setSyncingProducts(false),
+      }
+    );
+  };
+
+  const fetchProducts = async (page = 1, search = '') => {
+    setLoadingProducts(true);
+    try {
+      const res = await fetch(`/marketplace/shopee/products?page=${page}&search=${encodeURIComponent(search)}`, {
+        headers: { Accept: 'application/json' },
+      });
+      const data = await res.json();
+      setProductsList(data.data || []);
+      setProductPagination(data);
+    } catch (e) {
+      console.error('Gagal mengambil daftar produk:', e);
+    } finally {
+      setLoadingProducts(false);
+    }
+  };
+
+  const handleOpenProductModal = () => {
+    setShowProductModal(true);
+    fetchProducts(1, productSearch);
+  };
+
+  const handleSearchProduct = (e: React.FormEvent) => {
+    e.preventDefault();
+    fetchProducts(1, productSearch);
+  };
+
+  const handleExportProductsCsv = () => {
+    if (!productsList || productsList.length === 0) {
+      alert('Tidak ada data produk untuk diexport.');
+      return;
+    }
+
+    const headers = ['SKU', 'Nama Produk', 'Variasi', 'Stok Tersedia', 'Stok Terkunci', 'Harga (Rp)', 'Status', 'Terakhir Sync'];
+    const rows = productsList.map((p) => [
+      `"${(p.sku || '').replace(/"/g, '""')}"`,
+      `"${(p.item_name || '').replace(/"/g, '""')}"`,
+      `"${(p.model_name || '').replace(/"/g, '""')}"`,
+      p.stock ?? 0,
+      p.reserved_stock ?? 0,
+      p.price ?? 0,
+      `"${p.item_status || 'NORMAL'}"`,
+      `"${p.last_synced_at || ''}"`,
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `shopee_sku_stock_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const isConnected = account.connection_status === 'connected';
@@ -524,6 +606,91 @@ export default function ShopeeIndex({ account, callbackUrl }: Props) {
               </div>
             </div>
 
+            {/* Shopee Product & Stock Sync Card */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-5">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                  <span className="p-1.5 rounded-lg bg-orange-50 text-[#EE4D2D] border border-orange-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-5 h-5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+                    </svg>
+                  </span>
+                  Data Produk & Stok Shopee (SKU & Stok)
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Ambil data seluruh produk aktif, SKU variasi, dan jumlah stok tersedia langsung dari Shopee Open Platform.
+                </p>
+              </div>
+
+              {/* Product Summary Stats Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total SKU Tersimpan</div>
+                  <div className="text-lg font-bold text-slate-900 mt-0.5">
+                    {productSummary?.total_skus?.toLocaleString('id-ID') ?? 0} <span className="text-xs font-normal text-slate-500">SKU</span>
+                  </div>
+                </div>
+                <div className="p-3.5 rounded-xl bg-orange-50/60 border border-orange-100">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-orange-600">Total Stok Tersedia</div>
+                  <div className="text-lg font-bold text-[#EE4D2D] mt-0.5">
+                    {productSummary?.total_stock?.toLocaleString('id-ID') ?? 0} <span className="text-xs font-normal text-orange-500">pcs</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleSyncProducts}
+                  disabled={syncingProducts || !isConnected}
+                  className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                    isConnected && !syncingProducts
+                      ? 'bg-[#EE4D2D] hover:bg-[#d43f20] text-white shadow-xs cursor-pointer active:scale-98'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  }`}
+                >
+                  {syncingProducts ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Menarik SKU & Stok dari Shopee...
+                    </>
+                  ) : (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                      </svg>
+                      Tarik Produk & Stok Shopee
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleOpenProductModal}
+                  className="py-2.5 px-4 rounded-xl text-xs font-bold border border-slate-300 hover:border-slate-400 bg-white hover:bg-slate-50 text-slate-700 flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-slate-500">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Lihat SKU & Stok ({productSummary?.total_skus ?? 0})
+                </button>
+              </div>
+
+              {productSummary?.last_synced_at && (
+                <div className="text-[11px] text-slate-500 flex items-center gap-1 pt-1">
+                  <span>🕒 Terakhir sinkron produk:</span>
+                  <span className="font-semibold text-slate-700">
+                    {new Date(productSummary.last_synced_at).toLocaleString('id-ID')}
+                  </span>
+                </div>
+              )}
+            </div>
+
             {/* Callback URL Info Card */}
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-3">
               <h3 className="text-xs font-bold text-slate-900 flex items-center gap-2">
@@ -554,6 +721,187 @@ export default function ShopeeIndex({ account, callbackUrl }: Props) {
             </div>
           </div>
         </div>
+
+        {/* Modal Daftar SKU & Stok Produk Shopee */}
+        {showProductModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs">
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in duration-200">
+              {/* Modal Header */}
+              <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900/60">
+                <div className="flex items-center gap-3">
+                  <span className="p-2 rounded-xl bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-5 h-5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+                    </svg>
+                  </span>
+                  <div>
+                    <h3 className="text-base font-bold text-white tracking-tight">
+                      Daftar SKU & Stok Produk Shopee
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Total {productPagination?.total ?? productsList.length} SKU variasi tersimpan dari toko Shopee
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowProductModal(false)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="Tutup"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Modal Filter & Search Bar */}
+              <div className="p-4 border-b border-slate-800 bg-slate-900/40 flex flex-col sm:flex-row gap-3 items-center justify-between">
+                <form onSubmit={handleSearchProduct} className="flex items-center gap-2 w-full sm:w-96">
+                  <input
+                    type="text"
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                    placeholder="Cari SKU, Nama Produk, atau Item ID..."
+                    className="flex-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500"
+                  />
+                  <button
+                    type="submit"
+                    className="px-3.5 py-2 bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shrink-0"
+                  >
+                    Cari
+                  </button>
+                </form>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={handleExportProductsCsv}
+                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold rounded-xl border border-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-emerald-400">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                    </svg>
+                    Download CSV
+                  </button>
+                </div>
+              </div>
+
+              {/* Table Body */}
+              <div className="flex-1 overflow-y-auto p-4">
+                {loadingProducts ? (
+                  <div className="py-16 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2">
+                    <svg className="animate-spin h-6 w-6 text-orange-500" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Memuat data SKU & Stok dari database...</span>
+                  </div>
+                ) : productsList.length === 0 ? (
+                  <div className="py-16 text-center text-slate-500 text-xs">
+                    Belum ada data produk tersimpan. Klik tombol <strong className="text-orange-400">"Tarik Produk & Stok Shopee"</strong> untuk menyinkronkan data.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-xl border border-slate-800">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-900/60 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                          <th className="py-3 px-3 w-12 text-center">No</th>
+                          <th className="py-3 px-3">SKU</th>
+                          <th className="py-3 px-4">Nama Produk</th>
+                          <th className="py-3 px-3">Variasi / Model</th>
+                          <th className="py-3 px-3 text-right">Stok Tersedia</th>
+                          <th className="py-3 px-3 text-right">Stok Terkunci</th>
+                          <th className="py-3 px-3 text-right">Harga</th>
+                          <th className="py-3 px-3">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 font-sans">
+                        {productsList.map((p, idx) => {
+                          const rowNo = ((productPagination?.current_page ?? 1) - 1) * (productPagination?.per_page ?? 50) + idx + 1;
+                          const hasStock = (p.stock ?? 0) > 0;
+                          return (
+                            <tr key={p.id} className="hover:bg-slate-900/40 transition-colors">
+                              <td className="py-2.5 px-3 text-center text-slate-500">{rowNo}</td>
+                              <td className="py-2.5 px-3">
+                                <span className="font-mono font-bold text-violet-400 select-all">
+                                  {p.sku || <span className="text-slate-600 font-normal italic">— tanpa SKU —</span>}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-4 max-w-xs truncate text-slate-200" title={p.item_name}>
+                                {p.item_name}
+                              </td>
+                              <td className="py-2.5 px-3">
+                                {p.model_name ? (
+                                  <span className="inline-block px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 text-[11px] font-medium border border-slate-700">
+                                    {p.model_name}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-500 italic text-[11px]">Single (Tanpa Variasi)</span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 text-right">
+                                <span
+                                  className={`inline-block px-2.5 py-0.5 rounded-full font-mono font-bold text-[11px] ${
+                                    hasStock
+                                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                      : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                  }`}
+                                >
+                                  {p.stock?.toLocaleString('id-ID') ?? 0}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-slate-400">
+                                {p.reserved_stock?.toLocaleString('id-ID') ?? 0}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-slate-300">
+                                Rp {Math.round(p.price ?? 0).toLocaleString('id-ID')}
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                  {p.item_status || 'NORMAL'}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Pagination Footer */}
+              {productPagination && productPagination.last_page > 1 && (
+                <div className="p-3 border-t border-slate-800 bg-slate-900/60 flex items-center justify-between text-xs text-slate-400">
+                  <div>
+                    Halaman <strong className="text-white">{productPagination.current_page}</strong> dari{' '}
+                    <strong className="text-white">{productPagination.last_page}</strong> ({productPagination.total} SKU)
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={productPagination.current_page <= 1}
+                      onClick={() => fetchProducts(productPagination.current_page - 1, productSearch)}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Sebelumnya
+                    </button>
+                    <button
+                      type="button"
+                      disabled={productPagination.current_page >= productPagination.last_page}
+                      onClick={() => fetchProducts(productPagination.current_page + 1, productSearch)}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Selanjutnya
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </AppLayout>
   );

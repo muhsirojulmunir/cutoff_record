@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ShopeeAccount;
+use App\Models\ShopeeProduct;
 use App\Services\ShopeeSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -28,9 +29,18 @@ class ShopeeIntegrationController extends Controller
             ]
         );
 
+        $productsCount   = ShopeeProduct::where('shopee_account_id', $account->id)->count();
+        $totalStock      = (int) ShopeeProduct::where('shopee_account_id', $account->id)->sum('stock');
+        $lastProductSync = ShopeeProduct::where('shopee_account_id', $account->id)->max('last_synced_at');
+
         return Inertia::render('Shopee/Index', [
-            'account'     => $account->toSafeArray(),
-            'callbackUrl' => url('/marketplace/shopee/callback'),
+            'account'        => $account->toSafeArray(),
+            'callbackUrl'    => url('/marketplace/shopee/callback'),
+            'productSummary' => [
+                'total_skus'     => $productsCount,
+                'total_stock'    => $totalStock,
+                'last_synced_at' => $lastProductSync,
+            ],
         ]);
     }
 
@@ -212,5 +222,52 @@ class ShopeeIntegrationController extends Controller
         } catch (\Exception $e) {
             return back()->with('error', 'Gagal sinkronisasi retur: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Trigger product & stock sync from Shopee API to shopee_products table.
+     */
+    public function syncProducts(Request $request): \Illuminate\Http\RedirectResponse
+    {
+        Gate::authorize('user.view');
+
+        @ini_set('max_execution_time', '900');
+        @set_time_limit(900);
+
+        $account = ShopeeAccount::firstOrFail();
+
+        if (empty($account->partner_id) || empty($account->access_token)) {
+            return back()->with('error', 'Akun Shopee belum terhubung. Harap isi kredensial dan hubungkan toko terlebih dahulu.');
+        }
+
+        try {
+            $result = $this->syncService->syncProductsFromShopee($account);
+            return back()->with('success', $result['message']);
+        } catch (\Exception $e) {
+            return back()->with('error', 'Gagal sinkronisasi produk: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Fetch list of synced Shopee products for modal/table with search.
+     */
+    public function productsList(Request $request): \Illuminate\Http\JsonResponse
+    {
+        Gate::authorize('user.view');
+
+        $search = trim((string) $request->input('search', ''));
+        $query  = ShopeeProduct::query()->orderBy('stock', 'desc');
+
+        if (! empty($search)) {
+            $query->where(function ($q) use ($search) {
+                $q->where('sku', 'like', "%{$search}%")
+                  ->orWhere('item_name', 'like', "%{$search}%")
+                  ->orWhere('model_name', 'like', "%{$search}%")
+                  ->orWhere('item_id', 'like', "%{$search}%");
+            });
+        }
+
+        $products = $query->paginate(50);
+        return response()->json($products);
     }
 }

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\CutOffOrder;
 use App\Models\CutOffReturn;
 use App\Models\ShopeeAccount;
+use App\Models\ShopeeProduct;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
@@ -1222,6 +1223,301 @@ class ShopeeSyncService
             'updated'       => $updatedCount,
             'orders_linked' => $ordersLinkedCount,
             'message'       => "Sinkronisasi Retur Shopee sukses! {$createdCount} retur baru ditambahkan, {$updatedCount} diperbarui, dan {$ordersLinkedCount} pesanan di Pesanan Cut Off otomatis disinkronkan ke status 'RJ (Retur)'.",
+        ];
+    }
+
+    /**
+     * Fetch list of item IDs from Shopee Open API v2.
+     * Path: /api/v2/product/get_item_list
+     */
+    public function fetchItemListRaw(ShopeeAccount $account, int $offset = 0, int $pageSize = 50, string $status = 'NORMAL'): array
+    {
+        $path        = '/api/v2/product/get_item_list';
+        $timestamp   = time();
+        $accessToken = (string) ($account->access_token ?? '');
+        $shopId      = (int) $account->shop_id;
+        $partnerId   = (int) $account->partner_id;
+        $partnerKey  = (string) $account->partner_key;
+
+        $baseStr = sprintf('%s%s%s%s%s', $partnerId, $path, $timestamp, $accessToken, $shopId);
+        $sign    = hash_hmac('sha256', $baseStr, $partnerKey);
+
+        $queryParams = [
+            'partner_id'   => $partnerId,
+            'timestamp'    => $timestamp,
+            'sign'         => $sign,
+            'access_token' => $accessToken,
+            'shop_id'      => $shopId,
+            'offset'       => $offset,
+            'page_size'    => $pageSize,
+            'item_status'  => $status,
+        ];
+
+        $url = $this->host . $path . '?' . http_build_query($queryParams);
+        $response = Http::timeout(25)->get($url);
+        $data = $response->json();
+
+        if ($response->failed() || ! empty($data['error'])) {
+            throw new RuntimeException('Shopee Get Item List Error: ' . ($data['message'] ?? $data['error'] ?? 'Gagal mengambil daftar produk'));
+        }
+
+        return $data['response'] ?? [];
+    }
+
+    /**
+     * Fetch basic info for batch of item IDs (up to 50 items).
+     * Path: /api/v2/product/get_item_base_info
+     */
+    public function fetchItemBaseInfoRaw(ShopeeAccount $account, array $itemIds): array
+    {
+        if (empty($itemIds)) {
+            return [];
+        }
+
+        $path        = '/api/v2/product/get_item_base_info';
+        $timestamp   = time();
+        $accessToken = (string) ($account->access_token ?? '');
+        $shopId      = (int) $account->shop_id;
+        $partnerId   = (int) $account->partner_id;
+        $partnerKey  = (string) $account->partner_key;
+
+        $baseStr = sprintf('%s%s%s%s%s', $partnerId, $path, $timestamp, $accessToken, $shopId);
+        $sign    = hash_hmac('sha256', $baseStr, $partnerKey);
+
+        $queryParams = [
+            'partner_id'   => $partnerId,
+            'timestamp'    => $timestamp,
+            'sign'         => $sign,
+            'access_token' => $accessToken,
+            'shop_id'      => $shopId,
+            'item_id_list' => implode(',', array_slice($itemIds, 0, 50)),
+        ];
+
+        $url = $this->host . $path . '?' . http_build_query($queryParams);
+        $response = Http::timeout(25)->get($url);
+        $data = $response->json();
+
+        if ($response->failed() || ! empty($data['error'])) {
+            throw new RuntimeException('Shopee Get Item Base Info Error: ' . ($data['message'] ?? $data['error'] ?? 'Gagal mengambil detail dasar produk'));
+        }
+
+        return $data['response']['item_list'] ?? [];
+    }
+
+    /**
+     * Fetch model/variation list for an item.
+     * Path: /api/v2/product/get_model_list
+     */
+    public function fetchModelListRaw(ShopeeAccount $account, int|string $itemId): array
+    {
+        $path        = '/api/v2/product/get_model_list';
+        $timestamp   = time();
+        $accessToken = (string) ($account->access_token ?? '');
+        $shopId      = (int) $account->shop_id;
+        $partnerId   = (int) $account->partner_id;
+        $partnerKey  = (string) $account->partner_key;
+
+        $baseStr = sprintf('%s%s%s%s%s', $partnerId, $path, $timestamp, $accessToken, $shopId);
+        $sign    = hash_hmac('sha256', $baseStr, $partnerKey);
+
+        $queryParams = [
+            'partner_id'   => $partnerId,
+            'timestamp'    => $timestamp,
+            'sign'         => $sign,
+            'access_token' => $accessToken,
+            'shop_id'      => $shopId,
+            'item_id'      => (int) $itemId,
+        ];
+
+        $url = $this->host . $path . '?' . http_build_query($queryParams);
+        $response = Http::timeout(25)->get($url);
+        $data = $response->json();
+
+        if ($response->failed() || ! empty($data['error'])) {
+            throw new RuntimeException('Shopee Get Model List Error: ' . ($data['message'] ?? $data['error'] ?? "Gagal mengambil variasi produk ID {$itemId}"));
+        }
+
+        return $data['response']['model'] ?? [];
+    }
+
+    /**
+     * Synchronize all Shopee products, variations, SKU, and Stock.
+     * Extracts exact SKU & available stock into shopee_products table.
+     */
+    public function syncProductsFromShopee(ShopeeAccount $account, ?callable $progressCallback = null): array
+    {
+        if (empty($account->access_token)) {
+            throw new RuntimeException('Toko Shopee belum terhubung (access_token kosong). Silakan hubungkan toko terlebih dahulu.');
+        }
+
+        // Auto refresh token jika kadaluarsa
+        if ($account->token_expires_at && $account->token_expires_at->isPast()) {
+            $account = $this->refreshAccessToken($account);
+        }
+
+        $allItemIds = [];
+        $offset = 0;
+        $pageSize = 50;
+        $hasNextPage = true;
+
+        // 1. Ambil seluruh item_id produk berstatus NORMAL (aktif)
+        while ($hasNextPage) {
+            $res = $this->fetchItemListRaw($account, $offset, $pageSize, 'NORMAL');
+            $items = $res['item'] ?? [];
+            foreach ($items as $it) {
+                if (! empty($it['item_id'])) {
+                    $allItemIds[] = (int) $it['item_id'];
+                }
+            }
+
+            $hasNextPage = ! empty($res['has_next_page']);
+            $nextOffset = $res['next_offset'] ?? null;
+            if ($nextOffset !== null && (int) $nextOffset > $offset) {
+                $offset = (int) $nextOffset;
+            } else {
+                $offset += $pageSize;
+            }
+
+            if (empty($items)) {
+                break;
+            }
+        }
+
+        $totalItems = count($allItemIds);
+        if ($progressCallback) {
+            $progressCallback("Ditemukan {$totalItems} produk di Shopee. Mulai mengambil rincian SKU dan Stok...");
+        }
+
+        $savedCount = 0;
+        $totalStockSum = 0;
+        $now = now();
+
+        // 2. Ambil detail dasar produk dalam batch 50 item
+        $chunks = array_chunk($allItemIds, 50);
+        foreach ($chunks as $chunkIdx => $chunkItemIds) {
+            $baseItems = $this->fetchItemBaseInfoRaw($account, $chunkItemIds);
+
+            foreach ($baseItems as $item) {
+                $itemId   = (int) ($item['item_id'] ?? 0);
+                $itemName = (string) ($item['item_name'] ?? 'Produk Shopee');
+                $hasModel = ! empty($item['has_model']);
+                $itemStatus = (string) ($item['item_status'] ?? 'NORMAL');
+
+                if ($hasModel) {
+                    // Produk memiliki variasi (Model/Size/Warna): ambil daftar model
+                    try {
+                        $models = $this->fetchModelListRaw($account, $itemId);
+                        foreach ($models as $model) {
+                            $modelId   = (int) ($model['model_id'] ?? 0);
+                            $modelSku  = trim((string) ($model['model_sku'] ?? $item['item_sku'] ?? ''));
+                            $modelName = trim((string) ($model['model_name'] ?? ''));
+
+                            // Ambil stok dari stock_info_v2
+                            $stock = (int) (
+                                $model['stock_info_v2']['summary_info']['total_available_stock']
+                                ?? $model['stock_info_v2']['seller_stock'][0]['stock']
+                                ?? $model['normal_stock']
+                                ?? 0
+                            );
+                            $reservedStock = (int) (
+                                $model['stock_info_v2']['summary_info']['total_reserved_stock']
+                                ?? 0
+                            );
+
+                            $price = (float) (
+                                $model['price_info'][0]['current_price']
+                                ?? $model['price_info'][0]['original_price']
+                                ?? 0
+                            );
+
+                            ShopeeProduct::updateOrCreate(
+                                [
+                                    'shopee_account_id' => $account->id,
+                                    'item_id'           => $itemId,
+                                    'model_id'          => $modelId,
+                                ],
+                                [
+                                    'item_name'         => $itemName,
+                                    'model_name'        => $modelName,
+                                    'sku'               => $modelSku ?: null,
+                                    'stock'             => $stock,
+                                    'reserved_stock'    => $reservedStock,
+                                    'price'             => $price,
+                                    'item_status'       => $itemStatus,
+                                    'has_model'         => true,
+                                    'last_synced_at'    => $now,
+                                    'raw_data'          => $model,
+                                ]
+                            );
+
+                            $savedCount++;
+                            $totalStockSum += $stock;
+                        }
+                    } catch (\Throwable $e) {
+                        Log::warning("[ShopeeSyncProduct] Gagal mengambil variasi item {$itemId}: " . $e->getMessage());
+                    }
+                } else {
+                    // Produk tunggal tanpa variasi
+                    $itemSku = trim((string) ($item['item_sku'] ?? ''));
+                    $stock = (int) (
+                        $item['stock_info_v2']['summary_info']['total_available_stock']
+                        ?? $item['stock_info_v2']['seller_stock'][0]['stock']
+                        ?? $item['normal_stock']
+                        ?? 0
+                    );
+                    $reservedStock = (int) (
+                        $item['stock_info_v2']['summary_info']['total_reserved_stock']
+                        ?? 0
+                    );
+                    $price = (float) (
+                        $item['price_info'][0]['current_price']
+                        ?? $item['price_info'][0]['original_price']
+                        ?? 0
+                    );
+
+                    ShopeeProduct::updateOrCreate(
+                        [
+                            'shopee_account_id' => $account->id,
+                            'item_id'           => $itemId,
+                            'model_id'          => null,
+                        ],
+                        [
+                            'item_name'         => $itemName,
+                            'model_name'        => null,
+                            'sku'               => $itemSku ?: null,
+                            'stock'             => $stock,
+                            'reserved_stock'    => $reservedStock,
+                            'price'             => $price,
+                            'item_status'       => $itemStatus,
+                            'has_model'         => false,
+                            'last_synced_at'    => $now,
+                            'raw_data'          => $item,
+                        ]
+                    );
+
+                    $savedCount++;
+                    $totalStockSum += $stock;
+                }
+            }
+
+            if ($progressCallback) {
+                $processedCount = min($totalItems, ($chunkIdx + 1) * 50);
+                $progressCallback("Diproses {$processedCount}/{$totalItems} produk ({$savedCount} SKU variasi tersimpan)...");
+            }
+        }
+
+        $account->update([
+            'last_synced_at'   => $now,
+            'last_sync_status' => 'success',
+            'last_sync_error'  => null,
+        ]);
+
+        return [
+            'status'         => 'success',
+            'total_items'    => $totalItems,
+            'total_variants' => $savedCount,
+            'total_stock'    => $totalStockSum,
+            'message'        => "Sinkronisasi produk Shopee berhasil! {$savedCount} SKU tersinkron dari {$totalItems} produk dengan total {$totalStockSum} pcs stok tersedia.",
         ];
     }
 }
