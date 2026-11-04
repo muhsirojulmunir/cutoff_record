@@ -20,6 +20,8 @@ class ShopeeIntegrationController extends Controller
     {
         Gate::authorize('user.view'); // Only admin/authorized operators
 
+        $this->syncService->ensureProductSchema();
+
         $account = ShopeeAccount::firstOrCreate(
             ['id' => 1],
             [
@@ -29,9 +31,19 @@ class ShopeeIntegrationController extends Controller
             ]
         );
 
-        $productsCount   = ShopeeProduct::where('shopee_account_id', $account->id)->count();
-        $totalStock      = (int) ShopeeProduct::where('shopee_account_id', $account->id)->sum('stock');
-        $lastProductSync = ShopeeProduct::where('shopee_account_id', $account->id)->max('last_synced_at');
+        $productsCount   = 0;
+        $totalStock      = 0;
+        $lastProductSync = null;
+
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('shopee_products')) {
+                $productsCount   = ShopeeProduct::where('shopee_account_id', $account->id)->count();
+                $totalStock      = (int) ShopeeProduct::where('shopee_account_id', $account->id)->sum('stock');
+                $lastProductSync = ShopeeProduct::where('shopee_account_id', $account->id)->max('last_synced_at');
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Shopee products summary error: ' . $e->getMessage());
+        }
 
         return Inertia::render('Shopee/Index', [
             'account'        => $account->toSafeArray(),
