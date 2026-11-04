@@ -267,14 +267,16 @@ function getShippingSla(
   }
 
   const st = (order.order_status ?? '').toLowerCase();
-  if (
-    st.includes('batal') ||
-    st.includes('cancel') ||
-    st.includes('selesai') ||
-    st.includes('delivered') ||
-    st.includes('dikirim') ||
-    st.includes('shipped')
-  ) {
+  const isCancelled = st.includes('batal') || st.includes('cancel');
+  const isCompleted = st.includes('selesai') || st.includes('delivered');
+  // Jangan kecualikan "perlu dikirim", "siap dikirim", atau "belum dikirim"
+  const isShipped =
+    st.includes('shipped') ||
+    st.includes('sedang dikirim') ||
+    st.includes('dalam pengiriman') ||
+    (st.includes('dikirim') && !st.includes('perlu') && !st.includes('siap') && !st.includes('belum'));
+
+  if (isCancelled || isCompleted || isShipped) {
     return null;
   }
 
@@ -290,31 +292,15 @@ function getShippingSla(
     deadlineMs = orderMs + windowHours * 60 * 60 * 1000;
   }
 
-  // Countdown Mencari Kurir Otomatis (Shopee 40-minute window)
-  let courierSearchText: string | null = null;
-  let isReadyForPickup = false;
-
-  if (shippingTier.label === 'INSTAN' && orderMs) {
-    const autoSearchDeadlineMs = orderMs + 40 * 60 * 1000;
-    const searchDiffSec = Math.floor((autoSearchDeadlineMs - nowMs) / 1000);
-    if (searchDiffSec > 0) {
-      const sm = Math.floor(searchDiffSec / 60);
-      const ss = searchDiffSec % 60;
-      courierSearchText = `Mencari Kurir dalam ${sm}m ${String(ss).padStart(2, '0')}d`;
-    } else {
-      courierSearchText = 'Driver Segera Tiba (Pastikan Paket Siap)';
-      isReadyForPickup = true;
-    }
+  if (!deadlineMs) {
+    return null;
   }
 
-  if (!deadlineMs) {
-    return courierSearchText ? {
-      deadlineTime: '—',
-      remainingText: courierSearchText,
-      courierSearchText,
-      isReadyForPickup,
-      isUrgent: true,
-    } : null;
+  const diffSec = Math.floor((deadlineMs - nowMs) / 1000);
+
+  // Jika waktu pickup sudah terlewati atau driver sudah tiba, jangan tampilkan notif lagi (hilang)
+  if (diffSec <= 0) {
+    return null;
   }
 
   const dDate = new Date(deadlineMs);
@@ -322,21 +308,22 @@ function getShippingSla(
   const mm = String(dDate.getMinutes()).padStart(2, '0');
   const deadlineTime = `${hh}:${mm}`;
 
-  const diffSec = Math.floor((deadlineMs - nowMs) / 1000);
-
-  if (diffSec <= 0) {
-    return {
-      deadlineTime,
-      remainingText: 'Driver Menuju Lokasi',
-      courierSearchText: courierSearchText || 'Driver Segera Tiba (Pastikan Paket Siap)',
-      isReadyForPickup: true,
-      isUrgent: true,
-    };
-  }
-
   const hours = Math.floor(diffSec / 3600);
   const minutes = Math.floor((diffSec % 3600) / 60);
   const seconds = diffSec % 60;
+
+  // Format teks ala Shopee Seller Center: "Atur pickup dalam 1 jam 34 menit"
+  let courierSearchText: string;
+  if (hours > 0) {
+    courierSearchText = `Atur pickup dalam ${hours} jam ${minutes} menit`;
+  } else if (minutes > 0) {
+    courierSearchText = `Atur pickup dalam ${minutes} menit ${seconds} detik`;
+  } else {
+    courierSearchText = `Atur pickup dalam ${seconds} detik`;
+  }
+
+  // Notifikasi "Driver Segera Tiba (Paket Harus Siap)" HANYA muncul jika dalam kurun 2 menit (<= 120 detik) sebelum batas pickup
+  const isReadyForPickup = diffSec <= 2 * 60;
 
   const remainingText = hours > 0
     ? `${hours}j ${minutes}m`
@@ -1535,9 +1522,14 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                                   : order.order_status}
                               </span>
 
-                              {/* Indikator Realtime Mencari Kurir (Shopee Instant Style) */}
+                              {/* Batas Waktu Pickup Ala Shopee Seller Center */}
                               {shippingSla?.courierSearchText && (
-                                <span className="block mt-1 text-[10px] font-bold text-rose-600 tracking-tight whitespace-nowrap font-mono animate-pulse" title="Hitung mundur pencarian kurir otomatis Shopee Instant">
+                                <span
+                                  className={`block mt-1 text-[11px] font-semibold text-rose-600 tracking-tight whitespace-nowrap font-sans ${
+                                    shippingSla.isReadyForPickup ? 'font-bold text-rose-700 animate-pulse' : ''
+                                  }`}
+                                  title="Batas waktu atur pickup kurir Instant (Shopee)"
+                                >
                                   {shippingSla.courierSearchText}
                                 </span>
                               )}
