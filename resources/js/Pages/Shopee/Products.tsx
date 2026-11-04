@@ -732,8 +732,6 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
                     <th className="py-3 px-4 text-right">Stok Tersedia</th>
                     <th className="py-3 px-4 text-right">Stok Terkunci</th>
                     <th className="py-3 px-4 text-right">Harga</th>
-                    <th className="py-3 px-4 text-center">Status Toko</th>
-                    <th className="py-3 px-4">Terakhir Sync</th>
                     <th className="py-3 px-4 text-center">Aksi</th>
                   </tr>
                 </thead>
@@ -800,18 +798,6 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
                         {/* Harga */}
                         <td className="py-3.5 px-4 text-right font-mono font-semibold text-slate-900 whitespace-nowrap">
                           Rp {Math.round(Number(p.price) || 0).toLocaleString('id-ID')}
-                        </td>
-
-                        {/* Status Toko */}
-                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                          <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
-                            {p.item_status || 'NORMAL'}
-                          </span>
-                        </td>
-
-                        {/* Terakhir Sync */}
-                        <td className="py-3.5 px-4 text-slate-500 text-[11px] whitespace-nowrap">
-                          {p.last_synced_at ? new Date(p.last_synced_at).toLocaleString('id-ID') : '—'}
                         </td>
 
                         {/* Aksi: Kosongkan di Shopee */}
