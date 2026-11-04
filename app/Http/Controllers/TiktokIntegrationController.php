@@ -20,12 +20,6 @@ class TiktokIntegrationController extends Controller
     {
         Gate::authorize('user.view');
 
-        try {
-            \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('TikTok index auto-migrate notice: ' . $e->getMessage());
-        }
-
         $account = TiktokAccount::firstOrCreate(
             ['id' => 1],
             [

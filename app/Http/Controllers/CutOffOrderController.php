@@ -17,27 +17,6 @@ class CutOffOrderController extends Controller
      */
     public function index(Request $request): Response
     {
-        // Auto-recalculate all orders using the authentic (Subtotal - Voucher) * 79% formula
-        if (! \Illuminate\Support\Facades\Cache::has('auto_recalculated_cutoff_79_formula_v3')) {
-            try {
-                app(\App\Services\ShopeeSyncService::class)->recalculateAllOrders();
-                \Illuminate\Support\Facades\Cache::put('auto_recalculated_cutoff_79_formula_v3', true, now()->addHours(12));
-            } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::warning('CutOff auto-recalculate notice: ' . $e->getMessage());
-            }
-        }
-
-        // Auto-run pending migrations (cPanel FTP deployment support)
-        if (! \Illuminate\Support\Facades\Cache::has('auto_migrated_cutoff_v5')) {
-            try {
-                \Illuminate\Support\Facades\DB::statement("ALTER TABLE cut_off_orders MODIFY order_date DATETIME NULL");
-                \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
-                \Illuminate\Support\Facades\Cache::put('auto_migrated_cutoff_v5', true, now()->addHours(6));
-            } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::warning('CutOff auto-migrate notice: ' . $e->getMessage());
-            }
-        }
-
         $filters = $request->only([
             'search',
             'channel',
@@ -63,17 +42,26 @@ class CutOffOrderController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
-        // Metrik Ringkasan Utama (dihitung efisien langsung di DB)
+        // Metrik Ringkasan Utama (1 query agregasi efisien di DB)
+        $rawSummary = DB::table('cut_off_orders')
+            ->whereNull('deleted_at')
+            ->selectRaw("
+                COUNT(*) as total_orders,
+                COUNT(CASE WHEN info_gudang LIKE '%OOS%' THEN 1 END) as total_oos,
+                COUNT(CASE WHEN order_status LIKE '%RJ%' OR order_status LIKE '%Retur%' THEN 1 END) as total_rj,
+                COUNT(CASE WHEN dpp_number IS NOT NULL AND dpp_number != '' THEN 1 END) as total_has_dpp,
+                COALESCE(SUM(est_net_income), 0) as total_est_income,
+                COALESCE(SUM(marketplace_net_payout), 0) as total_net_payout
+            ")
+            ->first();
+
         $summary = [
-            'total_orders'      => CutOffOrder::count(),
-            'total_oos'         => CutOffOrder::where('info_gudang', 'like', '%OOS%')->count(),
-            'total_rj'          => CutOffOrder::where(function ($q) {
-                $q->where('order_status', 'like', '%RJ%')
-                  ->orWhere('order_status', 'like', '%Retur%');
-            })->count(),
-            'total_has_dpp'     => CutOffOrder::whereNotNull('dpp_number')->where('dpp_number', '!=', '')->count(),
-            'total_est_income'  => (float) CutOffOrder::sum('est_net_income'),
-            'total_net_payout'  => (float) CutOffOrder::sum('marketplace_net_payout'),
+            'total_orders'      => (int) ($rawSummary->total_orders ?? 0),
+            'total_oos'         => (int) ($rawSummary->total_oos ?? 0),
+            'total_rj'          => (int) ($rawSummary->total_rj ?? 0),
+            'total_has_dpp'     => (int) ($rawSummary->total_has_dpp ?? 0),
+            'total_est_income'  => (float) ($rawSummary->total_est_income ?? 0),
+            'total_net_payout'  => (float) ($rawSummary->total_net_payout ?? 0),
         ];
 
         // Daftar Toko / Channel dengan jumlah pesanan masing-masing
