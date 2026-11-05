@@ -108,14 +108,15 @@ class ShopeeProductController extends Controller
 
         $products = $query->paginate(50)->withQueryString();
 
+        $hasMasterTable = \Illuminate\Support\Facades\Schema::hasTable('master_stocks');
         $masterStockSummary = [
-            'total_g_items'    => MasterStock::where('warehouse', 'G')->count(),
-            'total_g_pcs'      => (int) MasterStock::where('warehouse', 'G')->sum('qty_pcs'),
-            'last_imported_g'  => MasterStock::where('warehouse', 'G')->max('last_imported_at'),
-            'total_a_items'    => MasterStock::where('warehouse', 'A')->count(),
-            'total_a_pcs'      => (int) MasterStock::where('warehouse', 'A')->sum('qty_pcs'),
-            'last_imported_a'  => MasterStock::where('warehouse', 'A')->max('last_imported_at'),
-            'has_master_stock' => MasterStock::exists(),
+            'total_g_items'    => $hasMasterTable ? MasterStock::where('warehouse', 'G')->count() : 0,
+            'total_g_pcs'      => $hasMasterTable ? (int) MasterStock::where('warehouse', 'G')->sum('qty_pcs') : 0,
+            'last_imported_g'  => $hasMasterTable ? MasterStock::where('warehouse', 'G')->max('last_imported_at') : null,
+            'total_a_items'    => $hasMasterTable ? MasterStock::where('warehouse', 'A')->count() : 0,
+            'total_a_pcs'      => $hasMasterTable ? (int) MasterStock::where('warehouse', 'A')->sum('qty_pcs') : 0,
+            'last_imported_a'  => $hasMasterTable ? MasterStock::where('warehouse', 'A')->max('last_imported_at') : null,
+            'has_master_stock' => $hasMasterTable && MasterStock::exists(),
         ];
 
         return Inertia::render('Shopee/Products', [
@@ -428,6 +429,13 @@ class ShopeeProductController extends Controller
         }
 
         $warehouse = strtoupper(trim((string) $request->input('warehouse', 'ALL')));
+
+        if (! \Illuminate\Support\Facades\Schema::hasTable('master_stocks')) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Belum ada data Master Stok di database. Silakan upload laporan stok di menu Master Stok terlebih dahulu.',
+            ], 422);
+        }
 
         $masterStocksQuery = MasterStock::query();
         if (in_array($warehouse, ['A', 'G'])) {

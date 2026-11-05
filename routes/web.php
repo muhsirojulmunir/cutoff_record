@@ -170,3 +170,26 @@ Route::match(['get', 'post'], '/cron/shopee-products-sync/{token?}', function (\
     }
 })->name('cron.shopee-products-sync');
 
+// Helper untuk menjalankan migrasi database otomatis dari cPanel / browser
+Route::match(['get', 'post'], '/system/migrate/{token?}', function (\Illuminate\Http\Request $request, $token = null) {
+    $providedToken = $token ?? $request->query('token') ?? $request->header('X-Cron-Token');
+    $expectedToken = env('CRON_SYNC_TOKEN', 'recordsh_cutoff_sync_2026');
+
+    if ($providedToken && $providedToken !== $expectedToken) {
+        return response()->json(['status' => 'error', 'message' => 'Unauthorized'], 403);
+    }
+
+    try {
+        \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+        $output = \Illuminate\Support\Facades\Artisan::output();
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Database migration completed successfully.',
+            'output'  => trim($output),
+        ]);
+    } catch (\Throwable $e) {
+        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+    }
+})->name('system.migrate');
+

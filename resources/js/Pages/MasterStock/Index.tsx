@@ -1033,3 +1033,4 @@ export default function MasterStockIndex({ stocks, summary, filters }: Props) {
     </AppLayout>
   );
 }
+
