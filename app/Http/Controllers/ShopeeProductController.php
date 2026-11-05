@@ -1380,7 +1380,11 @@ class ShopeeProductController extends Controller
                     $sub->where(function ($w) use ($kw) {
                         $w->where('sku', 'like', "%{$kw}%")
                           ->orWhere('model_name', 'like', "%{$kw}%")
-                          ->orWhere('item_name', 'like', "%{$kw}%");
+                          ->orWhere(function ($fallback) use ($kw) {
+                              $fallback->where(function ($emptyCheck) {
+                                  $emptyCheck->whereNull('sku')->orWhere('sku', '');
+                              })->where('item_name', 'like', "%{$kw}%");
+                          });
                     });
                 }
             });
@@ -1388,14 +1392,14 @@ class ShopeeProductController extends Controller
 
         $products = $query->orderBy('item_name', 'asc')->orderBy('model_name', 'asc')->get();
 
-        // Strict Filter di PHP: Jika user mencari kata kunci variasi spesifik (misal 'theon'),
-        // pastikan variasi yang ditampilkan benar-benar THEON dan singkirkan variasi model lain
-        // (seperti X-Force, Jayden, dll) yang kebetulan numpang di judul listing Shopee yang sama.
+        // Strict SKU & Variasi Filter: Hanya tampilkan variasi yang SKU-nya (atau nama variasinya)
+        // secara eksplisit memuat kata kunci yang dicari.
+        // Jangan loloskan variasi bermodel lain hanya karena judul produk Shopee memuat kata kunci tersebut.
         if (! empty($cleanKeywords)) {
             $products = $products->filter(function ($p) use ($cleanKeywords) {
-                $skuLower   = strtolower((string) $p->sku);
-                $modelLower = strtolower((string) $p->model_name);
-                $itemLower  = strtolower((string) $p->item_name);
+                $skuLower   = strtolower(trim((string) $p->sku));
+                $modelLower = strtolower(trim((string) $p->model_name));
+                $variantStr = $skuLower . ' ' . $modelLower;
 
                 foreach ($cleanKeywords as $kw) {
                     // Cek kode warna khusus (misal 'hitam' / 'putih' cocok dengan '-hp-' di SKU)
@@ -1403,18 +1407,13 @@ class ShopeeProductController extends Controller
                         str_contains($skuLower, '-hp-') || str_contains($skuLower, '_hp_') || str_contains($modelLower, 'hp')
                     );
 
-                    // 1. Jika SKU atau nama variasi langsung memuat keyword ini -> COCOK
-                    if (str_contains($skuLower, $kw) || str_contains($modelLower, $kw) || $matchesColorCode) {
+                    // Variasi wajib memuat keyword di SKU atau model variasinya
+                    if (str_contains($variantStr, $kw) || $matchesColorCode) {
                         continue;
                     }
 
-                    // 2. Jika tidak ada di SKU/model, tapi ada di judul produk:
-                    if (str_contains($itemLower, $kw)) {
-                        $otherArticle = $this->extractArticleKeyword((string) $p->sku, (string) $p->model_name);
-                        // Tolak jika SKU/variasi memiliki nama model LAIN yang berbeda (misal XFORCE atau JAYDEN)
-                        if ($otherArticle && ! ctype_digit($otherArticle) && ! str_contains(strtolower($otherArticle), $kw)) {
-                            return false;
-                        }
+                    // Fallback HANYA jika SKU benar-benar kosong/null (bukan produk yang punya SKU model lain)
+                    if (empty($skuLower) && str_contains(strtolower((string) $p->item_name), $kw)) {
                         continue;
                     }
 
