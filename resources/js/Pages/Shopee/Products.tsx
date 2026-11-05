@@ -101,6 +101,58 @@ interface AuditSummary {
   unmatched_count: number;
 }
 
+interface ConfirmModalState {
+  isOpen: boolean;
+  type: 'ZERO_SINGLE' | 'ZERO_ALL' | 'SYNC_CATALOG';
+  title: string;
+  message?: string;
+  sku?: string;
+  productName?: string;
+  modelName?: string;
+  count?: number;
+  skusList?: string[];
+  targetId?: number;
+}
+
+/**
+ * Memainkan suara alarm lembut (chime audio) dengan Web Audio API sintetis
+ * Bebas dependensi file audio eksternal dan 100% responsif.
+ */
+function playAlarmChime() {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+
+    // Nada 1: D5 (587 Hz)
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(587.33, ctx.currentTime);
+    gain1.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(ctx.currentTime);
+    osc1.stop(ctx.currentTime + 0.22);
+
+    // Nada 2: A5 (880 Hz) - nada bel peringatan tajam dan jernih
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(880, ctx.currentTime + 0.1);
+    gain2.gain.setValueAtTime(0, ctx.currentTime);
+    gain2.gain.setValueAtTime(0.18, ctx.currentTime + 0.1);
+    gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(ctx.currentTime + 0.1);
+    osc2.stop(ctx.currentTime + 0.4);
+  } catch {
+    // Abaikan jika browser membatasi autoplay
+  }
+}
+
 export default function ShopeeProductsIndex({
   products,
   filters,
@@ -133,6 +185,13 @@ export default function ShopeeProductsIndex({
   const [isZeroingOutAll, setIsZeroingOutAll] = useState(false);
   const [copiedToast, setCopiedToast] = useState(false);
   const [zeroOutSuccessMessage, setZeroOutSuccessMessage] = useState<string | null>(null);
+
+  // State Dialog Alarm & Konfirmasi Aksi Kritis (Anti Native Browser Popup)
+  const [confirmModal, setConfirmModal] = useState<ConfirmModalState>({
+    isOpen: false,
+    type: 'ZERO_SINGLE',
+    title: '',
+  });
 
   // States untuk fitur Mapping Manual Kode Barang ke Master Stok
   const [mappingModalItem, setMappingModalItem] = useState<AuditItem | null>(null);
@@ -183,10 +242,10 @@ export default function ShopeeProductsIndex({
           runMasterAudit(masterWarehouseFilter);
         }
       } else {
-        alert(resJson.message || 'Gagal menyimpan mapping.');
+        setValidationError(resJson.message || 'Gagal menyimpan mapping.');
       }
     } catch (e: any) {
-      alert('Terjadi kesalahan: ' + e.message);
+      setValidationError('Terjadi kesalahan: ' + e.message);
     } finally {
       setIsSavingMapping(false);
     }
@@ -231,6 +290,9 @@ export default function ShopeeProductsIndex({
 
       setAuditSummary(data.summary);
       setAuditItems(data.items);
+      if (data.summary.critical_count > 0) {
+        playAlarmChime();
+      }
     } catch (err: any) {
       setIsComparing(false);
       setValidationError(`Gagal menghubungi server: ${err.message}`);
@@ -257,21 +319,23 @@ export default function ShopeeProductsIndex({
     handleFilter(search, stockStatus, sort);
   }
 
-  function handleSync() {
+  function promptSync() {
     if (!account?.is_connected) {
-      alert('Toko Shopee belum terhubung dengan token aktif. Harap hubungkan toko terlebih dahulu di menu Integrasi Shopee.');
+      setValidationError('Toko Shopee belum terhubung dengan token aktif. Harap hubungkan toko terlebih dahulu di menu Integrasi Shopee.');
       return;
     }
+    playAlarmChime();
+    setConfirmModal({
+      isOpen: true,
+      type: 'SYNC_CATALOG',
+      title: 'Tarik Seluruh Katalog Produk Shopee',
+      message: 'Sistem akan mengambil seluruh produk aktif dari toko Shopee Anda dan memperbarui stok terkini via Open API.',
+    });
+  }
 
-    if (
-      !confirm(
-        'Tarik seluruh data produk, SKU, dan stok fisik dari Shopee sekarang?\n\nSistem akan mengambil seluruh produk aktif dari toko Shopee Anda dan memperbarui stok terkini.'
-      )
-    ) {
-      return;
-    }
-
+  function executeSync() {
     setIsSyncing(true);
+    setConfirmModal(prev => ({ ...prev, isOpen: false }));
     router.post(
       '/shopee-products/sync',
       {},
@@ -492,23 +556,34 @@ export default function ShopeeProductsIndex({
     reader.readAsArrayBuffer(file);
   }
 
-  // Kosongkan SEMUA SKU Kritis (Gudang = 0 & Shopee > 0)
-  async function handleZeroOutAllCritical() {
+  // Trigger dialog alarm konfirmasi untuk SEMUA produk kritis (Anti Browser Confirm)
+  function promptZeroOutAll() {
     if (!auditItems) return;
     const criticalItems = auditItems.filter(
       i => i.status === 'CRITICAL' && i.id && i.shopee_stock > 0 && i.is_safe_to_zero !== false
     );
     if (criticalItems.length === 0) {
-      alert('Tidak ada produk berstatus Kritis dengan stok Shopee > 0.');
+      setValidationError('Tidak ada produk berstatus Kritis dengan stok Shopee > 0.');
       return;
     }
 
-    if (!confirm(
-      `Konfirmasi: Kosongkan stok ${criticalItems.length} produk KRITIS di Shopee sekarang?\n\n` +
-      `Stok produk ini di gudang fisik Anda sudah HABIS (0). Sistem akan langsung mengatur stok Shopee menjadi 0 via API resmi agar tidak terjadi pesanan yang tidak dapat dipenuhi (overselling).`
-    )) {
-      return;
-    }
+    playAlarmChime();
+    setConfirmModal({
+      isOpen: true,
+      type: 'ZERO_ALL',
+      title: 'Alarm Peringatan: Kosongkan Stok Kritis Shopee',
+      count: criticalItems.length,
+      skusList: criticalItems.slice(0, 5).map(i => i.sku),
+    });
+  }
+
+  // Eksekusi pengosongan SEMUA SKU Kritis via Shopee API
+  async function executeZeroOutAll() {
+    if (!auditItems) return;
+    const criticalItems = auditItems.filter(
+      i => i.status === 'CRITICAL' && i.id && i.shopee_stock > 0 && i.is_safe_to_zero !== false
+    );
+    if (criticalItems.length === 0) return;
 
     setIsZeroingOutAll(true);
     setZeroOutSuccessMessage(null);
@@ -528,6 +603,7 @@ export default function ShopeeProductsIndex({
 
       const resJson = await resp.json();
       if (resJson.status === 'success') {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
         setZeroOutSuccessMessage(resJson.message || `Berhasil mengosongkan stok ${resJson.updated_count} produk di Shopee!`);
 
         // Update status audit item di modal
@@ -553,21 +629,31 @@ export default function ShopeeProductsIndex({
 
         router.reload({ only: ['products', 'summary'] });
       } else {
-        alert(resJson.message || 'Gagal mengosongkan stok di Shopee.');
+        setValidationError(resJson.message || 'Gagal mengosongkan stok di Shopee.');
       }
     } catch (err: any) {
-      alert('Terjadi kesalahan: ' + err.message);
+      setValidationError('Terjadi kesalahan: ' + err.message);
     } finally {
       setIsZeroingOutAll(false);
     }
   }
 
-  // Kosongkan 1 produk tertentu (baik dari modal maupun dari tabel utama)
-  async function handleZeroOutSingle(id: number, sku: string) {
-    if (!confirm(`Konfirmasi: Atur stok untuk SKU "${sku}" di Shopee menjadi 0 sekarang?`)) {
-      return;
-    }
+  // Trigger dialog alarm konfirmasi untuk 1 produk (Anti Browser Confirm)
+  function promptZeroOutSingle(item: { id: number; sku: string; item_name?: string; model_name?: string | null }) {
+    playAlarmChime();
+    setConfirmModal({
+      isOpen: true,
+      type: 'ZERO_SINGLE',
+      title: 'Alarm Peringatan: Kosongkan Stok Shopee',
+      sku: item.sku,
+      productName: item.item_name,
+      modelName: item.model_name || undefined,
+      targetId: item.id,
+    });
+  }
 
+  // Eksekusi pengosongan 1 produk via Shopee API
+  async function executeZeroOutSingle(id: number) {
     setZeroingOutId(id);
     try {
       const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
@@ -583,6 +669,9 @@ export default function ShopeeProductsIndex({
 
       const resJson = await resp.json();
       if (resJson.status === 'success') {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        setZeroOutSuccessMessage(resJson.message || 'Berhasil mengosongkan stok di Shopee!');
+
         // Update di modal jika terbuka
         setAuditItems(prev => prev ? prev.map(item => {
           if (item.id === id) {
@@ -599,10 +688,10 @@ export default function ShopeeProductsIndex({
 
         router.reload({ only: ['products', 'summary'] });
       } else {
-        alert(resJson.message || 'Gagal mengosongkan stok di Shopee.');
+        setValidationError(resJson.message || 'Gagal mengosongkan stok di Shopee.');
       }
     } catch (err: any) {
-      alert('Terjadi kesalahan: ' + err.message);
+      setValidationError('Terjadi kesalahan: ' + err.message);
     } finally {
       setZeroingOutId(null);
     }
@@ -613,7 +702,7 @@ export default function ShopeeProductsIndex({
     if (!auditItems) return;
     const critical = auditItems.filter(i => i.status === 'CRITICAL');
     if (critical.length === 0) {
-      alert('Tidak ada SKU Kritis untuk disalin.');
+      setValidationError('Tidak ada SKU Kritis untuk disalin.');
       return;
     }
 
@@ -805,7 +894,7 @@ export default function ShopeeProductsIndex({
             {/* Tarik Stok Shopee (API) */}
             <button
               type="button"
-              onClick={handleSync}
+              onClick={promptSync}
               disabled={isSyncing}
               className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer whitespace-nowrap active:scale-98 ${
                 isSyncing
@@ -1112,7 +1201,7 @@ export default function ShopeeProductsIndex({
                           {hasStock ? (
                             <button
                               type="button"
-                              onClick={() => handleZeroOutSingle(p.id, p.sku || p.item_name)}
+                              onClick={() => promptZeroOutSingle({ id: p.id, sku: p.sku || p.item_name, item_name: p.item_name, model_name: p.model_name })}
                               disabled={zeroingOutId === p.id}
                               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-50"
                               title="Kosongkan stok produk ini di Shopee menjadi 0 via API"
@@ -1679,7 +1768,7 @@ export default function ShopeeProductsIndex({
                         {/* Tombol Kosongkan SEMUA di Shopee */}
                         <button
                           type="button"
-                          onClick={handleZeroOutAllCritical}
+                          onClick={promptZeroOutAll}
                           disabled={isZeroingOutAll}
                           className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer whitespace-nowrap flex items-center gap-2 active:scale-98 disabled:opacity-50"
                         >
@@ -2013,7 +2102,7 @@ export default function ShopeeProductsIndex({
                                   ) : item.id && item.shopee_stock > 0 ? (
                                     <button
                                       type="button"
-                                      onClick={() => handleZeroOutSingle(item.id!, item.sku)}
+                                      onClick={() => promptZeroOutSingle({ id: item.id!, sku: item.sku, item_name: item.item_name, model_name: item.model_name })}
                                       disabled={zeroingOutId === item.id}
                                       className="inline-flex items-center gap-1 px-2 py-1 rounded bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold transition-colors cursor-pointer disabled:opacity-50"
                                       title="Set stok Shopee menjadi 0 via API"
@@ -2187,6 +2276,212 @@ export default function ShopeeProductsIndex({
               >
                 Batal
               </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Dialog Alarm & Konfirmasi Aksi Kritis (Anti AI-Slop, Anti Browser Alert) */}
+      {confirmModal.isOpen && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[10001] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-5 pb-4 border-b border-slate-100 flex items-start gap-3.5 bg-slate-50/70">
+              <div className="w-11 h-11 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0 relative">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-6 h-6">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+                <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+                </span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full">
+                    Peringatan Tindakan
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                    className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-200/60 cursor-pointer transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 mt-1">
+                  {confirmModal.title}
+                </h3>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-3.5 text-xs">
+              {confirmModal.type === 'ZERO_SINGLE' && (
+                <>
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Target SKU</span>
+                      <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 text-[10px] font-bold">Stok Gudang: 0</span>
+                    </div>
+                    <p className="font-mono font-bold text-slate-900 text-xs bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 select-all break-all">
+                      {confirmModal.sku}
+                    </p>
+                    {confirmModal.productName && (
+                      <p className="text-slate-700 font-semibold line-clamp-1">
+                        {confirmModal.productName}
+                      </p>
+                    )}
+                    {confirmModal.modelName && (
+                      <p className="text-[11px] text-slate-500 font-mono">
+                        Variasi: {confirmModal.modelName}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 space-y-1">
+                    <p className="font-semibold text-[11px] flex items-center gap-1.5">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-rose-600 shrink-0">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+                      </svg>
+                      Dampak Aksi Ini:
+                    </p>
+                    <p className="text-[11px] leading-relaxed text-rose-700">
+                      Stok variasi ini di Shopee akan langsung diubah menjadi <strong>0 (Habis)</strong> via Shopee Open API agar pembeli tidak dapat memesan barang kosong di gudang.
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {confirmModal.type === 'ZERO_ALL' && (
+                <>
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Target Pengosongan</span>
+                      <span className="px-2 py-0.5 rounded bg-rose-600 text-white text-[10px] font-bold">
+                        {confirmModal.count} SKU KRITIS
+                      </span>
+                    </div>
+                    <p className="text-slate-600 text-[11px]">
+                      Sistem akan mengosongkan seluruh SKU berikut di Shopee:
+                    </p>
+                    <div className="max-h-28 overflow-y-auto space-y-1 font-mono text-[11px]">
+                      {confirmModal.skusList?.map((s, idx) => (
+                        <div key={idx} className="bg-white px-2 py-1 rounded border border-slate-200 text-slate-800 truncate">
+                          {s}
+                        </div>
+                      ))}
+                      {(confirmModal.count ?? 0) > (confirmModal.skusList?.length ?? 0) && (
+                        <p className="text-[10px] text-slate-400 italic pt-0.5">
+                          + {(confirmModal.count ?? 0) - (confirmModal.skusList?.length ?? 0)} SKU kritis lainnya...
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 space-y-1">
+                    <p className="font-semibold text-[11px] flex items-center gap-1.5">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-rose-600 shrink-0">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+                      </svg>
+                      Perlindungan Toko:
+                    </p>
+                    <p className="text-[11px] leading-relaxed text-rose-700">
+                      Seluruh produk di atas sudah 0 Pcs di stok fisik gudang. Pengosongan ini mencegah keterlambatan pengiriman dan penalti poin di Shopee.
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {confirmModal.type === 'SYNC_CATALOG' && (
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 text-slate-600">
+                  <p className="text-slate-800 font-semibold text-xs">
+                    {confirmModal.message}
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    Proses ini akan memperbarui daftar produk, harga, variasi SKU, dan stok terkini langsung dari server Shopee.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50/70 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                disabled={isZeroingOutAll || zeroingOutId !== null || isSyncing}
+                className="px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Batal
+              </button>
+
+              {confirmModal.type === 'ZERO_SINGLE' && (
+                <button
+                  type="button"
+                  onClick={() => executeZeroOutSingle(confirmModal.targetId!)}
+                  disabled={zeroingOutId !== null}
+                  className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50"
+                >
+                  {zeroingOutId !== null ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                      <span>Mengosongkan di Shopee...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                      </svg>
+                      <span>Ya, Kosongkan Stok Shopee</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              {confirmModal.type === 'ZERO_ALL' && (
+                <button
+                  type="button"
+                  onClick={executeZeroOutAll}
+                  disabled={isZeroingOutAll}
+                  className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50"
+                >
+                  {isZeroingOutAll ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                      <span>Mengosongkan Semua ({confirmModal.count})...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                      </svg>
+                      <span>Kosongkan Semua ({confirmModal.count} SKU)</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              {confirmModal.type === 'SYNC_CATALOG' && (
+                <button
+                  type="button"
+                  onClick={executeSync}
+                  disabled={isSyncing}
+                  className="px-4 py-2.5 bg-[#0B132B] hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50"
+                >
+                  {isSyncing ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                      <span>Menyinkronkan...</span>
+                    </>
+                  ) : (
+                    <span>Ya, Tarik Sekarang</span>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>,
