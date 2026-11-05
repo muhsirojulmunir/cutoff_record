@@ -3056,7 +3056,7 @@ export default function ShopeeProductsIndex({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                    <span>Isi / Tambah Stok Shopee (Multi-Ukuran)</span>
+                    <span>Isi / Tambah Stok Shopee</span>
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
                       Shopee Open API
                     </span>
@@ -3120,99 +3120,79 @@ export default function ShopeeProductsIndex({
 
               {/* Fast Batch Action Box (Alat Isi Cepat untuk kasus 30-33 masing-masing 10 pcs) */}
               {restockModal.variants.length > 0 && (
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    {/* Mode Switcher: Timpa Stok vs + Tambah Stok */}
-                    <div className="inline-flex items-center p-0.5 bg-white rounded-lg border border-slate-200 text-xs shadow-2xs">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRestockModal(prev => ({
-                            ...prev,
-                            batchMode: 'set',
-                            variants: prev.variants.map(v => ({
-                              ...v,
-                              input_qty: v.current_stock,
-                              new_stock: v.current_stock,
-                            })),
-                          }));
-                        }}
-                        className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                          restockModal.batchMode === 'set'
-                            ? 'bg-emerald-600 text-white font-bold shadow-2xs'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        Timpa Stok
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRestockModal(prev => ({
-                            ...prev,
-                            batchMode: 'add',
-                            variants: prev.variants.map(v => ({
-                              ...v,
-                              input_qty: 0,
-                              new_stock: v.current_stock,
-                            })),
-                          }));
-                        }}
-                        className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                          restockModal.batchMode === 'add'
-                            ? 'bg-emerald-600 text-white font-bold shadow-2xs'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        + Tambah Stok
-                      </button>
-                    </div>
-
-                    {/* Batch Qty Input & Terapkan Ke Semua */}
-                    <div className="flex items-center gap-1.5">
-                      <div className="flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1 shadow-2xs">
-                        <span className="text-xs text-slate-500 font-medium mr-1.5">
-                          {restockModal.batchMode === 'add' ? 'Mau Tambah (+):' : 'Timpa Stok:'}
-                        </span>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100000"
-                          value={restockModal.batchQty}
-                          onChange={(e) => setRestockModal(prev => ({ ...prev, batchQty: Number(e.target.value) || 0 }))}
-                          className="w-16 text-center font-mono font-bold text-xs text-slate-900 focus:outline-none"
-                        />
-                        <span className="text-[11px] text-slate-400 ml-1">pcs</span>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => applyBatchRestockQty()}
-                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-2xs transition-all cursor-pointer flex items-center gap-1.5 active:scale-98"
-                      >
-                        <span>Terapkan Ke Semua</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                        </svg>
-                      </button>
-                    </div>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-wrap items-center gap-3">
+                  {/* Mode Switcher: Timpa Stok vs + Tambah Stok */}
+                  <div className="inline-flex items-center p-0.5 bg-white rounded-lg border border-slate-200 text-xs shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRestockModal(prev => ({
+                          ...prev,
+                          batchMode: 'set',
+                          variants: prev.variants.map(v => ({
+                            ...v,
+                            input_qty: v.current_stock,
+                            new_stock: v.current_stock,
+                          })),
+                        }));
+                      }}
+                      className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                        restockModal.batchMode === 'set'
+                          ? 'bg-emerald-600 text-white font-bold shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Timpa Stok
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRestockModal(prev => ({
+                          ...prev,
+                          batchMode: 'add',
+                          variants: prev.variants.map(v => ({
+                            ...v,
+                            input_qty: 0,
+                            new_stock: v.current_stock,
+                          })),
+                        }));
+                      }}
+                      className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                        restockModal.batchMode === 'add'
+                          ? 'bg-emerald-600 text-white font-bold shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      + Tambah Stok
+                    </button>
                   </div>
 
-                  <div className="flex items-center gap-2 text-xs">
+                  {/* Batch Qty Input & Terapkan Ke Semua */}
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1 shadow-2xs">
+                      <span className="text-xs text-slate-500 font-medium mr-1.5">
+                        {restockModal.batchMode === 'add' ? 'Mau Tambah (+):' : 'Timpa Stok:'}
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100000"
+                        value={restockModal.batchQty}
+                        onChange={(e) => setRestockModal(prev => ({ ...prev, batchQty: Number(e.target.value) || 0 }))}
+                        className="w-16 text-center font-mono font-bold text-xs text-slate-900 focus:outline-none"
+                      />
+                      <span className="text-[11px] text-slate-400 ml-1">pcs</span>
+                    </div>
+
                     <button
                       type="button"
-                      onClick={() => toggleAllRestockSelect(true)}
-                      className="text-slate-600 hover:text-emerald-700 font-semibold cursor-pointer underline"
+                      onClick={() => applyBatchRestockQty()}
+                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-2xs transition-all cursor-pointer flex items-center gap-1.5 active:scale-98"
                     >
-                      Pilih Semua
-                    </button>
-                    <span className="text-slate-300">•</span>
-                    <button
-                      type="button"
-                      onClick={() => toggleAllRestockSelect(false)}
-                      className="text-slate-600 hover:text-slate-900 font-semibold cursor-pointer underline"
-                    >
-                      Batal Pilih
+                      <span>Terapkan Ke Semua</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                      </svg>
                     </button>
                   </div>
                 </div>
