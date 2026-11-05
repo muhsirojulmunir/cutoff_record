@@ -1024,10 +1024,22 @@ class ShopeeSyncService
                 });
             }
 
-            if (Schema::hasTable('shopee_products') && ! Schema::hasColumn('shopee_products', 'manual_item_code')) {
-                Schema::table('shopee_products', function (Blueprint $table) {
-                    $table->string('manual_item_code', 50)->nullable()->after('sku')->index();
-                });
+            if (Schema::hasTable('shopee_products')) {
+                if (! Schema::hasColumn('shopee_products', 'manual_item_code')) {
+                    Schema::table('shopee_products', function (Blueprint $table) {
+                        $table->string('manual_item_code', 50)->nullable()->after('sku')->index();
+                    });
+                }
+                if (! Schema::hasColumn('shopee_products', 'locked_campaign_qty')) {
+                    Schema::table('shopee_products', function (Blueprint $table) {
+                        $table->integer('locked_campaign_qty')->default(0)->after('reserved_stock');
+                    });
+                }
+                if (! Schema::hasColumn('shopee_products', 'was_campaign_locked')) {
+                    Schema::table('shopee_products', function (Blueprint $table) {
+                        $table->boolean('was_campaign_locked')->default(false)->after('locked_campaign_qty')->index();
+                    });
+                }
             }
         } catch (\Throwable $e) {
             Log::warning('ShopeeSyncService ensureProductSchema notice: ' . $e->getMessage());
@@ -1685,22 +1697,67 @@ class ShopeeSyncService
                 // Cek jika Shopee mengembalikan failure_list untuk model tertentu
                 $apiFailures = $apiRes['failure_list'] ?? [];
                 $failedModelIds = [];
+                $campaignRetryList = [];
+
                 foreach ($apiFailures as $fail) {
                     $mId = (int) ($fail['model_id'] ?? 0);
-                    $failedModelIds[] = $mId;
-                    $failures[] = [
-                        'item_id'  => $itemId,
-                        'model_id' => $mId,
-                        'reason'   => $fail['failed_reason'] ?? 'Gagal update stok di Shopee',
-                    ];
+                    $reason = (string) ($fail['failed_reason'] ?? '');
+
+                    $matchingProd = $items->first(fn ($p) => (int) ($p->model_id ?? 0) === $mId);
+                    $reserved = $matchingProd ? (int) ($matchingProd->reserved_stock ?? 0) : 0;
+
+                    // Jika gagal karena proteksi promosi/campaign dan ada kuota promo, mentokkan ke kuota promo
+                    if ($reserved > 0 && (stripos($reason, 'campaign') !== false || stripos($reason, 'promot') !== false || stripos($reason, 'reserved') !== false || stripos($reason, 'promo') !== false)) {
+                        $campaignRetryList[] = [
+                            'model_id' => $mId,
+                            'stock'    => $reserved,
+                        ];
+                    } else {
+                        $failedModelIds[] = $mId;
+                        $failures[] = [
+                            'item_id'  => $itemId,
+                            'model_id' => $mId,
+                            'reason'   => $reason ?: 'Gagal update stok di Shopee',
+                        ];
+                    }
+                }
+
+                // Lakukan retry untuk variasi yang terkunci campaign (mentokkan kuota)
+                if (! empty($campaignRetryList)) {
+                    try {
+                        $retryRes = $this->updateStockRaw($account, (int) $itemId, $campaignRetryList);
+                        $retryFailures = $retryRes['failure_list'] ?? [];
+                        foreach ($retryFailures as $rf) {
+                            $rfmId = (int) ($rf['model_id'] ?? 0);
+                            $failedModelIds[] = $rfmId;
+                            $failures[] = [
+                                'item_id'  => $itemId,
+                                'model_id' => $rfmId,
+                                'reason'   => $rf['failed_reason'] ?? 'Gagal mentokkan kuota campaign',
+                            ];
+                        }
+                    } catch (\Throwable $re) {
+                        foreach ($campaignRetryList as $cEntry) {
+                            $failedModelIds[] = $cEntry['model_id'];
+                            $failures[] = [
+                                'item_id'  => $itemId,
+                                'model_id' => $cEntry['model_id'],
+                                'reason'   => 'Gagal mentokkan kuota campaign: ' . $re->getMessage(),
+                            ];
+                        }
+                    }
                 }
 
                 // Update lokal untuk produk yang berhasil
                 foreach ($items as $product) {
-                    if (! in_array((int) ($product->model_id ?? 0), $failedModelIds, true)) {
+                    $mId = (int) ($product->model_id ?? 0);
+                    if (! in_array($mId, $failedModelIds, true)) {
+                        $reserved = (int) ($product->reserved_stock ?? 0);
                         $product->update([
-                            'stock'          => 0,
-                            'last_synced_at' => $now,
+                            'stock'               => 0,
+                            'locked_campaign_qty' => $reserved,
+                            'was_campaign_locked' => $reserved > 0,
+                            'last_synced_at'      => $now,
                         ]);
                         $successCount++;
                     }
