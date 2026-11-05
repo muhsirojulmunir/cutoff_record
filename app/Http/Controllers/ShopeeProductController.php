@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ShopeeAccount;
 use App\Models\ShopeeProduct;
+use App\Models\MasterStock;
 use App\Services\ShopeeSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -107,6 +108,16 @@ class ShopeeProductController extends Controller
 
         $products = $query->paginate(50)->withQueryString();
 
+        $masterStockSummary = [
+            'total_g_items'    => MasterStock::where('warehouse', 'G')->count(),
+            'total_g_pcs'      => (int) MasterStock::where('warehouse', 'G')->sum('qty_pcs'),
+            'last_imported_g'  => MasterStock::where('warehouse', 'G')->max('last_imported_at'),
+            'total_a_items'    => MasterStock::where('warehouse', 'A')->count(),
+            'total_a_pcs'      => (int) MasterStock::where('warehouse', 'A')->sum('qty_pcs'),
+            'last_imported_a'  => MasterStock::where('warehouse', 'A')->max('last_imported_at'),
+            'has_master_stock' => MasterStock::exists(),
+        ];
+
         return Inertia::render('Shopee/Products', [
             'products' => $products,
             'filters'  => [
@@ -121,6 +132,7 @@ class ShopeeProductController extends Controller
                 'out_of_stock_skus' => $outOfStockSkus,
                 'last_synced_at'    => $lastSyncedAt,
             ],
+            'master_stock_summary' => $masterStockSummary,
             'account'  => $account ? [
                 'id'           => $account->id,
                 'account_name' => $account->account_name,
@@ -397,6 +409,165 @@ class ShopeeProductController extends Controller
                 'unmatched_count'   => $unmatchedCount,
             ],
             'items'   => $comparisonList,
+        ]);
+    }
+
+    /**
+     * Compare Shopee products stock directly against Master Stock (Gudang G & Gudang A) from database.
+     */
+    public function compareWithMaster(Request $request): JsonResponse
+    {
+        $this->syncService->ensureProductSchema();
+
+        $account = ShopeeAccount::where('status', 'active')->first() ?? ShopeeAccount::first();
+        if (! $account) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Toko Shopee belum terhubung di sistem ERP.',
+            ], 422);
+        }
+
+        $warehouse = strtoupper(trim((string) $request->input('warehouse', 'ALL')));
+
+        $masterStocksQuery = MasterStock::query();
+        if (in_array($warehouse, ['A', 'G'])) {
+            $masterStocksQuery->where('warehouse', $warehouse);
+        }
+        $masterStocks = $masterStocksQuery->get();
+
+        if ($masterStocks->isEmpty()) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Belum ada data Master Stok di database. Silakan upload laporan stok di menu Master Stok terlebih dahulu.',
+            ], 422);
+        }
+
+        // Build lookup maps for fast matching
+        $gMap = [];
+        $aMap = [];
+        $aPrefixMap = [];
+
+        foreach ($masterStocks as $ms) {
+            $code = strtoupper(trim((string) $ms->item_code));
+            if ($ms->warehouse === 'G') {
+                $gMap[$code] = ($gMap[$code] ?? 0) + (int) $ms->qty_pcs;
+            } elseif ($ms->warehouse === 'A') {
+                $aMap[$code] = ($aMap[$code] ?? 0) + (int) $ms->qty_pcs;
+                if (strlen($code) >= 6) {
+                    $prefix = substr($code, 0, 6);
+                    $aPrefixMap[$prefix] = ($aPrefixMap[$prefix] ?? 0) + (int) $ms->qty_pcs;
+                }
+            }
+        }
+
+        $shopeeProducts = ShopeeProduct::where('shopee_account_id', $account->id)->get();
+
+        $comparisonList   = [];
+        $criticalCount    = 0;
+        $lowStockCount    = 0;
+        $discrepancyCount = 0;
+        $matchedCount     = 0;
+
+        foreach ($shopeeProducts as $p) {
+            $normSku = strtoupper(trim((string) $p->sku));
+
+            $internalCode = null;
+            if (preg_match('/(\d{8})$/', $normSku, $m)) {
+                $internalCode = $m[1];
+            } elseif (preg_match('/_(\d{6,8})/i', $normSku, $m)) {
+                $internalCode = $m[1];
+            }
+
+            $stockG = 0;
+            $stockA = 0;
+
+            if ($internalCode) {
+                $stockG = $gMap[$internalCode] ?? 0;
+                $stockA = $aMap[$internalCode] ?? 0;
+
+                // Jika di Gudang A tidak ada kode ukuran spesifik, cari di prefix artikel (misal 01247900)
+                if ($stockA === 0 && strlen($internalCode) >= 6) {
+                    $prefix = substr($internalCode, 0, 6);
+                    $stockA = $aMap[$prefix . '00'] ?? ($aPrefixMap[$prefix] ?? 0);
+                }
+            } elseif (isset($gMap[$normSku])) {
+                $stockG = $gMap[$normSku];
+            }
+
+            if ($warehouse === 'G') {
+                $warehouseStock = $stockG;
+            } elseif ($warehouse === 'A') {
+                $warehouseStock = $stockA;
+            } else {
+                // ALL: stok gabungan Gudang G (eceran) + Gudang A (grosir)
+                $warehouseStock = $stockG + $stockA;
+            }
+
+            $shopeeStock   = (int) $p->stock;
+            $reservedStock = (int) $p->reserved_stock;
+            $diff          = $warehouseStock - $shopeeStock;
+
+            if ($warehouseStock <= 0 && $shopeeStock > 0) {
+                $status = 'CRITICAL';
+                $criticalCount++;
+            } elseif ($warehouseStock > 0 && $warehouseStock <= 3) {
+                $status = 'LOW_STOCK';
+                $lowStockCount++;
+            } elseif ($diff !== 0) {
+                $status = 'DISCREPANCY';
+                $discrepancyCount++;
+            } else {
+                $status = 'MATCHED';
+                $matchedCount++;
+            }
+
+            $comparisonList[] = [
+                'id'              => $p->id,
+                'item_id'         => $p->item_id,
+                'model_id'        => $p->model_id,
+                'sku'             => $p->sku ?: '—',
+                'item_name'       => $p->item_name,
+                'model_name'      => $p->model_name,
+                'warehouse_stock' => $warehouseStock,
+                'stock_g'         => $stockG,
+                'stock_a'         => $stockA,
+                'shopee_stock'    => $shopeeStock,
+                'reserved_stock'  => $reservedStock,
+                'diff'            => $diff,
+                'status'          => $status,
+                'is_shopee_found' => true,
+            ];
+        }
+
+        $priorityOrder = [
+            'CRITICAL'    => 1,
+            'LOW_STOCK'   => 2,
+            'DISCREPANCY' => 3,
+            'MATCHED'     => 4,
+        ];
+
+        usort($comparisonList, function ($a, $b) use ($priorityOrder) {
+            $pA = $priorityOrder[$a['status']] ?? 99;
+            $pB = $priorityOrder[$b['status']] ?? 99;
+            if ($pA !== $pB) {
+                return $pA <=> $pB;
+            }
+            return strcmp((string) $a['sku'], (string) $b['sku']);
+        });
+
+        return response()->json([
+            'status'    => 'success',
+            'summary'   => [
+                'total_rows'        => count($comparisonList),
+                'critical_count'    => $criticalCount,
+                'low_stock_count'   => $lowStockCount,
+                'discrepancy_count' => $discrepancyCount,
+                'matched_count'     => $matchedCount,
+                'unmatched_count'   => 0,
+            ],
+            'items'     => $comparisonList,
+            'source'    => 'MASTER_STOCK',
+            'warehouse' => $warehouse,
         ]);
     }
 

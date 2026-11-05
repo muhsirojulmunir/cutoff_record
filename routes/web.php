@@ -51,11 +51,18 @@ Route::middleware('auth')->group(function () {
     Route::put('/cut-off-returns/{cutOffReturn}', [CutOffReturnController::class, 'update'])->name('cut-off-returns.update');
     Route::delete('/cut-off-returns/{cutOffReturn}', [CutOffReturnController::class, 'destroy'])->name('cut-off-returns.destroy');
 
+    // Master Stok (Gudang A & Gudang G)
+    Route::get('/master-stock', [\App\Http\Controllers\MasterStockController::class, 'index'])->name('master-stock.index');
+    Route::post('/master-stock/import', [\App\Http\Controllers\MasterStockController::class, 'import'])->name('master-stock.import');
+    Route::post('/master-stock/clear', [\App\Http\Controllers\MasterStockController::class, 'clear'])->name('master-stock.clear');
+    Route::get('/master-stock/export', [\App\Http\Controllers\MasterStockController::class, 'export'])->name('master-stock.export');
+
     // Stok Produk Shopee (Katalog SKU & Stok)
     Route::get('/shopee-products', [\App\Http\Controllers\ShopeeProductController::class, 'index'])->name('shopee-products.index');
     Route::post('/shopee-products/sync', [\App\Http\Controllers\ShopeeProductController::class, 'sync'])->name('shopee-products.sync');
     Route::get('/shopee-products/export', [\App\Http\Controllers\ShopeeProductController::class, 'export'])->name('shopee-products.export');
     Route::post('/shopee-products/compare', [\App\Http\Controllers\ShopeeProductController::class, 'compareStock'])->name('shopee-products.compare');
+    Route::post('/shopee-products/audit-master', [\App\Http\Controllers\ShopeeProductController::class, 'compareWithMaster'])->name('shopee-products.audit-master');
     Route::post('/shopee-products/zero-out', [\App\Http\Controllers\ShopeeProductController::class, 'zeroOut'])->name('shopee-products.zero-out');
 
     // Users Management
