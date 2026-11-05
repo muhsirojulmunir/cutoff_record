@@ -77,6 +77,7 @@ interface RestockVariantItem {
   stock_g: number;
   stock_a: number;
   matched_code?: string;
+  input_qty?: number;
   new_stock: number;
   isSelected: boolean;
 }
@@ -322,6 +323,7 @@ export default function ShopeeProductsIndex({
       if (res.status === 'success') {
         const items = (res.variants || []).map((v: any) => ({
           ...v,
+          input_qty: restockModal.batchMode === 'add' ? 0 : v.current_stock,
           new_stock: v.current_stock,
           isSelected: true,
         }));
@@ -356,6 +358,7 @@ export default function ShopeeProductsIndex({
       if (res.status === 'success') {
         const items = (res.variants || []).map((v: any) => ({
           ...v,
+          input_qty: restockModal.batchMode === 'add' ? 0 : v.current_stock,
           new_stock: v.current_stock,
           isSelected: true,
         }));
@@ -374,14 +377,20 @@ export default function ShopeeProductsIndex({
     }
   }
 
-  function applyBatchRestockQty() {
-    const qty = Number(restockModal.batchQty) || 0;
+  function applyBatchRestockQty(overrideQty?: number) {
+    const qty = overrideQty !== undefined ? overrideQty : (Number(restockModal.batchQty) || 0);
+    const cleanQty = Math.max(0, qty);
     setRestockModal(prev => ({
       ...prev,
+      batchQty: cleanQty,
       variants: prev.variants.map(v => {
         if (!v.isSelected) return v;
-        const targetStock = prev.batchMode === 'set' ? qty : Math.max(0, v.current_stock + qty);
-        return { ...v, new_stock: targetStock };
+        const targetStock = prev.batchMode === 'set' ? cleanQty : Math.max(0, v.current_stock + cleanQty);
+        return {
+          ...v,
+          input_qty: cleanQty,
+          new_stock: targetStock,
+        };
       }),
     }));
   }
@@ -400,10 +409,21 @@ export default function ShopeeProductsIndex({
     }));
   }
 
-  function updateVariantNewStock(productId: number, val: number) {
+  function updateVariantInputQty(productId: number, val: number) {
+    const num = Math.max(0, val);
     setRestockModal(prev => ({
       ...prev,
-      variants: prev.variants.map(v => v.id === productId ? { ...v, new_stock: Math.max(0, val) } : v),
+      variants: prev.variants.map(v => {
+        if (v.id !== productId) return v;
+        const targetStock = prev.batchMode === 'set'
+          ? num
+          : Math.max(0, v.current_stock + num);
+        return {
+          ...v,
+          input_qty: num,
+          new_stock: targetStock,
+        };
+      }),
     }));
   }
 
@@ -3109,7 +3129,17 @@ export default function ShopeeProductsIndex({
                       <div className="inline-flex items-center p-0.5 bg-white rounded-lg border border-slate-200 text-xs">
                         <button
                           type="button"
-                          onClick={() => setRestockModal(prev => ({ ...prev, batchMode: 'set' }))}
+                          onClick={() => {
+                            setRestockModal(prev => ({
+                              ...prev,
+                              batchMode: 'set',
+                              variants: prev.variants.map(v => ({
+                                ...v,
+                                input_qty: v.current_stock,
+                                new_stock: v.current_stock,
+                              })),
+                            }));
+                          }}
                           className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
                             restockModal.batchMode === 'set'
                               ? 'bg-emerald-600 text-white font-bold'
@@ -3120,7 +3150,17 @@ export default function ShopeeProductsIndex({
                         </button>
                         <button
                           type="button"
-                          onClick={() => setRestockModal(prev => ({ ...prev, batchMode: 'add' }))}
+                          onClick={() => {
+                            setRestockModal(prev => ({
+                              ...prev,
+                              batchMode: 'add',
+                              variants: prev.variants.map(v => ({
+                                ...v,
+                                input_qty: 0,
+                                new_stock: v.current_stock,
+                              })),
+                            }));
+                          }}
                           className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
                             restockModal.batchMode === 'add'
                               ? 'bg-emerald-600 text-white font-bold'
@@ -3139,15 +3179,10 @@ export default function ShopeeProductsIndex({
                         <button
                           key={num}
                           type="button"
-                          onClick={() => {
-                            setRestockModal(prev => ({ ...prev, batchQty: num }));
-                            setTimeout(() => {
-                              applyBatchRestockQty();
-                            }, 50);
-                          }}
+                          onClick={() => applyBatchRestockQty(num)}
                           className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-200 text-[10px] font-bold text-slate-700 rounded-md transition-colors cursor-pointer"
                         >
-                          {num}
+                          {restockModal.batchMode === 'add' ? `+${num}` : num}
                         </button>
                       ))}
                     </div>
@@ -3155,7 +3190,9 @@ export default function ShopeeProductsIndex({
 
                   <div className="flex items-center gap-2 flex-wrap">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-slate-600 font-medium">Kuantitas:</span>
+                      <span className="text-xs text-slate-600 font-medium">
+                        {restockModal.batchMode === 'add' ? 'Mau Tambah (+):' : 'Set Stok Jadi:'}
+                      </span>
                       <input
                         type="number"
                         min="0"
@@ -3169,10 +3206,10 @@ export default function ShopeeProductsIndex({
 
                     <button
                       type="button"
-                      onClick={applyBatchRestockQty}
+                      onClick={() => applyBatchRestockQty()}
                       className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5 active:scale-98"
                     >
-                      <span>Terapkan ke Ukuran Tercentang</span>
+                      <span>Terapkan Ke Tercentang</span>
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                       </svg>
@@ -3233,8 +3270,12 @@ export default function ShopeeProductsIndex({
                           <th className="py-2.5 px-3">SKU Shopee</th>
                           <th className="py-2.5 px-3 text-center">Stok Gudang</th>
                           <th className="py-2.5 px-3 text-right">Stok Shopee</th>
-                          <th className="py-2.5 px-3 text-center w-40">Stok Baru Shopee</th>
-                          <th className="py-2.5 px-3 text-center">Status</th>
+                          <th className="py-2.5 px-3 text-center w-40">
+                            {restockModal.batchMode === 'add' ? 'Mau Isi (+)' : 'Set Stok Jadi'}
+                          </th>
+                          <th className="py-2.5 px-3 text-center w-36 font-bold text-slate-800">
+                            Total
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 bg-white">
@@ -3281,8 +3322,8 @@ export default function ShopeeProductsIndex({
                                 <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white shadow-2xs">
                                   <button
                                     type="button"
-                                    onClick={() => updateVariantNewStock(v.id, Math.max(0, v.new_stock - 1))}
-                                    className="px-2 py-1 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-l-lg transition-colors cursor-pointer"
+                                    onClick={() => updateVariantInputQty(v.id, Math.max(0, (v.input_qty ?? (restockModal.batchMode === 'add' ? 0 : v.new_stock)) - 1))}
+                                    className="px-2 py-1 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-l-lg transition-colors cursor-pointer font-bold"
                                   >
                                     -
                                   </button>
@@ -3290,27 +3331,43 @@ export default function ShopeeProductsIndex({
                                     type="number"
                                     min="0"
                                     max="100000"
-                                    value={v.new_stock}
-                                    onChange={(e) => updateVariantNewStock(v.id, Number(e.target.value) || 0)}
+                                    value={v.input_qty ?? (restockModal.batchMode === 'add' ? 0 : v.new_stock)}
+                                    onChange={(e) => updateVariantInputQty(v.id, Number(e.target.value) || 0)}
                                     className="w-16 py-1 text-center font-mono font-bold text-xs text-slate-900 border-x border-slate-200 focus:outline-none focus:bg-emerald-50/40"
                                   />
                                   <button
                                     type="button"
-                                    onClick={() => updateVariantNewStock(v.id, v.new_stock + 1)}
-                                    className="px-2 py-1 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-r-lg transition-colors cursor-pointer"
+                                    onClick={() => updateVariantInputQty(v.id, (v.input_qty ?? (restockModal.batchMode === 'add' ? 0 : v.new_stock)) + 1)}
+                                    className="px-2 py-1 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-r-lg transition-colors cursor-pointer font-bold"
                                   >
                                     +
                                   </button>
                                 </div>
                               </td>
-                              <td className="py-2.5 px-3 text-center whitespace-nowrap font-mono text-[11px] font-semibold">
-                                {diff === 0 ? (
-                                  <span className="text-slate-400">Tetap</span>
-                                ) : diff > 0 ? (
-                                  <span className="text-emerald-600 font-bold">+{diff} pcs</span>
-                                ) : (
-                                  <span className="text-rose-600 font-bold">{diff} pcs</span>
-                                )}
+                              <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                <div className="flex flex-col items-center justify-center">
+                                  <span
+                                    className={`font-mono font-bold text-xs px-2.5 py-0.5 rounded-md border ${
+                                      v.new_stock > v.current_stock
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                        : v.new_stock < v.current_stock
+                                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                        : 'bg-slate-100 text-slate-800 border-slate-200'
+                                    }`}
+                                  >
+                                    {v.new_stock} <span className="text-[10px] font-normal">pcs</span>
+                                  </span>
+                                  {restockModal.batchMode === 'add' && (v.input_qty ?? 0) > 0 && (
+                                    <span className="text-[10px] text-emerald-600 font-mono font-semibold mt-0.5">
+                                      ({v.current_stock} + {v.input_qty} = {v.new_stock})
+                                    </span>
+                                  )}
+                                  {restockModal.batchMode === 'set' && diff !== 0 && (
+                                    <span className={`text-[10px] font-mono font-semibold mt-0.5 ${diff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                      ({diff > 0 ? `+${diff}` : diff} pcs)
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           );
