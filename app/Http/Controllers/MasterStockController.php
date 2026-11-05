@@ -219,6 +219,9 @@ class MasterStockController extends Controller
             }
         });
 
+        // Reset cache audit stok Shopee agar langsung tersinkron
+        \App\Http\Controllers\ShopeeProductController::clearAuditCache();
+
         $whLabel = $warehouse === 'G' ? 'Gudang G (Eceran / Pcs)' : 'Gudang A (Grosir / Lusin)';
 
         return response()->json([
@@ -252,6 +255,9 @@ class MasterStockController extends Controller
             $whLabel = $warehouse === 'G' ? 'Gudang G' : 'Gudang A';
             $msg = "Seluruh data Master Stok {$whLabel} berhasil dikosongkan.";
         }
+
+        // Reset cache audit stok Shopee agar langsung tersinkron
+        \App\Http\Controllers\ShopeeProductController::clearAuditCache();
 
         return response()->json([
             'status'  => 'success',
