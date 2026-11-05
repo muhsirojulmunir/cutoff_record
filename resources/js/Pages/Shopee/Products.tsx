@@ -3055,11 +3055,8 @@ export default function ShopeeProductsIndex({
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                    <span>Isi / Tambah Stok Shopee</span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
-                      Shopee Open API
-                    </span>
+                  <h3 className="text-base font-bold text-slate-900 tracking-tight">
+                    Isi / Tambah Stok Shopee
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
                     {restockModal.productTitle
@@ -3122,7 +3119,7 @@ export default function ShopeeProductsIndex({
               {restockModal.variants.length > 0 && (
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-wrap items-center gap-3">
                   {/* Mode Switcher: Timpa Stok vs + Tambah Stok */}
-                  <div className="inline-flex items-center p-0.5 bg-white rounded-lg border border-slate-200 text-xs shadow-2xs">
+                  <div className="h-9 inline-flex items-center p-0.5 bg-white rounded-lg border border-slate-200 text-xs shadow-2xs">
                     <button
                       type="button"
                       onClick={() => {
@@ -3136,7 +3133,7 @@ export default function ShopeeProductsIndex({
                           })),
                         }));
                       }}
-                      className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                      className={`h-full px-3.5 flex items-center justify-center rounded-md text-xs font-semibold transition-all cursor-pointer ${
                         restockModal.batchMode === 'set'
                           ? 'bg-emerald-600 text-white font-bold shadow-2xs'
                           : 'text-slate-600 hover:text-slate-900'
@@ -3157,7 +3154,7 @@ export default function ShopeeProductsIndex({
                           })),
                         }));
                       }}
-                      className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                      className={`h-full px-3.5 flex items-center justify-center rounded-md text-xs font-semibold transition-all cursor-pointer ${
                         restockModal.batchMode === 'add'
                           ? 'bg-emerald-600 text-white font-bold shadow-2xs'
                           : 'text-slate-600 hover:text-slate-900'
@@ -3168,9 +3165,9 @@ export default function ShopeeProductsIndex({
                   </div>
 
                   {/* Batch Qty Input & Terapkan Ke Semua */}
-                  <div className="flex items-center gap-1.5">
-                    <div className="flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1 shadow-2xs">
-                      <span className="text-xs text-slate-500 font-medium mr-1.5">
+                  <div className="flex items-center gap-2">
+                    <div className="h-9 inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 shadow-2xs">
+                      <span className="text-xs text-slate-600 font-medium mr-1.5 whitespace-nowrap">
                         {restockModal.batchMode === 'add' ? 'Mau Tambah (+):' : 'Timpa Stok:'}
                       </span>
                       <input
@@ -3179,7 +3176,7 @@ export default function ShopeeProductsIndex({
                         max="100000"
                         value={restockModal.batchQty}
                         onChange={(e) => setRestockModal(prev => ({ ...prev, batchQty: Number(e.target.value) || 0 }))}
-                        className="w-16 text-center font-mono font-bold text-xs text-slate-900 focus:outline-none"
+                        className="w-16 h-full text-center font-mono font-bold text-xs text-slate-900 focus:outline-none bg-transparent"
                       />
                       <span className="text-[11px] text-slate-400 ml-1">pcs</span>
                     </div>
@@ -3187,7 +3184,7 @@ export default function ShopeeProductsIndex({
                     <button
                       type="button"
                       onClick={() => applyBatchRestockQty()}
-                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-2xs transition-all cursor-pointer flex items-center gap-1.5 active:scale-98"
+                      className="h-9 px-4 inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-2xs transition-all cursor-pointer active:scale-98"
                     >
                       <span>Terapkan Ke Semua</span>
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
