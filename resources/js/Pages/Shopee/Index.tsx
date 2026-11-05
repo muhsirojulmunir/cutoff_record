@@ -764,11 +764,11 @@ export default function ShopeeIndex({ account, callbackUrl, productSummary }: Pr
                     value={productSearch}
                     onChange={(e) => setProductSearch(e.target.value)}
                     placeholder="Cari SKU, Nama Produk, atau Item ID..."
-                    className="flex-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-violet-500"
+                    className="flex-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-slate-700"
                   />
                   <button
                     type="submit"
-                    className="px-3.5 py-2 bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shrink-0"
+                    className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shrink-0"
                   >
                     Cari
                   </button>
@@ -825,7 +825,7 @@ export default function ShopeeIndex({ account, callbackUrl, productSummary }: Pr
                             <tr key={p.id} className="hover:bg-slate-900/40 transition-colors">
                               <td className="py-2.5 px-3 text-center text-slate-500">{rowNo}</td>
                               <td className="py-2.5 px-3">
-                                <span className="font-mono font-bold text-violet-400 select-all">
+                                <span className="font-mono font-bold text-sky-400 select-all">
                                   {p.sku || <span className="text-slate-600 font-normal italic">— tanpa SKU —</span>}
                                 </span>
                               </td>
