@@ -726,10 +726,10 @@ export default function ShopeeProductsIndex({
       'Stok Tersedia Shopee': item.shopee_stock,
       'Stok Terkunci Shopee': item.reserved_stock,
       'Selisih (Gudang - Shopee)': item.diff,
-      'Status Audit': item.status === 'CRITICAL' ? '🔴 KRITIS (OOS di Gudang)' :
-                      item.status === 'LOW_STOCK' ? '🟡 Stok Menipis' :
-                      item.status === 'DISCREPANCY' ? '🔵 Selisih Stok' :
-                      item.status === 'UNMATCHED' ? '⚪ Tidak di Shopee' : '🟢 Sesuai',
+      'Status Audit': item.status === 'CRITICAL' ? 'KRITIS (OOS di Gudang)' :
+                      item.status === 'LOW_STOCK' ? 'Stok Menipis' :
+                      item.status === 'DISCREPANCY' ? 'Selisih Stok' :
+                      item.status === 'UNMATCHED' ? 'Tidak di Shopee' : 'Sesuai',
       'Rekomendasi Tindakan': item.status === 'CRITICAL' ? 'Wajib Kosongkan di Shopee Segera' :
                               item.status === 'LOW_STOCK' ? 'Segera Restock Gudang' :
                               item.status === 'DISCREPANCY' ? 'Sinkronkan Jumlah Stok' :
@@ -807,82 +807,40 @@ export default function ShopeeProductsIndex({
             <p className="text-sm text-slate-500 mt-1">
               Kelola dan pantau {(summary?.total_skus ?? 0).toLocaleString('id-ID')} SKU variasi produk aktif dan kuantitas stok fisik dari Shopee Open Platform.
             </p>
+            {master_stock_summary && (
+              <div className="flex items-center gap-2 mt-2 text-xs text-slate-500 flex-wrap">
+                <span className="font-semibold text-slate-700">Master Stok Gudang:</span>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                  Gudang G: {master_stock_summary.total_g_pcs.toLocaleString('id-ID')} Pcs ({master_stock_summary.total_g_items} SKU)
+                </span>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                  Gudang A: {master_stock_summary.total_a_pcs.toLocaleString('id-ID')} Pcs ({master_stock_summary.total_a_items} SKU)
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-            {/* Tombol Audit Langsung ke Master Stok Database */}
+            {/* Tombol Audit Stok Gudang */}
             <button
               type="button"
               onClick={() => runMasterAudit('ALL')}
               disabled={isComparing}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0B132B] hover:bg-slate-800 text-white text-xs font-semibold transition-all shadow-xs cursor-pointer whitespace-nowrap active:scale-98"
-              title="Audit otomatis seluruh SKU Shopee terhadap data Master Stok (Gudang G & A) di database"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0B132B] hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer whitespace-nowrap active:scale-98 disabled:opacity-50"
+              title="Audit otomatis seluruh SKU Shopee terhadap data Master Stok (Gudang G & A)"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-amber-400">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-slate-300">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
               </svg>
-              <span>Audit Master Stok</span>
-            </button>
-
-            {/* Link ke Halaman Master Stok */}
-            <Link
-              href="/master-stock"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors shadow-2xs whitespace-nowrap"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-slate-500">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 00.75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 00-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0112 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 01-.673-.38m0 0A2.18 2.18 0 013 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 013.413-.387m7.5 0V5.25A2.25 2.25 0 0013.5 3h-3a2.25 2.25 0 00-2.25 2.25v1.069m7.5 0c.98.058 1.95.143 2.909.255m-10.409 0A48.064 48.064 0 0112 6.75c.98 0 1.95.05 2.909.144" />
-              </svg>
-              <span>Master Stok</span>
-            </Link>
-
-            {/* Tombol Import Gudang G (Eceran / Pcs Satuan) */}
-            <button
-              type="button"
-              onClick={() => {
-                setTargetWarehouse('G');
-                setAuditSource('EXCEL');
-                setValidationError(null);
-                setAuditItems(null);
-                setImportFileName(null);
-                setIsImportModalOpen(true);
-                setZeroOutSuccessMessage(null);
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
-              title="Import file stok Gudang G (Eceran / Pcs satuan per ukuran)"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-sky-600">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.386a3.75 3.75 0 001.378-1.378c.486-.827.313-1.908-.386-2.607L7.258 7.569A2.25 2.25 0 016.598 5.978V5.25A2.25 2.25 0 018.848 3h.72" />
-              </svg>
-              <span>Import Gudang G</span>
-            </button>
-
-            {/* Tombol Import Gudang A (Grosir / Lusinan x12) */}
-            <button
-              type="button"
-              onClick={() => {
-                setTargetWarehouse('A');
-                setAuditSource('EXCEL');
-                setValidationError(null);
-                setAuditItems(null);
-                setImportFileName(null);
-                setIsImportModalOpen(true);
-                setZeroOutSuccessMessage(null);
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
-              title="Import file stok Gudang A (Grosir / Lusinan dikalikan 12)"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-teal-600">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
-              </svg>
-              <span>Import Gudang A</span>
+              <span>Audit Stok Gudang</span>
             </button>
 
             {/* Export CSV / Excel */}
             <button
               type="button"
               onClick={handleExportCsv}
-              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
               title="Download seluruh data SKU & Stok ke file CSV / Excel"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-slate-500">
@@ -921,50 +879,6 @@ export default function ShopeeProductsIndex({
             </button>
           </div>
         </div>
-
-        {/* Banner Master Stok Terhubung */}
-        {master_stock_summary && (
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-white flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xs">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-amber-400 shrink-0">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-semibold text-white">Master Stok Fisik:</span>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-sky-500/15 text-sky-300 border border-sky-400/25">
-                    Gudang G: {master_stock_summary.total_g_pcs.toLocaleString('id-ID')} Pcs ({master_stock_summary.total_g_items} SKU)
-                  </span>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-teal-500/15 text-teal-300 border border-teal-400/25">
-                    Gudang A: {master_stock_summary.total_a_pcs.toLocaleString('id-ID')} Pcs ({master_stock_summary.total_a_items} SKU)
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Stok Shopee dicocokkan otomatis dengan Master Stok tanpa perlu upload file Excel berulang.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => runMasterAudit('ALL')}
-                disabled={isComparing}
-                className="px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-semibold rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
-              >
-                <span>Cek Selisih Stok</span>
-              </button>
-              <Link
-                href="/master-stock"
-                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium rounded-xl border border-slate-700 transition-colors"
-              >
-                Kelola Stok
-              </Link>
-            </div>
-          </div>
-        )}
 
         {/* 4 Metric Summary Cards - High-End Anti AI-Slop */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1367,11 +1281,11 @@ export default function ShopeeProductsIndex({
                       }}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                         auditSource === 'MASTER'
-                          ? 'bg-amber-500 text-slate-950 shadow-xs'
+                          ? 'bg-[#0B132B] text-white shadow-xs'
                           : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                       }`}
                     >
-                      <span>⚡ Master Stok ERP</span>
+                      <span>Master Stok ERP</span>
                     </button>
                     <button
                       type="button"
@@ -1383,11 +1297,11 @@ export default function ShopeeProductsIndex({
                       }}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                         auditSource === 'EXCEL'
-                          ? 'bg-indigo-600 text-white shadow-xs'
+                          ? 'bg-[#0B132B] text-white shadow-xs'
                           : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                       }`}
                     >
-                      <span>📁 Upload Excel Manual</span>
+                      <span>Upload Excel Manual</span>
                     </button>
                   </div>
                 </div>
@@ -1560,16 +1474,16 @@ export default function ShopeeProductsIndex({
               {/* Upload Zone / Master Audit Trigger jika belum ada data */}
               {!auditItems || auditItems.length === 0 ? (
                 auditSource === 'MASTER' ? (
-                  <div className="border-2 border-dashed border-amber-300 rounded-2xl p-10 text-center bg-amber-50/40 space-y-4">
-                    <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
+                  <div className="border-2 border-dashed border-slate-200 rounded-2xl p-10 text-center bg-slate-50/50 space-y-4">
+                    <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center mx-auto">
                       {isComparing ? (
-                        <svg className="animate-spin h-7 w-7 text-amber-600" fill="none" viewBox="0 0 24 24">
+                        <svg className="animate-spin h-7 w-7 text-slate-700" fill="none" viewBox="0 0 24 24">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
                       ) : (
-                        <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-7 h-7 text-slate-600">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
                         </svg>
                       )}
                     </div>
@@ -1588,9 +1502,9 @@ export default function ShopeeProductsIndex({
                         type="button"
                         onClick={() => runMasterAudit(masterWarehouseFilter)}
                         disabled={isComparing}
-                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#0B132B] hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50"
                       >
-                        {isComparing ? 'Memproses Audit...' : '⚡ Jalankan Audit Sekarang'}
+                        {isComparing ? 'Memproses Audit...' : 'Jalankan Audit Sekarang'}
                       </button>
                     </div>
                   </div>
@@ -1684,7 +1598,10 @@ export default function ShopeeProductsIndex({
                       }`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-rose-700 uppercase tracking-wider">🔴 Kritis (OOS)</span>
+                        <span className="text-[11px] font-bold text-rose-700 uppercase tracking-wider flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                          Kritis (OOS)
+                        </span>
                         <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
                       </div>
                       <p className="text-2xl font-extrabold text-rose-700 mt-1 font-mono">
@@ -1698,15 +1615,18 @@ export default function ShopeeProductsIndex({
                       onClick={() => setAuditFilter('LOW_STOCK')}
                       className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
                         auditFilter === 'LOW_STOCK'
-                          ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-300'
-                          : 'bg-white border-amber-200 hover:bg-amber-50/50'
+                          ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-200'
+                          : 'bg-white border-slate-200 hover:bg-slate-50'
                       }`}
                     >
-                      <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider">🟡 Menipis</span>
-                      <p className="text-2xl font-extrabold text-amber-700 mt-1 font-mono">
+                      <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                        Menipis
+                      </span>
+                      <p className="text-2xl font-extrabold text-amber-800 mt-1 font-mono">
                         {auditSummary?.low_stock_count ?? 0}
                       </p>
-                      <p className="text-[10px] text-amber-600 font-medium">Stok fisik 1 s/d 3 pcs</p>
+                      <p className="text-[10px] text-slate-500 font-medium">Stok fisik 1 s/d 3 pcs</p>
                     </div>
 
                     {/* 3. Selisih */}
@@ -1714,15 +1634,18 @@ export default function ShopeeProductsIndex({
                       onClick={() => setAuditFilter('DISCREPANCY')}
                       className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
                         auditFilter === 'DISCREPANCY'
-                          ? 'bg-blue-50 border-blue-400 ring-2 ring-blue-300'
-                          : 'bg-white border-blue-200 hover:bg-blue-50/50'
+                          ? 'bg-sky-50 border-sky-300 ring-2 ring-sky-200'
+                          : 'bg-white border-slate-200 hover:bg-slate-50'
                       }`}
                     >
-                      <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">🔵 Selisih Stok</span>
-                      <p className="text-2xl font-extrabold text-blue-700 mt-1 font-mono">
+                      <span className="text-[11px] font-bold text-sky-800 uppercase tracking-wider flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-sky-500"></span>
+                        Selisih Stok
+                      </span>
+                      <p className="text-2xl font-extrabold text-sky-800 mt-1 font-mono">
                         {auditSummary?.discrepancy_count ?? 0}
                       </p>
-                      <p className="text-[10px] text-blue-600 font-medium">Gudang ≠ Shopee</p>
+                      <p className="text-[10px] text-slate-500 font-medium">Gudang ≠ Shopee</p>
                     </div>
 
                     {/* 4. Sesuai */}
@@ -1730,15 +1653,18 @@ export default function ShopeeProductsIndex({
                       onClick={() => setAuditFilter('MATCHED')}
                       className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
                         auditFilter === 'MATCHED'
-                          ? 'bg-emerald-50 border-emerald-400 ring-2 ring-emerald-300'
-                          : 'bg-white border-emerald-200 hover:bg-emerald-50/50'
+                          ? 'bg-emerald-50 border-emerald-300 ring-2 ring-emerald-200'
+                          : 'bg-white border-slate-200 hover:bg-slate-50'
                       }`}
                     >
-                      <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">🟢 Sesuai</span>
-                      <p className="text-2xl font-extrabold text-emerald-700 mt-1 font-mono">
+                      <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                        Sesuai
+                      </span>
+                      <p className="text-2xl font-extrabold text-emerald-800 mt-1 font-mono">
                         {auditSummary?.matched_count ?? 0}
                       </p>
-                      <p className="text-[10px] text-emerald-600 font-medium">Gudang = Shopee</p>
+                      <p className="text-[10px] text-slate-500 font-medium">Gudang = Shopee</p>
                     </div>
 
                     {/* 5. Tidak di Shopee */}
@@ -1746,12 +1672,15 @@ export default function ShopeeProductsIndex({
                       onClick={() => setAuditFilter('UNMATCHED')}
                       className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
                         auditFilter === 'UNMATCHED'
-                          ? 'bg-slate-100 border-slate-400 ring-2 ring-slate-300'
+                          ? 'bg-slate-100 border-slate-300 ring-2 ring-slate-200'
                           : 'bg-white border-slate-200 hover:bg-slate-50'
                       }`}
                     >
-                      <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">⚪ Non-Shopee</span>
-                      <p className="text-2xl font-extrabold text-slate-700 mt-1 font-mono">
+                      <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                        Non-Shopee
+                      </span>
+                      <p className="text-2xl font-extrabold text-slate-800 mt-1 font-mono">
                         {auditSummary?.unmatched_count ?? 0}
                       </p>
                       <p className="text-[10px] text-slate-500 font-medium">Tidak terdaftar di toko</p>
@@ -1834,44 +1763,44 @@ export default function ShopeeProductsIndex({
                         onClick={() => setAuditFilter('CRITICAL')}
                         className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
                           auditFilter === 'CRITICAL'
-                            ? 'bg-rose-600 text-white'
+                            ? 'bg-rose-600 text-white shadow-2xs'
                             : 'bg-rose-50 hover:bg-rose-100 text-rose-700'
                         }`}
                       >
-                        🔴 Kritis ({auditSummary?.critical_count ?? 0})
+                        Kritis ({auditSummary?.critical_count ?? 0})
                       </button>
                       <button
                         type="button"
                         onClick={() => setAuditFilter('LOW_STOCK')}
                         className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
                           auditFilter === 'LOW_STOCK'
-                            ? 'bg-amber-600 text-white'
-                            : 'bg-amber-50 hover:bg-amber-100 text-amber-700'
+                            ? 'bg-amber-600 text-white shadow-2xs'
+                            : 'bg-amber-50 hover:bg-amber-100 text-amber-800'
                         }`}
                       >
-                        🟡 Menipis ({auditSummary?.low_stock_count ?? 0})
+                        Menipis ({auditSummary?.low_stock_count ?? 0})
                       </button>
                       <button
                         type="button"
                         onClick={() => setAuditFilter('DISCREPANCY')}
                         className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
                           auditFilter === 'DISCREPANCY'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-blue-50 hover:bg-blue-100 text-blue-700'
+                            ? 'bg-sky-600 text-white shadow-2xs'
+                            : 'bg-sky-50 hover:bg-sky-100 text-sky-800'
                         }`}
                       >
-                        🔵 Selisih ({auditSummary?.discrepancy_count ?? 0})
+                        Selisih ({auditSummary?.discrepancy_count ?? 0})
                       </button>
                       <button
                         type="button"
                         onClick={() => setAuditFilter('MATCHED')}
                         className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
                           auditFilter === 'MATCHED'
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'
+                            ? 'bg-emerald-600 text-white shadow-2xs'
+                            : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800'
                         }`}
                       >
-                        🟢 Sesuai ({auditSummary?.matched_count ?? 0})
+                        Sesuai ({auditSummary?.matched_count ?? 0})
                       </button>
                       {(auditSummary?.unmatched_count ?? 0) > 0 && (
                         <button
@@ -1879,8 +1808,8 @@ export default function ShopeeProductsIndex({
                           onClick={() => setAuditFilter('UNMATCHED')}
                           className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
                             auditFilter === 'UNMATCHED'
-                              ? 'bg-amber-600 text-white'
-                              : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200'
+                              ? 'bg-slate-800 text-white shadow-2xs'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300'
                           }`}
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
@@ -2008,7 +1937,11 @@ export default function ShopeeProductsIndex({
                                   {item.match_type === 'MANUAL_MAPPED' && (
                                     <div className="mt-1">
                                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-medium">
-                                        🔗 Terhubung: <strong className="font-mono">{item.manual_item_code}</strong>
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-emerald-600 shrink-0">
+                                          <path d="M12.232 4.232a2.5 2.5 0 013.536 3.536l-1.225 1.224a.75.75 0 001.061 1.06l1.224-1.224a4 4 0 00-5.656-5.656l-3 3a4 4 0 00.225 5.865.75.75 0 00.977-1.138 2.5 2.5 0 01-.142-3.667l3-3z" />
+                                          <path d="M11.603 7.963a.75.75 0 00-.977 1.138 2.5 2.5 0 01.142 3.667l-3 3a2.5 2.5 0 01-3.536-3.536l1.225-1.224a.75.75 0 00-1.061-1.06l-1.224 1.224a4 4 0 105.656 5.656l3-3a4 4 0 00-.225-5.865z" />
+                                        </svg>
+                                        Terhubung: <strong className="font-mono">{item.manual_item_code}</strong>
                                       </span>
                                     </div>
                                   )}
@@ -2016,7 +1949,10 @@ export default function ShopeeProductsIndex({
                                   {(item.match_type === 'CODE_NOT_FOUND' || item.match_type === 'SIZE_MISMATCH' || item.status === 'UNMATCHED') && (
                                     <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-medium" title={item.warning_message || ''}>
-                                        ⚠️ {item.match_type === 'SIZE_MISMATCH' ? 'Salah Ukuran' : 'Kode Tidak Ada'}
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-amber-600 shrink-0">
+                                          <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                                        </svg>
+                                        {item.match_type === 'SIZE_MISMATCH' ? 'Salah Ukuran' : 'Kode Tidak Ada'}
                                       </span>
                                       {item.id && (
                                         <button
@@ -2086,28 +2022,33 @@ export default function ShopeeProductsIndex({
                                 {/* Status Audit */}
                                 <td className="py-2.5 px-3 text-center whitespace-nowrap">
                                   {isCritical && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300 animate-pulse">
-                                      🔴 KRITIS (OOS)
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                                      KRITIS (OOS)
                                     </span>
                                   )}
                                   {isLow && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                                      🟡 Menipis ({item.warehouse_stock})
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                      Menipis ({item.warehouse_stock})
                                     </span>
                                   )}
                                   {isDiscrepancy && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-300">
-                                      🔵 Selisih Stok
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-800 border border-sky-200">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-sky-500"></span>
+                                      Selisih Stok
                                     </span>
                                   )}
                                   {isMatched && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                      🟢 Sesuai
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                      Sesuai
                                     </span>
                                   )}
                                   {item.status === 'UNMATCHED' && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                                      ⚠️ Butuh Cek SKU
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-300">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                      Butuh Cek SKU
                                     </span>
                                   )}
                                 </td>
