@@ -267,13 +267,42 @@ export default function ShopeeProductsIndex({
     batchMode: 'set',
   });
 
-  async function openRestockModal(itemId?: number | null, title?: string) {
+  function extractArticleFromProduct(item: ProductItem): string {
+    if (item.sku) {
+      const parts = item.sku.split(/[-_ ]+/);
+      const ignore = ['RECORD', 'SPT', 'SEPATU', 'SHOES', 'REC', 'ANAK', 'PRIA', 'WANITA'];
+      const articlePart = parts.find(p => {
+        const u = p.toUpperCase().trim();
+        return u.length >= 3 && !ignore.includes(u) && !/^\d+$/.test(u);
+      });
+      if (articlePart) return articlePart;
+    }
+
+    if (item.model_name) {
+      const parts = item.model_name.split(/[\s,/-]+/);
+      const ignore = ['HITAM', 'PUTIH', 'MERAH', 'BIRU', 'ABU', 'HP', 'HH', 'MO', 'BO', 'BA', 'STANDAR'];
+      const articlePart = parts.find(p => {
+        const u = p.toUpperCase().trim();
+        return u.length >= 3 && !ignore.includes(u) && !/^\d+$/.test(u);
+      });
+      if (articlePart) return articlePart;
+    }
+
+    return item.item_name;
+  }
+
+  async function openRestockModal(targetProduct?: ProductItem | null, customQuery?: string) {
+    const query = customQuery !== undefined
+      ? customQuery
+      : (targetProduct ? extractArticleFromProduct(targetProduct) : '');
+    const title = targetProduct?.item_name || query;
+
     setRestockModal({
       isOpen: true,
       isLoading: true,
       isSubmitting: false,
-      searchQuery: title || '',
-      selectedItemId: itemId || null,
+      searchQuery: query,
+      selectedItemId: targetProduct?.item_id || null,
       productTitle: title || '',
       variants: [],
       batchQty: 10,
@@ -281,10 +310,14 @@ export default function ShopeeProductsIndex({
     });
 
     try {
-      const url = itemId
-        ? `/shopee-products/variants?item_id=${itemId}`
-        : `/shopee-products/variants?q=${encodeURIComponent(title || '')}`;
-      const resp = await fetch(url);
+      const params = new URLSearchParams();
+      if (targetProduct?.item_id) {
+        params.set('item_id', String(targetProduct.item_id));
+      }
+      if (query.trim()) {
+        params.set('q', query.trim());
+      }
+      const resp = await fetch(`/shopee-products/variants?${params.toString()}`);
       const res = await resp.json();
       if (res.status === 'success') {
         const items = (res.variants || []).map((v: any) => ({
@@ -1596,7 +1629,7 @@ export default function ShopeeProductsIndex({
                             <div className="flex items-center justify-center gap-1.5">
                               <button
                                 type="button"
-                                onClick={() => openRestockModal(p.item_id, p.item_name)}
+                                onClick={() => openRestockModal(p)}
                                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[11px] font-semibold transition-colors cursor-pointer active:scale-95"
                                 title="Tambah / ubah stok variasi ini atau seluruh ukuran model ini"
                               >
@@ -1637,7 +1670,7 @@ export default function ShopeeProductsIndex({
                               )}
                               <button
                                 type="button"
-                                onClick={() => openRestockModal(p.item_id, p.item_name)}
+                                onClick={() => openRestockModal(p)}
                                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold shadow-2xs transition-colors cursor-pointer active:scale-95"
                                 title="Isi atau tambah stok untuk variasi ini atau semua ukuran model ini"
                               >
