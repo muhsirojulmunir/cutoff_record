@@ -3,23 +3,85 @@
 namespace App\Http\Controllers;
 
 use App\Models\MasterStock;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MasterStockController extends Controller
 {
     /**
+     * Memastikan tabel master_stocks sudah dibuat di database.
+     * Mencegah crash Error 500 jika user belum sempat menjalankan artisan migrate di server/cPanel.
+     */
+    public function ensureSchema(): void
+    {
+        try {
+            if (! Schema::hasTable('master_stocks')) {
+                Schema::create('master_stocks', function (Blueprint $table) {
+                    $table->id();
+                    $table->string('warehouse', 10)->comment('G = Gudang G (Eceran), A = Gudang A (Grosir)');
+                    $table->string('item_code', 50)->index()->comment('Kode barang dari sistem internal (misal 01247938)');
+                    $table->string('item_name')->nullable();
+                    $table->string('unit', 20)->default('PSG')->comment('Satuan asli: PSG, LSN, PCS, dll');
+                    $table->decimal('raw_qty', 12, 2)->default(0)->comment('Jumlah quantity asli dari Excel');
+                    $table->integer('qty_pcs')->default(0)->comment('Kuantitas efektif dalam Pcs');
+                    $table->timestamp('last_imported_at')->nullable();
+                    $table->timestamps();
+
+                    $table->unique(['warehouse', 'item_code']);
+                    $table->index(['warehouse', 'qty_pcs']);
+                });
+            }
+        } catch (\Throwable $e) {
+            Log::warning('MasterStockController ensureSchema notice: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Display list of Master Stock (Gudang A & Gudang G).
      */
     public function index(Request $request): \Inertia\Response
     {
+        $this->ensureSchema();
+
         $warehouse   = strtoupper(trim((string) $request->input('warehouse', 'all')));
         $search      = trim((string) $request->input('search', ''));
         $stockStatus = (string) $request->input('stock_status', 'all');
         $sort        = (string) $request->input('sort', 'code_asc');
+
+        if (! Schema::hasTable('master_stocks')) {
+            return Inertia::render('MasterStock/Index', [
+                'stocks'   => [
+                    'data'         => [],
+                    'current_page' => 1,
+                    'last_page'    => 1,
+                    'per_page'     => 50,
+                    'total'        => 0,
+                    'links'        => [],
+                ],
+                'summary'  => [
+                    'total_items_g'   => 0,
+                    'total_pcs_g'     => 0,
+                    'last_imported_g' => null,
+                    'total_items_a'   => 0,
+                    'total_pcs_a'     => 0,
+                    'last_imported_a' => null,
+                    'total_pcs_all'   => 0,
+                    'total_rows_all'  => 0,
+                ],
+                'filters'  => [
+                    'warehouse'    => $warehouse,
+                    'search'       => $search,
+                    'stock_status' => $stockStatus,
+                    'sort'         => $sort,
+                ],
+            ]);
+        }
 
         $query = MasterStock::query();
 
@@ -89,6 +151,7 @@ class MasterStockController extends Controller
      */
     public function import(Request $request): JsonResponse
     {
+        $this->ensureSchema();
         $warehouse = strtoupper(trim((string) $request->input('warehouse', '')));
         if (! in_array($warehouse, ['A', 'G'])) {
             return response()->json([
@@ -172,6 +235,7 @@ class MasterStockController extends Controller
      */
     public function clear(Request $request): JsonResponse
     {
+        $this->ensureSchema();
         $warehouse = strtoupper(trim((string) $request->input('warehouse', '')));
         if (! in_array($warehouse, ['A', 'G', 'ALL'])) {
             return response()->json([
@@ -200,6 +264,7 @@ class MasterStockController extends Controller
      */
     public function export(Request $request): StreamedResponse
     {
+        $this->ensureSchema();
         $warehouse = strtoupper(trim((string) $request->input('warehouse', 'all')));
 
         $query = MasterStock::query();
@@ -247,3 +312,4 @@ class MasterStockController extends Controller
         ]);
     }
 }
+

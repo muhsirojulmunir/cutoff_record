@@ -53,3 +53,4 @@ class MasterStock extends Model
         return $this->warehouse === 'G' ? 'Gudang G (Eceran / Pcs)' : 'Gudang A (Grosir / Lusin)';
     }
 }
+
