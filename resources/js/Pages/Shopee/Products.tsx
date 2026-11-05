@@ -18,6 +18,21 @@ interface ProductItem {
   item_status: string;
   has_model: boolean;
   last_synced_at: string | null;
+  // Warehouse & Reconciliation fields
+  warehouse_stock?: number;
+  stock_g?: number;
+  stock_a?: number;
+  matched_code?: string | null;
+  match_type?: 'EXACT_CODE' | 'SMART_MATCH' | 'SIZE_MISMATCH' | 'CODE_NOT_FOUND' | 'NO_CODE' | 'MANUAL_MAPPED';
+  is_critical_oos?: boolean;
+  is_campaign_locked?: boolean;
+  is_campaign_unlocked?: boolean;
+  locked_campaign_qty?: number;
+  was_campaign_locked?: boolean;
+  suggested_code?: string | null;
+  suggested_name?: string | null;
+  warning_message?: string | null;
+  is_safe_to_zero?: boolean;
 }
 
 interface PaginationLinks {
@@ -40,6 +55,11 @@ interface SummaryData {
   total_stock: number;
   in_stock_skus: number;
   out_of_stock_skus: number;
+  critical_oos_count?: number;
+  campaign_locked_count?: number;
+  campaign_unlocked_count?: number;
+  critical_oos_ids?: number[];
+  campaign_unlocked_ids?: number[];
   last_synced_at: string | null;
 }
 
@@ -112,6 +132,9 @@ interface ConfirmModalState {
   count?: number;
   skusList?: string[];
   targetId?: number;
+  reservedStock?: number;
+  isCampaignLocked?: boolean;
+  isCampaignUnlocked?: boolean;
 }
 
 /**
@@ -185,6 +208,14 @@ export default function ShopeeProductsIndex({
   const [isZeroingOutAll, setIsZeroingOutAll] = useState(false);
   const [copiedToast, setCopiedToast] = useState(false);
   const [zeroOutSuccessMessage, setZeroOutSuccessMessage] = useState<string | null>(null);
+  const [toastNotice, setToastNotice] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  // Auto hide toast notice after 4 seconds
+  React.useEffect(() => {
+    if (!toastNotice) return;
+    const t = setTimeout(() => setToastNotice(null), 4000);
+    return () => clearTimeout(t);
+  }, [toastNotice]);
 
   // State Dialog Alarm & Konfirmasi Aksi Kritis (Anti Native Browser Popup)
   const [confirmModal, setConfirmModal] = useState<ConfirmModalState>({
@@ -237,15 +268,16 @@ export default function ShopeeProductsIndex({
       const resJson = await resp.json();
       if (resJson.status === 'success') {
         setMappingModalItem(null);
+        setToastNotice({ message: 'Mapping kode barang berhasil disimpan!', type: 'success' });
         // Refresh audit master stok langsung agar perubahan terlihat seketika
         if (auditSource === 'MASTER') {
           runMasterAudit(masterWarehouseFilter);
         }
       } else {
-        alert(resJson.message || 'Gagal menyimpan mapping.');
+        setToastNotice({ message: resJson.message || 'Gagal menyimpan mapping.', type: 'error' });
       }
     } catch (e: any) {
-      alert('Terjadi kesalahan: ' + e.message);
+      setToastNotice({ message: 'Terjadi kesalahan: ' + e.message, type: 'error' });
     } finally {
       setIsSavingMapping(false);
     }
@@ -321,7 +353,7 @@ export default function ShopeeProductsIndex({
 
   function promptSync() {
     if (!account?.is_connected) {
-      alert('Toko Shopee belum terhubung dengan token aktif. Harap hubungkan toko terlebih dahulu di menu Integrasi Shopee.');
+      setToastNotice({ message: 'Toko Shopee belum terhubung dengan token aktif. Harap hubungkan toko terlebih dahulu di menu Integrasi Shopee.', type: 'error' });
       return;
     }
     playAlarmChime();
@@ -556,14 +588,14 @@ export default function ShopeeProductsIndex({
     reader.readAsArrayBuffer(file);
   }
 
-  // Trigger dialog alarm konfirmasi untuk SEMUA produk kritis (Anti Browser Confirm)
+  // Trigger dialog alarm konfirmasi untuk SEMUA produk kritis dari Audit Modal (Anti Browser Confirm)
   function promptZeroOutAll() {
     if (!auditItems) return;
     const criticalItems = auditItems.filter(
       i => i.status === 'CRITICAL' && i.id && i.shopee_stock > 0 && i.is_safe_to_zero !== false
     );
     if (criticalItems.length === 0) {
-      alert('Tidak ada produk berstatus Kritis dengan stok Shopee > 0.');
+      setToastNotice({ message: 'Tidak ada produk berstatus Kritis dengan stok Shopee > 0.', type: 'info' });
       return;
     }
 
@@ -577,20 +609,43 @@ export default function ShopeeProductsIndex({
     });
   }
 
-  // Eksekusi pengosongan SEMUA SKU Kritis via Shopee API
+  // Trigger dialog alarm konfirmasi untuk SEMUA produk kritis dari Banner Peringatan Halaman Utama
+  function promptZeroOutAllCriticalFromBanner() {
+    const ids = summary?.critical_oos_ids ?? [];
+    if (ids.length === 0) {
+      setToastNotice({ message: 'Tidak ada SKU berstatus kritis untuk dikosongkan.', type: 'info' });
+      return;
+    }
+
+    playAlarmChime();
+    setConfirmModal({
+      isOpen: true,
+      type: 'ZERO_ALL',
+      title: 'Peringatan Super Admin: Kosongkan Seluruh SKU Kritis Shopee',
+      count: ids.length,
+      message: `Sistem mendeteksi ${ids.length} SKU yang stok fisik gudangnya sudah 0 pcs. Atur stok di Shopee menjadi 0 sekarang agar pembeli tidak checkout?`,
+    });
+  }
+
+  // Eksekusi pengosongan SEMUA SKU Kritis via Shopee API (bisa dari Modal atau dari Banner Utama)
   async function executeZeroOutAll() {
-    if (!auditItems) return;
-    const criticalItems = auditItems.filter(
-      i => i.status === 'CRITICAL' && i.id && i.shopee_stock > 0 && i.is_safe_to_zero !== false
-    );
-    if (criticalItems.length === 0) return;
+    let productIds: number[] = [];
+    if (auditItems && auditItems.length > 0) {
+      const criticalItems = auditItems.filter(
+        i => i.status === 'CRITICAL' && i.id && i.shopee_stock > 0 && i.is_safe_to_zero !== false
+      );
+      productIds = criticalItems.map(i => i.id!);
+    } else {
+      productIds = summary?.critical_oos_ids ?? [];
+    }
+
+    if (productIds.length === 0) return;
 
     setIsZeroingOutAll(true);
     setZeroOutSuccessMessage(null);
 
     try {
       const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
-      const productIds = criticalItems.map(i => i.id!);
       const resp = await fetch('/shopee-products/zero-out', {
         method: 'POST',
         headers: {
@@ -605,19 +660,22 @@ export default function ShopeeProductsIndex({
       if (resJson.status === 'success') {
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
         setZeroOutSuccessMessage(resJson.message || `Berhasil mengosongkan stok ${resJson.updated_count} produk di Shopee!`);
+        setToastNotice({ message: resJson.message || `Berhasil mengosongkan stok ${resJson.updated_count} SKU di Shopee!`, type: 'success' });
 
-        // Update status audit item di modal
-        setAuditItems(prev => prev ? prev.map(item => {
-          if (productIds.includes(item.id!)) {
-            return {
-              ...item,
-              shopee_stock: 0,
-              diff: 0,
-              status: 'MATCHED',
-            };
-          }
-          return item;
-        }) : null);
+        // Update status audit item di modal jika sedang dibuka
+        if (auditItems) {
+          setAuditItems(prev => prev ? prev.map(item => {
+            if (productIds.includes(item.id!)) {
+              return {
+                ...item,
+                shopee_stock: 0,
+                diff: 0,
+                status: 'MATCHED',
+              };
+            }
+            return item;
+          }) : null);
+        }
 
         if (auditSummary) {
           setAuditSummary({
@@ -629,26 +687,41 @@ export default function ShopeeProductsIndex({
 
         router.reload({ only: ['products', 'summary'] });
       } else {
-        alert(resJson.message || 'Gagal mengosongkan stok di Shopee.');
+        setToastNotice({ message: resJson.message || 'Gagal mengosongkan stok di Shopee.', type: 'error' });
       }
     } catch (err: any) {
-      alert('Terjadi kesalahan: ' + err.message);
+      setToastNotice({ message: 'Terjadi kesalahan: ' + err.message, type: 'error' });
     } finally {
       setIsZeroingOutAll(false);
     }
   }
 
   // Trigger dialog alarm konfirmasi untuk 1 produk (Anti Browser Confirm)
-  function promptZeroOutSingle(item: { id: number; sku: string; item_name?: string; model_name?: string | null }) {
+  function promptZeroOutSingle(item: {
+    id: number;
+    sku: string;
+    item_name?: string;
+    model_name?: string | null;
+    reserved_stock?: number;
+    is_campaign_locked?: boolean;
+    is_campaign_unlocked?: boolean;
+  }) {
     playAlarmChime();
     setConfirmModal({
       isOpen: true,
       type: 'ZERO_SINGLE',
-      title: 'Alarm Peringatan: Kosongkan Stok Shopee',
+      title: item.is_campaign_unlocked
+        ? 'Peringatan: Kosongkan Stok Promo Terbuka'
+        : (item.reserved_stock && item.reserved_stock > 0
+          ? 'Peringatan: Mentokkan Stok ke Kuota Promo'
+          : 'Peringatan: Kosongkan Stok Shopee'),
       sku: item.sku,
       productName: item.item_name,
       modelName: item.model_name || undefined,
       targetId: item.id,
+      reservedStock: item.reserved_stock,
+      isCampaignLocked: item.is_campaign_locked,
+      isCampaignUnlocked: item.is_campaign_unlocked,
     });
   }
 
@@ -671,6 +744,7 @@ export default function ShopeeProductsIndex({
       if (resJson.status === 'success') {
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
         setZeroOutSuccessMessage(resJson.message || 'Berhasil mengosongkan stok di Shopee!');
+        setToastNotice({ message: resJson.message || 'Berhasil mengosongkan stok di Shopee!', type: 'success' });
 
         // Update di modal jika terbuka
         setAuditItems(prev => prev ? prev.map(item => {
@@ -688,10 +762,10 @@ export default function ShopeeProductsIndex({
 
         router.reload({ only: ['products', 'summary'] });
       } else {
-        alert(resJson.message || 'Gagal mengosongkan stok di Shopee.');
+        setToastNotice({ message: resJson.message || 'Gagal mengosongkan stok di Shopee.', type: 'error' });
       }
     } catch (err: any) {
-      alert('Terjadi kesalahan: ' + err.message);
+      setToastNotice({ message: 'Terjadi kesalahan: ' + err.message, type: 'error' });
     } finally {
       setZeroingOutId(null);
     }
@@ -702,7 +776,7 @@ export default function ShopeeProductsIndex({
     if (!auditItems) return;
     const critical = auditItems.filter(i => i.status === 'CRITICAL');
     if (critical.length === 0) {
-      alert('Tidak ada SKU Kritis untuk disalin.');
+      setToastNotice({ message: 'Tidak ada SKU Kritis untuk disalin.', type: 'info' });
       return;
     }
 
@@ -967,6 +1041,68 @@ export default function ShopeeProductsIndex({
           </div>
         </div>
 
+        {/* Banner Peringatan Otomatis OOS Kritis & Kuota Promo Terbuka (Anti AI-Slop) */}
+        {(Boolean(summary?.critical_oos_count && summary.critical_oos_count > 0) || Boolean(summary?.campaign_unlocked_count && summary.campaign_unlocked_count > 0)) && (
+          <div className="bg-slate-950 border border-rose-900/60 rounded-2xl p-5 text-white shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-rose-950/80 border border-rose-800/80 flex items-center justify-center shrink-0 text-rose-400 relative">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+                <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                </span>
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-bold tracking-tight text-white">
+                    Peringatan: {summary.critical_oos_count ?? 0} SKU Habis di Gudang tetapi Masih Dijual di Shopee!
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-900/60 text-rose-300 border border-rose-700/60">
+                    Persetujuan Super Admin
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+                  Stok fisik di Master Stok Gudang tercatat <strong>0 pcs</strong>. Kosongkan stok di Shopee sekarang agar pembeli tidak dapat memesan barang kosong dan menghindari penalti toko.
+                  {Boolean(summary.campaign_unlocked_count && summary.campaign_unlocked_count > 0) && (
+                    <span className="block mt-1 text-amber-300 font-semibold">
+                      🔓 Termasuk {summary.campaign_unlocked_count} SKU promo yang kuotanya telah terbuka kembali dan wajib segera dinolkan!
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 w-full md:w-auto shrink-0 flex-wrap">
+              {stockStatus !== 'oos_critical' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStockStatus('oos_critical');
+                    handleFilter(search, 'oos_critical', sort);
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
+                >
+                  Lihat SKU Kritis
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={promptZeroOutAllCriticalFromBanner}
+                disabled={isZeroingOutAll}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                </svg>
+                <span>Kosongkan Semua di Shopee</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Filter & Search Bar - High-End Minimalist */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
           <form onSubmit={handleSearchSubmit} className="flex items-center gap-2 w-full md:w-96">
@@ -1002,7 +1138,7 @@ export default function ShopeeProductsIndex({
             </button>
           </form>
 
-          <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="flex items-center gap-3 w-full md:w-auto flex-wrap">
             {/* Filter Status Stok */}
             <select
               value={stockStatus}
@@ -1011,11 +1147,20 @@ export default function ShopeeProductsIndex({
                 setStockStatus(val);
                 handleFilter(search, val, sort);
               }}
-              className="px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 text-xs focus:outline-none focus:border-slate-800 focus:bg-white transition-all cursor-pointer"
+              className="px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 text-xs focus:outline-none focus:border-slate-800 focus:bg-white transition-all cursor-pointer font-medium"
             >
               <option value="all">Semua Status Stok</option>
               <option value="in_stock">Ada Stok (&gt; 0)</option>
               <option value="out_of_stock">Stok Habis (0)</option>
+              {Boolean(summary?.critical_oos_count && summary.critical_oos_count > 0) && (
+                <option value="oos_critical">⚠️ Kritis: Habis di Gudang ({summary.critical_oos_count})</option>
+              )}
+              {Boolean(summary?.campaign_unlocked_count && summary.campaign_unlocked_count > 0) && (
+                <option value="campaign_unlocked">🔓 Promo Terbuka ({summary.campaign_unlocked_count})</option>
+              )}
+              {Boolean(summary?.campaign_locked_count && summary.campaign_locked_count > 0) && (
+                <option value="campaign_locked">🔒 Terkunci Promo ({summary.campaign_locked_count})</option>
+              )}
             </select>
 
             {/* Sort Selector */}
@@ -1026,7 +1171,7 @@ export default function ShopeeProductsIndex({
                 setSort(val);
                 handleFilter(search, stockStatus, val);
               }}
-              className="px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs focus:outline-none focus:border-[#0B132B] cursor-pointer"
+              className="px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs focus:outline-none focus:border-[#0B132B] cursor-pointer font-medium"
             >
               <option value="stock_desc">Urutkan: Stok Terbanyak</option>
               <option value="stock_asc">Urutkan: Stok Tersedikit</option>
@@ -1059,18 +1204,29 @@ export default function ShopeeProductsIndex({
                     <th className="py-3 px-4">SKU Utama / Variasi</th>
                     <th className="py-3 px-4">Nama Barang</th>
                     <th className="py-3 px-4">Variasi / Model</th>
-                    <th className="py-3 px-4 text-right">Stok Tersedia</th>
-                    <th className="py-3 px-4 text-right">Stok Terkunci</th>
+                    <th className="py-3 px-4 text-right">Stok Gudang (ERP)</th>
+                    <th className="py-3 px-4 text-right">Stok Shopee</th>
+                    <th className="py-3 px-4 text-center">Status Audit</th>
                     <th className="py-3 px-4 text-right">Harga</th>
-                    <th className="py-3 px-4 text-center">Aksi</th>
+                    <th className="py-3 px-4 text-center">Aksi Shopee</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-sans">
                   {products.data.map((p, idx) => {
                     const rowNumber = (products.current_page - 1) * products.per_page + idx + 1;
                     const hasStock = (p.stock ?? 0) > 0;
+                    const isCritical = Boolean(p.is_critical_oos);
+                    const isPromoUnlocked = Boolean(p.is_campaign_unlocked);
+                    const isPromoLocked = Boolean(p.is_campaign_locked);
+
+                    const rowClass = isCritical
+                      ? 'bg-rose-50/70 hover:bg-rose-100/60 border-l-4 border-l-rose-500 transition-colors'
+                      : isPromoUnlocked
+                      ? 'bg-amber-50/70 hover:bg-amber-100/60 border-l-4 border-l-amber-500 transition-colors'
+                      : 'hover:bg-slate-50/80 transition-colors';
+
                     return (
-                      <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
+                      <tr key={p.id} className={rowClass}>
                         <td className="py-3.5 px-3 text-center text-xs font-bold text-slate-500 whitespace-nowrap">
                           {rowNumber}
                         </td>
@@ -1078,9 +1234,16 @@ export default function ShopeeProductsIndex({
                         {/* SKU */}
                         <td className="py-3.5 px-4 whitespace-nowrap">
                           {p.sku ? (
-                            <span className="font-mono font-bold text-slate-900 select-all tracking-tight">
-                              {p.sku}
-                            </span>
+                            <div>
+                              <span className="font-mono font-bold text-slate-900 select-all tracking-tight">
+                                {p.sku}
+                              </span>
+                              {p.matched_code && (
+                                <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                  Gudang: {p.matched_code}
+                                </div>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-slate-400 italic text-[11px]">— tanpa SKU —</span>
                           )}
@@ -1107,22 +1270,88 @@ export default function ShopeeProductsIndex({
                           )}
                         </td>
 
-                        {/* Stok Tersedia */}
+                        {/* Stok Gudang (ERP: G + A) */}
                         <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                          <span
-                            className={`inline-block px-2.5 py-0.5 rounded-full font-mono font-bold text-xs ${
-                              hasStock
-                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                                : 'bg-rose-100 text-rose-800 border border-rose-200'
-                            }`}
-                          >
-                            {(p.stock ?? 0).toLocaleString('id-ID')}
-                          </span>
+                          {p.warehouse_stock !== undefined ? (
+                            p.warehouse_stock <= 0 ? (
+                              <div className="flex flex-col items-end">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md font-mono font-bold text-xs bg-rose-100 text-rose-800 border border-rose-300">
+                                  0 pcs
+                                </span>
+                                <span className="text-[10px] text-rose-600 font-medium mt-0.5">
+                                  G: {(p.stock_g ?? 0).toLocaleString('id-ID')} | A: {(p.stock_a ?? 0).toLocaleString('id-ID')}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-end">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md font-mono font-bold text-xs bg-slate-100 text-slate-800 border border-slate-200">
+                                  {p.warehouse_stock.toLocaleString('id-ID')} pcs
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-medium mt-0.5">
+                                  G: {(p.stock_g ?? 0).toLocaleString('id-ID')} | A: {(p.stock_a ?? 0).toLocaleString('id-ID')}
+                                </span>
+                              </div>
+                            )
+                          ) : (
+                            <span className="text-slate-400 italic text-[11px]">—</span>
+                          )}
                         </td>
 
-                        {/* Stok Terkunci */}
-                        <td className="py-3.5 px-4 text-right font-mono text-slate-500 whitespace-nowrap">
-                          {(p.reserved_stock ?? 0).toLocaleString('id-ID')}
+                        {/* Stok Shopee (Tersedia & Terkunci) */}
+                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                          <div className="flex flex-col items-end">
+                            <span
+                              className={`inline-block px-2.5 py-0.5 rounded-full font-mono font-bold text-xs ${
+                                hasStock
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                  : 'bg-rose-100 text-rose-800 border border-rose-200'
+                              }`}
+                            >
+                              {(p.stock ?? 0).toLocaleString('id-ID')}
+                            </span>
+                            {(p.reserved_stock ?? 0) > 0 && (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] text-slate-500 font-mono mt-0.5" title="Stok terkunci promo/campaign Shopee">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-slate-400">
+                                  <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
+                                </svg>
+                                <span>{p.reserved_stock.toLocaleString('id-ID')} promo</span>
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Status Audit */}
+                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                          {isPromoUnlocked ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
+                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-amber-700">
+                                <path fillRule="evenodd" d="M14.5 1A4.5 4.5 0 0010 5.5V9H3a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5a3 3 0 116 0v.5a.75.75 0 001.5 0V5.5A4.5 4.5 0 0014.5 1z" clipRule="evenodd" />
+                              </svg>
+                              Promo Terbuka
+                            </span>
+                          ) : isCritical ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-100 text-rose-900 border border-rose-300">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-ping"></span>
+                              KRITIS (Gudang 0)
+                            </span>
+                          ) : isPromoLocked ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-slate-500">
+                                <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
+                              </svg>
+                              Terkunci Promo
+                            </span>
+                          ) : p.match_type === 'SIZE_MISMATCH' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200" title={p.warning_message || undefined}>
+                              Cek Ukuran
+                            </span>
+                          ) : p.match_type === 'CODE_NOT_FOUND' || p.match_type === 'NO_CODE' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                              Belum Terhubung
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-500 font-medium">Sesuai</span>
+                          )}
                         </td>
 
                         {/* Harga */}
@@ -1130,20 +1359,51 @@ export default function ShopeeProductsIndex({
                           Rp {Math.round(Number(p.price) || 0).toLocaleString('id-ID')}
                         </td>
 
-                        {/* Aksi: Kosongkan di Shopee */}
+                        {/* Aksi Shopee */}
                         <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                          {hasStock ? (
+                          {isCritical || isPromoUnlocked ? (
                             <button
                               type="button"
-                              onClick={() => promptZeroOutSingle({ id: p.id, sku: p.sku || p.item_name, item_name: p.item_name, model_name: p.model_name })}
+                              onClick={() => promptZeroOutSingle({
+                                id: p.id,
+                                sku: p.sku || p.item_name,
+                                item_name: p.item_name,
+                                model_name: p.model_name,
+                                reserved_stock: p.reserved_stock,
+                                is_campaign_locked: isPromoLocked,
+                                is_campaign_unlocked: isPromoUnlocked,
+                              })}
                               disabled={zeroingOutId === p.id}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-50"
-                              title="Kosongkan stok produk ini di Shopee menjadi 0 via API"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50 active:scale-95"
+                              title="Setujui pengosongan stok produk ini di Shopee sekarang"
                             >
                               {zeroingOutId === p.id ? (
-                                <span className="w-3 h-3 border-2 border-rose-600 border-t-transparent rounded-full animate-spin"></span>
+                                <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
                               ) : (
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3 text-rose-600">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                                </svg>
+                              )}
+                              <span>Set 0 di Shopee</span>
+                            </button>
+                          ) : hasStock ? (
+                            <button
+                              type="button"
+                              onClick={() => promptZeroOutSingle({
+                                id: p.id,
+                                sku: p.sku || p.item_name,
+                                item_name: p.item_name,
+                                model_name: p.model_name,
+                                reserved_stock: p.reserved_stock,
+                              })}
+                              disabled={zeroingOutId === p.id}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-[11px] font-medium transition-colors cursor-pointer disabled:opacity-50"
+                              title="Kosongkan stok produk ini di Shopee via API"
+                            >
+                              {zeroingOutId === p.id ? (
+                                <span className="w-3 h-3 border-2 border-slate-600 border-t-transparent rounded-full animate-spin"></span>
+                              ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3 text-slate-500">
                                   <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
                                 </svg>
                               )}
@@ -2305,17 +2565,43 @@ export default function ShopeeProductsIndex({
                     )}
                   </div>
 
-                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 space-y-1">
-                    <p className="font-semibold text-[11px] flex items-center gap-1.5">
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-rose-600 shrink-0">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
-                      </svg>
-                      Dampak Aksi Ini:
-                    </p>
-                    <p className="text-[11px] leading-relaxed text-rose-700">
-                      Stok variasi ini di Shopee akan langsung diubah menjadi <strong>0 (Habis)</strong> via Shopee Open API agar pembeli tidak dapat memesan barang kosong di gudang.
-                    </p>
-                  </div>
+                  {confirmModal.reservedStock && confirmModal.reservedStock > 0 ? (
+                    <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1.5">
+                      <p className="font-bold text-xs flex items-center gap-1.5 text-amber-800">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-amber-600 shrink-0">
+                          <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
+                        </svg>
+                        Proteksi Kuota Promo / Flash Sale:
+                      </p>
+                      <p className="text-[11px] leading-relaxed text-amber-800">
+                        Produk ini memiliki stok promosi terkunci sebanyak <strong>{confirmModal.reservedStock} pcs</strong>. Sistem akan menolkan stok reguler yang bisa dibeli bebas (stok Shopee mentok di {confirmModal.reservedStock} pcs promo) sehingga pembeli reguler tidak dapat membeli barang yang kosong di gudang.
+                      </p>
+                    </div>
+                  ) : confirmModal.isCampaignUnlocked ? (
+                    <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1.5">
+                      <p className="font-bold text-xs flex items-center gap-1.5 text-amber-800">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-amber-600 shrink-0">
+                          <path fillRule="evenodd" d="M14.5 1A4.5 4.5 0 0010 5.5V9H3a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5a3 3 0 116 0v.5a.75.75 0 001.5 0V5.5A4.5 4.5 0 0014.5 1z" clipRule="evenodd" />
+                        </svg>
+                        Peringatan: Kuota Promosi Terbuka Kembali!
+                      </p>
+                      <p className="text-[11px] leading-relaxed text-amber-800">
+                        Masa promosi Shopee telah selesai dan kuota promo yang tersisa telah terbuka kembali menjadi stok normal. Karena stok fisik di gudang masih 0 pcs, segera setujui agar stok Shopee kembali 0 pcs dan mencegah pembeli checkout barang kosong.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 space-y-1">
+                      <p className="font-semibold text-[11px] flex items-center gap-1.5">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-rose-600 shrink-0">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+                        </svg>
+                        Dampak Persetujuan Ini:
+                      </p>
+                      <p className="text-[11px] leading-relaxed text-rose-700">
+                        Stok variasi ini di Shopee akan langsung diubah menjadi <strong>0 (Habis)</strong> via Shopee Open API agar pembeli tidak dapat memesan barang kosong di gudang.
+                      </p>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -2447,6 +2733,38 @@ export default function ShopeeProductsIndex({
               )}
             </div>
           </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Floating Notification Toast (Anti Browser Alert) */}
+      {toastNotice && typeof document !== 'undefined' && createPortal(
+        <div className="fixed bottom-6 right-6 z-[10002] max-w-sm bg-slate-900 text-white p-4 rounded-2xl shadow-2xl border border-slate-700/80 flex items-start gap-3 animate-in slide-in-from-bottom-5 duration-200">
+          <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${toastNotice.type === 'error' ? 'bg-rose-500/20 text-rose-400' : (toastNotice.type === 'info' ? 'bg-sky-500/20 text-sky-400' : 'bg-emerald-500/20 text-emerald-400')}`}>
+            {toastNotice.type === 'error' ? (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            ) : toastNotice.type === 'info' ? (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-slate-200 leading-snug">{toastNotice.message}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastNotice(null)}
+            className="text-slate-400 hover:text-white text-xs cursor-pointer p-0.5"
+          >
+            ✕
+          </button>
         </div>,
         document.body
       )}
