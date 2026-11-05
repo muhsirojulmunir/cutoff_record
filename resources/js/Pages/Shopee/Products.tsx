@@ -3120,103 +3120,100 @@ export default function ShopeeProductsIndex({
 
               {/* Fast Batch Action Box (Alat Isi Cepat untuk kasus 30-33 masing-masing 10 pcs) */}
               {restockModal.variants.length > 0 && (
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                        ⚡ Aksi Cepat Multi-Ukuran:
-                      </span>
-                      <div className="inline-flex items-center p-0.5 bg-white rounded-lg border border-slate-200 text-xs">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setRestockModal(prev => ({
-                              ...prev,
-                              batchMode: 'set',
-                              variants: prev.variants.map(v => ({
-                                ...v,
-                                input_qty: v.current_stock,
-                                new_stock: v.current_stock,
-                              })),
-                            }));
-                          }}
-                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
-                            restockModal.batchMode === 'set'
-                              ? 'bg-emerald-600 text-white font-bold'
-                              : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                        >
-                          Timpa Stok
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setRestockModal(prev => ({
-                              ...prev,
-                              batchMode: 'add',
-                              variants: prev.variants.map(v => ({
-                                ...v,
-                                input_qty: 0,
-                                new_stock: v.current_stock,
-                              })),
-                            }));
-                          }}
-                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
-                            restockModal.batchMode === 'add'
-                              ? 'bg-emerald-600 text-white font-bold'
-                              : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                        >
-                          + Tambah Stok
-                        </button>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {/* Mode Switcher: Timpa Stok vs + Tambah Stok */}
+                    <div className="inline-flex items-center p-0.5 bg-white rounded-lg border border-slate-200 text-xs shadow-2xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRestockModal(prev => ({
+                            ...prev,
+                            batchMode: 'set',
+                            variants: prev.variants.map(v => ({
+                              ...v,
+                              input_qty: v.current_stock,
+                              new_stock: v.current_stock,
+                            })),
+                          }));
+                        }}
+                        className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                          restockModal.batchMode === 'set'
+                            ? 'bg-emerald-600 text-white font-bold shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Timpa Stok
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRestockModal(prev => ({
+                            ...prev,
+                            batchMode: 'add',
+                            variants: prev.variants.map(v => ({
+                              ...v,
+                              input_qty: 0,
+                              new_stock: v.current_stock,
+                            })),
+                          }));
+                        }}
+                        className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                          restockModal.batchMode === 'add'
+                            ? 'bg-emerald-600 text-white font-bold shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        + Tambah Stok
+                      </button>
+                    </div>
+
+                    {/* Batch Qty Input & Terapkan Ke Semua */}
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1 shadow-2xs">
+                        <span className="text-xs text-slate-500 font-medium mr-1.5">
+                          {restockModal.batchMode === 'add' ? 'Mau Tambah (+):' : 'Timpa Stok:'}
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100000"
+                          value={restockModal.batchQty}
+                          onChange={(e) => setRestockModal(prev => ({ ...prev, batchQty: Number(e.target.value) || 0 }))}
+                          className="w-16 text-center font-mono font-bold text-xs text-slate-900 focus:outline-none"
+                        />
+                        <span className="text-[11px] text-slate-400 ml-1">pcs</span>
                       </div>
+
+                      <button
+                        type="button"
+                        onClick={() => applyBatchRestockQty()}
+                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-2xs transition-all cursor-pointer flex items-center gap-1.5 active:scale-98"
+                      >
+                        <span>Terapkan Ke Semua</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                        </svg>
+                      </button>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-slate-600 font-medium">
-                        {restockModal.batchMode === 'add' ? 'Mau Tambah (+):' : 'Timpa Stok:'}
-                      </span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100000"
-                        value={restockModal.batchQty}
-                        onChange={(e) => setRestockModal(prev => ({ ...prev, batchQty: Number(e.target.value) || 0 }))}
-                        className="w-20 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-mono font-bold text-slate-900 text-center focus:outline-none focus:border-emerald-500"
-                      />
-                      <span className="text-xs text-slate-500">pcs</span>
-                    </div>
-
+                  <div className="flex items-center gap-2 text-xs">
                     <button
                       type="button"
-                      onClick={() => applyBatchRestockQty()}
-                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5 active:scale-98"
+                      onClick={() => toggleAllRestockSelect(true)}
+                      className="text-slate-600 hover:text-emerald-700 font-semibold cursor-pointer underline"
                     >
-                      <span>Terapkan Ke Semua</span>
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                      </svg>
+                      Pilih Semua
                     </button>
-
-                    <div className="ml-auto flex items-center gap-2 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => toggleAllRestockSelect(true)}
-                        className="text-slate-600 hover:text-emerald-700 font-semibold cursor-pointer underline"
-                      >
-                        Pilih Semua
-                      </button>
-                      <span className="text-slate-300">•</span>
-                      <button
-                        type="button"
-                        onClick={() => toggleAllRestockSelect(false)}
-                        className="text-slate-600 hover:text-slate-900 font-semibold cursor-pointer underline"
-                      >
-                        Batal Pilih
-                      </button>
-                    </div>
+                    <span className="text-slate-300">•</span>
+                    <button
+                      type="button"
+                      onClick={() => toggleAllRestockSelect(false)}
+                      className="text-slate-600 hover:text-slate-900 font-semibold cursor-pointer underline"
+                    >
+                      Batal Pilih
+                    </button>
                   </div>
                 </div>
               )}
@@ -3243,7 +3240,7 @@ export default function ShopeeProductsIndex({
                     <table className="w-full text-left text-xs">
                       <thead className="bg-slate-100 text-[11px] font-bold uppercase tracking-wider text-slate-600 sticky top-0 z-10 border-b border-slate-200">
                         <tr>
-                          <th className="py-2 px-2 text-center w-8">
+                          <th className="py-2.5 px-3 text-center w-10">
                             <input
                               type="checkbox"
                               checked={restockModal.variants.length > 0 && restockModal.variants.every(v => v.isSelected)}
@@ -3251,14 +3248,14 @@ export default function ShopeeProductsIndex({
                               className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                             />
                           </th>
-                          <th className="py-2 px-2 w-48 max-w-[200px]">Variasi / Model</th>
-                          <th className="py-2 px-2 whitespace-nowrap">SKU Shopee</th>
-                          <th className="py-2 px-2 text-center whitespace-nowrap w-24">Stok Gudang</th>
-                          <th className="py-2 px-2 text-center whitespace-nowrap w-20">Stok Shopee</th>
-                          <th className="py-2 px-2 text-center whitespace-nowrap w-32">
+                          <th className="py-2.5 px-3 min-w-[220px]">Variasi / Model</th>
+                          <th className="py-2.5 px-3 w-56 whitespace-nowrap">SKU Shopee</th>
+                          <th className="py-2.5 px-3 text-center whitespace-nowrap w-28">Stok Gudang</th>
+                          <th className="py-2.5 px-3 text-center whitespace-nowrap w-24">Stok Shopee</th>
+                          <th className="py-2.5 px-3 text-center whitespace-nowrap w-36">
                             {restockModal.batchMode === 'add' ? 'Mau Isi (+)' : 'Timpa Stok'}
                           </th>
-                          <th className="py-2 px-2 text-center whitespace-nowrap w-28 font-bold text-slate-800">
+                          <th className="py-2.5 px-3 text-center whitespace-nowrap w-28 font-bold text-slate-800">
                             Total
                           </th>
                         </tr>
@@ -3271,7 +3268,7 @@ export default function ShopeeProductsIndex({
                               key={v.id}
                               className={`transition-colors hover:bg-slate-50 ${v.isSelected ? 'bg-emerald-50/20' : 'opacity-70'}`}
                             >
-                              <td className="py-2 px-2 text-center w-8">
+                              <td className="py-2.5 px-3 text-center w-10">
                                 <input
                                   type="checkbox"
                                   checked={v.isSelected}
@@ -3279,16 +3276,16 @@ export default function ShopeeProductsIndex({
                                   className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                                 />
                               </td>
-                              <td className="py-2 px-2 w-48 max-w-[200px]">
-                                <p className="font-bold text-slate-900 truncate text-[11px]" title={v.model_name}>{v.model_name}</p>
-                                <p className="text-[10px] text-slate-400 truncate" title={v.item_name}>{v.item_name}</p>
+                              <td className="py-2.5 px-3 min-w-[220px]">
+                                <p className="font-bold text-slate-900 text-xs" title={v.model_name}>{v.model_name}</p>
+                                <p className="text-[10px] text-slate-400 truncate max-w-sm" title={v.item_name}>{v.item_name}</p>
                               </td>
-                              <td className="py-2 px-2 font-mono text-[11px] text-slate-700 whitespace-nowrap select-all">
+                              <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700 whitespace-nowrap w-56 select-all">
                                 {v.sku || '—'}
                               </td>
-                              <td className="py-2 px-2 text-center whitespace-nowrap w-24">
+                              <td className="py-2.5 px-3 text-center whitespace-nowrap w-28">
                                 <span
-                                  className={`inline-block px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                                  className={`inline-block px-2.5 py-0.5 rounded text-[11px] font-mono font-bold ${
                                     v.warehouse_stock > 0
                                       ? 'bg-blue-50 text-blue-700 border border-blue-200'
                                       : 'bg-slate-100 text-slate-500'
@@ -3298,12 +3295,12 @@ export default function ShopeeProductsIndex({
                                   {v.warehouse_stock} Pcs
                                 </span>
                               </td>
-                              <td className="py-2 px-2 text-center font-mono font-bold whitespace-nowrap w-20">
+                              <td className="py-2.5 px-3 text-center font-mono font-bold whitespace-nowrap w-24">
                                 <span className={v.current_stock > 0 ? 'text-slate-800' : 'text-rose-600'}>
                                   {v.current_stock}
                                 </span>
                               </td>
-                              <td className="py-1.5 px-2 text-center whitespace-nowrap w-32">
+                              <td className="py-2 px-3 text-center whitespace-nowrap w-36">
                                 <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white shadow-2xs">
                                   <button
                                     type="button"
@@ -3318,7 +3315,7 @@ export default function ShopeeProductsIndex({
                                     max="100000"
                                     value={v.input_qty ?? (restockModal.batchMode === 'add' ? 0 : v.new_stock)}
                                     onChange={(e) => updateVariantInputQty(v.id, Number(e.target.value) || 0)}
-                                    className="w-14 py-1 text-center font-mono font-bold text-xs text-slate-900 border-x border-slate-200 focus:outline-none focus:bg-emerald-50/40"
+                                    className="w-16 py-1 text-center font-mono font-bold text-xs text-slate-900 border-x border-slate-200 focus:outline-none focus:bg-emerald-50/40"
                                   />
                                   <button
                                     type="button"
@@ -3329,7 +3326,7 @@ export default function ShopeeProductsIndex({
                                   </button>
                                 </div>
                               </td>
-                              <td className="py-2 px-2 text-center whitespace-nowrap w-28">
+                              <td className="py-2.5 px-3 text-center whitespace-nowrap w-28">
                                 <div className="flex flex-col items-center justify-center">
                                   <span
                                     className={`font-mono font-bold text-xs px-2.5 py-0.5 rounded-md border ${
