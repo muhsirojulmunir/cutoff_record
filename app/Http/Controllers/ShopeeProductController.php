@@ -121,6 +121,7 @@ class ShopeeProductController extends Controller
         $criticalOosIds      = [];
         $campaignLockedIds   = [];
         $campaignUnlockedIds = [];
+        $gudangReadyIds      = [];
         $stockInfoById       = [];
 
         if ($masterStockSummary['has_master_stock'] && $account && $masterStocks->isNotEmpty()) {
@@ -145,6 +146,11 @@ class ShopeeProductController extends Controller
                     $campaignUnlockedIds[] = $p->id;
                 } elseif ($info['is_campaign_locked']) {
                     $campaignLockedIds[] = $p->id;
+                }
+
+                // Deteksi barang yang di gudang ada stoknya (> 0) tapi di Shopee masih 0 (Gudang Ready)
+                if ($info['warehouse_stock'] > 0 && $p->stock <= 0) {
+                    $gudangReadyIds[] = $p->id;
                 }
 
                 $stockInfoById[$p->id] = $info;
@@ -197,6 +203,8 @@ class ShopeeProductController extends Controller
             $query->whereIn('id', ! empty($campaignUnlockedIds) ? $campaignUnlockedIds : [-1]);
         } elseif ($stockStatus === 'campaign_locked') {
             $query->whereIn('id', ! empty($campaignLockedIds) ? $campaignLockedIds : [-1]);
+        } elseif ($stockStatus === 'gudang_ready') {
+            $query->whereIn('id', ! empty($gudangReadyIds) ? $gudangReadyIds : [-1]);
         }
 
         // Apply Sorting
@@ -255,6 +263,7 @@ class ShopeeProductController extends Controller
                 'critical_oos_count'      => count($criticalOosIds),
                 'campaign_locked_count'   => count($campaignLockedIds),
                 'campaign_unlocked_count' => count($campaignUnlockedIds),
+                'gudang_ready_count'      => count($gudangReadyIds),
                 'critical_oos_ids'        => $criticalOosIds,
                 'campaign_unlocked_ids'   => $campaignUnlockedIds,
                 'last_synced_at'          => $lastSyncedAt,
@@ -1328,6 +1337,138 @@ class ShopeeProductController extends Controller
             return response()->json([
                 'status'  => 'error',
                 'message' => 'Gagal mengosongkan stok di Shopee: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Ambil variasi produk berdasarkan item_id atau pencarian nama/sku.
+     * Digunakan untuk modal Restock / Tambah Stok Cepat.
+     */
+    public function getProductVariants(Request $request): JsonResponse
+    {
+        $account = ShopeeAccount::where('status', 'active')->first() ?? ShopeeAccount::first();
+        if (! $account) {
+            return response()->json(['status' => 'error', 'message' => 'Toko Shopee belum terhubung.'], 422);
+        }
+
+        $itemId = $request->input('item_id');
+        $q      = trim((string) $request->input('q', ''));
+
+        $query = ShopeeProduct::where('shopee_account_id', $account->id);
+
+        if (! empty($itemId)) {
+            $query->where('item_id', $itemId);
+        } elseif (! empty($q)) {
+            // Cari item_id yang cocok dengan query artikel
+            $matchingItemIds = ShopeeProduct::where('shopee_account_id', $account->id)
+                ->where(function ($sub) use ($q) {
+                    $sub->where('item_name', 'like', "%{$q}%")
+                        ->orWhere('sku', 'like', "%{$q}%")
+                        ->orWhere('model_name', 'like', "%{$q}%");
+                })
+                ->distinct()
+                ->pluck('item_id')
+                ->take(5);
+
+            if ($matchingItemIds->isNotEmpty()) {
+                $query->whereIn('item_id', $matchingItemIds);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        } else {
+            return response()->json(['status' => 'success', 'variants' => []]);
+        }
+
+        $products = $query->orderBy('item_name', 'asc')->orderBy('model_name', 'asc')->get();
+
+        // Ambil data stok gudang untuk referensi
+        $hasMasterTable = \Illuminate\Support\Facades\Schema::hasTable('master_stocks');
+        $maps = null;
+        if ($hasMasterTable) {
+            try {
+                $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs')->get();
+                if ($masterStocks->isNotEmpty()) {
+                    $maps = $this->buildMasterStockMaps($masterStocks);
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        $result = $products->map(function ($p) use ($maps) {
+            $whStock = 0;
+            $stockG = 0;
+            $stockA = 0;
+            $suggestedCode = null;
+
+            if ($maps) {
+                $info = $this->resolveProductStockInfoFast(
+                    $p,
+                    $maps['masterByCode'],
+                    $maps['gMap'],
+                    $maps['aMap'],
+                    $maps['aPrefixMap'],
+                    $maps['smartIndex']
+                );
+                $whStock = $info['warehouse_stock'];
+                $stockG = $info['stock_g'];
+                $stockA = $info['stock_a'];
+                $suggestedCode = $info['matched_code'] ?? $info['suggested_code'];
+            }
+
+            return [
+                'id'              => $p->id,
+                'item_id'         => $p->item_id,
+                'model_id'        => $p->model_id,
+                'sku'             => $p->sku,
+                'item_name'       => $p->item_name,
+                'model_name'      => $p->model_name ?: 'Standar',
+                'current_stock'   => (int) $p->stock,
+                'reserved_stock'  => (int) $p->reserved_stock,
+                'warehouse_stock' => $whStock,
+                'stock_g'         => $stockG,
+                'stock_a'         => $stockA,
+                'matched_code'    => $suggestedCode,
+            ];
+        });
+
+        return response()->json([
+            'status'   => 'success',
+            'variants' => $result,
+        ]);
+    }
+
+    /**
+     * Update kuantitas stok di Shopee via API Open Platform.
+     * Mendukung update massal per variasi atau penambahan stok.
+     */
+    public function updateStock(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'updates'              => 'required|array|min:1',
+            'updates.*.product_id' => 'required|integer',
+            'updates.*.stock'      => 'required|integer|min:0|max:100000',
+        ]);
+
+        $account = ShopeeAccount::where('status', 'active')->whereNotNull('access_token')->first();
+        if (! $account) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Toko Shopee belum terhubung dengan token aktif. Buka menu Integrasi Shopee.',
+            ], 422);
+        }
+
+        try {
+            $res = $this->syncService->updateShopeeProductsStock($account, $validated['updates']);
+            return response()->json([
+                'status'        => $res['success'] ? 'success' : 'error',
+                'message'       => $res['message'],
+                'updated_count' => $res['updated_count'],
+                'failures'      => $res['failures'],
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Gagal mengubah stok di Shopee: ' . $e->getMessage(),
             ], 500);
         }
     }

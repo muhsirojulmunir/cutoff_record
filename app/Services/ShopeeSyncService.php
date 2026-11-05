@@ -1781,4 +1781,114 @@ class ShopeeSyncService
                 : "Gagal mengosongkan stok di Shopee. " . ($failures[0]['reason'] ?? 'Silakan periksa log.'),
         ];
     }
+
+    /**
+     * Update/Restock stock on Shopee for given array of updates:
+     * [
+     *    ['product_id' => 123, 'stock' => 10],
+     *    ...
+     * ]
+     *
+     * @param ShopeeAccount $account
+     * @param array $updates Array of ['product_id' => int, 'stock' => int]
+     * @return array
+     */
+    public function updateShopeeProductsStock(ShopeeAccount $account, array $updates): array
+    {
+        if (empty($account->access_token)) {
+            throw new RuntimeException('Toko Shopee belum terhubung (access_token kosong).');
+        }
+
+        if ($account->token_expires_at && $account->token_expires_at->isPast()) {
+            $account = $this->refreshAccessToken($account);
+        }
+
+        $productIds = array_column($updates, 'product_id');
+        $stocksByProdId = [];
+        foreach ($updates as $u) {
+            $stocksByProdId[(int) $u['product_id']] = max(0, (int) $u['stock']);
+        }
+
+        $products = ShopeeProduct::where('shopee_account_id', $account->id)
+            ->whereIn('id', $productIds)
+            ->get();
+
+        if ($products->isEmpty()) {
+            return [
+                'success'       => false,
+                'message'       => 'Tidak ada produk Shopee yang ditemukan untuk diubah stoknya.',
+                'updated_count' => 0,
+                'failures'      => [],
+            ];
+        }
+
+        $grouped = $products->groupBy('item_id');
+        $successCount = 0;
+        $failures = [];
+        $now = now();
+        $hasCampaignCol = \Illuminate\Support\Facades\Schema::hasColumn('shopee_products', 'was_campaign_locked');
+
+        foreach ($grouped as $itemId => $items) {
+            $stockList = [];
+            foreach ($items as $product) {
+                $targetStock = $stocksByProdId[$product->id] ?? 0;
+                $stockList[] = [
+                    'model_id' => (int) ($product->model_id ?? 0),
+                    'stock'    => $targetStock,
+                ];
+            }
+
+            try {
+                $apiRes = $this->updateStockRaw($account, (int) $itemId, $stockList);
+                $apiFailures = $apiRes['failure_list'] ?? [];
+                $failedModelIds = [];
+
+                foreach ($apiFailures as $fail) {
+                    $mId = (int) ($fail['model_id'] ?? 0);
+                    $failedModelIds[] = $mId;
+                    $failures[] = [
+                        'item_id'  => $itemId,
+                        'model_id' => $mId,
+                        'reason'   => $fail['failed_reason'] ?? 'Gagal update stok di Shopee',
+                    ];
+                }
+
+                // Update database lokal untuk variasi yang sukses
+                foreach ($items as $product) {
+                    $mId = (int) ($product->model_id ?? 0);
+                    if (! in_array($mId, $failedModelIds, true)) {
+                        $targetStock = $stocksByProdId[$product->id] ?? 0;
+                        $updateData = [
+                            'stock'          => $targetStock,
+                            'last_synced_at' => $now,
+                        ];
+                        if ($hasCampaignCol && $targetStock > 0) {
+                            $updateData['was_campaign_locked'] = false;
+                        }
+                        $product->update($updateData);
+                        $successCount++;
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning("[ShopeeUpdateStock] Gagal update stok item_id {$itemId}: " . $e->getMessage());
+                foreach ($items as $product) {
+                    $failures[] = [
+                        'item_id'  => $itemId,
+                        'model_id' => (int) ($product->model_id ?? 0),
+                        'sku'      => $product->sku,
+                        'reason'   => $e->getMessage(),
+                    ];
+                }
+            }
+        }
+
+        return [
+            'success'       => $successCount > 0,
+            'updated_count' => $successCount,
+            'failures'      => $failures,
+            'message'       => $successCount > 0
+                ? "Berhasil memperbarui stok {$successCount} variasi di Shopee!" . (! empty($failures) ? " (" . count($failures) . " variasi gagal)" : "")
+                : "Gagal memperbarui stok di Shopee. " . ($failures[0]['reason'] ?? 'Silakan periksa koneksi token Shopee.'),
+        ];
+    }
 }
