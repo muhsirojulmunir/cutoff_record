@@ -94,8 +94,10 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
 
   // States untuk Modal Import Stok Internal
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [targetWarehouse, setTargetWarehouse] = useState<'G' | 'A'>('G');
   const [importFileName, setImportFileName] = useState<string | null>(null);
   const [detectedWarehouse, setDetectedWarehouse] = useState<'A' | 'G' | 'GENERAL' | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const [isComparing, setIsComparing] = useState(false);
   const [auditSummary, setAuditSummary] = useState<AuditSummary | null>(null);
@@ -163,6 +165,7 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
   // Parse Excel file dan bandingkan langsung via API
   async function handleFileUpload(file: File) {
     setIsParsing(true);
+    setValidationError(null);
     setImportFileName(file.name);
     setZeroOutSuccessMessage(null);
 
@@ -176,24 +179,56 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
         const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
         if (rows.length <= 1) {
-          alert('File Excel kosong atau tidak memiliki baris data.');
+          setValidationError('File Excel kosong atau tidak memiliki baris data.');
           setIsParsing(false);
           return;
         }
 
-        // Deteksi tipe laporan gudang (Gudang A / Gudang G)
-        let whType: 'A' | 'G' | 'GENERAL' = 'GENERAL';
-        for (let r = 0; r < Math.min(6, rows.length); r++) {
+        // 1. Deteksi Tipe Laporan (Gudang A vs Gudang G)
+        const fileUpper = file.name.toUpperCase();
+        let contentIsG = false;
+        let contentIsA = false;
+
+        for (let r = 0; r < Math.min(8, rows.length); r++) {
           const rowStr = JSON.stringify(rows[r] || '').toUpperCase();
-          if (rowStr.includes('GUDANG A')) {
-            whType = 'A';
-            break;
-          } else if (rowStr.includes('GUDANG G')) {
-            whType = 'G';
-            break;
-          }
+          if (rowStr.includes('GUDANG G')) contentIsG = true;
+          if (rowStr.includes('GUDANG A')) contentIsA = true;
         }
-        setDetectedWarehouse(whType);
+
+        if (fileUpper.includes('GUDANG G') || fileUpper.includes('GUDANG_G') || fileUpper.includes('GUDANG-G')) contentIsG = true;
+        if (fileUpper.includes('GUDANG A') || fileUpper.includes('GUDANG_A') || fileUpper.includes('GUDANG-A')) contentIsA = true;
+
+        // Cek juga satuan data jika belum pasti
+        if (!contentIsG && !contentIsA) {
+          let lsnCount = 0;
+          let psgCount = 0;
+          for (let r = 5; r < Math.min(30, rows.length); r++) {
+            const rowStr = JSON.stringify(rows[r] || '').toUpperCase();
+            if (rowStr.includes('LSN')) lsnCount++;
+            if (rowStr.includes('PSG')) psgCount++;
+          }
+          if (lsnCount > psgCount) contentIsA = true;
+          else if (psgCount > lsnCount) contentIsG = true;
+        }
+
+        // 2. Proteksi Validasi Silang (Strict Cross-Validation)
+        if (targetWarehouse === 'G' && contentIsA && !contentIsG) {
+          setValidationError(
+            '⚠️ File Ditolak! Anda mengunggah file Laporan GUDANG A (Lusinan) di mode Gudang G. File ini tidak diizinkan di mode Gudang G agar data stok eceran tidak kacau.'
+          );
+          setIsParsing(false);
+          return;
+        }
+
+        if (targetWarehouse === 'A' && contentIsG && !contentIsA) {
+          setValidationError(
+            '⚠️ File Ditolak! Anda mengunggah file Laporan GUDANG G (Eceran/Pcs) di mode Gudang A. File ini tidak diizinkan di mode Gudang A agar data stok grosir tidak kacau.'
+          );
+          setIsParsing(false);
+          return;
+        }
+
+        setDetectedWarehouse(targetWarehouse);
 
         // Auto-detect header row
         let skuColIdx = -1;
@@ -255,7 +290,7 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
 
           const rawQty = row[stockColIdx];
           let qtyNum = 0;
-          let isLusin = whType === 'A';
+          let isLusin = targetWarehouse === 'A';
 
           if (typeof rawQty === 'number') {
             qtyNum = rawQty;
@@ -285,7 +320,7 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
         }
 
         if (extractedItems.length === 0) {
-          alert('Tidak ada baris SKU dan kuantitas stok yang berhasil dibaca dari file Excel ini.');
+          setValidationError('Tidak ada baris SKU dan kuantitas stok yang berhasil dibaca dari file Excel ini.');
           setIsParsing(false);
           return;
         }
@@ -315,11 +350,11 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
             setAuditFilter('all');
           }
         } else {
-          alert(resJson.message || 'Gagal membandingkan stok dengan Shopee.');
+          setValidationError(resJson.message || 'Gagal membandingkan stok dengan Shopee.');
         }
       } catch (err: any) {
         console.error(err);
-        alert('Gagal memproses file Excel: ' + (err.message || 'Format tidak valid'));
+        setValidationError('Gagal memproses file Excel: ' + (err.message || 'Format tidak valid'));
       } finally {
         setIsParsing(false);
         setIsComparing(false);
@@ -556,20 +591,44 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-            {/* Import Stok Internal (.xlsx) - Permintaan Khusus User */}
+            {/* Tombol Import Gudang G (Eceran / Pcs Satuan) */}
             <button
               type="button"
               onClick={() => {
+                setTargetWarehouse('G');
+                setValidationError(null);
+                setAuditItems(null);
+                setImportFileName(null);
                 setIsImportModalOpen(true);
                 setZeroOutSuccessMessage(null);
               }}
-              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
-              title="Bandingkan stok fisik internal gudang dengan stok Shopee"
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
+              title="Import file stok Gudang G (Eceran / Pcs satuan per ukuran)"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-indigo-600">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-blue-600">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
               </svg>
-              <span>Import Stok Internal (.xlsx)</span>
+              <span>Import Gudang G (Pcs)</span>
+            </button>
+
+            {/* Tombol Import Gudang A (Grosir / Lusinan x12) */}
+            <button
+              type="button"
+              onClick={() => {
+                setTargetWarehouse('A');
+                setValidationError(null);
+                setAuditItems(null);
+                setImportFileName(null);
+                setIsImportModalOpen(true);
+                setZeroOutSuccessMessage(null);
+              }}
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-800 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
+              title="Import file stok Gudang A (Grosir / Lusinan dikalikan 12)"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-purple-600">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+              </svg>
+              <span>Import Gudang A (Lusin)</span>
             </button>
 
             {/* Export CSV / Excel */}
@@ -982,6 +1041,90 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
 
             {/* Modal Body */}
             <div className="p-5 overflow-y-auto space-y-5 grow">
+              {/* Tab Selector Pemilihan Gudang A vs Gudang G */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-100/80 rounded-2xl border border-slate-200">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-slate-700 ml-1">Pilih Gudang Target:</span>
+                  <div className="inline-flex items-center p-1 bg-white rounded-xl border border-slate-200 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTargetWarehouse('G');
+                        setValidationError(null);
+                        setAuditItems(null);
+                        setImportFileName(null);
+                      }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        targetWarehouse === 'G'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>🏷️ Gudang G</span>
+                      <span className="text-[10px] font-normal opacity-90">(Eceran / Pcs)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTargetWarehouse('A');
+                        setValidationError(null);
+                        setAuditItems(null);
+                        setImportFileName(null);
+                      }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        targetWarehouse === 'A'
+                          ? 'bg-purple-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>📦 Gudang A</span>
+                      <span className="text-[10px] font-normal opacity-90">(Grosir / Lusin x12)</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="text-xs text-slate-500 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span>
+                    {targetWarehouse === 'G'
+                      ? 'Proteksi aktif: File Gudang A akan otomatis ditolak'
+                      : 'Proteksi aktif: File Gudang G akan otomatis ditolak'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Alert Penolakan Jika File Tertukar */}
+              {validationError && (
+                <div className="p-4 rounded-2xl bg-rose-50 border-2 border-rose-300 text-rose-900 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-rose-600 text-white rounded-xl shrink-0 mt-0.5 sm:mt-0">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-rose-900">{validationError}</p>
+                      <p className="text-[11px] text-rose-700 mt-0.5">
+                        Sistem membatasi agar laporan tidak tertukar karena Gudang G dihitung dalam <strong>Pcs satuan per ukuran</strong> sedangkan Gudang A dihitung dalam <strong>Lusinan (x12)</strong>.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const opposite = targetWarehouse === 'G' ? 'A' : 'G';
+                      setTargetWarehouse(opposite);
+                      setValidationError(null);
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl bg-white border border-rose-300 hover:bg-rose-100 text-rose-800 text-xs font-bold whitespace-nowrap shadow-2xs transition-colors cursor-pointer shrink-0"
+                  >
+                    Beralih ke Gudang {targetWarehouse === 'G' ? 'A (Lusin)' : 'G (Pcs)'} ➜
+                  </button>
+                </div>
+              )}
+
               {/* Notifikasi Toast Sukses Kosongkan */}
               {zeroOutSuccessMessage && (
                 <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center justify-between animate-fade-in">
@@ -1013,7 +1156,13 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
 
               {/* Upload Zone jika belum ada data */}
               {!auditItems || auditItems.length === 0 ? (
-                <div className="border-2 border-dashed border-slate-300 hover:border-indigo-400 rounded-2xl p-10 text-center transition-colors bg-slate-50/50">
+                <div
+                  className={`border-2 border-dashed rounded-2xl p-10 text-center transition-colors ${
+                    targetWarehouse === 'G'
+                      ? 'border-blue-300 hover:border-blue-500 bg-blue-50/30'
+                      : 'border-purple-300 hover:border-purple-500 bg-purple-50/30'
+                  }`}
+                >
                   <input
                     type="file"
                     id="excelInternalInput"
@@ -1025,9 +1174,21 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
                     className="hidden"
                   />
                   <label htmlFor="excelInternalInput" className="cursor-pointer space-y-3 block">
-                    <div className="w-14 h-14 bg-indigo-100 text-indigo-700 rounded-2xl flex items-center justify-center mx-auto transition-transform hover:scale-105">
+                    <div
+                      className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto transition-transform hover:scale-105 ${
+                        targetWarehouse === 'G'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-purple-100 text-purple-700'
+                      }`}
+                    >
                       {isParsing || isComparing ? (
-                        <svg className="animate-spin h-7 w-7 text-indigo-600" fill="none" viewBox="0 0 24 24">
+                        <svg
+                          className={`animate-spin h-7 w-7 ${
+                            targetWarehouse === 'G' ? 'text-blue-600' : 'text-purple-600'
+                          }`}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
@@ -1039,14 +1200,32 @@ export default function ShopeeProductsIndex({ products, filters, summary, accoun
                     </div>
                     <div>
                       <p className="text-sm font-bold text-slate-800">
-                        {isParsing || isComparing ? 'Memproses dan Membandingkan Stok...' : 'Klik untuk Pilih File Excel Stok Gudang'}
+                        {isParsing || isComparing
+                          ? 'Memproses dan Memvalidasi Stok...'
+                          : targetWarehouse === 'G'
+                          ? 'Klik untuk Pilih File STOCK GUDANG G (.xls / .xlsx)'
+                          : 'Klik untuk Pilih File STOCK GUDANG A (.xls / .xlsx)'}
                       </p>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Mendukung format <strong>.xlsx, .xls, .csv</strong> dari sistem internal gudang Anda.
+                      <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                        {targetWarehouse === 'G' ? (
+                          <>
+                            Khusus format <strong>GUDANG G</strong> (Eceran / Pcs per ukuran). File Gudang A otomatis ditolak.
+                          </>
+                        ) : (
+                          <>
+                            Khusus format <strong>GUDANG A</strong> (Grosir / Lusinan otomatis dikalikan 12 ke Pcs). File Gudang G otomatis ditolak.
+                          </>
+                        )}
                       </p>
                     </div>
-                    <span className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors">
-                      Pilih Spreadsheet Excel
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-4 py-2 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors ${
+                        targetWarehouse === 'G'
+                          ? 'bg-blue-600 hover:bg-blue-700'
+                          : 'bg-purple-600 hover:bg-purple-700'
+                      }`}
+                    >
+                      Pilih Spreadsheet {targetWarehouse === 'G' ? 'Gudang G' : 'Gudang A'}
                     </span>
                   </label>
                 </div>
