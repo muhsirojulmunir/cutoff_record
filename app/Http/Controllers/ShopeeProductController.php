@@ -1355,32 +1355,75 @@ class ShopeeProductController extends Controller
         $itemId = $request->input('item_id');
         $q      = trim((string) $request->input('q', ''));
 
+        if (empty($itemId) && empty($q)) {
+            return response()->json(['status' => 'success', 'variants' => []]);
+        }
+
+        $keywords = preg_split('/[\s\-_,]+/', strtolower($q), -1, PREG_SPLIT_NO_EMPTY);
+        $filler = ['record', 'sepatu', 'spt', 'shoes', 'anak', 'pria', 'wanita'];
+        $cleanKeywords = array_values(array_filter($keywords, function ($k) use ($filler, $keywords) {
+            return count($keywords) === 1 || ! in_array($k, $filler, true);
+        }));
+        if (empty($cleanKeywords)) {
+            $cleanKeywords = $keywords;
+        }
+
         $query = ShopeeProduct::where('shopee_account_id', $account->id);
 
         if (! empty($itemId)) {
             $query->where('item_id', $itemId);
-        } elseif (! empty($q)) {
-            // Cari item_id yang cocok dengan query artikel
-            $matchingItemIds = ShopeeProduct::where('shopee_account_id', $account->id)
-                ->where(function ($sub) use ($q) {
-                    $sub->where('item_name', 'like', "%{$q}%")
-                        ->orWhere('sku', 'like', "%{$q}%")
-                        ->orWhere('model_name', 'like', "%{$q}%");
-                })
-                ->distinct()
-                ->pluck('item_id')
-                ->take(5);
+        }
 
-            if ($matchingItemIds->isNotEmpty()) {
-                $query->whereIn('item_id', $matchingItemIds);
-            } else {
-                $query->whereRaw('1 = 0');
-            }
-        } else {
-            return response()->json(['status' => 'success', 'variants' => []]);
+        if (! empty($cleanKeywords)) {
+            $query->where(function ($sub) use ($cleanKeywords) {
+                foreach ($cleanKeywords as $kw) {
+                    $sub->where(function ($w) use ($kw) {
+                        $w->where('sku', 'like', "%{$kw}%")
+                          ->orWhere('model_name', 'like', "%{$kw}%")
+                          ->orWhere('item_name', 'like', "%{$kw}%");
+                    });
+                }
+            });
         }
 
         $products = $query->orderBy('item_name', 'asc')->orderBy('model_name', 'asc')->get();
+
+        // Strict Filter di PHP: Jika user mencari kata kunci variasi spesifik (misal 'theon'),
+        // pastikan variasi yang ditampilkan benar-benar THEON dan singkirkan variasi model lain
+        // (seperti X-Force, Jayden, dll) yang kebetulan numpang di judul listing Shopee yang sama.
+        if (! empty($cleanKeywords)) {
+            $products = $products->filter(function ($p) use ($cleanKeywords) {
+                $skuLower   = strtolower((string) $p->sku);
+                $modelLower = strtolower((string) $p->model_name);
+                $itemLower  = strtolower((string) $p->item_name);
+
+                foreach ($cleanKeywords as $kw) {
+                    // Cek kode warna khusus (misal 'hitam' / 'putih' cocok dengan '-hp-' di SKU)
+                    $matchesColorCode = ($kw === 'hitam' || $kw === 'putih') && (
+                        str_contains($skuLower, '-hp-') || str_contains($skuLower, '_hp_') || str_contains($modelLower, 'hp')
+                    );
+
+                    // 1. Jika SKU atau nama variasi langsung memuat keyword ini -> COCOK
+                    if (str_contains($skuLower, $kw) || str_contains($modelLower, $kw) || $matchesColorCode) {
+                        continue;
+                    }
+
+                    // 2. Jika tidak ada di SKU/model, tapi ada di judul produk:
+                    if (str_contains($itemLower, $kw)) {
+                        $otherArticle = $this->extractArticleKeyword((string) $p->sku, (string) $p->model_name);
+                        // Tolak jika SKU/variasi memiliki nama model LAIN yang berbeda (misal XFORCE atau JAYDEN)
+                        if ($otherArticle && ! ctype_digit($otherArticle) && ! str_contains(strtolower($otherArticle), $kw)) {
+                            return false;
+                        }
+                        continue;
+                    }
+
+                    return false;
+                }
+
+                return true;
+            })->values();
+        }
 
         // Ambil data stok gudang untuk referensi
         $hasMasterTable = \Illuminate\Support\Facades\Schema::hasTable('master_stocks');
