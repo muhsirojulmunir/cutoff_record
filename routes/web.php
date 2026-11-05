@@ -64,6 +64,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/shopee-products/compare', [\App\Http\Controllers\ShopeeProductController::class, 'compareStock'])->name('shopee-products.compare');
     Route::post('/shopee-products/audit-master', [\App\Http\Controllers\ShopeeProductController::class, 'compareWithMaster'])->name('shopee-products.audit-master');
     Route::post('/shopee-products/zero-out', [\App\Http\Controllers\ShopeeProductController::class, 'zeroOut'])->name('shopee-products.zero-out');
+    Route::post('/shopee-products/update-stock', [\App\Http\Controllers\ShopeeProductController::class, 'updateStock'])->name('shopee-products.update-stock');
+    Route::get('/shopee-products/variants', [\App\Http\Controllers\ShopeeProductController::class, 'getProductVariants'])->name('shopee-products.variants');
     Route::post('/shopee-products/map', [\App\Http\Controllers\ShopeeProductController::class, 'mapProduct'])->name('shopee-products.map');
     Route::get('/shopee-products/search-master', [\App\Http\Controllers\ShopeeProductController::class, 'searchMasterStock'])->name('shopee-products.search-master');
 

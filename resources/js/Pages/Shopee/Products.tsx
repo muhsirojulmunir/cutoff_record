@@ -58,9 +58,39 @@ interface SummaryData {
   critical_oos_count?: number;
   campaign_locked_count?: number;
   campaign_unlocked_count?: number;
+  gudang_ready_count?: number;
   critical_oos_ids?: number[];
   campaign_unlocked_ids?: number[];
   last_synced_at: string | null;
+}
+
+interface RestockVariantItem {
+  id: number;
+  item_id: number;
+  model_id: number;
+  sku: string;
+  item_name: string;
+  model_name: string;
+  current_stock: number;
+  reserved_stock: number;
+  warehouse_stock: number;
+  stock_g: number;
+  stock_a: number;
+  matched_code?: string;
+  new_stock: number;
+  isSelected: boolean;
+}
+
+interface RestockModalState {
+  isOpen: boolean;
+  isLoading: boolean;
+  isSubmitting: boolean;
+  searchQuery: string;
+  selectedItemId: number | null;
+  productTitle: string;
+  variants: RestockVariantItem[];
+  batchQty: number;
+  batchMode: 'set' | 'add';
 }
 
 interface MasterStockSummary {
@@ -223,6 +253,166 @@ export default function ShopeeProductsIndex({
     type: 'ZERO_SINGLE',
     title: '',
   });
+
+  // States untuk Fitur Isi / Tambah Stok Shopee Cepat (Quick Restock)
+  const [restockModal, setRestockModal] = useState<RestockModalState>({
+    isOpen: false,
+    isLoading: false,
+    isSubmitting: false,
+    searchQuery: '',
+    selectedItemId: null,
+    productTitle: '',
+    variants: [],
+    batchQty: 10,
+    batchMode: 'set',
+  });
+
+  async function openRestockModal(itemId?: number | null, title?: string) {
+    setRestockModal({
+      isOpen: true,
+      isLoading: true,
+      isSubmitting: false,
+      searchQuery: title || '',
+      selectedItemId: itemId || null,
+      productTitle: title || '',
+      variants: [],
+      batchQty: 10,
+      batchMode: 'set',
+    });
+
+    try {
+      const url = itemId
+        ? `/shopee-products/variants?item_id=${itemId}`
+        : `/shopee-products/variants?q=${encodeURIComponent(title || '')}`;
+      const resp = await fetch(url);
+      const res = await resp.json();
+      if (res.status === 'success') {
+        const items = (res.variants || []).map((v: any) => ({
+          ...v,
+          new_stock: v.current_stock,
+          isSelected: true,
+        }));
+        setRestockModal(prev => ({
+          ...prev,
+          isLoading: false,
+          variants: items,
+          productTitle: items.length > 0 ? items[0].item_name : (title || ''),
+        }));
+      } else {
+        setRestockModal(prev => ({ ...prev, isLoading: false }));
+        setToastNotice({ message: res.message || 'Gagal memuat variasi produk.', type: 'error' });
+      }
+    } catch (e: any) {
+      setRestockModal(prev => ({ ...prev, isLoading: false }));
+      setToastNotice({ message: 'Terjadi kesalahan: ' + e.message, type: 'error' });
+    }
+  }
+
+  async function handleSearchRestockVariants(q: string) {
+    if (!q.trim()) return;
+    setRestockModal(prev => ({ ...prev, searchQuery: q, isLoading: true }));
+    try {
+      const resp = await fetch(`/shopee-products/variants?q=${encodeURIComponent(q.trim())}`);
+      const res = await resp.json();
+      if (res.status === 'success') {
+        const items = (res.variants || []).map((v: any) => ({
+          ...v,
+          new_stock: v.current_stock,
+          isSelected: true,
+        }));
+        setRestockModal(prev => ({
+          ...prev,
+          isLoading: false,
+          variants: items,
+          productTitle: items.length > 0 ? items[0].item_name : q,
+        }));
+      } else {
+        setRestockModal(prev => ({ ...prev, isLoading: false }));
+        setToastNotice({ message: res.message || 'Gagal memuat variasi.', type: 'error' });
+      }
+    } catch (e: any) {
+      setRestockModal(prev => ({ ...prev, isLoading: false }));
+    }
+  }
+
+  function applyBatchRestockQty() {
+    const qty = Number(restockModal.batchQty) || 0;
+    setRestockModal(prev => ({
+      ...prev,
+      variants: prev.variants.map(v => {
+        if (!v.isSelected) return v;
+        const targetStock = prev.batchMode === 'set' ? qty : Math.max(0, v.current_stock + qty);
+        return { ...v, new_stock: targetStock };
+      }),
+    }));
+  }
+
+  function toggleAllRestockSelect(checked: boolean) {
+    setRestockModal(prev => ({
+      ...prev,
+      variants: prev.variants.map(v => ({ ...v, isSelected: checked })),
+    }));
+  }
+
+  function toggleRestockItemSelect(productId: number) {
+    setRestockModal(prev => ({
+      ...prev,
+      variants: prev.variants.map(v => v.id === productId ? { ...v, isSelected: !v.isSelected } : v),
+    }));
+  }
+
+  function updateVariantNewStock(productId: number, val: number) {
+    setRestockModal(prev => ({
+      ...prev,
+      variants: prev.variants.map(v => v.id === productId ? { ...v, new_stock: Math.max(0, val) } : v),
+    }));
+  }
+
+  async function submitRestockToShopee() {
+    const selectedVariants = restockModal.variants.filter(v => v.isSelected);
+    if (selectedVariants.length === 0) {
+      setToastNotice({ message: 'Pilih setidaknya 1 variasi ukuran untuk diupdate ke Shopee.', type: 'info' });
+      return;
+    }
+
+    setRestockModal(prev => ({ ...prev, isSubmitting: true }));
+    try {
+      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+      const payload = {
+        updates: selectedVariants.map(v => ({
+          product_id: v.id,
+          stock: Math.max(0, Number(v.new_stock) || 0),
+        })),
+      };
+
+      const resp = await fetch('/shopee-products/update-stock', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': csrfToken,
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const res = await resp.json();
+      if (res.status === 'success') {
+        playAlarmChime();
+        setRestockModal(prev => ({ ...prev, isOpen: false, isSubmitting: false }));
+        setToastNotice({
+          message: res.message || `Berhasil memperbarui stok ${selectedVariants.length} variasi di Shopee!`,
+          type: 'success',
+        });
+        router.reload({ only: ['products', 'summary'] });
+      } else {
+        setRestockModal(prev => ({ ...prev, isSubmitting: false }));
+        setToastNotice({ message: res.message || 'Gagal mengubah stok di Shopee.', type: 'error' });
+      }
+    } catch (e: any) {
+      setRestockModal(prev => ({ ...prev, isSubmitting: false }));
+      setToastNotice({ message: 'Terjadi kesalahan: ' + e.message, type: 'error' });
+    }
+  }
 
   // States untuk fitur Mapping Manual Kode Barang ke Master Stok
   const [mappingModalItem, setMappingModalItem] = useState<AuditItem | null>(null);
@@ -896,6 +1086,19 @@ export default function ShopeeProductsIndex({
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            {/* Tombol Isi / Tambah Stok Shopee Cepat */}
+            <button
+              type="button"
+              onClick={() => openRestockModal(null)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer whitespace-nowrap active:scale-98"
+              title="Isi atau tambah stok produk Shopee langsung via API (misal ada stok baru datang)"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              <span>+ Isi / Tambah Stok</span>
+            </button>
+
             {/* Tombol Audit Stok Gudang */}
             <button
               type="button"
@@ -1161,6 +1364,9 @@ export default function ShopeeProductsIndex({
               {Boolean(summary?.campaign_locked_count && summary.campaign_locked_count > 0) && (
                 <option value="campaign_locked">🔒 Terkunci Promo ({summary.campaign_locked_count})</option>
               )}
+              {Boolean(summary?.gudang_ready_count && summary.gudang_ready_count > 0) && (
+                <option value="gudang_ready">📦 Siap Jual: Gudang Ada tapi Shopee 0 ({summary.gudang_ready_count})</option>
+              )}
             </select>
 
             {/* Sort Selector */}
@@ -1387,30 +1593,60 @@ export default function ShopeeProductsIndex({
                               <span>Set 0 di Shopee</span>
                             </button>
                           ) : hasStock ? (
-                            <button
-                              type="button"
-                              onClick={() => promptZeroOutSingle({
-                                id: p.id,
-                                sku: p.sku || p.item_name,
-                                item_name: p.item_name,
-                                model_name: p.model_name,
-                                reserved_stock: p.reserved_stock,
-                              })}
-                              disabled={zeroingOutId === p.id}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-[11px] font-medium transition-colors cursor-pointer disabled:opacity-50"
-                              title="Kosongkan stok produk ini di Shopee via API"
-                            >
-                              {zeroingOutId === p.id ? (
-                                <span className="w-3 h-3 border-2 border-slate-600 border-t-transparent rounded-full animate-spin"></span>
-                              ) : (
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3 text-slate-500">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => openRestockModal(p.item_id, p.item_name)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[11px] font-semibold transition-colors cursor-pointer active:scale-95"
+                                title="Tambah / ubah stok variasi ini atau seluruh ukuran model ini"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-3 h-3 text-emerald-600">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                                 </svg>
-                              )}
-                              <span>Kosongkan</span>
-                            </button>
+                                <span>+ Isi</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => promptZeroOutSingle({
+                                  id: p.id,
+                                  sku: p.sku || p.item_name,
+                                  item_name: p.item_name,
+                                  model_name: p.model_name,
+                                  reserved_stock: p.reserved_stock,
+                                })}
+                                disabled={zeroingOutId === p.id}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-[11px] font-medium transition-colors cursor-pointer disabled:opacity-50"
+                                title="Kosongkan stok produk ini di Shopee via API"
+                              >
+                                {zeroingOutId === p.id ? (
+                                  <span className="w-3 h-3 border-2 border-slate-600 border-t-transparent rounded-full animate-spin"></span>
+                                ) : (
+                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3 text-slate-500">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                                  </svg>
+                                )}
+                                <span>0</span>
+                              </button>
+                            </div>
                           ) : (
-                            <span className="text-[11px] font-medium text-slate-400">0 (Habis)</span>
+                            <div className="flex items-center justify-center gap-1.5">
+                              {(p.warehouse_stock ?? 0) > 0 && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200" title={`Stok fisik di gudang: ${p.warehouse_stock} pcs`}>
+                                  Gdg: {p.warehouse_stock}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => openRestockModal(p.item_id, p.item_name)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold shadow-2xs transition-colors cursor-pointer active:scale-95"
+                                title="Isi atau tambah stok untuk variasi ini atau semua ukuran model ini"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-3 h-3">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                </svg>
+                                <span>+ Isi Stok</span>
+                              </button>
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -2731,6 +2967,366 @@ export default function ShopeeProductsIndex({
                   )}
                 </button>
               )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* MODAL DIALOG: Quick Restock Multi-Ukuran Shopee (Anti AI-Slop) */}
+      {restockModal.isOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[10000] overflow-y-auto bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-150"
+          onClick={() => {
+            if (!restockModal.isSubmitting) {
+              setRestockModal(prev => ({ ...prev, isOpen: false }));
+            }
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-4xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                    <span>Isi / Tambah Stok Shopee (Multi-Ukuran)</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      Shopee Open API
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {restockModal.productTitle
+                      ? `Atur stok untuk artikel: ${restockModal.productTitle}`
+                      : 'Cari nama artikel produk Shopee untuk mengisi atau menambah stok seluruh variasinya sekaligus.'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setRestockModal(prev => ({ ...prev, isOpen: false }))}
+                disabled={restockModal.isSubmitting}
+                className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 overflow-y-auto space-y-4 grow">
+              {/* Search Bar Produk jika ingin cari artikel lain */}
+              <div className="flex flex-col sm:flex-row items-center gap-2">
+                <div className="relative flex-1 w-full">
+                  <input
+                    type="text"
+                    value={restockModal.searchQuery}
+                    onChange={(e) => setRestockModal(prev => ({ ...prev, searchQuery: e.target.value }))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleSearchRestockVariants(restockModal.searchQuery);
+                      }
+                    }}
+                    placeholder="Ketik nama artikel atau SKU (contoh: THEON HITAM PUTIH, RECORD KYLIE)..."
+                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all"
+                  />
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-slate-400 absolute left-3 top-2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                  </svg>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleSearchRestockVariants(restockModal.searchQuery)}
+                  disabled={restockModal.isLoading || !restockModal.searchQuery.trim()}
+                  className="px-4 py-2 bg-[#0B132B] hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {restockModal.isLoading ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                      <span>Mencari...</span>
+                    </>
+                  ) : (
+                    <span>Cari Variasi</span>
+                  )}
+                </button>
+              </div>
+
+              {/* Fast Batch Action Box (Alat Isi Cepat untuk kasus 30-33 masing-masing 10 pcs) */}
+              {restockModal.variants.length > 0 && (
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                        ⚡ Aksi Cepat Multi-Ukuran:
+                      </span>
+                      <div className="inline-flex items-center p-0.5 bg-white rounded-lg border border-slate-200 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setRestockModal(prev => ({ ...prev, batchMode: 'set' }))}
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                            restockModal.batchMode === 'set'
+                              ? 'bg-emerald-600 text-white font-bold'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Set Stok Jadi
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRestockModal(prev => ({ ...prev, batchMode: 'add' }))}
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                            restockModal.batchMode === 'add'
+                              ? 'bg-emerald-600 text-white font-bold'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          + Tambah Stok
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Presets Button */}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-[10px] text-slate-400 font-semibold mr-1">Preset:</span>
+                      {[5, 10, 12, 20, 24, 50].map((num) => (
+                        <button
+                          key={num}
+                          type="button"
+                          onClick={() => {
+                            setRestockModal(prev => ({ ...prev, batchQty: num }));
+                            setTimeout(() => {
+                              applyBatchRestockQty();
+                            }, 50);
+                          }}
+                          className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-200 text-[10px] font-bold text-slate-700 rounded-md transition-colors cursor-pointer"
+                        >
+                          {num}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-slate-600 font-medium">Kuantitas:</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100000"
+                        value={restockModal.batchQty}
+                        onChange={(e) => setRestockModal(prev => ({ ...prev, batchQty: Number(e.target.value) || 0 }))}
+                        className="w-20 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-mono font-bold text-slate-900 text-center focus:outline-none focus:border-emerald-500"
+                      />
+                      <span className="text-xs text-slate-500">pcs</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={applyBatchRestockQty}
+                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5 active:scale-98"
+                    >
+                      <span>Terapkan ke Ukuran Tercentang</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                      </svg>
+                    </button>
+
+                    <div className="ml-auto flex items-center gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => toggleAllRestockSelect(true)}
+                        className="text-slate-600 hover:text-emerald-700 font-semibold cursor-pointer underline"
+                      >
+                        Pilih Semua
+                      </button>
+                      <span className="text-slate-300">•</span>
+                      <button
+                        type="button"
+                        onClick={() => toggleAllRestockSelect(false)}
+                        className="text-slate-600 hover:text-slate-900 font-semibold cursor-pointer underline"
+                      >
+                        Batal Pilih
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Table List Variasi Produk */}
+              {restockModal.isLoading ? (
+                <div className="p-12 text-center text-slate-400 space-y-3">
+                  <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                  <p className="text-xs font-medium">Memuat daftar variasi produk dari Shopee & Gudang...</p>
+                </div>
+              ) : restockModal.variants.length === 0 ? (
+                <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 space-y-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 mx-auto text-slate-300">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+                  </svg>
+                  <p className="text-xs font-medium text-slate-600">Belum ada variasi yang ditampilkan.</p>
+                  <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                    Ketik nama produk atau SKU pada pencarian di atas atau klik tombol <strong>+ Isi Stok</strong> pada baris produk di tabel utama.
+                  </p>
+                </div>
+              ) : (
+                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                  <div className="overflow-x-auto max-h-[46vh]">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-100 text-[11px] font-bold uppercase tracking-wider text-slate-600 sticky top-0 z-10 border-b border-slate-200">
+                        <tr>
+                          <th className="py-2.5 px-3 text-center w-10">
+                            <input
+                              type="checkbox"
+                              checked={restockModal.variants.length > 0 && restockModal.variants.every(v => v.isSelected)}
+                              onChange={(e) => toggleAllRestockSelect(e.target.checked)}
+                              className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                            />
+                          </th>
+                          <th className="py-2.5 px-3">Variasi / Model</th>
+                          <th className="py-2.5 px-3">SKU Shopee</th>
+                          <th className="py-2.5 px-3 text-center">Stok Gudang</th>
+                          <th className="py-2.5 px-3 text-right">Stok Shopee</th>
+                          <th className="py-2.5 px-3 text-center w-40">Stok Baru Shopee</th>
+                          <th className="py-2.5 px-3 text-center">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {restockModal.variants.map((v) => {
+                          const diff = v.new_stock - v.current_stock;
+                          return (
+                            <tr
+                              key={v.id}
+                              className={`transition-colors hover:bg-slate-50 ${v.isSelected ? 'bg-emerald-50/20' : 'opacity-70'}`}
+                            >
+                              <td className="py-2.5 px-3 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={v.isSelected}
+                                  onChange={() => toggleRestockItemSelect(v.id)}
+                                  className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                />
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <p className="font-bold text-slate-900">{v.model_name}</p>
+                                <p className="text-[10px] text-slate-500 truncate max-w-xs">{v.item_name}</p>
+                              </td>
+                              <td className="py-2.5 px-3 font-mono text-[11px] text-slate-600 select-all">
+                                {v.sku || '—'}
+                              </td>
+                              <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                <span
+                                  className={`inline-block px-2 py-0.5 rounded text-[11px] font-mono font-bold ${
+                                    v.warehouse_stock > 0
+                                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                      : 'bg-slate-100 text-slate-500'
+                                  }`}
+                                  title={`Gudang G: ${v.stock_g} Pcs | Gudang A: ${v.stock_a} Pcs`}
+                                >
+                                  {v.warehouse_stock} Pcs
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono font-bold whitespace-nowrap">
+                                <span className={v.current_stock > 0 ? 'text-slate-800' : 'text-rose-600'}>
+                                  {v.current_stock}
+                                </span>
+                              </td>
+                              <td className="py-2 px-3 text-center whitespace-nowrap">
+                                <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white shadow-2xs">
+                                  <button
+                                    type="button"
+                                    onClick={() => updateVariantNewStock(v.id, Math.max(0, v.new_stock - 1))}
+                                    className="px-2 py-1 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-l-lg transition-colors cursor-pointer"
+                                  >
+                                    -
+                                  </button>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="100000"
+                                    value={v.new_stock}
+                                    onChange={(e) => updateVariantNewStock(v.id, Number(e.target.value) || 0)}
+                                    className="w-16 py-1 text-center font-mono font-bold text-xs text-slate-900 border-x border-slate-200 focus:outline-none focus:bg-emerald-50/40"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => updateVariantNewStock(v.id, v.new_stock + 1)}
+                                    className="px-2 py-1 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-r-lg transition-colors cursor-pointer"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3 text-center whitespace-nowrap font-mono text-[11px] font-semibold">
+                                {diff === 0 ? (
+                                  <span className="text-slate-400">Tetap</span>
+                                ) : diff > 0 ? (
+                                  <span className="text-emerald-600 font-bold">+{diff} pcs</span>
+                                ) : (
+                                  <span className="text-rose-600 font-bold">{diff} pcs</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+              <div className="text-xs text-slate-600">
+                {restockModal.variants.length > 0 && (
+                  <span>
+                    <strong className="text-emerald-700 font-bold font-mono">
+                      {restockModal.variants.filter(v => v.isSelected).length}
+                    </strong>{' '}
+                    variasi dipilih dari {restockModal.variants.length} total ukuran
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRestockModal(prev => ({ ...prev, isOpen: false }))}
+                  disabled={restockModal.isSubmitting}
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  Batal
+                </button>
+
+                <button
+                  type="button"
+                  onClick={submitRestockToShopee}
+                  disabled={restockModal.isSubmitting || restockModal.variants.filter(v => v.isSelected).length === 0}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50"
+                >
+                  {restockModal.isSubmitting ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                      <span>Menyimpan ke Shopee...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                      </svg>
+                      <span>Simpan & Kirim ke Shopee</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>,
