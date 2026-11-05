@@ -398,6 +398,7 @@ class ShopeeSyncService
                 // Jika Voucher Ditanggung Penjual = 0, maka (Subtotal Pesanan - 0) * 79%
                 $escrowIncome = $escrowMap[$orderSn] ?? [];
                 if (empty($escrowIncome) && count($detailedOrders) <= 5) {
+                    /** @var \App\Models\ShopeeAccount $account */
                     $escrowIncome = $this->fetchSingleEscrowDetail($account, $orderSn);
                     if (! empty($escrowIncome)) {
                         $escrowMap[$orderSn] = $escrowIncome;
