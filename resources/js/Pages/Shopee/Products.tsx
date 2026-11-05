@@ -343,7 +343,13 @@ export default function ShopeeProductsIndex({
 
   async function handleSearchRestockVariants(q: string) {
     if (!q.trim()) return;
-    setRestockModal(prev => ({ ...prev, searchQuery: q, isLoading: true }));
+    setRestockModal(prev => ({
+      ...prev,
+      searchQuery: q,
+      isLoading: true,
+      productTitle: `Artikel: ${q.toUpperCase().trim()}`,
+      selectedItemId: null, // Reset item_id agar pencarian mencakup seluruh SKU katalog
+    }));
     try {
       const resp = await fetch(`/shopee-products/variants?q=${encodeURIComponent(q.trim())}`);
       const res = await resp.json();
@@ -357,7 +363,7 @@ export default function ShopeeProductsIndex({
           ...prev,
           isLoading: false,
           variants: items,
-          productTitle: items.length > 0 ? items[0].item_name : q,
+          productTitle: items.length > 0 ? `Artikel: ${q.toUpperCase().trim()}` : `Pencarian: ${q}`,
         }));
       } else {
         setRestockModal(prev => ({ ...prev, isLoading: false }));

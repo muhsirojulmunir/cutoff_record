@@ -1378,12 +1378,16 @@ class ShopeeProductController extends Controller
             $query->where(function ($sub) use ($cleanKeywords) {
                 foreach ($cleanKeywords as $kw) {
                     $sub->where(function ($w) use ($kw) {
+                        // 1. Pencocokan mutlak pada kolom SKU
                         $w->where('sku', 'like', "%{$kw}%")
-                          ->orWhere('model_name', 'like', "%{$kw}%")
+                          // 2. Fallback HANYA jika SKU produk memang null / kosong di Shopee
                           ->orWhere(function ($fallback) use ($kw) {
                               $fallback->where(function ($emptyCheck) {
                                   $emptyCheck->whereNull('sku')->orWhere('sku', '');
-                              })->where('item_name', 'like', "%{$kw}%");
+                              })->where(function ($f2) use ($kw) {
+                                  $f2->where('model_name', 'like', "%{$kw}%")
+                                     ->orWhere('item_name', 'like', "%{$kw}%");
+                              });
                           });
                     });
                 }
@@ -1392,14 +1396,13 @@ class ShopeeProductController extends Controller
 
         $products = $query->orderBy('item_name', 'asc')->orderBy('model_name', 'asc')->get();
 
-        // Strict SKU & Variasi Filter: Hanya tampilkan variasi yang SKU-nya (atau nama variasinya)
-        // secara eksplisit memuat kata kunci yang dicari.
-        // Jangan loloskan variasi bermodel lain hanya karena judul produk Shopee memuat kata kunci tersebut.
+        // Strict SKU Filter: Pastikan variasi yang muncul benar-benar memuat kata kunci pada SKU-nya.
+        // Jika user mencari 'theon', hanya variasi dengan SKU 'RECORD-THEON-...' yang boleh muncul.
+        // Variasi dengan SKU 'RECORD-CARSON-...' mutlak ditolak meskipun nama variasinya tertulis THEON-CARSON.
         if (! empty($cleanKeywords)) {
             $products = $products->filter(function ($p) use ($cleanKeywords) {
                 $skuLower   = strtolower(trim((string) $p->sku));
                 $modelLower = strtolower(trim((string) $p->model_name));
-                $variantStr = $skuLower . ' ' . $modelLower;
 
                 foreach ($cleanKeywords as $kw) {
                     // Cek kode warna khusus (misal 'hitam' / 'putih' cocok dengan '-hp-' di SKU)
@@ -1407,13 +1410,20 @@ class ShopeeProductController extends Controller
                         str_contains($skuLower, '-hp-') || str_contains($skuLower, '_hp_') || str_contains($modelLower, 'hp')
                     );
 
-                    // Variasi wajib memuat keyword di SKU atau model variasinya
-                    if (str_contains($variantStr, $kw) || $matchesColorCode) {
-                        continue;
+                    // Jika keyword berupa angka ukuran (misal '30', '31'), boleh cocok di SKU atau model_name
+                    $matchesSize = is_numeric($kw) && (str_contains($skuLower, $kw) || str_contains($modelLower, $kw));
+
+                    // Jika ada SKU: SKU WAJIB memuat keyword (misal 'theon')
+                    if (! empty($skuLower)) {
+                        if (str_contains($skuLower, $kw) || $matchesColorCode || $matchesSize) {
+                            continue;
+                        }
+                        // SKU tidak memuat keyword -> TOLAK!
+                        return false;
                     }
 
-                    // Fallback HANYA jika SKU benar-benar kosong/null (bukan produk yang punya SKU model lain)
-                    if (empty($skuLower) && str_contains(strtolower((string) $p->item_name), $kw)) {
+                    // Fallback jika SKU kosong di Shopee
+                    if (str_contains($modelLower, $kw) || str_contains(strtolower((string) $p->item_name), $kw)) {
                         continue;
                     }
 
