@@ -64,6 +64,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/shopee-products/compare', [\App\Http\Controllers\ShopeeProductController::class, 'compareStock'])->name('shopee-products.compare');
     Route::post('/shopee-products/audit-master', [\App\Http\Controllers\ShopeeProductController::class, 'compareWithMaster'])->name('shopee-products.audit-master');
     Route::post('/shopee-products/zero-out', [\App\Http\Controllers\ShopeeProductController::class, 'zeroOut'])->name('shopee-products.zero-out');
+    Route::post('/shopee-products/map', [\App\Http\Controllers\ShopeeProductController::class, 'mapProduct'])->name('shopee-products.map');
+    Route::get('/shopee-products/search-master', [\App\Http\Controllers\ShopeeProductController::class, 'searchMasterStock'])->name('shopee-products.search-master');
 
     // Users Management
     Route::resource('users', UserController::class)->except(['show']);

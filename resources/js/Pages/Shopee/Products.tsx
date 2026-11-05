@@ -83,6 +83,13 @@ interface AuditItem {
   diff: number;
   status: 'CRITICAL' | 'LOW_STOCK' | 'DISCREPANCY' | 'MATCHED' | 'UNMATCHED';
   is_shopee_found: boolean;
+  manual_item_code?: string | null;
+  match_type?: 'EXACT_CODE' | 'SMART_MATCH' | 'SIZE_MISMATCH' | 'CODE_NOT_FOUND' | 'NO_CODE' | 'MANUAL_MAPPED';
+  matched_code?: string | null;
+  suggested_code?: string | null;
+  suggested_name?: string | null;
+  warning_message?: string | null;
+  is_safe_to_zero?: boolean;
 }
 
 interface AuditSummary {
@@ -126,6 +133,64 @@ export default function ShopeeProductsIndex({
   const [isZeroingOutAll, setIsZeroingOutAll] = useState(false);
   const [copiedToast, setCopiedToast] = useState(false);
   const [zeroOutSuccessMessage, setZeroOutSuccessMessage] = useState<string | null>(null);
+
+  // States untuk fitur Mapping Manual Kode Barang ke Master Stok
+  const [mappingModalItem, setMappingModalItem] = useState<AuditItem | null>(null);
+  const [mappingSearchQuery, setMappingSearchQuery] = useState('');
+  const [mappingSearchResults, setMappingSearchResults] = useState<any[]>([]);
+  const [isSearchingMaster, setIsSearchingMaster] = useState(false);
+  const [isSavingMapping, setIsSavingMapping] = useState(false);
+
+  async function handleSearchMaster(query: string) {
+    setMappingSearchQuery(query);
+    if (!query.trim()) {
+      setMappingSearchResults([]);
+      return;
+    }
+    setIsSearchingMaster(true);
+    try {
+      const resp = await fetch(`/shopee-products/search-master?q=${encodeURIComponent(query.trim())}`);
+      const resJson = await resp.json();
+      if (resJson.status === 'success') {
+        setMappingSearchResults(resJson.data || []);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSearchingMaster(false);
+    }
+  }
+
+  async function handleSaveMapping(productId: number, targetCode: string) {
+    setIsSavingMapping(true);
+    try {
+      const csrfToken =
+        document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+      const resp = await fetch('/shopee-products/map', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': csrfToken,
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ product_id: productId, item_code: targetCode }),
+      });
+      const resJson = await resp.json();
+      if (resJson.status === 'success') {
+        setMappingModalItem(null);
+        // Refresh audit master stok langsung agar perubahan terlihat seketika
+        if (auditSource === 'MASTER') {
+          runMasterAudit(masterWarehouseFilter);
+        }
+      } else {
+        alert(resJson.message || 'Gagal menyimpan mapping.');
+      }
+    } catch (e: any) {
+      alert('Terjadi kesalahan: ' + e.message);
+    } finally {
+      setIsSavingMapping(false);
+    }
+  }
 
   // Auto trigger audit jika ada query ?audit=master
   React.useEffect(() => {
@@ -430,7 +495,9 @@ export default function ShopeeProductsIndex({
   // Kosongkan SEMUA SKU Kritis (Gudang = 0 & Shopee > 0)
   async function handleZeroOutAllCritical() {
     if (!auditItems) return;
-    const criticalItems = auditItems.filter(i => i.status === 'CRITICAL' && i.id && i.shopee_stock > 0);
+    const criticalItems = auditItems.filter(
+      i => i.status === 'CRITICAL' && i.id && i.shopee_stock > 0 && i.is_safe_to_zero !== false
+    );
     if (criticalItems.length === 0) {
       alert('Tidak ada produk berstatus Kritis dengan stok Shopee > 0.');
       return;
@@ -1695,6 +1762,22 @@ export default function ShopeeProductsIndex({
                       >
                         🟢 Sesuai ({auditSummary?.matched_count ?? 0})
                       </button>
+                      {(auditSummary?.unmatched_count ?? 0) > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setAuditFilter('UNMATCHED')}
+                          className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                            auditFilter === 'UNMATCHED'
+                              ? 'bg-amber-600 text-white'
+                              : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200'
+                          }`}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                          </svg>
+                          <span>Cek Typo SKU ({auditSummary?.unmatched_count ?? 0})</span>
+                        </button>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -1784,8 +1867,60 @@ export default function ShopeeProductsIndex({
                                 </td>
 
                                 {/* SKU */}
-                                <td className="py-2.5 px-3 whitespace-nowrap font-mono font-bold text-slate-900 select-all">
-                                  {item.sku}
+                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                  <div className="font-mono font-bold text-slate-900 select-all">
+                                    {item.sku}
+                                  </div>
+
+                                  {/* Smart Fallback & Typo Indicators */}
+                                  {item.match_type === 'SMART_MATCH' && item.suggested_code && (
+                                    <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200 text-[10px] font-medium" title={item.suggested_name || ''}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-violet-600 shrink-0">
+                                          <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+                                        </svg>
+                                        Cocok: <strong className="font-mono">{item.suggested_code}</strong>
+                                      </span>
+                                      {item.id && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSaveMapping(item.id!, item.suggested_code!)}
+                                          disabled={isSavingMapping}
+                                          className="text-[10px] text-violet-700 hover:text-violet-900 underline font-semibold cursor-pointer"
+                                        >
+                                          Kunci Relasi
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {item.match_type === 'MANUAL_MAPPED' && (
+                                    <div className="mt-1">
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-medium">
+                                        🔗 Terhubung: <strong className="font-mono">{item.manual_item_code}</strong>
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  {(item.match_type === 'CODE_NOT_FOUND' || item.match_type === 'SIZE_MISMATCH' || item.status === 'UNMATCHED') && (
+                                    <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-medium" title={item.warning_message || ''}>
+                                        ⚠️ {item.match_type === 'SIZE_MISMATCH' ? 'Salah Ukuran' : 'Kode Tidak Ada'}
+                                      </span>
+                                      {item.id && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setMappingModalItem(item);
+                                            handleSearchMaster(item.sku.replace(/_\d+$/, '').split(/[-_ ]+/).find(p => p.length >= 3 && !['RECORD','SPT'].includes(p.toUpperCase())) || '');
+                                          }}
+                                          className="text-[10px] text-amber-800 hover:text-amber-950 underline font-semibold cursor-pointer"
+                                        >
+                                          Hubungkan Manual
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
                                 </td>
 
                                 {/* Nama Produk & Variasi */}
@@ -1860,15 +1995,22 @@ export default function ShopeeProductsIndex({
                                     </span>
                                   )}
                                   {item.status === 'UNMATCHED' && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300">
-                                      ⚪ Non-Shopee
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                      ⚠️ Butuh Cek SKU
                                     </span>
                                   )}
                                 </td>
 
                                 {/* Aksi Shopee */}
                                 <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                                  {item.id && item.shopee_stock > 0 ? (
+                                  {item.status === 'UNMATCHED' ? (
+                                    <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200" title="Stok Shopee tidak akan dikosongkan karena kode SKU ini salah atau tidak terdaftar di gudang">
+                                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-amber-600">
+                                        <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
+                                      </svg>
+                                      Diproteksi
+                                    </span>
+                                  ) : item.id && item.shopee_stock > 0 ? (
                                     <button
                                       type="button"
                                       onClick={() => handleZeroOutSingle(item.id!, item.sku)}
@@ -1925,6 +2067,125 @@ export default function ShopeeProductsIndex({
                 className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
               >
                 Tutup
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Modal Hubungkan Manual SKU ke Master Stok */}
+      {mappingModalItem && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[10000] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-amber-100 text-amber-800 rounded-xl">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Hubungkan Manual SKU ke Stok Gudang</h3>
+                  <p className="text-[11px] text-slate-500 font-mono font-semibold">{mappingModalItem.sku}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMappingModalItem(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 space-y-3.5">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                <p className="text-slate-600">
+                  Produk Shopee: <strong className="text-slate-900">{mappingModalItem.item_name}</strong>
+                  {mappingModalItem.model_name && ` (${mappingModalItem.model_name})`}
+                </p>
+                {mappingModalItem.warning_message && (
+                  <p className="text-amber-800 mt-1 font-semibold text-[11px]">
+                    ⚠️ {mappingModalItem.warning_message}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Cari Barang di Gudang (Ketik Nama / Kode 8 Digit):
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={mappingSearchQuery}
+                    onChange={(e) => handleSearchMaster(e.target.value)}
+                    placeholder="Contoh: KYLIE, FOGO, BLANCO, 01224738..."
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:border-violet-500 focus:bg-white focus:outline-none"
+                    autoFocus
+                  />
+                  {isSearchingMaster && (
+                    <span className="absolute right-3 top-2.5 w-3.5 h-3.5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin"></span>
+                  )}
+                </div>
+              </div>
+
+              {/* Hasil Pencarian */}
+              <div className="max-h-52 overflow-y-auto space-y-1.5 border border-slate-200 rounded-xl p-1.5 bg-slate-50/50">
+                {mappingSearchResults.length === 0 ? (
+                  <p className="p-5 text-center text-xs text-slate-400">
+                    {mappingSearchQuery.trim()
+                      ? 'Tidak ada barang yang cocok di Master Stok.'
+                      : 'Ketik nama artikel atau kode barang untuk mencari.'}
+                  </p>
+                ) : (
+                  mappingSearchResults.map((m, idx) => (
+                    <div
+                      key={idx}
+                      className="p-2.5 rounded-lg border border-slate-200 bg-white hover:border-violet-400 hover:bg-violet-50/40 transition-colors flex items-center justify-between gap-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-900 truncate" title={m.item_name}>
+                          {m.item_name}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-500 font-mono">
+                          <span>Kode: <strong className="text-slate-800">{m.item_code}</strong></span>
+                          <span>•</span>
+                          <span>Gudang {m.warehouse}</span>
+                          <span>•</span>
+                          <span className="text-emerald-700 font-bold">Stok: {m.total_pcs} Pcs</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleSaveMapping(mappingModalItem.id!, m.item_code)}
+                        disabled={isSavingMapping}
+                        className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+                      >
+                        {isSavingMapping ? 'Menghubungkan...' : 'Hubungkan'}
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+              <span className="text-[11px] text-slate-500">
+                Relasi ini disimpan permanen di ERP tanpa mengubah SKU Shopee.
+              </span>
+              <button
+                type="button"
+                onClick={() => setMappingModalItem(null)}
+                className="px-3.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
+              >
+                Batal
               </button>
             </div>
           </div>
