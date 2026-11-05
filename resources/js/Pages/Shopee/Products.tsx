@@ -3043,7 +3043,7 @@ export default function ShopeeProductsIndex({
           }}
         >
           <div
-            className="bg-white rounded-2xl max-w-4xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-150"
+            className="bg-white rounded-2xl max-w-5xl xl:max-w-6xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-150 mx-4"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
@@ -3239,11 +3239,11 @@ export default function ShopeeProductsIndex({
                 </div>
               ) : (
                 <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-                  <div className="overflow-x-auto max-h-[46vh]">
+                  <div className="overflow-y-auto overflow-x-hidden max-h-[50vh]">
                     <table className="w-full text-left text-xs">
                       <thead className="bg-slate-100 text-[11px] font-bold uppercase tracking-wider text-slate-600 sticky top-0 z-10 border-b border-slate-200">
                         <tr>
-                          <th className="py-2.5 px-3 text-center w-10">
+                          <th className="py-2 px-2 text-center w-8">
                             <input
                               type="checkbox"
                               checked={restockModal.variants.length > 0 && restockModal.variants.every(v => v.isSelected)}
@@ -3251,14 +3251,14 @@ export default function ShopeeProductsIndex({
                               className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                             />
                           </th>
-                          <th className="py-2.5 px-3 w-56 max-w-[240px]">Variasi / Model</th>
-                          <th className="py-2.5 px-3 whitespace-nowrap">SKU Shopee</th>
-                          <th className="py-2.5 px-3 text-center whitespace-nowrap w-28">Stok Gudang</th>
-                          <th className="py-2.5 px-3 text-center whitespace-nowrap w-24">Stok Shopee</th>
-                          <th className="py-2.5 px-3 text-center whitespace-nowrap w-36">
+                          <th className="py-2 px-2 w-48 max-w-[200px]">Variasi / Model</th>
+                          <th className="py-2 px-2 whitespace-nowrap">SKU Shopee</th>
+                          <th className="py-2 px-2 text-center whitespace-nowrap w-24">Stok Gudang</th>
+                          <th className="py-2 px-2 text-center whitespace-nowrap w-20">Stok Shopee</th>
+                          <th className="py-2 px-2 text-center whitespace-nowrap w-32">
                             {restockModal.batchMode === 'add' ? 'Mau Isi (+)' : 'Timpa Stok'}
                           </th>
-                          <th className="py-2.5 px-3 text-center whitespace-nowrap w-32 font-bold text-slate-800">
+                          <th className="py-2 px-2 text-center whitespace-nowrap w-28 font-bold text-slate-800">
                             Total
                           </th>
                         </tr>
@@ -3271,7 +3271,7 @@ export default function ShopeeProductsIndex({
                               key={v.id}
                               className={`transition-colors hover:bg-slate-50 ${v.isSelected ? 'bg-emerald-50/20' : 'opacity-70'}`}
                             >
-                              <td className="py-2.5 px-3 text-center w-10">
+                              <td className="py-2 px-2 text-center w-8">
                                 <input
                                   type="checkbox"
                                   checked={v.isSelected}
@@ -3279,16 +3279,16 @@ export default function ShopeeProductsIndex({
                                   className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                                 />
                               </td>
-                              <td className="py-2.5 px-3 w-56 max-w-[240px]">
-                                <p className="font-bold text-slate-900 truncate" title={v.model_name}>{v.model_name}</p>
-                                <p className="text-[10px] text-slate-500 truncate" title={v.item_name}>{v.item_name}</p>
+                              <td className="py-2 px-2 w-48 max-w-[200px]">
+                                <p className="font-bold text-slate-900 truncate text-[11px]" title={v.model_name}>{v.model_name}</p>
+                                <p className="text-[10px] text-slate-400 truncate" title={v.item_name}>{v.item_name}</p>
                               </td>
-                              <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700 whitespace-nowrap select-all">
+                              <td className="py-2 px-2 font-mono text-[11px] text-slate-700 whitespace-nowrap select-all">
                                 {v.sku || '—'}
                               </td>
-                              <td className="py-2.5 px-3 text-center whitespace-nowrap w-28">
+                              <td className="py-2 px-2 text-center whitespace-nowrap w-24">
                                 <span
-                                  className={`inline-block px-2 py-0.5 rounded text-[11px] font-mono font-bold ${
+                                  className={`inline-block px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
                                     v.warehouse_stock > 0
                                       ? 'bg-blue-50 text-blue-700 border border-blue-200'
                                       : 'bg-slate-100 text-slate-500'
@@ -3298,12 +3298,12 @@ export default function ShopeeProductsIndex({
                                   {v.warehouse_stock} Pcs
                                 </span>
                               </td>
-                              <td className="py-2.5 px-3 text-center font-mono font-bold whitespace-nowrap w-24">
+                              <td className="py-2 px-2 text-center font-mono font-bold whitespace-nowrap w-20">
                                 <span className={v.current_stock > 0 ? 'text-slate-800' : 'text-rose-600'}>
                                   {v.current_stock}
                                 </span>
                               </td>
-                              <td className="py-2 px-3 text-center whitespace-nowrap w-36">
+                              <td className="py-1.5 px-2 text-center whitespace-nowrap w-32">
                                 <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white shadow-2xs">
                                   <button
                                     type="button"
@@ -3318,7 +3318,7 @@ export default function ShopeeProductsIndex({
                                     max="100000"
                                     value={v.input_qty ?? (restockModal.batchMode === 'add' ? 0 : v.new_stock)}
                                     onChange={(e) => updateVariantInputQty(v.id, Number(e.target.value) || 0)}
-                                    className="w-16 py-1 text-center font-mono font-bold text-xs text-slate-900 border-x border-slate-200 focus:outline-none focus:bg-emerald-50/40"
+                                    className="w-14 py-1 text-center font-mono font-bold text-xs text-slate-900 border-x border-slate-200 focus:outline-none focus:bg-emerald-50/40"
                                   />
                                   <button
                                     type="button"
@@ -3329,7 +3329,7 @@ export default function ShopeeProductsIndex({
                                   </button>
                                 </div>
                               </td>
-                              <td className="py-2.5 px-3 text-center whitespace-nowrap w-32">
+                              <td className="py-2 px-2 text-center whitespace-nowrap w-28">
                                 <div className="flex flex-col items-center justify-center">
                                   <span
                                     className={`font-mono font-bold text-xs px-2.5 py-0.5 rounded-md border ${
