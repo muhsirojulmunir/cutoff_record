@@ -1023,6 +1023,12 @@ class ShopeeSyncService
                     $table->unique(['shopee_account_id', 'item_id', 'model_id'], 'shopee_prod_unique_variant');
                 });
             }
+
+            if (Schema::hasTable('shopee_products') && ! Schema::hasColumn('shopee_products', 'manual_item_code')) {
+                Schema::table('shopee_products', function (Blueprint $table) {
+                    $table->string('manual_item_code', 50)->nullable()->after('sku')->index();
+                });
+            }
         } catch (\Throwable $e) {
             Log::warning('ShopeeSyncService ensureProductSchema notice: ' . $e->getMessage());
         }

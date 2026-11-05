@@ -17,6 +17,7 @@ class ShopeeProduct extends Model
         'item_name',
         'model_name',
         'sku',
+        'manual_item_code',
         'stock',
         'reserved_stock',
         'price',
