@@ -370,10 +370,10 @@ export default function MasterStockIndex({ stocks, summary, filters }: Props) {
             <button
               type="button"
               onClick={() => openImportModal('G')}
-              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
+              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
               title="Upload laporan stok Gudang G (Eceran / Pcs per ukuran)"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-blue-600">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-sky-600">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.386a3.75 3.75 0 001.378-1.378c.486-.827.313-1.908-.386-2.607L7.258 7.569A2.25 2.25 0 016.598 5.978V5.25A2.25 2.25 0 018.848 3h.72" />
               </svg>
               <span>Import Gudang G (Pcs)</span>
@@ -383,10 +383,10 @@ export default function MasterStockIndex({ stocks, summary, filters }: Props) {
             <button
               type="button"
               onClick={() => openImportModal('A')}
-              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-800 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
+              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
               title="Upload laporan stok Gudang A (Grosir / Lusinan dikalikan 12)"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-purple-600">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-teal-600">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
               </svg>
               <span>Import Gudang A (Lusin)</span>
@@ -418,69 +418,78 @@ export default function MasterStockIndex({ stocks, summary, filters }: Props) {
           </div>
         </div>
 
-        {/* 3 Metric Summary Cards - Konsisten, Elegan, Anti AI-Slop */}
+        {/* 3 Metric Summary Cards - High-End Minimalist, Anti AI-Slop */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {/* Card 1: Gudang G */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs hover:border-slate-300 transition-all">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                 Gudang G (Eceran / Pcs)
               </span>
-              <span className="p-2 bg-blue-50 text-blue-700 rounded-xl">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+              <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-sky-50 text-sky-600">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.386a3.75 3.75 0 001.378-1.378c.486-.827.313-1.908-.386-2.607L7.258 7.569A2.25 2.25 0 016.598 5.978V5.25A2.25 2.25 0 018.848 3h.72" />
                 </svg>
               </span>
             </div>
-            <p className="text-2xl font-extrabold text-slate-900 mt-3 font-mono">
-              {summary.total_pcs_g.toLocaleString('id-ID')}{' '}
-              <span className="text-xs font-normal text-slate-500 font-sans">Pcs</span>
-            </p>
-            <p className="text-xs text-slate-500 mt-1">
-              {summary.total_items_g.toLocaleString('id-ID')} SKU barang • Update: {formatDate(summary.last_imported_g)}
-            </p>
+            <div className="mt-3">
+              <p className="text-2xl font-black text-slate-900 tracking-tight font-mono">
+                {summary.total_pcs_g.toLocaleString('id-ID')}{' '}
+                <span className="text-xs font-medium text-slate-500 font-sans">Pcs</span>
+              </p>
+              <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-500"></span>
+                <span>{summary.total_items_g.toLocaleString('id-ID')} SKU • Update: {formatDate(summary.last_imported_g)}</span>
+              </p>
+            </div>
           </div>
 
           {/* Card 2: Gudang A */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs hover:border-slate-300 transition-all">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                 Gudang A (Grosir / Lusin)
               </span>
-              <span className="p-2 bg-purple-50 text-purple-700 rounded-xl">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+              <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-teal-50 text-teal-600">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
                 </svg>
               </span>
             </div>
-            <p className="text-2xl font-extrabold text-slate-900 mt-3 font-mono">
-              {summary.total_pcs_a.toLocaleString('id-ID')}{' '}
-              <span className="text-xs font-normal text-slate-500 font-sans">Pcs (x12)</span>
-            </p>
-            <p className="text-xs text-slate-500 mt-1">
-              {summary.total_items_a.toLocaleString('id-ID')} SKU barang • Update: {formatDate(summary.last_imported_a)}
-            </p>
+            <div className="mt-3">
+              <p className="text-2xl font-black text-slate-900 tracking-tight font-mono">
+                {summary.total_pcs_a.toLocaleString('id-ID')}{' '}
+                <span className="text-xs font-medium text-slate-500 font-sans">Pcs (x12)</span>
+              </p>
+              <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-teal-500"></span>
+                <span>{summary.total_items_a.toLocaleString('id-ID')} SKU • Update: {formatDate(summary.last_imported_a)}</span>
+              </p>
+            </div>
           </div>
 
           {/* Card 3: Total Gabungan ERP */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs hover:border-slate-300 transition-all">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                 Total Stok Fisik ERP
               </span>
-              <span className="p-2 bg-emerald-50 text-emerald-700 rounded-xl">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+              <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </span>
             </div>
-            <p className="text-2xl font-extrabold text-slate-900 mt-3 font-mono">
-              {summary.total_pcs_all.toLocaleString('id-ID')}{' '}
-              <span className="text-xs font-normal text-slate-500 font-sans">Pcs Gabungan</span>
-            </p>
-            <p className="text-xs text-slate-500 mt-1">
-              {summary.total_rows_all.toLocaleString('id-ID')} Total Baris SKU • Tersinkron dengan Shopee
-            </p>
+            <div className="mt-3">
+              <p className="text-2xl font-black text-slate-900 tracking-tight font-mono">
+                {summary.total_pcs_all.toLocaleString('id-ID')}{' '}
+                <span className="text-xs font-medium text-slate-500 font-sans">Pcs Gabungan</span>
+              </p>
+              <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span>{summary.total_rows_all.toLocaleString('id-ID')} Total Baris SKU • Tersinkron Shopee</span>
+              </p>
+            </div>
           </div>
         </div>
 
@@ -533,14 +542,14 @@ export default function MasterStockIndex({ stocks, summary, filters }: Props) {
               }}
               className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
                 warehouse === 'A'
-                  ? 'bg-purple-600 text-white shadow-xs'
-                  : 'bg-slate-50 hover:bg-purple-50/60 text-slate-600 border border-slate-200'
+                  ? 'bg-teal-600 text-white shadow-xs'
+                  : 'bg-slate-50 hover:bg-teal-50/60 text-slate-600 border border-slate-200'
               }`}
             >
               <span>Gudang A (Grosir / Lusin)</span>
               <span
                 className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                  warehouse === 'A' ? 'bg-purple-700 text-white' : 'bg-slate-200 text-slate-700'
+                  warehouse === 'A' ? 'bg-teal-700 text-white' : 'bg-slate-200 text-slate-700'
                 }`}
               >
                 {summary.total_items_a}
@@ -665,11 +674,11 @@ export default function MasterStockIndex({ stocks, summary, filters }: Props) {
                         <td className="py-3 px-4 text-center text-slate-400 font-mono">{rowNo}</td>
                         <td className="py-3 px-4">
                           {isGudangG ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-sky-50 text-sky-700 border border-sky-200">
                               Gudang G
                             </span>
                           ) : (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-teal-50 text-teal-700 border border-teal-200">
                               Gudang A
                             </span>
                           )}

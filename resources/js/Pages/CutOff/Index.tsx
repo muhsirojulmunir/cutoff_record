@@ -181,7 +181,7 @@ function getShippingTier(courier: string | null | undefined): {
   if (c.includes('kargo') || c.includes('cargo') || c.includes('trucking') || c.includes('jtr') || c.includes('gokil')) {
     return {
       label: 'KARGO',
-      badgeClass: 'bg-purple-100 text-purple-900 border-purple-300 font-bold',
+      badgeClass: 'bg-stone-100 text-stone-900 border-stone-300 font-bold',
       icon: '📦',
     };
   }

@@ -242,10 +242,10 @@ export default function ShopeeProductsIndex({
           runMasterAudit(masterWarehouseFilter);
         }
       } else {
-        setValidationError(resJson.message || 'Gagal menyimpan mapping.');
+        alert(resJson.message || 'Gagal menyimpan mapping.');
       }
     } catch (e: any) {
-      setValidationError('Terjadi kesalahan: ' + e.message);
+      alert('Terjadi kesalahan: ' + e.message);
     } finally {
       setIsSavingMapping(false);
     }
@@ -321,7 +321,7 @@ export default function ShopeeProductsIndex({
 
   function promptSync() {
     if (!account?.is_connected) {
-      setValidationError('Toko Shopee belum terhubung dengan token aktif. Harap hubungkan toko terlebih dahulu di menu Integrasi Shopee.');
+      alert('Toko Shopee belum terhubung dengan token aktif. Harap hubungkan toko terlebih dahulu di menu Integrasi Shopee.');
       return;
     }
     playAlarmChime();
@@ -563,7 +563,7 @@ export default function ShopeeProductsIndex({
       i => i.status === 'CRITICAL' && i.id && i.shopee_stock > 0 && i.is_safe_to_zero !== false
     );
     if (criticalItems.length === 0) {
-      setValidationError('Tidak ada produk berstatus Kritis dengan stok Shopee > 0.');
+      alert('Tidak ada produk berstatus Kritis dengan stok Shopee > 0.');
       return;
     }
 
@@ -629,10 +629,10 @@ export default function ShopeeProductsIndex({
 
         router.reload({ only: ['products', 'summary'] });
       } else {
-        setValidationError(resJson.message || 'Gagal mengosongkan stok di Shopee.');
+        alert(resJson.message || 'Gagal mengosongkan stok di Shopee.');
       }
     } catch (err: any) {
-      setValidationError('Terjadi kesalahan: ' + err.message);
+      alert('Terjadi kesalahan: ' + err.message);
     } finally {
       setIsZeroingOutAll(false);
     }
@@ -688,10 +688,10 @@ export default function ShopeeProductsIndex({
 
         router.reload({ only: ['products', 'summary'] });
       } else {
-        setValidationError(resJson.message || 'Gagal mengosongkan stok di Shopee.');
+        alert(resJson.message || 'Gagal mengosongkan stok di Shopee.');
       }
     } catch (err: any) {
-      setValidationError('Terjadi kesalahan: ' + err.message);
+      alert('Terjadi kesalahan: ' + err.message);
     } finally {
       setZeroingOutId(null);
     }
@@ -702,7 +702,7 @@ export default function ShopeeProductsIndex({
     if (!auditItems) return;
     const critical = auditItems.filter(i => i.status === 'CRITICAL');
     if (critical.length === 0) {
-      setValidationError('Tidak ada SKU Kritis untuk disalin.');
+      alert('Tidak ada SKU Kritis untuk disalin.');
       return;
     }
 
@@ -848,10 +848,10 @@ export default function ShopeeProductsIndex({
                 setIsImportModalOpen(true);
                 setZeroOutSuccessMessage(null);
               }}
-              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
+              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
               title="Import file stok Gudang G (Eceran / Pcs satuan per ukuran)"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-blue-600">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-sky-600">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.386a3.75 3.75 0 001.378-1.378c.486-.827.313-1.908-.386-2.607L7.258 7.569A2.25 2.25 0 016.598 5.978V5.25A2.25 2.25 0 018.848 3h.72" />
               </svg>
               <span>Import Gudang G</span>
@@ -869,10 +869,10 @@ export default function ShopeeProductsIndex({
                 setIsImportModalOpen(true);
                 setZeroOutSuccessMessage(null);
               }}
-              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-800 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
+              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
               title="Import file stok Gudang A (Grosir / Lusinan dikalikan 12)"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-purple-600">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-teal-600">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
               </svg>
               <span>Import Gudang A</span>
@@ -882,7 +882,7 @@ export default function ShopeeProductsIndex({
             <button
               type="button"
               onClick={handleExportCsv}
-              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
+              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
               title="Download seluruh data SKU & Stok ke file CSV / Excel"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-slate-500">
@@ -896,7 +896,7 @@ export default function ShopeeProductsIndex({
               type="button"
               onClick={promptSync}
               disabled={isSyncing}
-              className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer whitespace-nowrap active:scale-98 ${
+              className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer whitespace-nowrap active:scale-98 ${
                 isSyncing
                   ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
                   : 'bg-[#EE4D2D] hover:bg-[#d83f21] text-white'
@@ -934,10 +934,10 @@ export default function ShopeeProductsIndex({
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-semibold text-white">Master Stok Fisik:</span>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-sky-500/15 text-sky-300 border border-sky-400/25">
                     Gudang G: {master_stock_summary.total_g_pcs.toLocaleString('id-ID')} Pcs ({master_stock_summary.total_g_items} SKU)
                   </span>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-purple-500/20 text-purple-300 border border-purple-400/30">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-teal-500/15 text-teal-300 border border-teal-400/25">
                     Gudang A: {master_stock_summary.total_a_pcs.toLocaleString('id-ID')} Pcs ({master_stock_summary.total_a_items} SKU)
                   </span>
                 </div>
@@ -966,74 +966,94 @@ export default function ShopeeProductsIndex({
           </div>
         )}
 
-        {/* 4 Metric Summary Cards - Konsisten dengan Cut Off */}
+        {/* 4 Metric Summary Cards - High-End Anti AI-Slop */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Card 1: Total SKU */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs hover:border-slate-300 transition-all">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Total SKU Variasi</span>
-              <span className="p-2 bg-blue-50 text-blue-700 rounded-xl">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total SKU Variasi</span>
+              <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-100 text-slate-600">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
                 </svg>
               </span>
             </div>
-            <p className="text-2xl font-extrabold text-slate-900 mt-3 font-mono">
-              {(summary?.total_skus ?? 0).toLocaleString('id-ID')}
-            </p>
-            <p className="text-xs text-slate-500 mt-1">Item SKU terdaftar di Shopee</p>
+            <div className="mt-3">
+              <p className="text-2xl font-black text-slate-900 tracking-tight font-mono">
+                {(summary?.total_skus ?? 0).toLocaleString('id-ID')}
+              </p>
+              <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                <span>Item SKU terdaftar di Shopee</span>
+              </p>
+            </div>
           </div>
 
           {/* Card 2: Total Stok Fisik */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs hover:border-slate-300 transition-all">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Stok Fisik</span>
-              <span className="p-2 bg-orange-50 text-[#EE4D2D] rounded-xl">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Stok Fisik</span>
+              <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-100 text-slate-600">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
                 </svg>
               </span>
             </div>
-            <p className="text-2xl font-extrabold text-slate-900 mt-3 font-mono">
-              {(summary?.total_stock ?? 0).toLocaleString('id-ID')} <span className="text-sm font-normal text-slate-500">pcs</span>
-            </p>
-            <p className="text-xs text-slate-500 mt-1">Total kuantitas stok tersedia</p>
+            <div className="mt-3">
+              <p className="text-2xl font-black text-slate-900 tracking-tight font-mono">
+                {(summary?.total_stock ?? 0).toLocaleString('id-ID')} <span className="text-xs font-medium text-slate-500 font-sans">pcs</span>
+              </p>
+              <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                <span>Total kuantitas stok tersedia</span>
+              </p>
+            </div>
           </div>
 
           {/* Card 3: SKU Ada Stok */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs hover:border-slate-300 transition-all">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">SKU Ada Stok</span>
-              <span className="p-2 bg-emerald-50 text-emerald-700 rounded-xl">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">SKU Ada Stok</span>
+              <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                 </svg>
               </span>
             </div>
-            <p className="text-2xl font-extrabold text-emerald-600 mt-3 font-mono">
-              {(summary?.in_stock_skus ?? 0).toLocaleString('id-ID')}
-            </p>
-            <p className="text-xs text-slate-500 mt-1">Siap dijual di toko Shopee</p>
+            <div className="mt-3">
+              <p className="text-2xl font-black text-emerald-600 tracking-tight font-mono">
+                {(summary?.in_stock_skus ?? 0).toLocaleString('id-ID')}
+              </p>
+              <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span>Siap dijual di toko Shopee</span>
+              </p>
+            </div>
           </div>
 
           {/* Card 4: SKU Habis (0) */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs hover:border-slate-300 transition-all">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">SKU Stok Habis (0)</span>
-              <span className="p-2 bg-rose-50 text-rose-700 rounded-xl">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">SKU Stok Habis (0)</span>
+              <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-rose-50 text-rose-600">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
                 </svg>
               </span>
             </div>
-            <p className="text-2xl font-extrabold text-rose-600 mt-3 font-mono">
-              {(summary?.out_of_stock_skus ?? 0).toLocaleString('id-ID')}
-            </p>
-            <p className="text-xs text-slate-500 mt-1">Produk dengan stok fisik 0</p>
+            <div className="mt-3">
+              <p className="text-2xl font-black text-rose-600 tracking-tight font-mono">
+                {(summary?.out_of_stock_skus ?? 0).toLocaleString('id-ID')}
+              </p>
+              <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                <span>Produk dengan stok fisik 0</span>
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Filter & Search Bar - Konsisten dengan Cut Off */}
+        {/* Filter & Search Bar - High-End Minimalist */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
           <form onSubmit={handleSearchSubmit} className="flex items-center gap-2 w-full md:w-96">
             <div className="relative w-full">
@@ -1042,7 +1062,7 @@ export default function ShopeeProductsIndex({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Cari SKU, Nama Produk, ID Item..."
-                className="w-full pl-9 pr-8 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 placeholder-slate-400 text-xs focus:outline-none focus:border-[#0B132B]"
+                className="w-full pl-9 pr-8 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 placeholder-slate-400 text-xs focus:outline-none focus:border-slate-800 focus:bg-white transition-all"
               />
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
@@ -1077,7 +1097,7 @@ export default function ShopeeProductsIndex({
                 setStockStatus(val);
                 handleFilter(search, val, sort);
               }}
-              className="px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs focus:outline-none focus:border-[#0B132B] cursor-pointer"
+              className="px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 text-xs focus:outline-none focus:border-slate-800 focus:bg-white transition-all cursor-pointer"
             >
               <option value="all">Semua Status Stok</option>
               <option value="in_stock">Ada Stok (&gt; 0)</option>
@@ -1299,13 +1319,15 @@ export default function ShopeeProductsIndex({
                   <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
                     <span>Audit & Sinkronisasi Stok Gudang ke Shopee</span>
                     {detectedWarehouse === 'A' && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
-                        📦 Gudang A (Lusinan • Otomatis x12 Pcs)
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
+                        <span className="w-1.5 h-1.5 rounded-full bg-teal-500"></span>
+                        <span>Gudang A (Grosir Lusinan • Otomatis x12 Pcs)</span>
                       </span>
                     )}
                     {detectedWarehouse === 'G' && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
-                        🏷️ Gudang G (Eceran Satuan • Pcs)
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-50 text-sky-800 border border-sky-200">
+                        <span className="w-1.5 h-1.5 rounded-full bg-sky-500"></span>
+                        <span>Gudang G (Eceran Satuan • Pcs)</span>
                       </span>
                     )}
                     {importFileName && (
@@ -1390,22 +1412,22 @@ export default function ShopeeProductsIndex({
                         onClick={() => runMasterAudit('G')}
                         className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
                           masterWarehouseFilter === 'G'
-                            ? 'bg-blue-600 text-white shadow-2xs'
+                            ? 'bg-sky-600 text-white shadow-2xs'
                             : 'text-slate-600 hover:bg-slate-100'
                         }`}
                       >
-                        🏷️ Gudang G
+                        Gudang G
                       </button>
                       <button
                         type="button"
                         onClick={() => runMasterAudit('A')}
                         className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
                           masterWarehouseFilter === 'A'
-                            ? 'bg-purple-600 text-white shadow-2xs'
+                            ? 'bg-teal-600 text-white shadow-2xs'
                             : 'text-slate-600 hover:bg-slate-100'
                         }`}
                       >
-                        📦 Gudang A
+                        Gudang A
                       </button>
                     </div>
 
@@ -1445,11 +1467,11 @@ export default function ShopeeProductsIndex({
                         }}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                           targetWarehouse === 'G'
-                            ? 'bg-blue-600 text-white shadow-xs'
+                            ? 'bg-sky-600 text-white shadow-xs'
                             : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                         }`}
                       >
-                        <span>🏷️ Gudang G</span>
+                        <span>Gudang G</span>
                         <span className="text-[10px] font-normal opacity-90">(Eceran / Pcs)</span>
                       </button>
 
@@ -1463,11 +1485,11 @@ export default function ShopeeProductsIndex({
                         }}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                           targetWarehouse === 'A'
-                            ? 'bg-purple-600 text-white shadow-xs'
+                            ? 'bg-teal-600 text-white shadow-xs'
                             : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                         }`}
                       >
-                        <span>📦 Gudang A</span>
+                        <span>Gudang A</span>
                         <span className="text-[10px] font-normal opacity-90">(Grosir / Lusin x12)</span>
                       </button>
                     </div>
@@ -1577,7 +1599,7 @@ export default function ShopeeProductsIndex({
                     className={`border-2 border-dashed rounded-2xl p-10 text-center transition-colors ${
                       targetWarehouse === 'G'
                         ? 'border-blue-300 hover:border-blue-500 bg-blue-50/30'
-                        : 'border-purple-300 hover:border-purple-500 bg-purple-50/30'
+                        : 'border-teal-300 hover:border-teal-500 bg-teal-50/30'
                     }`}
                   >
                     <input
@@ -1595,13 +1617,13 @@ export default function ShopeeProductsIndex({
                         className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto transition-transform hover:scale-105 ${
                           targetWarehouse === 'G'
                             ? 'bg-blue-100 text-blue-700'
-                            : 'bg-purple-100 text-purple-700'
+                            : 'bg-teal-100 text-teal-700'
                         }`}
                       >
                         {isParsing || isComparing ? (
                           <svg
                             className={`animate-spin h-7 w-7 ${
-                              targetWarehouse === 'G' ? 'text-blue-600' : 'text-purple-600'
+                              targetWarehouse === 'G' ? 'text-blue-600' : 'text-teal-600'
                             }`}
                             fill="none"
                             viewBox="0 0 24 24"
@@ -1639,7 +1661,7 @@ export default function ShopeeProductsIndex({
                         className={`inline-flex items-center gap-1.5 px-4 py-2 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors ${
                           targetWarehouse === 'G'
                             ? 'bg-blue-600 hover:bg-blue-700'
-                            : 'bg-purple-600 hover:bg-purple-700'
+                            : 'bg-teal-600 hover:bg-teal-700'
                         }`}
                       >
                         Pilih Spreadsheet {targetWarehouse === 'G' ? 'Gudang G' : 'Gudang A'}
@@ -1964,8 +1986,8 @@ export default function ShopeeProductsIndex({
                                   {/* Smart Fallback & Typo Indicators */}
                                   {item.match_type === 'SMART_MATCH' && item.suggested_code && (
                                     <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200 text-[10px] font-medium" title={item.suggested_name || ''}>
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-violet-600 shrink-0">
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 text-[10px] font-medium" title={item.suggested_name || ''}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-sky-600 shrink-0">
                                           <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
                                         </svg>
                                         Cocok: <strong className="font-mono">{item.suggested_code}</strong>
@@ -1975,7 +1997,7 @@ export default function ShopeeProductsIndex({
                                           type="button"
                                           onClick={() => handleSaveMapping(item.id!, item.suggested_code!)}
                                           disabled={isSavingMapping}
-                                          className="text-[10px] text-violet-700 hover:text-violet-900 underline font-semibold cursor-pointer"
+                                          className="text-[10px] text-sky-700 hover:text-sky-900 underline font-semibold cursor-pointer"
                                         >
                                           Kunci Relasi
                                         </button>
@@ -2215,11 +2237,11 @@ export default function ShopeeProductsIndex({
                     value={mappingSearchQuery}
                     onChange={(e) => handleSearchMaster(e.target.value)}
                     placeholder="Contoh: KYLIE, FOGO, BLANCO, 01224738..."
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:border-violet-500 focus:bg-white focus:outline-none"
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:border-slate-800 focus:bg-white focus:outline-none transition-all"
                     autoFocus
                   />
                   {isSearchingMaster && (
-                    <span className="absolute right-3 top-2.5 w-3.5 h-3.5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin"></span>
+                    <span className="absolute right-3 top-2.5 w-3.5 h-3.5 border-2 border-slate-800 border-t-transparent rounded-full animate-spin"></span>
                   )}
                 </div>
               </div>
@@ -2236,7 +2258,7 @@ export default function ShopeeProductsIndex({
                   mappingSearchResults.map((m, idx) => (
                     <div
                       key={idx}
-                      className="p-2.5 rounded-lg border border-slate-200 bg-white hover:border-violet-400 hover:bg-violet-50/40 transition-colors flex items-center justify-between gap-2"
+                      className="p-2.5 rounded-lg border border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 transition-colors flex items-center justify-between gap-2"
                     >
                       <div className="min-w-0">
                         <p className="text-xs font-bold text-slate-900 truncate" title={m.item_name}>
@@ -2254,7 +2276,7 @@ export default function ShopeeProductsIndex({
                         type="button"
                         onClick={() => handleSaveMapping(mappingModalItem.id!, m.item_code)}
                         disabled={isSavingMapping}
-                        className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+                        className="px-3 py-1.5 bg-[#0B132B] hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer shrink-0 disabled:opacity-50"
                       >
                         {isSavingMapping ? 'Menghubungkan...' : 'Hubungkan'}
                       </button>
