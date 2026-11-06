@@ -41,6 +41,11 @@ class ShopeeProductController extends Controller
         $search      = trim((string) $request->input('search', ''));
         $stockStatus = (string) $request->input('stock_status', 'all');
         $sort        = (string) $request->input('sort', 'stock_desc');
+        $todayStr    = now('Asia/Jakarta')->toDateString();
+
+        // Default rentang tanggal penjualan: Hari Ini
+        $dateFrom = $request->has('date_from') ? (string) $request->input('date_from') : $todayStr;
+        $dateTo   = $request->has('date_to') ? (string) $request->input('date_to') : $todayStr;
 
         $account = ShopeeAccount::where('status', 'active')->first() ?? ShopeeAccount::first();
 
@@ -59,6 +64,8 @@ class ShopeeProductController extends Controller
                     'search'       => $search,
                     'stock_status' => $stockStatus,
                     'sort'         => $sort,
+                    'date_from'    => $dateFrom,
+                    'date_to'      => $dateTo,
                 ],
                 'summary'  => [
                     'total_skus'        => 0,
@@ -157,15 +164,69 @@ class ShopeeProductController extends Controller
             }
         }
 
-        // 3. Ringkasan Global Statistik Shopee (1 single query cepat)
-        if ($account && \Illuminate\Support\Facades\Schema::hasTable('cut_off_orders')) {
+        // 3. Ringkasan Global Statistik Shopee & Subquery Agregasi Penjualan Periode
+        $hasCutOffTable   = \Illuminate\Support\Facades\Schema::hasTable('cut_off_orders');
+        $periodSalesSub   = null;
+        $totalPeriodSales = 0;
+        $periodSalesCount = 0;
+
+        if ($hasCutOffTable) {
+            $subQuery = DB::table('cut_off_orders')
+                ->select('sku_utama', DB::raw('CAST(SUM(qty) AS UNSIGNED) as period_sales'))
+                ->where(function ($q) {
+                    $q->where('channel', 'SH')
+                      ->orWhere('channel', 'like', 'SH%');
+                })
+                ->where(function ($q) {
+                    $q->whereNull('order_status')
+                      ->orWhere(function ($sub) {
+                          $sub->where('order_status', 'not like', '%Batal%')
+                              ->where('order_status', 'not like', '%RJ%')
+                              ->where('order_status', 'not like', '%Retur%');
+                      });
+                })
+                ->whereNotNull('sku_utama')
+                ->where('sku_utama', '!=', '');
+
+            if (! empty($dateFrom)) {
+                $subQuery->where('order_date', '>=', $dateFrom . ' 00:00:00');
+            }
+            if (! empty($dateTo)) {
+                $subQuery->where('order_date', '<=', $dateTo . ' 23:59:59');
+            }
+
+            $subQuery->groupBy('sku_utama');
+            $periodSalesSub = $subQuery;
+
             try {
-                \Illuminate\Support\Facades\Cache::remember('shopee_sales_refresh_' . $account->id, 300, function () use ($account) {
-                    $this->syncService->refreshSalesFromCutOffOrders($account->id);
-                    return now();
-                });
+                $summarySales = DB::table('cut_off_orders')
+                    ->where(function ($q) {
+                        $q->where('channel', 'SH')
+                          ->orWhere('channel', 'like', 'SH%');
+                    })
+                    ->where(function ($q) {
+                        $q->whereNull('order_status')
+                          ->orWhere(function ($sub) {
+                              $sub->where('order_status', 'not like', '%Batal%')
+                                  ->where('order_status', 'not like', '%RJ%')
+                                  ->where('order_status', 'not like', '%Retur%');
+                          });
+                    })
+                    ->whereNotNull('sku_utama')
+                    ->where('sku_utama', '!=', '');
+
+                if (! empty($dateFrom)) {
+                    $summarySales->where('order_date', '>=', $dateFrom . ' 00:00:00');
+                }
+                if (! empty($dateTo)) {
+                    $summarySales->where('order_date', '<=', $dateTo . ' 23:59:59');
+                }
+
+                $salesStats = $summarySales->selectRaw('COALESCE(SUM(qty), 0) as total_sold, COUNT(DISTINCT sku_utama) as total_skus')->first();
+                $totalPeriodSales = (int) ($salesStats->total_sold ?? 0);
+                $periodSalesCount = (int) ($salesStats->total_skus ?? 0);
             } catch (\Throwable $e) {
-                // Abaikan jika cache ada kendala
+                // Abaikan jika query ringkasan bermasalah
             }
         }
 
@@ -187,93 +248,109 @@ class ShopeeProductController extends Controller
         $totalStock     = (int) ($summaryStats->total_stock ?? 0);
         $inStockSkus    = (int) ($summaryStats->in_stock_skus ?? 0);
         $outOfStockSkus = (int) ($summaryStats->out_of_stock_skus ?? 0);
-        $hasSalesSkus   = (int) ($summaryStats->has_sales_skus ?? 0);
-        $totalSales     = (int) ($summaryStats->total_sales ?? 0);
+        $hasSalesSkus   = $periodSalesCount > 0 ? $periodSalesCount : (int) ($summaryStats->has_sales_skus ?? 0);
+        $totalSales     = $totalPeriodSales > 0 ? $totalPeriodSales : (int) ($summaryStats->total_sales ?? 0);
         $lastSyncedAt   = $summaryStats->last_synced_at ?? null;
 
         // 4. Query Paginasi 50 Item
         $query = ShopeeProduct::query();
         if ($account) {
-            $query->where('shopee_account_id', $account->id);
+            $query->where('shopee_products.shopee_account_id', $account->id);
+        }
+
+        if ($periodSalesSub) {
+            $query->leftJoinSub($periodSalesSub, 'period_sales_sub', function ($join) {
+                $join->on('shopee_products.sku', '=', 'period_sales_sub.sku_utama');
+            });
+            $query->select('shopee_products.*', DB::raw('COALESCE(period_sales_sub.period_sales, 0) as period_sales'));
+        } else {
+            $query->select('shopee_products.*', DB::raw('COALESCE(shopee_products.sales, 0) as period_sales'));
         }
 
         // Apply Search
         if (! empty($search)) {
             $query->where(function ($q) use ($search) {
-                $q->where('sku', 'like', "%{$search}%")
-                  ->orWhere('item_name', 'like', "%{$search}%")
-                  ->orWhere('model_name', 'like', "%{$search}%")
-                  ->orWhere('item_id', 'like', "%{$search}%");
+                $q->where('shopee_products.sku', 'like', "%{$search}%")
+                  ->orWhere('shopee_products.item_name', 'like', "%{$search}%")
+                  ->orWhere('shopee_products.model_name', 'like', "%{$search}%")
+                  ->orWhere('shopee_products.item_id', 'like', "%{$search}%");
             });
         }
 
         // Apply Stock & Sales Filter
         if ($stockStatus === 'in_stock') {
-            $query->where('stock', '>', 0);
+            $query->where('shopee_products.stock', '>', 0);
         } elseif ($stockStatus === 'out_of_stock') {
-            $query->where('stock', '<=', 0);
+            $query->where('shopee_products.stock', '<=', 0);
         } elseif ($stockStatus === 'has_sales') {
-            $query->where('sales', '>', 0);
+            if ($periodSalesSub) {
+                $query->whereRaw('COALESCE(period_sales_sub.period_sales, 0) > 0');
+            } else {
+                $query->where('shopee_products.sales', '>', 0);
+            }
         } elseif ($stockStatus === 'no_sales') {
-            $query->where(function ($q) {
-                $q->whereNull('sales')->orWhere('sales', '<=', 0);
-            });
+            if ($periodSalesSub) {
+                $query->whereRaw('COALESCE(period_sales_sub.period_sales, 0) <= 0');
+            } else {
+                $query->where(function ($q) {
+                    $q->whereNull('shopee_products.sales')->orWhere('shopee_products.sales', '<=', 0);
+                });
+            }
         } elseif ($stockStatus === 'oos_critical') {
-            $query->whereIn('id', ! empty($criticalOosIds) ? $criticalOosIds : [-1]);
+            $query->whereIn('shopee_products.id', ! empty($criticalOosIds) ? $criticalOosIds : [-1]);
         } elseif ($stockStatus === 'campaign_unlocked') {
-            $query->whereIn('id', ! empty($campaignUnlockedIds) ? $campaignUnlockedIds : [-1]);
+            $query->whereIn('shopee_products.id', ! empty($campaignUnlockedIds) ? $campaignUnlockedIds : [-1]);
         } elseif ($stockStatus === 'campaign_locked') {
-            $query->whereIn('id', ! empty($campaignLockedIds) ? $campaignLockedIds : [-1]);
+            $query->whereIn('shopee_products.id', ! empty($campaignLockedIds) ? $campaignLockedIds : [-1]);
         } elseif ($stockStatus === 'gudang_ready') {
-            $query->whereIn('id', ! empty($gudangReadyIds) ? $gudangReadyIds : [-1]);
+            $query->whereIn('shopee_products.id', ! empty($gudangReadyIds) ? $gudangReadyIds : [-1]);
         }
 
         // Apply Sorting
         switch ($sort) {
             case 'sales_desc':
-                $query->orderBy('sales', 'desc')->orderBy('stock', 'desc');
+                $query->orderBy('period_sales', 'desc')->orderBy('shopee_products.stock', 'desc');
                 break;
             case 'sales_asc':
-                $query->orderBy('sales', 'asc')->orderBy('stock', 'asc');
+                $query->orderBy('period_sales', 'asc')->orderBy('shopee_products.stock', 'asc');
                 break;
             case 'stock_asc':
-                $query->orderBy('stock', 'asc')->orderBy('sku', 'asc');
+                $query->orderBy('shopee_products.stock', 'asc')->orderBy('shopee_products.sku', 'asc');
                 break;
             case 'sku_asc':
-                $query->orderBy('sku', 'asc');
+                $query->orderBy('shopee_products.sku', 'asc');
                 break;
             case 'name_asc':
-                $query->orderBy('item_name', 'asc');
+                $query->orderBy('shopee_products.item_name', 'asc');
                 break;
             case 'stock_desc':
             default:
-                $query->orderBy('stock', 'desc')->orderBy('sku', 'asc');
+                $query->orderBy('shopee_products.stock', 'desc')->orderBy('shopee_products.sku', 'asc');
                 break;
         }
 
         $products = $query->paginate(50)->withQueryString();
 
-        // 5. Lampirkan hasil komparasi stok gudang dari array lookup instan O(1)
-        if (! empty($stockInfoById)) {
-            $products->getCollection()->transform(function ($p) use ($stockInfoById) {
-                if (isset($stockInfoById[$p->id])) {
-                    $info = $stockInfoById[$p->id];
-                    $p->warehouse_stock      = $info['warehouse_stock'];
-                    $p->stock_g              = $info['stock_g'];
-                    $p->stock_a              = $info['stock_a'];
-                    $p->matched_code         = $info['matched_code'];
-                    $p->match_type           = $info['match_type'];
-                    $p->is_critical_oos      = $info['is_critical_oos'];
-                    $p->is_campaign_locked   = $info['is_campaign_locked'];
-                    $p->is_campaign_unlocked = $info['is_campaign_unlocked'];
-                    $p->suggested_code       = $info['suggested_code'];
-                    $p->suggested_name       = $info['suggested_name'];
-                    $p->warning_message      = $info['warning_message'];
-                    $p->is_safe_to_zero      = $info['is_safe_to_zero'];
-                }
-                return $p;
-            });
-        }
+        // 5. Lampirkan hasil komparasi stok gudang dari array lookup instan O(1) & sales periode
+        $products->getCollection()->transform(function ($p) use ($stockInfoById) {
+            $p->sales = (int) ($p->period_sales ?? $p->sales ?? 0);
+            if (! empty($stockInfoById) && isset($stockInfoById[$p->id])) {
+                $info = $stockInfoById[$p->id];
+                $p->warehouse_stock      = $info['warehouse_stock'];
+                $p->stock_g              = $info['stock_g'];
+                $p->stock_a              = $info['stock_a'];
+                $p->matched_code         = $info['matched_code'];
+                $p->match_type           = $info['match_type'];
+                $p->is_critical_oos      = $info['is_critical_oos'];
+                $p->is_campaign_locked   = $info['is_campaign_locked'];
+                $p->is_campaign_unlocked = $info['is_campaign_unlocked'];
+                $p->suggested_code       = $info['suggested_code'];
+                $p->suggested_name       = $info['suggested_name'];
+                $p->warning_message      = $info['warning_message'];
+                $p->is_safe_to_zero      = $info['is_safe_to_zero'];
+            }
+            return $p;
+        });
 
         return Inertia::render('Shopee/Products', [
             'products' => $products,
@@ -281,6 +358,8 @@ class ShopeeProductController extends Controller
                 'search'       => $search,
                 'stock_status' => $stockStatus,
                 'sort'         => $sort,
+                'date_from'    => $dateFrom,
+                'date_to'      => $dateTo,
             ],
             'summary'  => [
                 'total_skus'              => $totalSkus,
