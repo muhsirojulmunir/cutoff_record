@@ -1088,7 +1088,7 @@ export default function ShopeeProductsIndex({
     <AppLayout>
       <Head title="Stok Produk Shopee - Koding ERP" />
 
-      <div className="space-y-6 max-w-7xl mx-auto pb-12">
+      <div className="space-y-6 w-full max-w-[1600px] mx-auto pb-12 px-2 sm:px-4">
         {/* Flash Notifications */}
         {flash?.success && (
           <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center justify-between shadow-2xs">
@@ -1465,15 +1465,15 @@ export default function ShopeeProductsIndex({
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-900 text-white font-semibold uppercase tracking-wider text-[11px] whitespace-nowrap">
-                    <th className="py-3 px-3 text-center w-12">No</th>
-                    <th className="py-3 px-4">SKU Utama / Variasi</th>
-                    <th className="py-3 px-4">Nama Barang</th>
-                    <th className="py-3 px-4">Variasi / Model</th>
-                    <th className="py-3 px-4 text-right">Stok Gudang (ERP)</th>
-                    <th className="py-3 px-4 text-right">Stok Shopee</th>
-                    <th className="py-3 px-4 text-center">Status Audit</th>
-                    <th className="py-3 px-4 text-right">Harga</th>
-                    <th className="py-3 px-4 text-center">Aksi Shopee</th>
+                    <th className="py-2.5 px-2 text-center w-8">No</th>
+                    <th className="py-2.5 px-2.5 w-36">SKU Utama / Variasi</th>
+                    <th className="py-2.5 px-2.5 min-w-[140px] max-w-[200px]">Nama Barang</th>
+                    <th className="py-2.5 px-2 w-32">Variasi / Model</th>
+                    <th className="py-2.5 px-2 text-center whitespace-nowrap w-24">Stok Gudang</th>
+                    <th className="py-2.5 px-2 text-center whitespace-nowrap w-20">Stok Shopee</th>
+                    <th className="py-2.5 px-2 text-center whitespace-nowrap w-28">Status Audit</th>
+                    <th className="py-2.5 px-2 text-right whitespace-nowrap w-24">Harga</th>
+                    <th className="py-2.5 px-2 text-center whitespace-nowrap w-28">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-sans">
@@ -1492,20 +1492,20 @@ export default function ShopeeProductsIndex({
 
                     return (
                       <tr key={p.id} className={rowClass}>
-                        <td className="py-3.5 px-3 text-center text-xs font-bold text-slate-500 whitespace-nowrap">
+                        <td className="py-2 px-2 text-center text-xs font-bold text-slate-400 w-8 whitespace-nowrap">
                           {rowNumber}
                         </td>
 
                         {/* SKU */}
-                        <td className="py-3.5 px-4 whitespace-nowrap">
+                        <td className="py-2 px-2.5 w-36 whitespace-nowrap">
                           {p.sku ? (
                             <div>
-                              <span className="font-mono font-bold text-slate-900 select-all tracking-tight">
+                              <span className="font-mono font-bold text-slate-900 select-all tracking-tight block truncate max-w-[145px]" title={p.sku}>
                                 {p.sku}
                               </span>
                               {p.matched_code && (
-                                <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                                  Gudang: {p.matched_code}
+                                <div className="text-[10px] text-slate-400 font-mono mt-0.5 truncate max-w-[145px]" title={`Kode Gudang: ${p.matched_code}`}>
+                                  Gdg: {p.matched_code}
                                 </div>
                               )}
                             </div>
@@ -1515,32 +1515,32 @@ export default function ShopeeProductsIndex({
                         </td>
 
                         {/* Nama Produk */}
-                        <td className="py-3.5 px-4 max-w-md">
-                          <p className="font-semibold text-slate-900 line-clamp-1" title={p.item_name}>
+                        <td className="py-2 px-2.5 min-w-[140px] max-w-[200px]">
+                          <p className="font-semibold text-slate-900 truncate" title={p.item_name}>
                             {p.item_name}
                           </p>
                           <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                            ID Produk: {p.item_id}
+                            ID: {p.item_id}
                           </div>
                         </td>
 
                         {/* Variasi */}
-                        <td className="py-3.5 px-4 whitespace-nowrap">
+                        <td className="py-2 px-2 w-32 whitespace-nowrap">
                           {p.model_name ? (
-                            <span className="inline-block px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[11px] font-medium border border-slate-200">
+                            <span className="inline-block px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-medium border border-slate-200 truncate max-w-[125px]" title={p.model_name}>
                               {p.model_name}
                             </span>
                           ) : (
-                            <span className="text-slate-400 italic text-[11px]">Single (Tanpa Variasi)</span>
+                            <span className="text-slate-400 italic text-[10px]">Single</span>
                           )}
                         </td>
 
                         {/* Stok Gudang (ERP: G + A) */}
-                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                        <td className="py-2 px-2 text-center whitespace-nowrap w-24">
                           {p.warehouse_stock !== undefined ? (
                             p.warehouse_stock <= 0 ? (
-                              <div className="flex flex-col items-end">
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md font-mono font-bold text-xs bg-rose-100 text-rose-800 border border-rose-300">
+                              <div className="flex flex-col items-center">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded font-mono font-bold text-xs bg-rose-100 text-rose-800 border border-rose-300">
                                   0 pcs
                                 </span>
                                 <span className="text-[10px] text-rose-600 font-medium mt-0.5">
@@ -1548,8 +1548,8 @@ export default function ShopeeProductsIndex({
                                 </span>
                               </div>
                             ) : (
-                              <div className="flex flex-col items-end">
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md font-mono font-bold text-xs bg-slate-100 text-slate-800 border border-slate-200">
+                              <div className="flex flex-col items-center">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded font-mono font-bold text-xs bg-slate-100 text-slate-800 border border-slate-200">
                                   {p.warehouse_stock.toLocaleString('id-ID')} pcs
                                 </span>
                                 <span className="text-[10px] text-slate-500 font-medium mt-0.5">
@@ -1563,8 +1563,8 @@ export default function ShopeeProductsIndex({
                         </td>
 
                         {/* Stok Shopee (Tersedia & Terkunci) */}
-                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                          <div className="flex flex-col items-end">
+                        <td className="py-2 px-2 text-center whitespace-nowrap w-20">
+                          <div className="flex flex-col items-center">
                             <span
                               className={`inline-block px-2.5 py-0.5 rounded-full font-mono font-bold text-xs ${
                                 hasStock
@@ -1586,33 +1586,33 @@ export default function ShopeeProductsIndex({
                         </td>
 
                         {/* Status Audit */}
-                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                        <td className="py-2 px-2 text-center whitespace-nowrap w-28">
                           {isPromoUnlocked ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
                               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-amber-700">
                                 <path fillRule="evenodd" d="M14.5 1A4.5 4.5 0 0010 5.5V9H3a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5a3 3 0 116 0v.5a.75.75 0 001.5 0V5.5A4.5 4.5 0 0014.5 1z" clipRule="evenodd" />
                               </svg>
                               Promo Terbuka
                             </span>
                           ) : isCritical ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-100 text-rose-900 border border-rose-300">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-100 text-rose-900 border border-rose-300">
                               <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-ping"></span>
-                              KRITIS (Gudang 0)
+                              KRITIS (0)
                             </span>
                           ) : isPromoLocked ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
                               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-slate-500">
                                 <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
                               </svg>
-                              Terkunci Promo
+                              Promo
                             </span>
                           ) : p.match_type === 'SIZE_MISMATCH' ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200" title={p.warning_message || undefined}>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200" title={p.warning_message || undefined}>
                               Cek Ukuran
                             </span>
                           ) : p.match_type === 'CODE_NOT_FOUND' || p.match_type === 'NO_CODE' ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
-                              Belum Terhubung
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                              Belum Konek
                             </span>
                           ) : (
                             <span className="text-[11px] text-slate-500 font-medium">Sesuai</span>
@@ -1620,12 +1620,12 @@ export default function ShopeeProductsIndex({
                         </td>
 
                         {/* Harga */}
-                        <td className="py-3.5 px-4 text-right font-mono font-semibold text-slate-900 whitespace-nowrap">
+                        <td className="py-2 px-2 text-right font-mono font-semibold text-xs text-slate-900 whitespace-nowrap w-24">
                           Rp {Math.round(Number(p.price) || 0).toLocaleString('id-ID')}
                         </td>
 
                         {/* Aksi Shopee */}
-                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                        <td className="py-2 px-2 text-center whitespace-nowrap w-28">
                           {isCritical || isPromoUnlocked ? (
                             <button
                               type="button"
