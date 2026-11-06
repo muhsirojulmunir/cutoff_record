@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import * as XLSX from 'xlsx';
 import AppLayout from '../../Layouts/AppLayout';
 import { PageProps } from '../../Types';
+import DualCalendarRangePicker, { formatDateIndo, formatYMD } from '../../Components/DualCalendarRangePicker';
 
 interface ProductItem {
   id: number;
@@ -57,6 +58,7 @@ interface SummaryData {
   in_stock_skus: number;
   out_of_stock_skus: number;
   has_sales_count?: number;
+  total_period_sales?: number;
   total_sales?: number;
   critical_oos_count?: number;
   campaign_locked_count?: number;
@@ -113,6 +115,8 @@ interface Props {
     search: string;
     stock_status: string;
     sort: string;
+    date_from?: string;
+    date_to?: string;
   };
   summary: SummaryData;
   account: {
@@ -210,6 +214,14 @@ function playAlarmChime() {
   }
 }
 
+function getDaysCount(startStr?: string, endStr?: string): number {
+  if (!startStr || !endStr) return 0;
+  const s = new Date(startStr);
+  const e = new Date(endStr);
+  const diffTime = Math.abs(e.getTime() - s.getTime());
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+}
+
 export default function ShopeeProductsIndex({
   products,
   filters,
@@ -219,9 +231,24 @@ export default function ShopeeProductsIndex({
 }: Props) {
   const { flash } = usePage<PageProps>().props;
 
+  const now = new Date();
+  const todayYMD = formatYMD(now.getFullYear(), now.getMonth(), now.getDate());
+
   const [search, setSearch] = useState(filters.search ?? '');
   const [stockStatus, setStockStatus] = useState(filters.stock_status ?? 'all');
   const [sort, setSort] = useState(filters.sort ?? 'stock_desc');
+  const [startDate, setStartDate] = useState<string>(filters.date_from ?? todayYMD);
+  const [endDate, setEndDate] = useState<string>(filters.date_to ?? todayYMD);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+
+  useEffect(() => {
+    if (filters.date_from !== undefined) {
+      setStartDate(filters.date_from);
+    }
+    if (filters.date_to !== undefined) {
+      setEndDate(filters.date_to);
+    }
+  }, [filters.date_from, filters.date_to]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [zeroingOutId, setZeroingOutId] = useState<number | null>(null);
 
@@ -583,13 +610,21 @@ export default function ShopeeProductsIndex({
     }
   }
 
-  function handleFilter(newSearch = search, newStatus = stockStatus, newSort = sort) {
+  function handleFilter(
+    newSearch = search,
+    newStatus = stockStatus,
+    newSort = sort,
+    newDateFrom = startDate,
+    newDateTo = endDate
+  ) {
     router.get(
       '/shopee-products',
       {
         search: newSearch || undefined,
         stock_status: newStatus !== 'all' ? newStatus : undefined,
         sort: newSort !== 'stock_desc' ? newSort : undefined,
+        date_from: newDateFrom !== undefined ? newDateFrom : undefined,
+        date_to: newDateTo !== undefined ? newDateTo : undefined,
       },
       {
         preserveState: true,
@@ -1345,7 +1380,7 @@ export default function ShopeeProductsIndex({
                   type="button"
                   onClick={() => {
                     setStockStatus('oos_critical');
-                    handleFilter(search, 'oos_critical', sort);
+                    handleFilter(search, 'oos_critical', sort, startDate, endDate);
                   }}
                   className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
                 >
@@ -1368,6 +1403,150 @@ export default function ShopeeProductsIndex({
           </div>
         )}
 
+        {/* Periode Penjualan Shopee (Visual Date Picker dengan Presets & Dual Calendar) */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xs font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-[#EE4D2D]">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" />
+                </svg>
+                <span>Rentang Waktu Penjualan Shopee:</span>
+              </h2>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Hitung dan urutkan total penjualan unit produk Shopee berdasarkan periode transaksi di Cut Off.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-[#EE4D2D]">
+                {startDate && endDate ? (
+                  startDate === endDate ? 'Hari Ini Terpilih' : `${getDaysCount(startDate, endDate)} Hari Terpilih`
+                ) : 'Semua Waktu'}
+              </span>
+              {summary?.total_period_sales !== undefined && summary.total_period_sales > 0 && (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
+                  {summary.total_period_sales.toLocaleString('id-ID')} unit terjual
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Preset Buttons */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            {[
+              { label: 'Hari Ini', days: 1 },
+              { label: '7 Hari Terakhir', days: 7 },
+              { label: '14 Hari (Cepat)', days: 14 },
+              { label: '30 Hari (1 Bln)', days: 30 },
+              { label: 'Semua Waktu', days: 0 },
+            ].map((preset) => {
+              const isSelected = preset.days === 0
+                ? (!startDate && !endDate)
+                : (startDate && endDate && getDaysCount(startDate, endDate) === preset.days && endDate === todayYMD);
+
+              return (
+                <button
+                  key={preset.days}
+                  type="button"
+                  onClick={() => {
+                    if (preset.days === 0) {
+                      setStartDate('');
+                      setEndDate('');
+                      handleFilter(search, stockStatus, sort, '', '');
+                    } else {
+                      const sObj = new Date();
+                      sObj.setDate(sObj.getDate() - (preset.days - 1));
+                      const s = formatYMD(sObj.getFullYear(), sObj.getMonth(), sObj.getDate());
+                      setStartDate(s);
+                      setEndDate(todayYMD);
+                      handleFilter(search, stockStatus, sort, s, todayYMD);
+                    }
+                  }}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-[#0B132B] text-white shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Interactive Visual Date Range Trigger Bar & Dual Calendar */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsCalendarOpen(!isCalendarOpen)}
+              className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/90 border border-slate-200 hover:border-slate-300 rounded-xl text-left transition-all cursor-pointer group shadow-2xs"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="p-2 rounded-xl bg-white border border-slate-200 text-[#EE4D2D] group-hover:scale-105 transition-transform shadow-2xs shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" />
+                  </svg>
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    PILIH RENTANG DI KALENDER (KLIK UNTUK BUKA/TUTUP)
+                  </div>
+                  <div className="text-xs font-bold text-slate-900 mt-0.5 truncate">
+                    {startDate && endDate ? (
+                      <>
+                        {startDate === endDate ? (
+                          <span>{formatDateIndo(startDate)} <span className="text-[#EE4D2D] font-bold">(Hari Ini)</span></span>
+                        ) : (
+                          <span>
+                            {formatDateIndo(startDate)} — {formatDateIndo(endDate)}
+                            <span className="ml-2 text-[11px] font-bold text-[#EE4D2D]">
+                              ({getDaysCount(startDate, endDate)} hari)
+                            </span>
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span>Semua Waktu (Seluruh Riwayat Penjualan)</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0 pl-2">
+                <span className="text-[11px] font-bold text-[#EE4D2D] hidden sm:inline">
+                  {isCalendarOpen ? 'Tutup Kalender' : 'Buka Kalender'}
+                </span>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className={`w-4 h-4 text-slate-500 transition-transform ${isCalendarOpen ? 'rotate-180' : ''}`}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                </svg>
+              </div>
+            </button>
+
+            {/* Dual Calendar Range Picker Popover */}
+            <DualCalendarRangePicker
+              initialStartDate={startDate || todayYMD}
+              initialEndDate={endDate || todayYMD}
+              isOpen={isCalendarOpen}
+              onClose={() => setIsCalendarOpen(false)}
+              onApply={(start, end) => {
+                setStartDate(start);
+                setEndDate(end);
+                setIsCalendarOpen(false);
+                handleFilter(search, stockStatus, sort, start, end);
+              }}
+              align="right"
+            />
+          </div>
+        </div>
+
         {/* Filter & Search Bar - High-End Minimalist */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
           <form onSubmit={handleSearchSubmit} className="flex items-center gap-2 w-full md:w-96">
@@ -1387,7 +1566,7 @@ export default function ShopeeProductsIndex({
                   type="button"
                   onClick={() => {
                     setSearch('');
-                    handleFilter('', stockStatus, sort);
+                    handleFilter('', stockStatus, sort, startDate, endDate);
                   }}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
                 >
@@ -1410,7 +1589,7 @@ export default function ShopeeProductsIndex({
               onChange={(e) => {
                 const val = e.target.value;
                 setStockStatus(val);
-                handleFilter(search, val, sort);
+                handleFilter(search, val, sort, startDate, endDate);
               }}
               className="px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 text-xs focus:outline-none focus:border-slate-800 focus:bg-white transition-all cursor-pointer font-medium"
             >
@@ -1441,7 +1620,7 @@ export default function ShopeeProductsIndex({
               onChange={(e) => {
                 const val = e.target.value;
                 setSort(val);
-                handleFilter(search, stockStatus, val);
+                handleFilter(search, stockStatus, val, startDate, endDate);
               }}
               className="px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs focus:outline-none focus:border-[#0B132B] cursor-pointer font-medium"
             >
