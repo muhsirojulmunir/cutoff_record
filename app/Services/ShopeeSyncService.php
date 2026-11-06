@@ -1040,6 +1040,11 @@ class ShopeeSyncService
                         $table->boolean('was_campaign_locked')->default(false)->after('locked_campaign_qty')->index();
                     });
                 }
+                if (! Schema::hasColumn('shopee_products', 'sales')) {
+                    Schema::table('shopee_products', function (Blueprint $table) {
+                        $table->integer('sales')->default(0)->after('price')->index();
+                    });
+                }
             }
         } catch (\Throwable $e) {
             Log::warning('ShopeeSyncService ensureProductSchema notice: ' . $e->getMessage());
@@ -1359,6 +1364,87 @@ class ShopeeSyncService
     }
 
     /**
+     * Fetch extra performance metrics (historical sales/sold count, views, likes) for products.
+     * Path: /api/v2/product/get_item_extra_info
+     */
+    public function fetchItemExtraInfoRaw(ShopeeAccount $account, array $itemIds): array
+    {
+        if (empty($itemIds)) {
+            return [];
+        }
+
+        $path        = '/api/v2/product/get_item_extra_info';
+        $timestamp   = time();
+        $accessToken = (string) ($account->access_token ?? '');
+        $shopId      = (int) $account->shop_id;
+        $partnerId   = (int) $account->partner_id;
+        $partnerKey  = (string) $account->partner_key;
+
+        $baseStr = sprintf('%s%s%s%s%s', $partnerId, $path, $timestamp, $accessToken, $shopId);
+        $sign    = hash_hmac('sha256', $baseStr, $partnerKey);
+
+        $queryParams = [
+            'partner_id'   => $partnerId,
+            'timestamp'    => $timestamp,
+            'sign'         => $sign,
+            'access_token' => $accessToken,
+            'shop_id'      => $shopId,
+            'item_id_list' => implode(',', array_slice($itemIds, 0, 50)),
+        ];
+
+        try {
+            $url = $this->host . $path . '?' . http_build_query($queryParams);
+            $response = Http::timeout(25)->get($url);
+            $data = $response->json();
+
+            if ($response->failed() || ! empty($data['error'])) {
+                Log::warning('Shopee Get Item Extra Info Error: ' . ($data['message'] ?? $data['error'] ?? 'Gagal mengambil extra info produk'));
+                return [];
+            }
+
+            return $data['response']['item_list'] ?? [];
+        } catch (\Throwable $e) {
+            Log::warning('Shopee Get Item Extra Info exception: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Refresh shopee_products.sales directly from cut_off_orders for accurate SKU-level sales tracking.
+     */
+    public function refreshSalesFromCutOffOrders(?int $shopeeAccountId = null): int
+    {
+        if (! Schema::hasTable('shopee_products') || ! Schema::hasTable('cut_off_orders')) {
+            return 0;
+        }
+
+        try {
+            $this->ensureProductSchema();
+
+            $accountClause = $shopeeAccountId ? "AND sp.shopee_account_id = " . (int) $shopeeAccountId : "";
+
+            $affected = DB::update("
+                UPDATE shopee_products sp
+                JOIN (
+                    SELECT sku_utama, CAST(SUM(qty) AS UNSIGNED) as total_sold
+                    FROM cut_off_orders
+                    WHERE (channel = 'SH' OR channel LIKE 'SH%')
+                      AND (order_status IS NULL OR (order_status NOT LIKE '%Batal%' AND order_status NOT LIKE '%RJ%' AND order_status NOT LIKE '%Retur%'))
+                      AND sku_utama IS NOT NULL AND sku_utama != ''
+                    GROUP BY sku_utama
+                ) co ON sp.sku = co.sku_utama
+                SET sp.sales = co.total_sold
+                WHERE 1=1 {$accountClause}
+            ");
+
+            return (int) $affected;
+        } catch (\Throwable $e) {
+            Log::warning('[ShopeeSyncService] refreshSalesFromCutOffOrders error: ' . $e->getMessage());
+            return 0;
+        }
+    }
+
+    /**
      * Fetch model/variation list for an item.
      * Path: /api/v2/product/get_model_list
      */
@@ -1449,13 +1535,16 @@ class ShopeeSyncService
         // 2. Ambil detail dasar produk dalam batch 50 item
         $chunks = array_chunk($allItemIds, 50);
         foreach ($chunks as $chunkIdx => $chunkItemIds) {
-            $baseItems = $this->fetchItemBaseInfoRaw($account, $chunkItemIds);
+            $baseItems  = $this->fetchItemBaseInfoRaw($account, $chunkItemIds);
+            $extraItems = $this->fetchItemExtraInfoRaw($account, $chunkItemIds);
+            $extraMap   = collect($extraItems)->keyBy('item_id');
 
             foreach ($baseItems as $item) {
-                $itemId   = (int) ($item['item_id'] ?? 0);
-                $itemName = (string) ($item['item_name'] ?? 'Produk Shopee');
-                $hasModel = ! empty($item['has_model']);
+                $itemId     = (int) ($item['item_id'] ?? 0);
+                $itemName   = (string) ($item['item_name'] ?? 'Produk Shopee');
+                $hasModel   = ! empty($item['has_model']);
                 $itemStatus = (string) ($item['item_status'] ?? 'NORMAL');
+                $itemSale   = (int) ($extraMap[$itemId]['sale'] ?? 0);
 
                 if ($hasModel) {
                     // Produk memiliki variasi (Model/Size/Warna): ambil daftar model
@@ -1542,6 +1631,7 @@ class ShopeeSyncService
                             'stock'             => $stock,
                             'reserved_stock'    => $reservedStock,
                             'price'             => $price,
+                            'sales'             => $itemSale,
                             'item_status'       => $itemStatus,
                             'has_model'         => false,
                             'last_synced_at'    => $now,
@@ -1559,6 +1649,9 @@ class ShopeeSyncService
                 $progressCallback("Diproses {$processedCount}/{$totalItems} produk ({$savedCount} SKU variasi tersimpan)...");
             }
         }
+
+        // 3. Sinkronkan rincian penjualan per-SKU varian dari tabel Cut Off Orders
+        $this->refreshSalesFromCutOffOrders($account->id);
 
         $account->update([
             'last_synced_at'   => $now,
