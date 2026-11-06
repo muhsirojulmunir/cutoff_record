@@ -1544,7 +1544,7 @@ export default function ShopeeProductsIndex({
                                   0 pcs
                                 </span>
                                 <span className="text-[10px] text-rose-600 font-medium mt-0.5">
-                                  G: {(p.stock_g ?? 0).toLocaleString('id-ID')} | A: {(p.stock_a ?? 0).toLocaleString('id-ID')}
+                                  A: {(p.stock_a ?? 0).toLocaleString('id-ID')} | G: {(p.stock_g ?? 0).toLocaleString('id-ID')}
                                 </span>
                               </div>
                             ) : (
@@ -1553,7 +1553,7 @@ export default function ShopeeProductsIndex({
                                   {p.warehouse_stock.toLocaleString('id-ID')} pcs
                                 </span>
                                 <span className="text-[10px] text-slate-500 font-medium mt-0.5">
-                                  G: {(p.stock_g ?? 0).toLocaleString('id-ID')} | A: {(p.stock_a ?? 0).toLocaleString('id-ID')}
+                                  A: {(p.stock_a ?? 0).toLocaleString('id-ID')} | G: {(p.stock_g ?? 0).toLocaleString('id-ID')}
                                 </span>
                               </div>
                             )
@@ -3267,7 +3267,7 @@ export default function ShopeeProductsIndex({
                                       ? 'bg-blue-50 text-blue-700 border border-blue-200'
                                       : 'bg-slate-100 text-slate-500'
                                   }`}
-                                  title={`Gudang G: ${v.stock_g} Pcs | Gudang A: ${v.stock_a} Pcs`}
+                                  title={`Gudang A: ${v.stock_a} Pcs | Gudang G: ${v.stock_g} Pcs`}
                                 >
                                   {v.warehouse_stock} Pcs
                                 </span>
