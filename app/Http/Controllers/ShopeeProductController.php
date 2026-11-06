@@ -129,6 +129,7 @@ class ShopeeProductController extends Controller
         $campaignLockedIds   = [];
         $campaignUnlockedIds = [];
         $gudangReadyIds      = [];
+        $wrongCodeIds        = [];
         $stockInfoById       = [];
 
         if ($masterStockSummary['has_master_stock'] && $account && $masterStocks->isNotEmpty()) {
@@ -158,6 +159,11 @@ class ShopeeProductController extends Controller
                 // Deteksi barang yang di gudang ada stoknya (> 0) tapi di Shopee masih 0 (Gudang Ready)
                 if ($info['warehouse_stock'] > 0 && $p->stock <= 0) {
                     $gudangReadyIds[] = $p->id;
+                }
+
+                // Kumpulkan produk yang terdeteksi salah kode barang / salah ukuran / kode tidak ditemukan / saran smart match
+                if (in_array($info['match_type'], ['CODE_MISMATCH', 'SIZE_MISMATCH', 'CODE_NOT_FOUND'], true) || ($info['match_type'] === 'SMART_MATCH' && ! empty($info['suggested_code']))) {
+                    $wrongCodeIds[] = $p->id;
                 }
 
                 $stockInfoById[$p->id] = $info;
@@ -309,6 +315,8 @@ class ShopeeProductController extends Controller
             $query->whereIn('shopee_products.id', ! empty($campaignLockedIds) ? $campaignLockedIds : [-1]);
         } elseif ($stockStatus === 'gudang_ready') {
             $query->whereIn('shopee_products.id', ! empty($gudangReadyIds) ? $gudangReadyIds : [-1]);
+        } elseif ($stockStatus === 'wrong_code') {
+            $query->whereIn('shopee_products.id', ! empty($wrongCodeIds) ? $wrongCodeIds : [-1]);
         }
 
         // Apply Sorting
@@ -389,6 +397,8 @@ class ShopeeProductController extends Controller
                 'campaign_locked_count'   => count($campaignLockedIds),
                 'campaign_unlocked_count' => count($campaignUnlockedIds),
                 'gudang_ready_count'      => count($gudangReadyIds),
+                'wrong_code_count'        => count($wrongCodeIds),
+                'wrong_code_ids'          => $wrongCodeIds,
                 'critical_oos_ids'        => $criticalOosIds,
                 'campaign_unlocked_ids'   => $campaignUnlockedIds,
                 'last_synced_at'          => $lastSyncedAt,
@@ -912,14 +922,28 @@ class ShopeeProductController extends Controller
         $hasTypo = false;
 
         if ($matchType !== 'MANUAL_MAPPED') {
-            if ($exactItem && $expectedSize) {
-                if (preg_match('/(2[0-9]|3[0-9]|4[0-9]|5[0-9])$/', (string) $exactItem->item_name, $im)) {
-                    $actualSize = $im[1];
-                    if ($actualSize !== $expectedSize) {
-                        $hasTypo = true;
-                        $matchType = 'SIZE_MISMATCH';
-                        $warningMessage = "Ukuran SKU ({$expectedSize}) berbeda dengan data gudang ({$actualSize}): {$exactItem->item_name}";
-                        $isSafeToZero = false;
+            if ($exactItem) {
+                // A. Validasi apakah artikel SKU sesuai dengan data Master Stok Gudang (Salah Kode Barang)
+                $masterNameUpper = strtoupper((string) $exactItem->item_name);
+                $masterArticle = $this->extractArticleKeyword('', $masterNameUpper);
+
+                if ($articleKeyword && ! str_contains($masterNameUpper, $articleKeyword) && ($masterArticle && $masterArticle !== $articleKeyword)) {
+                    $hasTypo = true;
+                    $matchType = 'CODE_MISMATCH';
+                    $warningMessage = "Salah Kode Barang: Kode {$internalCode} di gudang adalah '{$exactItem->item_name}', bukan artikel '{$articleKeyword}'";
+                    $isSafeToZero = false;
+                }
+
+                // B. Validasi apakah ukuran SKU sesuai dengan ukuran di Master Stok Gudang (Salah Ukuran)
+                if (! $hasTypo && $expectedSize) {
+                    if (preg_match('/(2[0-9]|3[0-9]|4[0-9]|5[0-9])$/', (string) $exactItem->item_name, $im)) {
+                        $actualSize = $im[1];
+                        if ($actualSize !== $expectedSize) {
+                            $hasTypo = true;
+                            $matchType = 'SIZE_MISMATCH';
+                            $warningMessage = "Ukuran SKU ({$expectedSize}) berbeda dengan data gudang ({$actualSize}): {$exactItem->item_name}";
+                            $isSafeToZero = false;
+                        }
                     }
                 }
             } elseif (! $exactItem) {
@@ -997,7 +1021,7 @@ class ShopeeProductController extends Controller
         }
 
         // Tentukan status audit
-        if ($matchType === 'CODE_NOT_FOUND' || $matchType === 'NO_CODE' || $matchType === 'SIZE_MISMATCH') {
+        if ($matchType === 'CODE_NOT_FOUND' || $matchType === 'NO_CODE' || $matchType === 'SIZE_MISMATCH' || $matchType === 'CODE_MISMATCH') {
             $status = 'UNMATCHED';
         } elseif ($warehouseStock <= 0 && $shopeeStock > 0) {
             $status = 'CRITICAL';
@@ -1118,14 +1142,28 @@ class ShopeeProductController extends Controller
         $hasTypo = false;
 
         if ($matchType !== 'MANUAL_MAPPED') {
-            if ($exactItem && $expectedSize) {
-                if (preg_match('/(2[0-9]|3[0-9]|4[0-9]|5[0-9])$/', (string) $exactItem->item_name, $im)) {
-                    $actualSize = $im[1];
-                    if ($actualSize !== $expectedSize) {
-                        $hasTypo = true;
-                        $matchType = 'SIZE_MISMATCH';
-                        $warningMessage = "Ukuran SKU ({$expectedSize}) berbeda dengan data gudang ({$actualSize}): {$exactItem->item_name}";
-                        $isSafeToZero = false;
+            if ($exactItem) {
+                // A. Validasi apakah artikel SKU sesuai dengan data Master Stok Gudang (Salah Kode Barang)
+                $masterNameUpper = strtoupper((string) $exactItem->item_name);
+                $masterArticle = $this->extractArticleKeyword('', $masterNameUpper);
+
+                if ($articleKeyword && ! str_contains($masterNameUpper, $articleKeyword) && ($masterArticle && $masterArticle !== $articleKeyword)) {
+                    $hasTypo = true;
+                    $matchType = 'CODE_MISMATCH';
+                    $warningMessage = "Salah Kode Barang: Kode {$internalCode} di gudang adalah '{$exactItem->item_name}', bukan artikel '{$articleKeyword}'";
+                    $isSafeToZero = false;
+                }
+
+                // B. Validasi apakah ukuran SKU sesuai dengan ukuran di Master Stok Gudang (Salah Ukuran)
+                if (! $hasTypo && $expectedSize) {
+                    if (preg_match('/(2[0-9]|3[0-9]|4[0-9]|5[0-9])$/', (string) $exactItem->item_name, $im)) {
+                        $actualSize = $im[1];
+                        if ($actualSize !== $expectedSize) {
+                            $hasTypo = true;
+                            $matchType = 'SIZE_MISMATCH';
+                            $warningMessage = "Ukuran SKU ({$expectedSize}) berbeda dengan data gudang ({$actualSize}): {$exactItem->item_name}";
+                            $isSafeToZero = false;
+                        }
                     }
                 }
             } elseif (! $exactItem) {
@@ -1199,7 +1237,7 @@ class ShopeeProductController extends Controller
         }
 
         // Tentukan status audit
-        if ($matchType === 'CODE_NOT_FOUND' || $matchType === 'NO_CODE' || $matchType === 'SIZE_MISMATCH') {
+        if ($matchType === 'CODE_NOT_FOUND' || $matchType === 'NO_CODE' || $matchType === 'SIZE_MISMATCH' || $matchType === 'CODE_MISMATCH') {
             $status = 'UNMATCHED';
         } elseif ($warehouseStock <= 0 && $shopeeStock > 0) {
             $status = 'CRITICAL';

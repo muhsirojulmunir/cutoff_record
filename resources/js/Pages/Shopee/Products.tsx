@@ -25,7 +25,7 @@ interface ProductItem {
   stock_g?: number;
   stock_a?: number;
   matched_code?: string | null;
-  match_type?: 'EXACT_CODE' | 'SMART_MATCH' | 'SIZE_MISMATCH' | 'CODE_NOT_FOUND' | 'NO_CODE' | 'MANUAL_MAPPED';
+  match_type?: 'EXACT_CODE' | 'SMART_MATCH' | 'SIZE_MISMATCH' | 'CODE_MISMATCH' | 'CODE_NOT_FOUND' | 'NO_CODE' | 'MANUAL_MAPPED';
   is_critical_oos?: boolean;
   is_campaign_locked?: boolean;
   is_campaign_unlocked?: boolean;
@@ -64,6 +64,8 @@ interface SummaryData {
   campaign_locked_count?: number;
   campaign_unlocked_count?: number;
   gudang_ready_count?: number;
+  wrong_code_count?: number;
+  wrong_code_ids?: number[];
   critical_oos_ids?: number[];
   campaign_unlocked_ids?: number[];
   last_synced_at: string | null;
@@ -142,7 +144,7 @@ interface AuditItem {
   status: 'CRITICAL' | 'LOW_STOCK' | 'DISCREPANCY' | 'MATCHED' | 'UNMATCHED';
   is_shopee_found: boolean;
   manual_item_code?: string | null;
-  match_type?: 'EXACT_CODE' | 'SMART_MATCH' | 'SIZE_MISMATCH' | 'CODE_NOT_FOUND' | 'NO_CODE' | 'MANUAL_MAPPED';
+  match_type?: 'EXACT_CODE' | 'SMART_MATCH' | 'SIZE_MISMATCH' | 'CODE_MISMATCH' | 'CODE_NOT_FOUND' | 'NO_CODE' | 'MANUAL_MAPPED';
   matched_code?: string | null;
   suggested_code?: string | null;
   suggested_name?: string | null;
@@ -220,6 +222,23 @@ function getDaysCount(startStr?: string, endStr?: string): number {
   const e = new Date(endStr);
   const diffTime = Math.abs(e.getTime() - s.getTime());
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+}
+
+function extractCleanArticleKeyword(sku?: string | null, itemName?: string): string {
+  if (sku) {
+    const clean = sku.replace(/_\d+$/, '');
+    const parts = clean.split(/[-_ ]+/);
+    const ignore = ['RECORD', 'SPT', 'SEPATU', 'REC', 'SHOES', 'ANAK', 'PRIA', 'WANITA', 'HP', 'HH', 'BO', 'BA', 'PH', 'MO', 'H', 'P'];
+    const found = parts.find(p => p.length >= 3 && !ignore.includes(p.toUpperCase()) && !/^(2[0-9]|3[0-9]|4[0-9]|5[0-9])$/.test(p));
+    if (found) return found;
+  }
+  if (itemName) {
+    const parts = itemName.split(/[\s\-]+/);
+    const ignore = ['RECORD', 'SPT', 'SEPATU', 'REC', 'SHOES', 'ANAK', 'PRIA', 'WANITA', 'SNEAKER', 'SEKOLAH'];
+    const found = parts.find(p => p.length >= 3 && !ignore.includes(p.toUpperCase()) && !/^(2[0-9]|3[0-9]|4[0-9]|5[0-9])$/.test(p));
+    if (found) return found;
+  }
+  return '';
 }
 
 export default function ShopeeProductsIndex({
@@ -552,6 +571,7 @@ export default function ShopeeProductsIndex({
         if (auditSource === 'MASTER') {
           runMasterAudit(masterWarehouseFilter);
         }
+        router.reload({ only: ['products', 'summary'] });
       } else {
         setToastNotice({ message: resJson.message || 'Gagal menyimpan mapping.', type: 'error' });
       }
@@ -1547,6 +1567,37 @@ export default function ShopeeProductsIndex({
           </div>
         </div>
 
+        {/* Banner Peringatan Terdeteksi Salah Kode Barang / Ukuran */}
+        {Boolean(summary?.wrong_code_count && summary.wrong_code_count > 0) && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-900 shadow-2xs">
+            <div className="flex items-center gap-3">
+              <span className="p-2 rounded-xl bg-rose-100 text-rose-600 shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                  <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                </svg>
+              </span>
+              <div>
+                <p className="text-xs font-bold text-rose-900 flex items-center gap-1.5">
+                  <span>Terdeteksi {summary.wrong_code_count} SKU dengan Salah Kode Barang / Ukuran!</span>
+                </p>
+                <p className="text-[11px] text-rose-700 mt-0.5">
+                  Kode internal gudang di Shopee tidak cocok dengan data artikel fisik gudang. Klik tombol di kanan untuk meninjau dan memperbaiki.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setStockStatus('wrong_code');
+                handleFilter(search, 'wrong_code', sort, startDate, endDate);
+              }}
+              className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-colors cursor-pointer shrink-0 shadow-2xs text-center"
+            >
+              Tampilkan {summary.wrong_code_count} Salah Kode
+            </button>
+          </div>
+        )}
+
         {/* Filter & Search Bar - High-End Minimalist */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
           <form onSubmit={handleSearchSubmit} className="flex items-center gap-2 w-full md:w-96">
@@ -1600,6 +1651,9 @@ export default function ShopeeProductsIndex({
               <option value="no_sales">Belum Pernah Terjual (0 Terjual)</option>
               <option value="in_stock">Ada Stok (&gt; 0)</option>
               <option value="out_of_stock">Stok Habis (0)</option>
+              {Boolean(summary?.wrong_code_count && summary.wrong_code_count > 0) && (
+                <option value="wrong_code">⚠️ Salah / Beda Kode Gudang ({summary.wrong_code_count})</option>
+              )}
               {Boolean(summary?.critical_oos_count && summary.critical_oos_count > 0) && (
                 <option value="oos_critical">⚠️ Kritis: Habis di Gudang ({summary.critical_oos_count})</option>
               )}
@@ -1692,8 +1746,22 @@ export default function ShopeeProductsIndex({
                                 {p.sku}
                               </span>
                               {p.matched_code && (
-                                <div className="text-[10px] text-slate-400 font-mono mt-0.5 truncate max-w-[145px]" title={`Kode Gudang: ${p.matched_code}`}>
+                                <div
+                                  className={`text-[10px] font-mono mt-0.5 truncate max-w-[145px] ${
+                                    p.match_type === 'CODE_MISMATCH'
+                                      ? 'text-rose-600 font-bold'
+                                      : p.match_type === 'SIZE_MISMATCH'
+                                      ? 'text-amber-600 font-semibold'
+                                      : p.match_type === 'SMART_MATCH'
+                                      ? 'text-sky-600 font-semibold'
+                                      : 'text-slate-400'
+                                  }`}
+                                  title={`Kode Gudang: ${p.matched_code}${p.warning_message ? ` — ${p.warning_message}` : ''}`}
+                                >
                                   Gdg: {p.matched_code}
+                                  {p.match_type === 'CODE_MISMATCH' && ' ⚠️ Beda'}
+                                  {p.match_type === 'SIZE_MISMATCH' && ' ⚠️ Beda Uk'}
+                                  {p.match_type === 'SMART_MATCH' && p.suggested_code && ` 👉 ${p.suggested_code}`}
                                 </div>
                               )}
                             </div>
@@ -1802,14 +1870,94 @@ export default function ShopeeProductsIndex({
                               </svg>
                               Promo
                             </span>
+                          ) : p.match_type === 'CODE_MISMATCH' ? (
+                            <div className="flex flex-col items-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMappingModalItem(p as any);
+                                  handleSearchMaster(extractCleanArticleKeyword(p.sku, p.item_name));
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 transition-colors cursor-pointer shadow-2xs"
+                                title={p.warning_message || 'Salah kode barang gudang. Klik untuk petakan manual.'}
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-rose-600 shrink-0">
+                                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                                </svg>
+                                <span>Salah Kode</span>
+                              </button>
+                              <span className="text-[9px] text-rose-600 font-medium mt-0.5 truncate max-w-[110px]" title={p.warning_message || ''}>
+                                Artikel Beda
+                              </span>
+                            </div>
                           ) : p.match_type === 'SIZE_MISMATCH' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200" title={p.warning_message || undefined}>
-                              Cek Ukuran
-                            </span>
-                          ) : p.match_type === 'CODE_NOT_FOUND' || p.match_type === 'NO_CODE' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                            <div className="flex flex-col items-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMappingModalItem(p as any);
+                                  handleSearchMaster(extractCleanArticleKeyword(p.sku, p.item_name));
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 transition-colors cursor-pointer shadow-2xs"
+                                title={p.warning_message || 'Ukuran SKU berbeda dengan master stok gudang. Klik untuk petakan.'}
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-amber-600 shrink-0">
+                                  <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                                </svg>
+                                <span>Beda Ukuran</span>
+                              </button>
+                              <span className="text-[9px] text-amber-700 font-medium mt-0.5 truncate max-w-[110px]" title={p.warning_message || ''}>
+                                Cek Ukuran
+                              </span>
+                            </div>
+                          ) : p.match_type === 'SMART_MATCH' ? (
+                            <div className="flex flex-col items-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMappingModalItem(p as any);
+                                  if (p.suggested_code) {
+                                    handleSearchMaster(p.suggested_code);
+                                  } else {
+                                    handleSearchMaster(extractCleanArticleKeyword(p.sku, p.item_name));
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-300 transition-colors cursor-pointer shadow-2xs"
+                                title={p.warning_message || 'Ada saran kode dari sistem. Klik untuk hubungkan.'}
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-sky-600 shrink-0">
+                                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+                                </svg>
+                                <span>Saran Kode</span>
+                              </button>
+                              <span className="text-[9px] text-sky-700 font-medium mt-0.5 truncate max-w-[110px]" title={p.warning_message || ''}>
+                                {p.suggested_code ? `👉 ${p.suggested_code}` : 'Ada Saran'}
+                              </span>
+                            </div>
+                          ) : p.match_type === 'CODE_NOT_FOUND' ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMappingModalItem(p as any);
+                                handleSearchMaster(extractCleanArticleKeyword(p.sku, p.item_name));
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-colors cursor-pointer"
+                              title={p.warning_message || 'Kode di SKU tidak terdaftar di gudang. Klik untuk cari kode yang benar.'}
+                            >
+                              Kode Tdk Ada
+                            </button>
+                          ) : p.match_type === 'NO_CODE' ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMappingModalItem(p as any);
+                                handleSearchMaster(extractCleanArticleKeyword(p.sku, p.item_name));
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 transition-colors cursor-pointer"
+                              title="SKU tidak mencantumkan kode internal gudang. Klik untuk hubungkan manual."
+                            >
                               Belum Konek
-                            </span>
+                            </button>
                           ) : (
                             <span className="text-[11px] text-slate-500 font-medium">Sesuai</span>
                           )}
