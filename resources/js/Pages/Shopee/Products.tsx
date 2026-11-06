@@ -14,6 +14,7 @@ interface ProductItem {
   sku: string | null;
   stock: number;
   reserved_stock: number;
+  sales?: number;
   price: string | number;
   item_status: string;
   has_model: boolean;
@@ -55,6 +56,8 @@ interface SummaryData {
   total_stock: number;
   in_stock_skus: number;
   out_of_stock_skus: number;
+  has_sales_count?: number;
+  total_sales?: number;
   critical_oos_count?: number;
   campaign_locked_count?: number;
   campaign_unlocked_count?: number;
@@ -1401,7 +1404,7 @@ export default function ShopeeProductsIndex({
           </form>
 
           <div className="flex items-center gap-3 w-full md:w-auto flex-wrap">
-            {/* Filter Status Stok */}
+            {/* Filter Status Stok & Penjualan */}
             <select
               value={stockStatus}
               onChange={(e) => {
@@ -1412,6 +1415,10 @@ export default function ShopeeProductsIndex({
               className="px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 text-xs focus:outline-none focus:border-slate-800 focus:bg-white transition-all cursor-pointer font-medium"
             >
               <option value="all">Semua Status Stok</option>
+              <option value="has_sales">
+                🔥 Pernah Terjual {Boolean(summary?.has_sales_count && summary.has_sales_count > 0) ? `(${summary.has_sales_count})` : ''}
+              </option>
+              <option value="no_sales">Belum Pernah Terjual (0 Terjual)</option>
               <option value="in_stock">Ada Stok (&gt; 0)</option>
               <option value="out_of_stock">Stok Habis (0)</option>
               {Boolean(summary?.critical_oos_count && summary.critical_oos_count > 0) && (
@@ -1438,6 +1445,8 @@ export default function ShopeeProductsIndex({
               }}
               className="px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs focus:outline-none focus:border-[#0B132B] cursor-pointer font-medium"
             >
+              <option value="sales_desc">🔥 Urutkan: Penjualan Terbanyak</option>
+              <option value="sales_asc">Urutkan: Penjualan Tersedikit</option>
               <option value="stock_desc">Urutkan: Stok Terbanyak</option>
               <option value="stock_asc">Urutkan: Stok Tersedikit</option>
               <option value="sku_asc">Urutkan: SKU (A-Z)</option>
@@ -1470,7 +1479,7 @@ export default function ShopeeProductsIndex({
                     <th className="py-2.5 px-2.5 min-w-[140px] max-w-[200px]">Nama Barang</th>
                     <th className="py-2.5 px-2 w-32">Variasi / Model</th>
                     <th className="py-2.5 px-2 text-center whitespace-nowrap w-24">Stok Gudang</th>
-                    <th className="py-2.5 px-2 text-center whitespace-nowrap w-20">Stok Shopee</th>
+                    <th className="py-2.5 px-2 text-center whitespace-nowrap w-24">Stok Shopee</th>
                     <th className="py-2.5 px-2 text-center whitespace-nowrap w-28">Status Audit</th>
                     <th className="py-2.5 px-2 text-right whitespace-nowrap w-24">Harga</th>
                     <th className="py-2.5 px-2 text-center whitespace-nowrap w-28">Aksi</th>
@@ -1562,8 +1571,8 @@ export default function ShopeeProductsIndex({
                           )}
                         </td>
 
-                        {/* Stok Shopee (Tersedia & Terkunci) */}
-                        <td className="py-2 px-2 text-center whitespace-nowrap w-20">
+                        {/* Stok Shopee (Tersedia & Terjual) */}
+                        <td className="py-2 px-2 text-center whitespace-nowrap w-24">
                           <div className="flex flex-col items-center">
                             <span
                               className={`inline-block px-2.5 py-0.5 rounded-full font-mono font-bold text-xs ${
@@ -1574,9 +1583,17 @@ export default function ShopeeProductsIndex({
                             >
                               {(p.stock ?? 0).toLocaleString('id-ID')}
                             </span>
+                            <span
+                              className={`text-[10px] font-medium mt-0.5 ${
+                                (p.sales ?? 0) > 0 ? 'text-violet-600 font-semibold' : 'text-slate-400'
+                              }`}
+                              title={`Total Penjualan: ${(p.sales ?? 0).toLocaleString('id-ID')} unit terjual`}
+                            >
+                              {(p.sales ?? 0).toLocaleString('id-ID')} terjual
+                            </span>
                             {(p.reserved_stock ?? 0) > 0 && (
-                              <span className="inline-flex items-center gap-0.5 text-[10px] text-slate-500 font-mono mt-0.5" title="Stok terkunci promo/campaign Shopee">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-slate-400">
+                              <span className="inline-flex items-center gap-0.5 text-[9px] text-amber-600 font-mono mt-0.5" title="Stok terkunci promo/campaign Shopee">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-2.5 h-2.5 text-amber-500">
                                   <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
                                 </svg>
                                 <span>{p.reserved_stock.toLocaleString('id-ID')} promo</span>

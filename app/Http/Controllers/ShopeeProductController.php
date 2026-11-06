@@ -158,6 +158,17 @@ class ShopeeProductController extends Controller
         }
 
         // 3. Ringkasan Global Statistik Shopee (1 single query cepat)
+        if ($account && \Illuminate\Support\Facades\Schema::hasTable('cut_off_orders')) {
+            try {
+                \Illuminate\Support\Facades\Cache::remember('shopee_sales_refresh_' . $account->id, 300, function () use ($account) {
+                    $this->syncService->refreshSalesFromCutOffOrders($account->id);
+                    return now();
+                });
+            } catch (\Throwable $e) {
+                // Abaikan jika cache ada kendala
+            }
+        }
+
         $qStats = ShopeeProduct::query();
         if ($account) {
             $qStats->where('shopee_account_id', $account->id);
@@ -167,6 +178,8 @@ class ShopeeProductController extends Controller
             COALESCE(SUM(stock), 0) as total_stock,
             COALESCE(SUM(CASE WHEN stock > 0 THEN 1 ELSE 0 END), 0) as in_stock_skus,
             COALESCE(SUM(CASE WHEN stock <= 0 THEN 1 ELSE 0 END), 0) as out_of_stock_skus,
+            COALESCE(SUM(CASE WHEN sales > 0 THEN 1 ELSE 0 END), 0) as has_sales_skus,
+            COALESCE(SUM(sales), 0) as total_sales,
             MAX(last_synced_at) as last_synced_at
         ')->first();
 
@@ -174,6 +187,8 @@ class ShopeeProductController extends Controller
         $totalStock     = (int) ($summaryStats->total_stock ?? 0);
         $inStockSkus    = (int) ($summaryStats->in_stock_skus ?? 0);
         $outOfStockSkus = (int) ($summaryStats->out_of_stock_skus ?? 0);
+        $hasSalesSkus   = (int) ($summaryStats->has_sales_skus ?? 0);
+        $totalSales     = (int) ($summaryStats->total_sales ?? 0);
         $lastSyncedAt   = $summaryStats->last_synced_at ?? null;
 
         // 4. Query Paginasi 50 Item
@@ -192,11 +207,17 @@ class ShopeeProductController extends Controller
             });
         }
 
-        // Apply Stock Filter
+        // Apply Stock & Sales Filter
         if ($stockStatus === 'in_stock') {
             $query->where('stock', '>', 0);
         } elseif ($stockStatus === 'out_of_stock') {
             $query->where('stock', '<=', 0);
+        } elseif ($stockStatus === 'has_sales') {
+            $query->where('sales', '>', 0);
+        } elseif ($stockStatus === 'no_sales') {
+            $query->where(function ($q) {
+                $q->whereNull('sales')->orWhere('sales', '<=', 0);
+            });
         } elseif ($stockStatus === 'oos_critical') {
             $query->whereIn('id', ! empty($criticalOosIds) ? $criticalOosIds : [-1]);
         } elseif ($stockStatus === 'campaign_unlocked') {
@@ -209,6 +230,12 @@ class ShopeeProductController extends Controller
 
         // Apply Sorting
         switch ($sort) {
+            case 'sales_desc':
+                $query->orderBy('sales', 'desc')->orderBy('stock', 'desc');
+                break;
+            case 'sales_asc':
+                $query->orderBy('sales', 'asc')->orderBy('stock', 'asc');
+                break;
             case 'stock_asc':
                 $query->orderBy('stock', 'asc')->orderBy('sku', 'asc');
                 break;
@@ -260,6 +287,8 @@ class ShopeeProductController extends Controller
                 'total_stock'             => $totalStock,
                 'in_stock_skus'           => $inStockSkus,
                 'out_of_stock_skus'       => $outOfStockSkus,
+                'has_sales_count'         => $hasSalesSkus,
+                'total_sales'             => $totalSales,
                 'critical_oos_count'      => count($criticalOosIds),
                 'campaign_locked_count'   => count($campaignLockedIds),
                 'campaign_unlocked_count' => count($campaignUnlockedIds),
