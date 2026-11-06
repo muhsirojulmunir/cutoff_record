@@ -171,6 +171,8 @@ class ShopeeProductController extends Controller
         $periodSalesCount = 0;
 
         if ($hasCutOffTable) {
+            $invalidSkus = ['0', '', '-', '--', '---', '@', '.', 'null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku'];
+
             $subQuery = DB::table('cut_off_orders')
                 ->select('sku_utama', DB::raw('CAST(SUM(qty) AS UNSIGNED) as period_sales'))
                 ->where(function ($q) {
@@ -186,7 +188,8 @@ class ShopeeProductController extends Controller
                       });
                 })
                 ->whereNotNull('sku_utama')
-                ->where('sku_utama', '!=', '');
+                ->whereNotIn('sku_utama', $invalidSkus)
+                ->whereRaw("TRIM(sku_utama) != '' AND TRIM(sku_utama) != '0' AND TRIM(sku_utama) != '-' AND TRIM(sku_utama) != '--' AND TRIM(sku_utama) != '@' AND LOWER(TRIM(sku_utama)) NOT IN ('null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku')");
 
             if (! empty($dateFrom)) {
                 $subQuery->where('order_date', '>=', $dateFrom . ' 00:00:00');
@@ -213,7 +216,8 @@ class ShopeeProductController extends Controller
                           });
                     })
                     ->whereNotNull('sku_utama')
-                    ->where('sku_utama', '!=', '');
+                    ->whereNotIn('sku_utama', $invalidSkus)
+                    ->whereRaw("TRIM(sku_utama) != '' AND TRIM(sku_utama) != '0' AND TRIM(sku_utama) != '-' AND TRIM(sku_utama) != '--' AND TRIM(sku_utama) != '@' AND LOWER(TRIM(sku_utama)) NOT IN ('null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku')");
 
                 if (! empty($dateFrom)) {
                     $summarySales->where('order_date', '>=', $dateFrom . ' 00:00:00');
@@ -260,7 +264,8 @@ class ShopeeProductController extends Controller
 
         if ($periodSalesSub) {
             $query->leftJoinSub($periodSalesSub, 'period_sales_sub', function ($join) {
-                $join->on('shopee_products.sku', '=', 'period_sales_sub.sku_utama');
+                $join->on('shopee_products.sku', '=', 'period_sales_sub.sku_utama')
+                     ->whereRaw("shopee_products.sku IS NOT NULL AND TRIM(shopee_products.sku) != '' AND TRIM(shopee_products.sku) != '0' AND TRIM(shopee_products.sku) != '-' AND TRIM(shopee_products.sku) != '--' AND TRIM(shopee_products.sku) != '@' AND LOWER(TRIM(shopee_products.sku)) NOT IN ('null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku')");
             });
             $query->select('shopee_products.*', DB::raw('COALESCE(period_sales_sub.period_sales, 0) as period_sales'));
         } else {
@@ -333,7 +338,17 @@ class ShopeeProductController extends Controller
 
         // 5. Lampirkan hasil komparasi stok gudang dari array lookup instan O(1) & sales periode
         $products->getCollection()->transform(function ($p) use ($stockInfoById) {
-            $p->sales = (int) ($p->period_sales ?? $p->sales ?? 0);
+            $skuTrimmed = trim((string) ($p->sku ?? ''));
+            $isInvalidSku = empty($skuTrimmed)
+                || in_array(strtolower($skuTrimmed), ['0', '-', '--', '---', '@', '.', 'null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku'], true);
+
+            if ($isInvalidSku) {
+                $p->sales = 0;
+                $p->period_sales = 0;
+            } else {
+                $p->sales = (int) ($p->period_sales ?? $p->sales ?? 0);
+            }
+
             if (! empty($stockInfoById) && isset($stockInfoById[$p->id])) {
                 $info = $stockInfoById[$p->id];
                 $p->warehouse_stock      = $info['warehouse_stock'];
@@ -368,6 +383,8 @@ class ShopeeProductController extends Controller
                 'out_of_stock_skus'       => $outOfStockSkus,
                 'has_sales_count'         => $hasSalesSkus,
                 'total_sales'             => $totalSales,
+                'total_period_sales'      => $totalPeriodSales,
+                'period_sales_count'      => $periodSalesCount,
                 'critical_oos_count'      => count($criticalOosIds),
                 'campaign_locked_count'   => count($campaignLockedIds),
                 'campaign_unlocked_count' => count($campaignUnlockedIds),
