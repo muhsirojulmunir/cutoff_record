@@ -1686,7 +1686,7 @@ export default function ShopeeProductsIndex({
 
                         {/* SKU */}
                         <td className="py-2 px-2.5 w-36 whitespace-nowrap">
-                          {p.sku ? (
+                          {p.sku && !['0', '-', '--', '---', '@', '.', 'null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku'].includes(p.sku.trim().toLowerCase()) ? (
                             <div>
                               <span className="font-mono font-bold text-slate-900 select-all tracking-tight block truncate max-w-[145px]" title={p.sku}>
                                 {p.sku}

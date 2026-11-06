@@ -24,6 +24,25 @@ class ShopeeSyncService
     }
 
     /**
+     * Normalisasi SKU agar tidak menyimpan placeholder seperti '0', '-', '@', 'null', dll.
+     */
+    public static function normalizeSku(?string $sku): ?string
+    {
+        if ($sku === null) {
+            return null;
+        }
+        $trimmed = trim($sku);
+        if ($trimmed === '' || $trimmed === '0' || $trimmed === '-' || $trimmed === '--' || $trimmed === '---' || $trimmed === '@' || $trimmed === '.') {
+            return null;
+        }
+        $lower = strtolower($trimmed);
+        if (in_array($lower, ['null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku', 'tanpa_sku'], true)) {
+            return null;
+        }
+        return $trimmed;
+    }
+
+    /**
      * Generate Shopee OAuth authorization URL.
      */
     public function getAuthorizationUrl(ShopeeAccount $account, string $redirectUrl): string
@@ -484,7 +503,7 @@ class ShopeeSyncService
                     'buyer_username'         => $order['buyer_username'] ?? $order['buyer_user_id'] ?? null,
                     'shipping_courier'       => $shippingCourier,
                     'payment_method'         => $paymentMethod,
-                    'sku_utama'              => $firstItem['model_sku'] ?? $firstItem['item_sku'] ?? null,
+                    'sku_utama'              => self::normalizeSku($firstItem['model_sku'] ?? $firstItem['item_sku'] ?? null),
                     'product_name'           => $firstItem['item_name'] ?? 'Produk Shopee',
                     'qty'                    => $totalQty,
                     'package_count'          => count($items) ?: 1,
@@ -511,7 +530,7 @@ class ShopeeSyncService
                         'est_net_income'         => $calculatedNet,
                         'marketplace_net_payout' => $calculatedNet,
                         'keterangan_solutif'     => $keteranganSolutif ?: $existing->keterangan_solutif,
-                        'sku_utama'              => $payload['sku_utama'] ?: $existing->sku_utama,
+                        'sku_utama'              => $payload['sku_utama'] ?: self::normalizeSku($existing->sku_utama),
                         'product_name'           => $payload['product_name'] ?: $existing->product_name,
                     ];
 
@@ -1045,6 +1064,27 @@ class ShopeeSyncService
                         $table->integer('sales')->default(0)->after('price')->index();
                     });
                 }
+
+                // Bersihkan SKU placeholder ('0', '-', '@', dll) dan reset sales-nya agar tidak salah agregasi penjualan
+                try {
+                    \Illuminate\Support\Facades\DB::statement("
+                        UPDATE shopee_products 
+                        SET sku = NULL, sales = 0 
+                        WHERE sku IS NOT NULL 
+                          AND (TRIM(sku) = '' OR TRIM(sku) = '0' OR TRIM(sku) = '-' OR TRIM(sku) = '--' OR TRIM(sku) = '---' OR TRIM(sku) = '@' OR TRIM(sku) = '.' OR LOWER(TRIM(sku)) IN ('null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku'))
+                    ");
+                } catch (\Throwable $e) {}
+            }
+
+            if (Schema::hasTable('cut_off_orders')) {
+                try {
+                    \Illuminate\Support\Facades\DB::statement("
+                        UPDATE cut_off_orders 
+                        SET sku_utama = NULL 
+                        WHERE sku_utama IS NOT NULL 
+                          AND (TRIM(sku_utama) = '' OR TRIM(sku_utama) = '0' OR TRIM(sku_utama) = '-' OR TRIM(sku_utama) = '--' OR TRIM(sku_utama) = '---' OR TRIM(sku_utama) = '@' OR TRIM(sku_utama) = '.' OR LOWER(TRIM(sku_utama)) IN ('null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku'))
+                    ");
+                } catch (\Throwable $e) {}
             }
         } catch (\Throwable $e) {
             Log::warning('ShopeeSyncService ensureProductSchema notice: ' . $e->getMessage());
@@ -1422,7 +1462,25 @@ class ShopeeSyncService
             $this->ensureProductSchema();
 
             $accountClause = $shopeeAccountId ? "AND sp.shopee_account_id = " . (int) $shopeeAccountId : "";
+            $accountResetClause = $shopeeAccountId ? "AND shopee_account_id = " . (int) $shopeeAccountId : "";
 
+            // 1. Reset penjualan untuk produk yang tidak memiliki SKU valid
+            DB::statement("
+                UPDATE shopee_products 
+                SET sales = 0 
+                WHERE (sku IS NULL 
+                   OR TRIM(sku) = '' 
+                   OR TRIM(sku) = '0' 
+                   OR TRIM(sku) = '-' 
+                   OR TRIM(sku) = '--' 
+                   OR TRIM(sku) = '---' 
+                   OR TRIM(sku) = '@' 
+                   OR TRIM(sku) = '.' 
+                   OR LOWER(TRIM(sku)) IN ('null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku'))
+                   {$accountResetClause}
+            ");
+
+            // 2. Hubungkan hanya SKU valid & tidak ambigu
             $affected = DB::update("
                 UPDATE shopee_products sp
                 JOIN (
@@ -1430,11 +1488,28 @@ class ShopeeSyncService
                     FROM cut_off_orders
                     WHERE (channel = 'SH' OR channel LIKE 'SH%')
                       AND (order_status IS NULL OR (order_status NOT LIKE '%Batal%' AND order_status NOT LIKE '%RJ%' AND order_status NOT LIKE '%Retur%'))
-                      AND sku_utama IS NOT NULL AND sku_utama != ''
+                      AND sku_utama IS NOT NULL 
+                      AND TRIM(sku_utama) != '' 
+                      AND TRIM(sku_utama) != '0' 
+                      AND TRIM(sku_utama) != '-' 
+                      AND TRIM(sku_utama) != '--' 
+                      AND TRIM(sku_utama) != '---' 
+                      AND TRIM(sku_utama) != '@' 
+                      AND TRIM(sku_utama) != '.' 
+                      AND LOWER(TRIM(sku_utama)) NOT IN ('null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku')
                     GROUP BY sku_utama
                 ) co ON sp.sku = co.sku_utama
                 SET sp.sales = co.total_sold
-                WHERE 1=1 {$accountClause}
+                WHERE sp.sku IS NOT NULL 
+                  AND TRIM(sp.sku) != '' 
+                  AND TRIM(sp.sku) != '0' 
+                  AND TRIM(sp.sku) != '-' 
+                  AND TRIM(sp.sku) != '--' 
+                  AND TRIM(sp.sku) != '---' 
+                  AND TRIM(sp.sku) != '@' 
+                  AND TRIM(sp.sku) != '.' 
+                  AND LOWER(TRIM(sp.sku)) NOT IN ('null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku')
+                  {$accountClause}
             ");
 
             return (int) $affected;
@@ -1582,7 +1657,7 @@ class ShopeeSyncService
                                 [
                                     'item_name'         => $itemName,
                                     'model_name'        => $modelName,
-                                    'sku'               => $modelSku ?: null,
+                                    'sku'               => self::normalizeSku($modelSku),
                                     'stock'             => $stock,
                                     'reserved_stock'    => $reservedStock,
                                     'price'             => $price,
@@ -1627,7 +1702,7 @@ class ShopeeSyncService
                         [
                             'item_name'         => $itemName,
                             'model_name'        => null,
-                            'sku'               => $itemSku ?: null,
+                            'sku'               => self::normalizeSku($itemSku),
                             'stock'             => $stock,
                             'reserved_stock'    => $reservedStock,
                             'price'             => $price,
