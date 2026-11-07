@@ -525,6 +525,28 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
     return () => clearInterval(timer);
   }, [isLiveActive, editingOrder, isCreateModalOpen, isImportModalOpen, isImportJlModalOpen]);
 
+  function parseIndonesianNumber(val: any): number {
+    if (val === '' || val === null || val === undefined) return 0;
+    if (typeof val === 'number') return isNaN(val) ? 0 : val;
+    const str = String(val).trim();
+    if (!str || str === '-') return 0;
+    if (str.includes(',') && str.includes('.')) {
+      if (str.indexOf('.') < str.indexOf(',')) {
+        return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
+      } else {
+        return parseFloat(str.replace(/,/g, '')) || 0;
+      }
+    } else if (str.includes('.')) {
+      const parts = str.split('.');
+      if (parts.length > 1 && parts[parts.length - 1].length === 3) {
+        return parseFloat(str.replace(/\./g, '')) || 0;
+      }
+    } else if (str.includes(',')) {
+      return parseFloat(str.replace(',', '.')) || 0;
+    }
+    return parseFloat(str.replace(/[^0-9.-]/g, '')) || 0;
+  }
+
   function handleExcelFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -545,46 +567,147 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
           return;
         }
 
-        const isFirstHeader = typeof rows[0][0] === 'string' && (
-          rows[0][0].toLowerCase().includes('no') ||
-          (rows[0][3] && String(rows[0][3]).toLowerCase().includes('pesanan'))
+        const rawHeaders = (rows[0] || []).map((h: any) => String(h || '').trim().toLowerCase());
+        const isShopeeExport = rawHeaders.includes('no. pesanan') && (
+          rawHeaders.includes('subtotal pesanan') ||
+          rawHeaders.includes('voucher ditanggung penjual') ||
+          rawHeaders.includes('nomor referensi sku') ||
+          rawHeaders.includes('opsi pengiriman')
         );
-        const startIdx = isFirstHeader ? 1 : 0;
 
         const parsed: any[] = [];
-        for (let i = startIdx; i < rows.length; i++) {
-          const row = rows[i];
-          if (!row || !row[3]) continue;
 
-          let orderDate = '';
-          if (typeof row[1] === 'number') {
-            const d = new Date(Math.round((row[1] - 25569) * 86400 * 1000));
-            if (!isNaN(d.getTime())) orderDate = d.toISOString().split('T')[0];
-          } else if (typeof row[1] === 'string') {
-            orderDate = row[1].trim();
+        if (isShopeeExport) {
+          // Format Ekspor Asli Shopee Seller Center (Order.all...xlsx / Order.toship...xlsx)
+          const noPesananIdx = rawHeaders.indexOf('no. pesanan');
+          const statusPesananIdx = rawHeaders.indexOf('status pesanan');
+          const opsiPengirimanIdx = rawHeaders.indexOf('opsi pengiriman');
+          const waktuDibuatIdx = rawHeaders.indexOf('waktu pesanan dibuat');
+          const namaProdukIdx = rawHeaders.indexOf('nama produk');
+          const refSkuIdx = rawHeaders.indexOf('nomor referensi sku');
+          const skuIndukIdx = rawHeaders.indexOf('sku induk');
+          const jumlahIdx = rawHeaders.indexOf('jumlah');
+          const subtotalIdx = rawHeaders.indexOf('subtotal pesanan');
+          const voucherPenjualIdx = rawHeaders.indexOf('voucher ditanggung penjual');
+          const usernameIdx = rawHeaders.indexOf('username (pembeli)');
+          const cancelReasonIdx = rawHeaders.indexOf('alasan pembatalan');
+
+          const orderMap = new Map<string, any>();
+          for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || noPesananIdx === -1 || !row[noPesananIdx]) continue;
+            const sn = String(row[noPesananIdx]).trim();
+            const subtotal = subtotalIdx !== -1 ? parseIndonesianNumber(row[subtotalIdx]) : 0;
+            const voucher = voucherPenjualIdx !== -1 ? parseIndonesianNumber(row[voucherPenjualIdx]) : 0;
+            const qty = jumlahIdx !== -1 ? (parseInt(String(row[jumlahIdx]), 10) || 1) : 1;
+
+            if (!orderMap.has(sn)) {
+              let orderDate = '';
+              const rawDate = waktuDibuatIdx !== -1 ? row[waktuDibuatIdx] : '';
+              if (typeof rawDate === 'number') {
+                const d = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
+                if (!isNaN(d.getTime())) orderDate = d.toISOString().split('T')[0];
+              } else if (typeof rawDate === 'string' && rawDate.trim()) {
+                orderDate = rawDate.trim().split(' ')[0];
+              }
+
+              orderMap.set(sn, {
+                order_date: orderDate || new Date().toISOString().split('T')[0],
+                channel: 'SH',
+                order_number: sn,
+                jl_number: null,
+                buyer_username: usernameIdx !== -1 && row[usernameIdx] ? String(row[usernameIdx]).trim() : null,
+                shipping_courier: opsiPengirimanIdx !== -1 && row[opsiPengirimanIdx] ? String(row[opsiPengirimanIdx]).trim() : null,
+                sku_utama: (refSkuIdx !== -1 && row[refSkuIdx] ? String(row[refSkuIdx]).trim() : '') || (skuIndukIdx !== -1 && row[skuIndukIdx] ? String(row[skuIndukIdx]).trim() : null),
+                sku_pengganti: null,
+                product_name: namaProdukIdx !== -1 && row[namaProdukIdx] ? String(row[namaProdukIdx]).trim() : null,
+                qty: qty,
+                recheck_qty: null,
+                package_count: '1',
+                info_gudang: null,
+                order_status: statusPesananIdx !== -1 && row[statusPesananIdx] ? String(row[statusPesananIdx]).trim() : 'Perlu Dikirim',
+                keterangan_solutif: cancelReasonIdx !== -1 && row[cancelReasonIdx] ? String(row[cancelReasonIdx]).trim() : null,
+                subtotal: subtotal,
+                voucher: voucher,
+                sheet_dpp: null,
+                dpp_number: null,
+              });
+            } else {
+              const existing = orderMap.get(sn);
+              existing.qty += qty;
+              existing.subtotal += subtotal;
+              existing.voucher = Math.max(existing.voucher, voucher);
+            }
           }
 
-          parsed.push({
-            order_date: orderDate || new Date().toISOString().split('T')[0],
-            channel: String(row[2] || 'MANUAL').trim(),
-            order_number: String(row[3]).trim(),
-            jl_number: row[4] ? String(row[4]).trim() : null,
-            buyer_username: row[5] ? String(row[5]).trim() : null,
-            sku_utama: row[6] ? String(row[6]).trim() : null,
-            sku_pengganti: row[7] ? String(row[7]).trim() : null,
-            product_name: row[8] ? String(row[8]).trim() : null,
-            qty: parseInt(row[9], 10) || 1,
-            recheck_qty: row[10] ? parseInt(row[10], 10) : null,
-            package_count: row[11] ? String(row[11]).trim() : null,
-            info_gudang: row[12] ? String(row[12]).trim() : null,
-            order_status: row[13] ? String(row[13]).trim() : null,
-            keterangan_solutif: row[14] ? String(row[14]).trim() : null,
-            est_net_income: row[15] ? parseFloat(String(row[15]).replace(/[^0-9.-]/g, '')) : null,
-            marketplace_net_payout: row[16] ? parseFloat(String(row[16]).replace(/[^0-9.-]/g, '')) : null,
-            sheet_dpp: row[17] ? String(row[17]).trim() : null,
-            shipping_courier: row[18] ? String(row[18]).trim() : null,
-            dpp_number: row[19] ? String(row[19]).trim() : null,
-          });
+          for (const item of orderMap.values()) {
+            // Rumus Resmi ERP: Est. Bersih = (Subtotal Pesanan - Voucher Ditanggung Penjual) * 79%
+            const netBase = Math.max(0, item.subtotal - item.voucher);
+            const estBersih = Math.round(netBase * 0.79);
+            parsed.push({
+              order_date: item.order_date,
+              channel: item.channel,
+              order_number: item.order_number,
+              jl_number: item.jl_number,
+              buyer_username: item.buyer_username,
+              shipping_courier: item.shipping_courier,
+              sku_utama: item.sku_utama,
+              sku_pengganti: item.sku_pengganti,
+              product_name: item.product_name,
+              qty: item.qty,
+              recheck_qty: item.recheck_qty,
+              package_count: item.package_count,
+              info_gudang: item.info_gudang,
+              order_status: item.order_status,
+              keterangan_solutif: item.keterangan_solutif,
+              est_net_income: estBersih,
+              marketplace_net_payout: estBersih,
+              sheet_dpp: item.sheet_dpp,
+              dpp_number: item.dpp_number,
+            });
+          }
+        } else {
+          // Format Spreadsheet Cut Off Standar (20 kolom)
+          const isFirstHeader = typeof rows[0][0] === 'string' && (
+            rows[0][0].toLowerCase().includes('no') ||
+            (rows[0][3] && String(rows[0][3]).toLowerCase().includes('pesanan'))
+          );
+          const startIdx = isFirstHeader ? 1 : 0;
+
+          for (let i = startIdx; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || !row[3]) continue;
+
+            let orderDate = '';
+            if (typeof row[1] === 'number') {
+              const d = new Date(Math.round((row[1] - 25569) * 86400 * 1000));
+              if (!isNaN(d.getTime())) orderDate = d.toISOString().split('T')[0];
+            } else if (typeof row[1] === 'string') {
+              orderDate = row[1].trim();
+            }
+
+            parsed.push({
+              order_date: orderDate || new Date().toISOString().split('T')[0],
+              channel: String(row[2] || 'MANUAL').trim(),
+              order_number: String(row[3]).trim(),
+              jl_number: row[4] ? String(row[4]).trim() : null,
+              buyer_username: row[5] ? String(row[5]).trim() : null,
+              sku_utama: row[6] ? String(row[6]).trim() : null,
+              sku_pengganti: row[7] ? String(row[7]).trim() : null,
+              product_name: row[8] ? String(row[8]).trim() : null,
+              qty: parseInt(row[9], 10) || 1,
+              recheck_qty: row[10] ? parseInt(row[10], 10) : null,
+              package_count: row[11] ? String(row[11]).trim() : null,
+              info_gudang: row[12] ? String(row[12]).trim() : null,
+              order_status: row[13] ? String(row[13]).trim() : null,
+              keterangan_solutif: row[14] ? String(row[14]).trim() : null,
+              est_net_income: row[15] !== undefined && row[15] !== null ? parseIndonesianNumber(row[15]) : null,
+              marketplace_net_payout: row[16] !== undefined && row[16] !== null ? parseIndonesianNumber(row[16]) : null,
+              sheet_dpp: row[17] ? String(row[17]).trim() : null,
+              shipping_courier: row[18] ? String(row[18]).trim() : null,
+              dpp_number: row[19] ? String(row[19]).trim() : null,
+            });
+          }
         }
 
         setImportData(parsed);
