@@ -1602,28 +1602,11 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
 
                         {/* Kolom Barang (Variasi, SKU, QTY) */}
                         <td className="py-3 px-4 min-w-[200px] max-w-[280px]">
-                          {/* 1. Variasi / Nama Barang */}
+                          {/* 1. Variasi */}
                           <div className="mb-1">
-                            {order.variation_name ? (
-                              <div>
-                                <p className="font-semibold text-slate-900 text-xs leading-snug truncate" title={order.variation_name}>
-                                  {order.variation_name}
-                                </p>
-                                {order.product_name && order.product_name !== order.variation_name && (
-                                  <p className="text-[10px] text-slate-500 leading-tight truncate mt-0.5" title={order.product_name}>
-                                    {order.product_name}
-                                  </p>
-                                )}
-                              </div>
-                            ) : order.product_name ? (
-                              <p className="font-semibold text-slate-900 text-xs leading-snug truncate" title={order.product_name}>
-                                {order.product_name}
-                              </p>
-                            ) : (
-                              <p className="text-slate-400 text-xs italic">
-                                — Variasi belum tercatat
-                              </p>
-                            )}
+                            <p className="font-semibold text-slate-900 text-xs leading-snug truncate" title={order.variation_name || order.product_name || undefined}>
+                              {order.variation_name || order.product_name || '—'}
+                            </p>
                           </div>
 
                           {/* 2. SKU Utama */}
@@ -1873,11 +1856,6 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                         {editingOrder.sku_utama || 'Tanpa SKU'}
                       </span>
                     </div>
-                    {editingOrder.product_name && editingOrder.product_name !== editingOrder.variation_name && (
-                      <span className="text-[10px] text-slate-500 truncate block mt-0.5" title={editingOrder.product_name}>
-                        {editingOrder.product_name}
-                      </span>
-                    )}
                   </div>
                   <div className="text-right shrink-0">
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Qty Pesanan</span>
