@@ -1381,68 +1381,6 @@ export default function ShopeeProductsIndex({
           </div>
         </div>
 
-        {/* Banner Peringatan Otomatis OOS Kritis & Kuota Promo Terbuka (Anti AI-Slop) */}
-        {(Boolean(summary?.critical_oos_count && summary.critical_oos_count > 0) || Boolean(summary?.campaign_unlocked_count && summary.campaign_unlocked_count > 0)) && (
-          <div className="bg-slate-950 border border-rose-900/60 rounded-2xl p-5 text-white shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="flex items-start gap-3.5">
-              <div className="w-10 h-10 rounded-xl bg-rose-950/80 border border-rose-800/80 flex items-center justify-center shrink-0 text-rose-400 relative">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                </svg>
-                <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
-                </span>
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-sm font-bold tracking-tight text-white">
-                    Peringatan: {summary.critical_oos_count ?? 0} SKU Habis di Gudang tetapi Masih Dijual di Shopee!
-                  </h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-900/60 text-rose-300 border border-rose-700/60">
-                    Persetujuan Super Admin
-                  </span>
-                </div>
-                <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
-                  Stok fisik di Master Stok Gudang tercatat <strong>0 pcs</strong>. Kosongkan stok di Shopee sekarang agar pembeli tidak dapat memesan barang kosong dan menghindari penalti toko.
-                  {Boolean(summary.campaign_unlocked_count && summary.campaign_unlocked_count > 0) && (
-                    <span className="block mt-1 text-amber-300 font-semibold">
-                      🔓 Termasuk {summary.campaign_unlocked_count} SKU promo yang kuotanya telah terbuka kembali dan wajib segera dinolkan!
-                    </span>
-                  )}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2.5 w-full md:w-auto shrink-0 flex-wrap">
-              {stockStatus !== 'oos_critical' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStockStatus('oos_critical');
-                    handleFilter(search, 'oos_critical', sort, startDate, endDate);
-                  }}
-                  className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
-                >
-                  Lihat SKU Kritis
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={promptZeroOutAllCriticalFromBanner}
-                disabled={isZeroingOutAll}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                </svg>
-                <span>Kosongkan Semua di Shopee</span>
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Periode Penjualan Shopee (Visual Date Picker dengan Presets & Dual Calendar) */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1586,6 +1524,64 @@ export default function ShopeeProductsIndex({
             />
           </div>
         </div>
+
+        {/* Banner Peringatan Kritis: Habis di Gudang tetapi Masih Dijual di Shopee (Anti AI-Slop) */}
+        {(Boolean(summary?.critical_oos_count && summary.critical_oos_count > 0) || Boolean(summary?.campaign_unlocked_count && summary.campaign_unlocked_count > 0)) && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-rose-50/70 border border-rose-200 rounded-2xl text-rose-950 shadow-2xs">
+            <div className="flex items-center gap-3">
+              <span className="p-2 rounded-xl bg-rose-100 text-rose-700 shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                  <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                </svg>
+              </span>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-xs font-bold text-rose-950 flex items-center gap-1.5">
+                    <span>Peringatan: {(summary.critical_oos_count ?? 0).toLocaleString('id-ID')} SKU Habis di Gudang (Masih Dijual di Shopee)</span>
+                  </p>
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-rose-100 text-rose-800 border border-rose-200">
+                    Persetujuan Super Admin
+                  </span>
+                </div>
+                <p className="text-[11px] text-rose-800 mt-0.5">
+                  Stok fisik di Master Stok Gudang tercatat 0 pcs. Kosongkan stok di Shopee sekarang agar pembeli tidak dapat memesan barang kosong dan menghindari penalti toko.
+                  {Boolean(summary.campaign_unlocked_count && summary.campaign_unlocked_count > 0) && (
+                    <span className="block mt-0.5 font-semibold text-rose-900">
+                      • Termasuk {summary.campaign_unlocked_count} SKU promo yang kuotanya telah terbuka kembali dan siap dinolkan.
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
+              {stockStatus !== 'oos_critical' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStockStatus('oos_critical');
+                    handleFilter(search, 'oos_critical', sort, startDate, endDate);
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-white hover:bg-rose-100/60 text-rose-900 border border-rose-300 font-semibold text-xs transition-colors cursor-pointer shrink-0 shadow-2xs text-center"
+                >
+                  Lihat SKU Kritis
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={promptZeroOutAllCriticalFromBanner}
+                disabled={isZeroingOutAll}
+                className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shrink-0 shadow-2xs text-center disabled:opacity-50"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                </svg>
+                <span>Kosongkan Semua di Shopee</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Banner Auto-Deteksi Selisih Stok Gudang vs Shopee */}
         {Number(summary?.discrepancy_count ?? 0) > 0 && (
