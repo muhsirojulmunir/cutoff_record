@@ -116,6 +116,7 @@ class CutOffOrderController extends Controller
             'sku_utama'              => ['nullable', 'string', 'max:150'],
             'sku_pengganti'          => ['nullable', 'string', 'max:150'],
             'product_name'           => ['nullable', 'string', 'max:255'],
+            'variation_name'         => ['nullable', 'string', 'max:255'],
             'qty'                    => ['required', 'integer', 'min:1'],
             'recheck_qty'            => ['nullable', 'integer'],
             'package_count'          => ['nullable', 'string', 'max:50'],
@@ -171,14 +172,15 @@ class CutOffOrderController extends Controller
                 'sku_utama'              => $r['sku_utama'] ?? null,
                 'sku_pengganti'          => $r['sku_pengganti'] ?? null,
                 'product_name'           => $r['product_name'] ?? null,
+                'variation_name'         => $r['variation_name'] ?? null,
                 'qty'                    => (int) ($r['qty'] ?? 1),
                 'recheck_qty'            => isset($r['recheck_qty']) && $r['recheck_qty'] !== '' ? (int) $r['recheck_qty'] : null,
                 'package_count'          => $r['package_count'] ?? null,
                 'info_gudang'            => $r['info_gudang'] ?? null,
                 'order_status'           => $r['order_status'] ?? null,
                 'keterangan_solutif'     => $r['keterangan_solutif'] ?? null,
-                'est_net_income'         => isset($r['est_net_income']) && is_numeric($r['est_net_income']) ? $r['est_net_income'] : null,
-                'marketplace_net_payout' => isset($r['marketplace_net_payout']) && is_numeric($r['marketplace_net_payout']) ? $r['marketplace_net_payout'] : null,
+                'est_net_income'         => self::parseCleanNumber($r['est_net_income'] ?? $r['est_bersih'] ?? null),
+                'marketplace_net_payout' => self::parseCleanNumber($r['marketplace_net_payout'] ?? $r['est_net_income'] ?? $r['est_bersih'] ?? null),
                 'sheet_dpp'              => $r['sheet_dpp'] ?? null,
                 'dpp_number'             => $r['dpp_number'] ?? null,
                 'created_at'             => $now,
@@ -316,6 +318,7 @@ class CutOffOrderController extends Controller
         $validated = $request->validate([
             'info_gudang'            => ['nullable', 'string', 'max:100'],
             'sku_pengganti'          => ['nullable', 'string', 'max:150'],
+            'variation_name'         => ['nullable', 'string', 'max:255'],
             'keterangan_solutif'     => ['nullable', 'string'],
             'dpp_number'             => ['nullable', 'string', 'max:100'],
             'marketplace_net_payout' => ['nullable', 'numeric'],
@@ -386,14 +389,15 @@ class CutOffOrderController extends Controller
                     'sku_utama'              => !empty($r['sku_utama']) ? trim((string) $r['sku_utama']) : null,
                     'sku_pengganti'          => !empty($r['sku_pengganti']) ? trim((string) $r['sku_pengganti']) : null,
                     'product_name'           => !empty($r['product_name']) ? trim((string) $r['product_name']) : null,
+                    'variation_name'         => !empty($r['variation_name']) ? trim((string) $r['variation_name']) : null,
                     'qty'                    => (int) ($r['qty'] ?? 1),
                     'recheck_qty'            => isset($r['recheck_qty']) && $r['recheck_qty'] !== '' ? (int) $r['recheck_qty'] : null,
                     'package_count'          => !empty($r['package_count']) ? trim((string) $r['package_count']) : null,
                     'info_gudang'            => !empty($r['info_gudang']) ? trim((string) $r['info_gudang']) : null,
                     'order_status'           => !empty($r['order_status']) ? trim((string) $r['order_status']) : null,
                     'keterangan_solutif'     => !empty($r['keterangan_solutif']) ? trim((string) $r['keterangan_solutif']) : null,
-                    'est_net_income'         => isset($r['est_net_income']) && is_numeric($r['est_net_income']) ? (float) $r['est_net_income'] : null,
-                    'marketplace_net_payout' => isset($r['marketplace_net_payout']) && is_numeric($r['marketplace_net_payout']) ? (float) $r['marketplace_net_payout'] : null,
+                    'est_net_income'         => self::parseCleanNumber($r['est_net_income'] ?? $r['est_bersih'] ?? null),
+                    'marketplace_net_payout' => self::parseCleanNumber($r['marketplace_net_payout'] ?? $r['est_net_income'] ?? $r['est_bersih'] ?? null),
                     'sheet_dpp'              => !empty($r['sheet_dpp']) ? trim((string) $r['sheet_dpp']) : null,
                     'dpp_number'             => !empty($r['dpp_number']) ? trim((string) $r['dpp_number']) : null,
                 ]
@@ -528,6 +532,45 @@ class CutOffOrderController extends Controller
             ],
             'rows'           => $rows,
         ]);
+    }
+
+    /**
+     * Sanitasi dan parsing angka format desimal / ribuan Indonesia (misal: "134.299", "134,299", "Rp 134.299").
+     */
+    public static function parseCleanNumber(mixed $val): ?float
+    {
+        if ($val === null || $val === '') {
+            return null;
+        }
+        if (is_numeric($val)) {
+            return (float) $val;
+        }
+        $str = trim((string) $val);
+        $str = str_ireplace(['rp', 'idr', ' '], '', $str);
+
+        if (str_contains($str, '.') && str_contains($str, ',')) {
+            if (strpos($str, '.') < strpos($str, ',')) {
+                $str = str_replace('.', '', $str);
+                $str = str_replace(',', '.', $str);
+            } else {
+                $str = str_replace(',', '', $str);
+            }
+        } elseif (str_contains($str, '.')) {
+            $parts = explode('.', $str);
+            if (count($parts) > 1 && strlen(end($parts)) === 3) {
+                $str = str_replace('.', '', $str);
+            }
+        } elseif (str_contains($str, ',')) {
+            $parts = explode(',', $str);
+            if (count($parts) > 1 && strlen(end($parts)) === 3) {
+                $str = str_replace(',', '', $str);
+            } else {
+                $str = str_replace(',', '.', $str);
+            }
+        }
+
+        $filtered = preg_replace('/[^0-9.-]/', '', $str);
+        return is_numeric($filtered) ? (float) $filtered : null;
     }
 
     /**

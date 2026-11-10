@@ -356,6 +356,36 @@ class ShopeeSyncService
             }
         }
 
+        // Ambil rincian escrow secara paralel (Http::pool) untuk pesanan yang belum terambil di escrowMap
+        // Memastikan voucher penjual terdeteksi secara akurat 100%
+        $missingEscrowSns = array_values(array_diff($orderSns, array_keys($escrowMap)));
+        if (! empty($missingEscrowSns)) {
+            $chunksMissing = array_chunk($missingEscrowSns, 20);
+            foreach ($chunksMissing as $snBatch) {
+                try {
+                    $poolResponses = Http::pool(function (Pool $pool) use ($account, $snBatch) {
+                        $reqs = [];
+                        foreach ($snBatch as $sn) {
+                            $url = $this->buildSingleEscrowUrl($account, (string) $sn);
+                            $reqs[$sn] = $pool->as((string) $sn)->timeout(15)->get($url);
+                        }
+                        return $reqs;
+                    });
+
+                    foreach ($poolResponses as $sn => $res) {
+                        if ($res instanceof Response && $res->successful()) {
+                            $data = $res->json();
+                            if (! empty($data['response']['order_income'])) {
+                                $escrowMap[$sn] = $data['response']['order_income'];
+                            }
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('Shopee parallel single escrow pool warning: ' . $e->getMessage());
+                }
+            }
+        }
+
         // 3. Ingest into CutOffOrder table (Optimized: 1 Single Preload Query + DB Transaction)
         $this->ensureSchema();
         $hasCancelBy     = Schema::hasColumn('cut_off_orders', 'cancel_by');
@@ -416,7 +446,7 @@ class ShopeeSyncService
                 // Rumus ERP: Est. Bersih = (Subtotal Pesanan - Voucher Ditanggung Penjual) * 79%
                 // Jika Voucher Ditanggung Penjual = 0, maka (Subtotal Pesanan - 0) * 79%
                 $escrowIncome = $escrowMap[$orderSn] ?? [];
-                if (empty($escrowIncome) && count($detailedOrders) <= 5) {
+                if (empty($escrowIncome)) {
                     /** @var \App\Models\ShopeeAccount $account */
                     $escrowIncome = $this->fetchSingleEscrowDetail($account, $orderSn);
                     if (! empty($escrowIncome)) {
@@ -502,6 +532,11 @@ class ShopeeSyncService
 
                 $existing = $existingOrders->get($orderSn);
 
+                $variationName = ! empty($firstItem['model_name']) ? trim((string) $firstItem['model_name']) : null;
+                if (count($items) > 1 && $variationName) {
+                    $variationName .= ' (+' . (count($items) - 1) . ' item)';
+                }
+
                 $payload = [
                     'order_date'             => $orderDate,
                     'ship_by_date'           => $shipByDate,
@@ -512,6 +547,7 @@ class ShopeeSyncService
                     'payment_method'         => $paymentMethod,
                     'sku_utama'              => self::normalizeSku($firstItem['model_sku'] ?? $firstItem['item_sku'] ?? null),
                     'product_name'           => $firstItem['item_name'] ?? 'Produk Shopee',
+                    'variation_name'         => $variationName,
                     'qty'                    => $totalQty,
                     'package_count'          => count($items) ?: 1,
                     'order_status'           => $statusText,
@@ -539,6 +575,7 @@ class ShopeeSyncService
                         'keterangan_solutif'     => $keteranganSolutif ?: $existing->keterangan_solutif,
                         'sku_utama'              => $payload['sku_utama'] ?: self::normalizeSku($existing->sku_utama),
                         'product_name'           => $payload['product_name'] ?: $existing->product_name,
+                        'variation_name'         => $payload['variation_name'] ?: $existing->variation_name,
                     ];
 
                     if ($shipByDate) {
@@ -564,7 +601,7 @@ class ShopeeSyncService
         $account->update([
             'last_synced_at'   => now(),
             'last_sync_status' => 'success',
-            'last_sync_error'  => null,
+            'last_sync_error'  => null, 
         ]);
 
         return [
@@ -762,9 +799,9 @@ class ShopeeSyncService
     }
 
     /**
-     * Fetch single order escrow detail from Shopee API v2.
+     * Build signed URL for get_escrow_detail (single order GET).
      */
-    public function fetchSingleEscrowDetail(ShopeeAccount $account, string $orderSn): array
+    public function buildSingleEscrowUrl(ShopeeAccount $account, string $orderSn): string
     {
         $path        = '/api/v2/payment/get_escrow_detail';
         $timestamp   = time();
@@ -785,7 +822,15 @@ class ShopeeSyncService
             'order_sn'     => $orderSn,
         ];
 
-        $url = $this->host . $path . '?' . http_build_query($queryParams);
+        return $this->host . $path . '?' . http_build_query($queryParams);
+    }
+
+    /**
+     * Fetch single order escrow detail from Shopee API v2.
+     */
+    public function fetchSingleEscrowDetail(ShopeeAccount $account, string $orderSn): array
+    {
+        $url = $this->buildSingleEscrowUrl($account, $orderSn);
 
         try {
             $response = Http::timeout(15)->get($url);
@@ -846,11 +891,26 @@ class ShopeeSyncService
             }
         }
 
+        // Prioritas sumber Voucher Ditanggung Penjual (Kolom AC di Excel Shopee):
+        // 1. Escrow API: voucher_from_seller
+        // 2. Escrow API: seller_voucher_discount
+        // 3. Escrow API: seller_discount (diskon penjual termasuk flash sale / campaign)
+        // 4. Escrow API: seller_promo (alias lain di versi API tertentu)
+        // 5. payment_info: voucher_from_seller
+        // 6. payment_info: seller_voucher_discount
+        // 7. Per-item: discount_from_voucher_seller
+        // 8. Root order: voucher_from_seller
         $sellerVoucher = 0.0;
         if (! empty($escrowIncome['voucher_from_seller']) && (float) $escrowIncome['voucher_from_seller'] > 0) {
             $sellerVoucher = (float) $escrowIncome['voucher_from_seller'];
         } elseif (! empty($escrowIncome['seller_voucher_discount']) && (float) $escrowIncome['seller_voucher_discount'] > 0) {
             $sellerVoucher = (float) $escrowIncome['seller_voucher_discount'];
+        } elseif (! empty($escrowIncome['seller_discount']) && (float) $escrowIncome['seller_discount'] > 0) {
+            // seller_discount di escrow = diskon yang ditanggung penjual (Flash Sale, Campaign, dll.)
+            // Field ini setara dengan "Voucher Ditanggung Penjual" di Excel Shopee
+            $sellerVoucher = (float) $escrowIncome['seller_discount'];
+        } elseif (! empty($escrowIncome['seller_promo']) && (float) $escrowIncome['seller_promo'] > 0) {
+            $sellerVoucher = (float) $escrowIncome['seller_promo'];
         } elseif (! empty($paymentInfo['voucher_from_seller']) && (float) $paymentInfo['voucher_from_seller'] > 0) {
             $sellerVoucher = (float) $paymentInfo['voucher_from_seller'];
         } elseif (! empty($paymentInfo['seller_voucher_discount']) && (float) $paymentInfo['seller_voucher_discount'] > 0) {
@@ -866,13 +926,15 @@ class ShopeeSyncService
         }
 
         // Fallback HANYA JIKA subtotalOrder <= 0 (misal API tidak mengembalikan item_list)
+        // original_cost_of_goods_sold = harga asli sebelum diskon apapun (= Subtotal Pesanan di Excel Shopee)
+        // JANGAN kurangi seller_discount di sini karena itu sudah masuk ke sellerVoucher
         if ($subtotalOrder <= 0) {
-            $cogs     = (float) ($escrowIncome['cost_of_goods_sold'] ?? 0);
             $origCogs = (float) ($escrowIncome['original_cost_of_goods_sold'] ?? 0);
-            $sellerDisc = (float) ($escrowIncome['seller_discount'] ?? 0);
+            $cogs     = (float) ($escrowIncome['cost_of_goods_sold'] ?? 0);
 
             if ($origCogs > 0) {
-                $subtotalOrder = max(0, $origCogs - $sellerDisc);
+                // Ini setara "Subtotal Pesanan" (harga setelah diskon katalog penjual, sebelum voucher)
+                $subtotalOrder = $origCogs;
             } elseif ($cogs > 0) {
                 $subtotalOrder = $cogs;
             } elseif (! empty($order['total_amount']) && (float) $order['total_amount'] > 0) {
@@ -884,6 +946,31 @@ class ShopeeSyncService
         // Jika Voucher Ditanggung Penjual = 0, maka (Subtotal Pesanan - 0) * 79%
         $netBase = max(0, $subtotalOrder - $sellerVoucher);
         $estBersih = (float) round($netBase * 0.79);
+
+        // === DEBUG LOGGING (aktif sementara untuk diagnosa) ===
+        // Hapus blok ini setelah masalah terselesaikan
+        $orderSn = $order['order_sn'] ?? '?';
+        Log::debug("[CutOff Calc] order_sn={$orderSn}", [
+            'subtotalOrder'      => $subtotalOrder,
+            'sellerVoucher'      => $sellerVoucher,
+            'estBersih'          => $estBersih,
+            'total_amount'       => $order['total_amount'] ?? null,
+            // Semua field escrow yang diterima
+            'escrow_all'         => $escrowIncome,
+            // Field per-item yang dipakai untuk subtotal
+            'items_prices'       => array_map(fn($it) => [
+                'sku'                        => $it['model_sku'] ?? $it['item_sku'] ?? '?',
+                'model_discounted_price'     => $it['model_discounted_price'] ?? null,
+                'discounted_price'           => $it['discounted_price'] ?? null,
+                'model_original_price'       => $it['model_original_price'] ?? null,
+                'original_price'             => $it['original_price'] ?? null,
+                'model_quantity_purchased'   => $it['model_quantity_purchased'] ?? $it['quantity_purchased'] ?? null,
+                'discount_from_voucher_seller' => $it['discount_from_voucher_seller'] ?? null,
+            ], $order['item_list'] ?? []),
+            // payment_info
+            'payment_info'       => $order['payment_info'] ?? null,
+        ]);
+        // === END DEBUG ===
 
         return [
             'subtotal_order' => $subtotalOrder,
@@ -931,6 +1018,34 @@ class ShopeeSyncService
             foreach ($chunks as $chunk) {
                 try {
                     $detailedOrders = $this->fetchOrderDetailRaw($account, $chunk);
+                    $escrows = $this->fetchEscrowDetailBatch($account, $chunk);
+
+                    // Ambil escrow tunggal secara paralel jika ada order yang belum masuk di batch
+                    $missingInChunk = array_values(array_diff($chunk, array_keys($escrows)));
+                    if (! empty($missingInChunk)) {
+                        try {
+                            $poolResponses = Http::pool(function (Pool $pool) use ($account, $missingInChunk) {
+                                $reqs = [];
+                                foreach ($missingInChunk as $sn) {
+                                    $url = $this->buildSingleEscrowUrl($account, (string) $sn);
+                                    $reqs[$sn] = $pool->as((string) $sn)->timeout(15)->get($url);
+                                }
+                                return $reqs;
+                            });
+
+                            foreach ($poolResponses as $sn => $res) {
+                                if ($res instanceof Response && $res->successful()) {
+                                    $data = $res->json();
+                                    if (! empty($data['response']['order_income'])) {
+                                        $escrows[$sn] = $data['response']['order_income'];
+                                    }
+                                }
+                            }
+                        } catch (\Throwable $pe) {
+                            Log::warning("Shopee recalculate single escrow pool notice: " . $pe->getMessage());
+                        }
+                    }
+
                     foreach ($detailedOrders as $shopeeOrder) {
                         $sn = $shopeeOrder['order_sn'] ?? null;
                         if (! $sn) continue;
@@ -938,7 +1053,8 @@ class ShopeeSyncService
                         $rawStatus  = (string) ($shopeeOrder['order_status'] ?? '');
                         $statusText = $this->mapOrderStatus($rawStatus);
 
-                        $calc = $this->calculateNetIncome($shopeeOrder);
+                        $escrowIncome = $escrows[$sn] ?? [];
+                        $calc = $this->calculateNetIncome($shopeeOrder, $escrowIncome);
                         $estNet = $calc['est_net_income'];
                         $netPayout = ($statusText === 'Batal' || $rawStatus === 'CANCELLED') ? 0 : $estNet;
 
@@ -995,6 +1111,12 @@ class ShopeeSyncService
             if (! Schema::hasColumn('cut_off_orders', 'ship_by_date')) {
                 Schema::table('cut_off_orders', function (Blueprint $table) {
                     $table->dateTime('ship_by_date')->nullable()->after('order_date');
+                });
+            }
+
+            if (! Schema::hasColumn('cut_off_orders', 'variation_name')) {
+                Schema::table('cut_off_orders', function (Blueprint $table) {
+                    $table->string('variation_name', 255)->nullable()->after('product_name');
                 });
             }
 

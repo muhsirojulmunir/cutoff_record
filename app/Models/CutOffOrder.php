@@ -26,6 +26,7 @@ class CutOffOrder extends Model
         'sku_utama',
         'sku_pengganti',
         'product_name',
+        'variation_name',
         'qty',
         'recheck_qty',
         'package_count',
@@ -64,6 +65,8 @@ class CutOffOrder extends Model
                     ->orWhere('jl_number', 'like', "%{$search}%")
                     ->orWhere('sku_utama', 'like', "%{$search}%")
                     ->orWhere('sku_pengganti', 'like', "%{$search}%")
+                    ->orWhere('variation_name', 'like', "%{$search}%")
+                    ->orWhere('product_name', 'like', "%{$search}%")
                     ->orWhere('buyer_username', 'like', "%{$search}%")
                     ->orWhere('shipping_courier', 'like', "%{$search}%")
                     ->orWhere('dpp_number', 'like', "%{$search}%");

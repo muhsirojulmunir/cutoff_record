@@ -434,6 +434,7 @@ class TiktokSyncService
                 'payment_method'         => $paymentMethod,
                 'sku_utama'              => $firstItem['seller_sku'] ?? $firstItem['sku_id'] ?? null,
                 'product_name'           => $firstItem['product_name'] ?? 'Produk TikTok Shop',
+                'variation_name'         => $firstItem['sku_name'] ?? null,
                 'qty'                    => $totalQty,
                 'package_count'          => count($lineItems) ?: 1,
                 'order_status'           => $statusText,
@@ -456,6 +457,7 @@ class TiktokSyncService
                     'order_date'             => $orderDate,
                     'order_status'           => $statusText,
                     'shipping_courier'       => $payload['shipping_courier'] ?? $existing->shipping_courier,
+                    'variation_name'         => $payload['variation_name'] ?? $existing->variation_name,
                     'est_net_income'         => $calculatedNet,
                     'marketplace_net_payout' => $calculatedNet,
                 ];

@@ -18,6 +18,7 @@ interface CutOffOrder {
   sku_utama: string | null;
   sku_pengganti: string | null;
   product_name: string | null;
+  variation_name?: string | null;
   qty: number;
   recheck_qty: number | null;
   package_count: string | null;
@@ -451,6 +452,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
     sku_utama: '',
     sku_pengganti: '',
     product_name: '',
+    variation_name: '',
     qty: 1,
     recheck_qty: '',
     package_count: '1',
@@ -584,6 +586,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
           const opsiPengirimanIdx = rawHeaders.indexOf('opsi pengiriman');
           const waktuDibuatIdx = rawHeaders.indexOf('waktu pesanan dibuat');
           const namaProdukIdx = rawHeaders.indexOf('nama produk');
+          const namaVariasiIdx = rawHeaders.indexOf('nama variasi');
           const refSkuIdx = rawHeaders.indexOf('nomor referensi sku');
           const skuIndukIdx = rawHeaders.indexOf('sku induk');
           const jumlahIdx = rawHeaders.indexOf('jumlah');
@@ -621,6 +624,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                 sku_utama: (refSkuIdx !== -1 && row[refSkuIdx] ? String(row[refSkuIdx]).trim() : '') || (skuIndukIdx !== -1 && row[skuIndukIdx] ? String(row[skuIndukIdx]).trim() : null),
                 sku_pengganti: null,
                 product_name: namaProdukIdx !== -1 && row[namaProdukIdx] ? String(row[namaProdukIdx]).trim() : null,
+                variation_name: namaVariasiIdx !== -1 && row[namaVariasiIdx] ? String(row[namaVariasiIdx]).trim() : null,
                 qty: qty,
                 recheck_qty: null,
                 package_count: '1',
@@ -654,6 +658,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
               sku_utama: item.sku_utama,
               sku_pengganti: item.sku_pengganti,
               product_name: item.product_name,
+              variation_name: item.variation_name,
               qty: item.qty,
               recheck_qty: item.recheck_qty,
               package_count: item.package_count,
@@ -667,45 +672,101 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
             });
           }
         } else {
-          // Format Spreadsheet Cut Off Standar (20 kolom)
-          const isFirstHeader = typeof rows[0][0] === 'string' && (
-            rows[0][0].toLowerCase().includes('no') ||
-            (rows[0][3] && String(rows[0][3]).toLowerCase().includes('pesanan'))
-          );
-          const startIdx = isFirstHeader ? 1 : 0;
+          // Format Spreadsheet Cut Off (CUT OFF 2026 / Format Admin)
+          // Deteksi header dinamis berdasarkan nama kolom
+          const tglIdx = rawHeaders.findIndex((h: string) => h === 'tgl' || h.includes('tanggal') || h.includes('date'));
+          const tokoIdx = rawHeaders.findIndex((h: string) => h === 'toko' || h.includes('channel') || h.includes('marketplace'));
+          const orderIdx = rawHeaders.findIndex((h: string) => h.includes('no. pesanan') || h.includes('no pesanan') || h.includes('no.pesanan') || h.includes('order'));
+          const jlIdx = rawHeaders.findIndex((h: string) => h.includes('data jl') || h.includes('no jl') || h.includes('jl'));
+          const statusIdx = rawHeaders.findIndex((h: string) => h.includes('status pesanan') || h.includes('status'));
+          const sheetDppIdx = rawHeaders.findIndex((h: string) => h.includes('sheet to dpp') || h.includes('sheet dpp'));
+          const dppNumIdx = rawHeaders.findIndex((h: string) => h.includes('no dp') || h.includes('dpp'));
+          const namaBarangIdx = rawHeaders.findIndex((h: string) => h.includes('nama barang') || h.includes('nama produk') || h.includes('produk'));
+          const skuUtamaIdx = rawHeaders.findIndex((h: string) => h.includes('sku utama') || h === 'sku' || (h.includes('sku') && !h.includes('pengganti')));
+          const skuPenggantiIdx = rawHeaders.findIndex((h: string) => h.includes('sku pengganti'));
+          const qtyIdx = rawHeaders.findIndex((h: string) => h === 'qty' || h.includes('qty'));
+          const recheckQtyIdx = rawHeaders.findIndex((h: string) => h.includes('jumlah produk') || h.includes('recheck'));
+          const paketResiIdx = rawHeaders.findIndex((h: string) => h.includes('paket') || h.includes('resi'));
+          const buyerIdx = rawHeaders.findIndex((h: string) => h.includes('username') || h.includes('pembeli') || h.includes('buyer'));
+          const estBersihIdx = rawHeaders.findIndex((h: string) => h.includes('est bersih') || h.includes('est. bersih') || h.includes('est netto') || h.includes('est_net') || h.includes('bersih'));
+          const pengirimanIdx = rawHeaders.findIndex((h: string) => h.includes('pengiriman') || h.includes('opsi pengiriman') || h.includes('kurir'));
+          const infoGudangIdx = rawHeaders.findIndex((h: string) => h.includes('info gudang') || h.includes('gudang'));
+          const ketSolutifIdx = rawHeaders.findIndex((h: string) => h.includes('keterangan') || h.includes('solutif'));
+
+          // Jika ada header yang cocok, mulai dari baris 1; jika tidak ada header sama sekali, mulai dari 0
+          const hasMatchedHeaders = orderIdx !== -1 || estBersihIdx !== -1 || skuUtamaIdx !== -1;
+          const startIdx = hasMatchedHeaders ? 1 : 0;
+
+          // Default fallback indeks jika header tidak terdeteksi (format CUT OFF 2026: TGL=0, NO=1, TOKO=2, NO_PESANAN=3, JL=4, STATUS=5, SHEET_DPP=6, NETTO=7, NO_DP=8, NAMA=9, SKU=10, SKU_PENG=11, QTY=12, JML_PESAN=13, PAKET=14, BUYER=15, EST_BERSIH=16, PENGIRIMAN=17)
+          const effOrderIdx = orderIdx !== -1 ? orderIdx : 3;
+          const effTglIdx = tglIdx !== -1 ? tglIdx : 0;
+          const effTokoIdx = tokoIdx !== -1 ? tokoIdx : 2;
+          const effJlIdx = jlIdx !== -1 ? jlIdx : 4;
+          const effStatusIdx = statusIdx !== -1 ? statusIdx : 5;
+          const effSheetDppIdx = sheetDppIdx !== -1 ? sheetDppIdx : 6;
+          const effDppNumIdx = dppNumIdx !== -1 ? dppNumIdx : 8;
+          const effNamaBarangIdx = namaBarangIdx !== -1 ? namaBarangIdx : 9;
+          const effSkuUtamaIdx = skuUtamaIdx !== -1 ? skuUtamaIdx : 10;
+          const effSkuPenggantiIdx = skuPenggantiIdx !== -1 ? skuPenggantiIdx : 11;
+          const effQtyIdx = qtyIdx !== -1 ? qtyIdx : 12;
+          const effRecheckQtyIdx = recheckQtyIdx !== -1 ? recheckQtyIdx : 13;
+          const effPaketResiIdx = paketResiIdx !== -1 ? paketResiIdx : 14;
+          const effBuyerIdx = buyerIdx !== -1 ? buyerIdx : 15;
+          const effEstBersihIdx = estBersihIdx !== -1 ? estBersihIdx : 16;
+          const effPengirimanIdx = pengirimanIdx !== -1 ? pengirimanIdx : 17;
 
           for (let i = startIdx; i < rows.length; i++) {
             const row = rows[i];
-            if (!row || !row[3]) continue;
+            if (!row || !row[effOrderIdx]) continue;
+
+            const orderNum = String(row[effOrderIdx]).trim();
+            if (!orderNum || orderNum.toLowerCase() === 'no. pesanan' || orderNum.toLowerCase() === 'no pesanan') continue;
 
             let orderDate = '';
-            if (typeof row[1] === 'number') {
-              const d = new Date(Math.round((row[1] - 25569) * 86400 * 1000));
+            const rawDateVal = effTglIdx !== -1 ? row[effTglIdx] : '';
+            if (typeof rawDateVal === 'number') {
+              const d = new Date(Math.round((rawDateVal - 25569) * 86400 * 1000));
               if (!isNaN(d.getTime())) orderDate = d.toISOString().split('T')[0];
-            } else if (typeof row[1] === 'string') {
-              orderDate = row[1].trim();
+            } else if (typeof rawDateVal === 'string' && rawDateVal.trim()) {
+              const strDate = rawDateVal.trim();
+              // Parse Indonesian date format dd-mm-yy or dd-mm-yyyy or dd/mm/yyyy
+              const dmyMatch = strDate.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/);
+              if (dmyMatch) {
+                const day = dmyMatch[1].padStart(2, '0');
+                const month = dmyMatch[2].padStart(2, '0');
+                let year = dmyMatch[3];
+                if (year.length === 2) year = '20' + year;
+                orderDate = `${year}-${month}-${day}`;
+              } else {
+                orderDate = strDate.split(' ')[0];
+              }
             }
+
+            const estBersihVal = effEstBersihIdx !== -1 && row[effEstBersihIdx] !== undefined && row[effEstBersihIdx] !== null
+              ? parseIndonesianNumber(row[effEstBersihIdx])
+              : null;
 
             parsed.push({
               order_date: orderDate || new Date().toISOString().split('T')[0],
-              channel: String(row[2] || 'MANUAL').trim(),
-              order_number: String(row[3]).trim(),
-              jl_number: row[4] ? String(row[4]).trim() : null,
-              buyer_username: row[5] ? String(row[5]).trim() : null,
-              sku_utama: row[6] ? String(row[6]).trim() : null,
-              sku_pengganti: row[7] ? String(row[7]).trim() : null,
-              product_name: row[8] ? String(row[8]).trim() : null,
-              qty: parseInt(row[9], 10) || 1,
-              recheck_qty: row[10] ? parseInt(row[10], 10) : null,
-              package_count: row[11] ? String(row[11]).trim() : null,
-              info_gudang: row[12] ? String(row[12]).trim() : null,
-              order_status: row[13] ? String(row[13]).trim() : null,
-              keterangan_solutif: row[14] ? String(row[14]).trim() : null,
-              est_net_income: row[15] !== undefined && row[15] !== null ? parseIndonesianNumber(row[15]) : null,
-              marketplace_net_payout: row[16] !== undefined && row[16] !== null ? parseIndonesianNumber(row[16]) : null,
-              sheet_dpp: row[17] ? String(row[17]).trim() : null,
-              shipping_courier: row[18] ? String(row[18]).trim() : null,
-              dpp_number: row[19] ? String(row[19]).trim() : null,
+              channel: effTokoIdx !== -1 && row[effTokoIdx] ? String(row[effTokoIdx]).trim() : 'MANUAL',
+              order_number: orderNum,
+              jl_number: effJlIdx !== -1 && row[effJlIdx] ? String(row[effJlIdx]).trim() : null,
+              buyer_username: effBuyerIdx !== -1 && row[effBuyerIdx] ? String(row[effBuyerIdx]).trim() : null,
+              sku_utama: effSkuUtamaIdx !== -1 && row[effSkuUtamaIdx] ? String(row[effSkuUtamaIdx]).trim() : null,
+              sku_pengganti: effSkuPenggantiIdx !== -1 && row[effSkuPenggantiIdx] ? String(row[effSkuPenggantiIdx]).trim() : null,
+              product_name: effNamaBarangIdx !== -1 && row[effNamaBarangIdx] ? String(row[effNamaBarangIdx]).trim() : null,
+              variation_name: effNamaBarangIdx !== -1 && row[effNamaBarangIdx] ? String(row[effNamaBarangIdx]).trim() : null,
+              qty: effQtyIdx !== -1 && row[effQtyIdx] ? (parseInt(String(row[effQtyIdx]), 10) || 1) : 1,
+              recheck_qty: effRecheckQtyIdx !== -1 && row[effRecheckQtyIdx] ? parseInt(String(row[effRecheckQtyIdx]), 10) || null : null,
+              package_count: effPaketResiIdx !== -1 && row[effPaketResiIdx] ? String(row[effPaketResiIdx]).trim() : '1',
+              info_gudang: infoGudangIdx !== -1 && row[infoGudangIdx] ? String(row[infoGudangIdx]).trim() : null,
+              order_status: effStatusIdx !== -1 && row[effStatusIdx] ? String(row[effStatusIdx]).trim() : 'Dikirim',
+              keterangan_solutif: ketSolutifIdx !== -1 && row[ketSolutifIdx] ? String(row[ketSolutifIdx]).trim() : null,
+              est_net_income: estBersihVal,
+              marketplace_net_payout: estBersihVal,
+              sheet_dpp: effSheetDppIdx !== -1 && row[effSheetDppIdx] ? String(row[effSheetDppIdx]).trim() : null,
+              shipping_courier: effPengirimanIdx !== -1 && row[effPengirimanIdx] ? String(row[effPengirimanIdx]).trim() : null,
+              dpp_number: effDppNumIdx !== -1 && row[effDppNumIdx] ? String(row[effDppNumIdx]).trim() : null,
             });
           }
         }
@@ -1363,7 +1424,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                   <th className="py-3 px-3 text-center w-12">No</th>
                   <th className="py-3 px-4">Toko & Tanggal</th>
                   <th className="py-3 px-4">Pesanan & Pengiriman</th>
-                  <th className="py-3 px-4">Barang & SKU</th>
+                  <th className="py-3 px-4">Barang</th>
                   <th className="py-3 px-4 whitespace-nowrap">SKU Pengganti</th>
                   <th className="py-3 px-4">Info Gudang</th>
                   <th className="py-3 px-4">Status Pesanan</th>
@@ -1539,13 +1600,50 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                           )}
                         </td>
 
-                        {/* Barang & SKU */}
-                        <td className="py-3.5 px-4 max-w-[240px]">
-                          <p className="font-semibold text-slate-900 truncate" title={order.sku_utama ?? ''}>
-                            {order.sku_utama ?? '—'}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500">
-                            <span>QTY: <strong className="text-slate-900">{order.qty}</strong></span>
+                        {/* Kolom Barang (Variasi, SKU, QTY) */}
+                        <td className="py-3 px-4 min-w-[200px] max-w-[280px]">
+                          {/* 1. Variasi / Nama Barang */}
+                          <div className="mb-1">
+                            {order.variation_name ? (
+                              <div>
+                                <p className="font-semibold text-slate-900 text-xs leading-snug truncate" title={order.variation_name}>
+                                  {order.variation_name}
+                                </p>
+                                {order.product_name && order.product_name !== order.variation_name && (
+                                  <p className="text-[10px] text-slate-500 leading-tight truncate mt-0.5" title={order.product_name}>
+                                    {order.product_name}
+                                  </p>
+                                )}
+                              </div>
+                            ) : order.product_name ? (
+                              <p className="font-semibold text-slate-900 text-xs leading-snug truncate" title={order.product_name}>
+                                {order.product_name}
+                              </p>
+                            ) : (
+                              <p className="text-slate-400 text-xs italic">
+                                — Variasi belum tercatat
+                              </p>
+                            )}
+                          </div>
+
+                          {/* 2. SKU Utama */}
+                          <div className="flex items-center gap-1.5 my-1">
+                            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">SKU:</span>
+                            {order.sku_utama && order.sku_utama.trim() !== '' && order.sku_utama !== '-' ? (
+                              <span className="font-mono text-[11px] font-medium text-slate-700 truncate select-all" title={order.sku_utama}>
+                                {order.sku_utama}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                Tanpa SKU
+                              </span>
+                            )}
+                          </div>
+
+                          {/* 3. QTY */}
+                          <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                            <span>QTY: <strong className="text-slate-900 font-semibold">{order.qty}</strong></span>
                             {order.recheck_qty !== null && (
                               <span className="text-emerald-600 font-medium">Recheck: {order.recheck_qty}</span>
                             )}
@@ -1762,15 +1860,21 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
               </div>
 
               <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
-                {/* Informasi Barang & SKU */}
+                {/* Informasi Barang & Variasi */}
                 <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
                   <div className="min-w-0 pr-3">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Barang & SKU</span>
-                    <span className="font-semibold text-slate-900 text-xs truncate block font-mono select-all" title={editingOrder.sku_utama ?? ''}>
-                      {editingOrder.sku_utama || '—'}
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Barang & Variasi</span>
+                    <span className="font-semibold text-slate-900 text-xs truncate block" title={editingOrder.variation_name || editingOrder.product_name || ''}>
+                      {editingOrder.variation_name || editingOrder.product_name || '—'}
                     </span>
-                    {editingOrder.product_name && editingOrder.product_name !== editingOrder.sku_utama && (
-                      <span className="text-[11px] text-slate-500 truncate block mt-0.5" title={editingOrder.product_name}>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="text-[10px] font-medium text-slate-500 uppercase">SKU:</span>
+                      <span className="font-mono text-[11px] font-medium text-slate-700 select-all">
+                        {editingOrder.sku_utama || 'Tanpa SKU'}
+                      </span>
+                    </div>
+                    {editingOrder.product_name && editingOrder.product_name !== editingOrder.variation_name && (
+                      <span className="text-[10px] text-slate-500 truncate block mt-0.5" title={editingOrder.product_name}>
                         {editingOrder.product_name}
                       </span>
                     )}
@@ -2028,16 +2132,30 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                   </div>
                 </div>
 
-                {/* Nama Barang */}
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">Nama Barang / Deskripsi</label>
-                  <input
-                    type="text"
-                    value={createForm.data.product_name}
-                    onChange={(e) => createForm.setData('product_name', e.target.value)}
-                    placeholder="Nama barang atau catatan ukuran..."
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Nama Barang */}
+                  <div>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">Nama Barang / Produk</label>
+                    <input
+                      type="text"
+                      value={createForm.data.product_name}
+                      onChange={(e) => createForm.setData('product_name', e.target.value)}
+                      placeholder="Nama barang atau seri produk..."
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
+                    />
+                  </div>
+
+                  {/* Variasi / Model */}
+                  <div>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">Variasi / Model</label>
+                    <input
+                      type="text"
+                      value={createForm.data.variation_name}
+                      onChange={(e) => createForm.setData('variation_name', e.target.value)}
+                      placeholder="Warna, Ukuran (misal: HITAM, 36)..."
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
+                    />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
