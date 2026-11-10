@@ -1066,7 +1066,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
     <AppLayout headerRight={liveMonitorButton}>
       <Head title="Pesanan Cut Off 2026" />
 
-      <div className="space-y-6 max-w-7xl mx-auto">
+      <div className="space-y-6 w-full max-w-[1700px] mx-auto">
         {/* Header Title Banner */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
           <div>
@@ -1421,15 +1421,19 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-900 text-white font-semibold uppercase tracking-wider text-[11px] whitespace-nowrap">
-                  <th className="py-3 px-3 text-center w-12">No</th>
-                  <th className="py-3 px-4">Toko & Tanggal</th>
-                  <th className="py-3 px-4">Pesanan & Pengiriman</th>
-                  <th className="py-3 px-4">Barang</th>
-                  <th className="py-3 px-4 whitespace-nowrap">SKU Pengganti</th>
-                  <th className="py-3 px-4">Info Gudang</th>
-                  <th className="py-3 px-4">Status Pesanan</th>
-                  <th className="py-3 px-4">Keuangan & DPP</th>
-                  {canManage && <th className="py-3 px-3 text-center">Aksi</th>}
+                  <th className="py-2.5 px-2 text-center w-10">No</th>
+                  <th className="py-2.5 px-3">Toko & Tanggal</th>
+                  <th className="py-2.5 px-3">Pesanan & Pengiriman</th>
+                  <th className="py-2.5 px-3">Barang</th>
+                  <th className="py-2.5 px-2.5">SKU Pengganti</th>
+                  <th className="py-2.5 px-2.5">Info Gudang</th>
+                  <th className="py-2.5 px-3">Status Pesanan</th>
+                  <th className="py-2.5 px-3">Keuangan & DPP</th>
+                  {canManage && (
+                    <th className="py-2.5 px-2 text-center w-12 sticky right-0 bg-slate-900 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)]">
+                      Aksi
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1485,19 +1489,19 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                     return (
                       <tr
                         key={order.id}
-                        className={`transition-colors ${
+                        className={`group transition-colors ${
                           isPendingInstant ? 'bg-amber-50/30 hover:bg-amber-50/50' : 'hover:bg-slate-50/80'
                         }`}
                       >
                         {/* No */}
-                        <td className="py-3.5 px-3 text-center text-xs font-bold text-slate-500 whitespace-nowrap">
+                        <td className="py-2.5 px-2 text-center text-xs font-bold text-slate-500 whitespace-nowrap w-10">
                           {rowNumber}
                         </td>
 
                         {/* Toko & Tanggal */}
-                        <td className="py-3.5 px-4 whitespace-nowrap">
+                        <td className="py-2.5 px-3 whitespace-nowrap">
                           <div className="flex items-center gap-1.5 mb-1">
-                            <span className="inline-block px-2.5 py-0.5 rounded-md bg-[#0B132B] text-white font-bold text-[10px] tracking-wide">
+                            <span className="inline-block px-2 py-0.5 rounded-md bg-[#0B132B] text-white font-bold text-[10px] tracking-wide">
                               {order.channel}
                             </span>
                             {formatTime(order.order_date) && (
@@ -1533,7 +1537,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                         </td>
 
                         {/* Pesanan & Pengiriman */}
-                        <td className="py-3.5 px-4 font-mono max-w-[240px]">
+                        <td className="py-2.5 px-3 font-mono max-w-[190px]">
                           <p className="font-bold text-slate-900 hover:text-blue-600 transition-colors cursor-pointer select-all truncate" title={order.order_number}>
                             {order.order_number}
                           </p>
@@ -1550,11 +1554,11 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
 
                           {/* Ekspedisi & Tipe Layanan Badge */}
                           {order.shipping_courier ? (
-                            <div className="flex flex-col gap-1 mt-1.5 font-sans">
-                              <div className="flex flex-wrap items-center gap-1.5">
+                            <div className="flex flex-col gap-1 mt-1 font-sans">
+                              <div className="flex flex-wrap items-center gap-1">
                                 {/* Tipe Layanan Badge (Instan / Sameday / Reguler / Hemat / Kargo) */}
                                 <span
-                                  className={`inline-flex items-center gap-1 text-[10px] uppercase font-bold px-2 py-0.5 rounded-md border tracking-wide whitespace-nowrap ${shippingTier.badgeClass}`}
+                                  className={`inline-flex items-center gap-1 text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-md border tracking-wide whitespace-nowrap ${shippingTier.badgeClass}`}
                                   title={`Tipe Pengiriman: ${shippingTier.label}`}
                                 >
                                   <span>{shippingTier.icon}</span>
@@ -1563,7 +1567,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
 
                                 {/* Nama Kurir */}
                                 <span
-                                  className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-700 bg-slate-100 border border-slate-200 rounded-md px-2 py-0.5 max-w-[150px] truncate"
+                                  className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-700 bg-slate-100 border border-slate-200 rounded-md px-1.5 py-0.5 max-w-[120px] truncate"
                                   title={`Ekspedisi: ${order.shipping_courier}`}
                                 >
                                   <span className="truncate">{order.shipping_courier}</span>
@@ -1575,20 +1579,20 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                                 <div className="mt-0.5">
                                   {shippingSla.isReadyForPickup ? (
                                     <span
-                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300 shadow-2xs font-sans animate-pulse"
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-300 shadow-2xs font-sans animate-pulse"
                                       title="Auto-pickup Shopee: Kurir segera tiba. Pastikan barang sudah dipacking dan siap diserahkan."
                                     >
                                       <span>🛵</span>
-                                      <span>Driver Segera Tiba (Paket Harus Siap)</span>
+                                      <span>Driver Segera Tiba</span>
                                     </span>
                                   ) : (
                                     <span
-                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200"
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium bg-slate-100 text-slate-700 border border-slate-200"
                                       title={`Pengingat packing: Siapkan barang sebelum kurir tiba sekitar pukul ${shippingSla.deadlineTime} WIB`}
                                     >
-                                      <span>📦 Siapkan s/d: {shippingSla.deadlineTime}</span>
-                                      <span className="text-slate-500 font-mono text-[9px] font-semibold">
-                                        (Sisa {shippingSla.remainingText})
+                                      <span>📦 s/d {shippingSla.deadlineTime}</span>
+                                      <span className="text-slate-500 font-mono text-[9px]">
+                                        ({shippingSla.remainingText})
                                       </span>
                                     </span>
                                   )}
@@ -1601,16 +1605,16 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                         </td>
 
                         {/* Kolom Barang (Variasi, SKU, QTY) */}
-                        <td className="py-3 px-4 min-w-[200px] max-w-[280px]">
+                        <td className="py-2.5 px-3 min-w-[150px] max-w-[210px]">
                           {/* 1. Variasi */}
-                          <div className="mb-1">
+                          <div className="mb-0.5">
                             <p className="font-semibold text-slate-900 text-xs leading-snug truncate" title={order.variation_name || order.product_name || undefined}>
                               {order.variation_name || order.product_name || '—'}
                             </p>
                           </div>
 
                           {/* 2. SKU Utama */}
-                          <div className="flex items-center gap-1.5 my-1">
+                          <div className="flex items-center gap-1.5 my-0.5">
                             <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">SKU:</span>
                             {order.sku_utama && order.sku_utama.trim() !== '' && order.sku_utama !== '-' ? (
                               <span className="font-mono text-[11px] font-medium text-slate-700 truncate select-all" title={order.sku_utama}>
@@ -1634,10 +1638,10 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                         </td>
 
                         {/* SKU Pengganti */}
-                        <td className="py-3.5 px-4 whitespace-nowrap max-w-[240px]">
+                        <td className="py-2.5 px-2.5 max-w-[130px]">
                           {order.sku_pengganti ? (
                             <p
-                              className={`font-semibold text-emerald-700 truncate whitespace-nowrap ${canManage ? 'cursor-pointer hover:underline' : ''}`}
+                              className={`font-semibold text-emerald-700 truncate ${canManage ? 'cursor-pointer hover:underline' : ''}`}
                               title={`SKU Pengganti: ${order.sku_pengganti}${canManage ? ' (Klik untuk edit)' : ''}`}
                               onClick={() => canManage && openEditModal(order)}
                             >
@@ -1655,7 +1659,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                         </td>
 
                         {/* Gudang & Solusi */}
-                        <td className="py-3.5 px-4">
+                        <td className="py-2.5 px-2.5 max-w-[120px]">
                           {order.info_gudang ? (
                             <span
                               className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
@@ -1671,18 +1675,18 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                           )}
 
                           {order.keterangan_solutif && (
-                            <p className="text-[11px] text-slate-600 mt-1 line-clamp-2 max-w-[180px]" title={order.keterangan_solutif}>
+                            <p className="text-[11px] text-slate-600 mt-1 line-clamp-2 max-w-[120px]" title={order.keterangan_solutif}>
                               {order.keterangan_solutif}
                             </p>
                           )}
                         </td>
 
                         {/* Status Pesanan */}
-                        <td className="py-3.5 px-4 max-w-[210px] align-top">
+                        <td className="py-2.5 px-3 max-w-[160px] align-top">
                           {order.order_status ? (
                             <div>
                               <span
-                                className={`inline-block whitespace-nowrap px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                                className={`inline-block whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                                   isRj
                                     ? 'bg-amber-100 text-amber-800 border border-amber-200'
                                     : order.order_status.toLowerCase().includes('selesai')
@@ -1702,7 +1706,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                               {/* Batas Waktu Pickup Ala Shopee Seller Center */}
                               {shippingSla && (
                                 <span
-                                  className={`block mt-1 text-[11px] tracking-tight whitespace-nowrap font-sans ${
+                                  className={`block mt-1 text-[10px] tracking-tight whitespace-nowrap font-sans ${
                                     shippingSla.isReadyForPickup
                                       ? 'font-bold text-rose-700 animate-pulse'
                                       : 'font-semibold text-rose-600'
@@ -1710,25 +1714,25 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                                   title="Batas waktu atur pickup kurir Instant (Shopee)"
                                 >
                                   {shippingSla.isReadyForPickup
-                                    ? '🛵 Driver Segera Tiba (Paket Harus Siap)'
+                                    ? '🛵 Driver Segera Tiba'
                                     : shippingSla.courierSearchText}
                                 </span>
                               )}
 
                               {/* Label Keterangan Metode Pembayaran */}
                               {isOrderCod ? (
-                                <span className="block mt-1 text-[10px] font-bold text-amber-700 tracking-tight whitespace-nowrap">
-                                  💵 Bayar di Tempat (COD)
+                                <span className="block mt-0.5 text-[10px] font-bold text-amber-700 tracking-tight whitespace-nowrap">
+                                  💵 COD
                                 </span>
                               ) : order.payment_method ? (
-                                <span className="block mt-1 text-[10px] text-slate-500 font-medium truncate max-w-[150px]" title={order.payment_method}>
+                                <span className="block mt-0.5 text-[10px] text-slate-500 font-medium truncate max-w-[130px]" title={order.payment_method}>
                                   💳 {order.payment_method}
                                 </span>
                               ) : null}
 
                               {(order.cancel_reason || order.cancel_by) && (
                                 <div
-                                  className="mt-1.5 text-[10px] text-rose-600 leading-snug whitespace-normal break-words max-w-[190px]"
+                                  className="mt-1 text-[10px] text-rose-600 leading-snug whitespace-normal break-words max-w-[140px]"
                                   title={order.cancel_reason || ''}
                                 >
                                   {order.cancel_by && <span className="font-bold text-rose-700">[{order.cancel_by}] </span>}
@@ -1742,11 +1746,11 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                         </td>
 
                         {/* Keuangan & DPP */}
-                        <td className="py-3.5 px-4 whitespace-nowrap">
+                        <td className="py-2.5 px-3 whitespace-nowrap">
                           <p className="font-semibold text-slate-900">
                             {formatRupiah(order.est_net_income)}
                           </p>
-                          <div className="flex flex-col gap-0.5 mt-1">
+                          <div className="flex flex-col gap-0.5 mt-0.5">
                             {order.dpp_number ? (
                               <span className="inline-block font-mono text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 w-fit">
                                 {order.dpp_number}
@@ -1759,7 +1763,11 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
 
                         {/* Aksi */}
                         {canManage && (
-                          <td className="py-3.5 px-3 text-center">
+                          <td
+                            className={`py-2.5 px-2 text-center w-12 sticky right-0 ${
+                              isPendingInstant ? 'bg-[#fffdf7] group-hover:bg-[#fff8ea]' : 'bg-white group-hover:bg-slate-50'
+                            } transition-colors shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)] z-10`}
+                          >
                             <button
                               onClick={() => openEditModal(order)}
                               className="p-1.5 rounded-lg text-slate-600 hover:text-white hover:bg-[#0B132B] transition-all border border-slate-200"
