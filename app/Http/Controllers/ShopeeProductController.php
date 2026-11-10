@@ -413,6 +413,30 @@ class ShopeeProductController extends Controller
                 'last_synced_at'          => $lastSyncedAt,
             ],
             'master_stock_summary' => $masterStockSummary,
+            'workQueue' => [
+                'items' => array_values(array_filter([
+                    count($criticalOosIds) > 0 ? [
+                        'key'         => 'shopee_critical_oos',
+                        'type'        => 'stock',
+                        'title'       => 'Stok Shopee Kritis (0 di Gudang)',
+                        'description' => count($criticalOosIds) . ' SKU habis di gudang tetapi masih dijual di Shopee.',
+                        'count'       => count($criticalOosIds),
+                        'href'        => '/shopee-products?stock_status=oos_critical',
+                        'severity'    => 'critical',
+                    ] : null,
+                    count($discrepancyIds) > 0 ? [
+                        'key'         => 'shopee_stock_discrepancy',
+                        'type'        => 'stock',
+                        'title'       => 'Selisih Stok Gudang vs Shopee',
+                        'description' => count($discrepancyIds) . ' SKU memiliki selisih kuantitas antara Shopee dan Gudang A+G.',
+                        'count'       => count($discrepancyIds),
+                        'href'        => '/shopee-products?stock_status=discrepancy',
+                        'severity'    => 'warning',
+                    ] : null,
+                ])),
+                'total' => (count($criticalOosIds) > 0 ? 1 : 0) + (count($discrepancyIds) > 0 ? 1 : 0),
+                'critical' => count($criticalOosIds) > 0 ? 1 : 0,
+            ],
             'account'  => $account ? [
                 'id'           => $account->id,
                 'account_name' => $account->account_name,
