@@ -37,3 +37,9 @@ Thumbs.db
 *.xlsx
 /docs/
 /scratch/
+
+# Konfigurasi AI & workflow internal
+/.agents/
+/.claude/
+/.github/
+
