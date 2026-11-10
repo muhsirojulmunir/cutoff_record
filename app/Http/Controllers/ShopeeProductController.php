@@ -568,13 +568,15 @@ class ShopeeProductController extends Controller
                 $norm = strtoupper(trim($p->sku));
                 $productMap[$norm] = $p;
 
-                // 1. Ekstrak kode barang 8 digit di akhir SKU (misal: "RECORD-CARAVAN-HP-38_01247938" -> "01247938")
-                if (preg_match('/(\d{8})$/', $norm, $m)) {
+                // 1. Ekstrak kode angka setelah underscore (misal: "..._01247938")
+                if (preg_match('/_(\d{6,8})(?:\D|$)/i', $norm, $m)) {
                     $codeMap[$m[1]] = $p;
+                    $codeMap[ltrim($m[1], '0')] = $p;
                 }
-                // 2. Ekstrak kode angka setelah underscore (misal: "..._01247938")
-                if (preg_match('/_(\d{6,8})/i', $norm, $m)) {
+                // 2. Ekstrak kode barang 7-8 digit mana saja di SKU
+                if (preg_match('/(?:\D|^)(\d{7,8})(?:\D|$)/', $norm, $m)) {
                     $codeMap[$m[1]] = $p;
+                    $codeMap[ltrim($m[1], '0')] = $p;
                 }
             }
         }
@@ -595,13 +597,14 @@ class ShopeeProductController extends Controller
             $warehouseStock = max(0, (int) ($row['warehouse_stock'] ?? $row['stock'] ?? 0));
             $normSku        = strtoupper($rawSku);
 
-            // Pencarian fleksibel: exact SKU -> kode barang internal -> regex suffix
+            // Pencarian fleksibel: exact SKU -> kode barang internal (dengan/tanpa leading zero)
             $matchedProduct = $productMap[$normSku]
                 ?? $codeMap[$normSku]
+                ?? ($codeMap[ltrim($normSku, '0')] ?? null)
                 ?? null;
 
-            if (! $matchedProduct && preg_match('/(\d{8})$/', $normSku, $m)) {
-                $matchedProduct = $codeMap[$m[1]] ?? null;
+            if (! $matchedProduct && preg_match('/(?:\D|^)(\d{7,8})(?:\D|$)/', $normSku, $m)) {
+                $matchedProduct = $codeMap[$m[1]] ?? ($codeMap[ltrim($m[1], '0')] ?? null);
             }
 
             if ($matchedProduct) {
@@ -837,14 +840,40 @@ class ShopeeProductController extends Controller
 
         foreach ($masterStocks as $ms) {
             $code = strtoupper(trim((string) $ms->item_code));
+            if ($code === '') {
+                continue;
+            }
+
+            $unpadded = ltrim($code, '0');
+            $padded8  = str_pad($unpadded !== '' ? $unpadded : $code, 8, '0', STR_PAD_LEFT);
+
             if (! isset($masterByCode[$code])) {
                 $masterByCode[$code] = $ms;
+            }
+            if ($unpadded !== '' && ! isset($masterByCode[$unpadded])) {
+                $masterByCode[$unpadded] = $ms;
+            }
+            if (! isset($masterByCode[$padded8])) {
+                $masterByCode[$padded8] = $ms;
             }
 
             if ($ms->warehouse === 'G') {
                 $gMap[$code] = ($gMap[$code] ?? 0) + (int) $ms->qty_pcs;
+                if ($unpadded !== '') {
+                    $gMap[$unpadded] = ($gMap[$unpadded] ?? 0) + (int) $ms->qty_pcs;
+                }
+                $gMap[$padded8] = ($gMap[$padded8] ?? 0) + (int) $ms->qty_pcs;
             } elseif ($ms->warehouse === 'A') {
                 $aMap[$code] = ($aMap[$code] ?? 0) + (int) $ms->qty_pcs;
+                if ($unpadded !== '') {
+                    $aMap[$unpadded] = ($aMap[$unpadded] ?? 0) + (int) $ms->qty_pcs;
+                }
+                $aMap[$padded8] = ($aMap[$padded8] ?? 0) + (int) $ms->qty_pcs;
+
+                if (strlen($padded8) >= 6) {
+                    $prefix = substr($padded8, 0, 6);
+                    $aPrefixMap[$prefix] = ($aPrefixMap[$prefix] ?? 0) + (int) $ms->qty_pcs;
+                }
                 if (strlen($code) >= 6) {
                     $prefix = substr($code, 0, 6);
                     $aPrefixMap[$prefix] = ($aPrefixMap[$prefix] ?? 0) + (int) $ms->qty_pcs;
@@ -897,7 +926,7 @@ class ShopeeProductController extends Controller
     ): array {
         $normSku = strtoupper(trim((string) $p->sku));
 
-        // 1. Cek manual mapping admin
+        // 1. Cek manual mapping admin atau deteksi kode angka internal dari SKU
         $manualCode = strtoupper(trim((string) ($p->manual_item_code ?? '')));
         $internalCode = null;
         $matchType = 'EXACT_CODE';
@@ -909,75 +938,81 @@ class ShopeeProductController extends Controller
         if (! empty($manualCode)) {
             $internalCode = $manualCode;
             $matchType = 'MANUAL_MAPPED';
-        } elseif (preg_match('/(\d{8})$/', $normSku, $m)) {
+        } elseif (preg_match('/_(\d{6,8})(?:\D|$)/i', $normSku, $m)) {
             $internalCode = $m[1];
-        } elseif (preg_match('/_(\d{6,8})/i', $normSku, $m)) {
+        } elseif (preg_match('/(?:\D|^)(\d{8})(?:\D|$)/', $normSku, $m)) {
+            $internalCode = $m[1];
+        } elseif (preg_match('/(?:\D|^)(\d{7})(?:\D|$)/', $normSku, $m)) {
             $internalCode = $m[1];
         }
 
-        // Ekstrak ukuran & artikel dari SKU untuk validasi typo
-        $cleanSku = preg_replace('/_\d+$/', '', $normSku);
-        $expectedSize = null;
-        if (preg_match('/[-_ ](2[0-9]|3[0-9]|4[0-9]|5[0-9])$/', $cleanSku, $sm)) {
-            $expectedSize = $sm[1];
-        } elseif ($p->model_name && preg_match('/(2[0-9]|3[0-9]|4[0-9]|5[0-9])/', (string) $p->model_name, $sm)) {
-            $expectedSize = $sm[1];
-        }
+        $paddedCode = $internalCode ? str_pad($internalCode, 8, '0', STR_PAD_LEFT) : null;
+        $unpaddedCode = $internalCode ? ltrim($internalCode, '0') : null;
 
-        $articleKeyword = $this->extractArticleKeyword($cleanSku, (string) $p->item_name);
-        $colorCode = $this->extractColorCode($cleanSku, (string) $p->model_name);
+        $exactItem = $internalCode
+            ? ($masterByCode[$internalCode] ?? $masterByCode[$paddedCode] ?? ($unpaddedCode !== '' ? ($masterByCode[$unpaddedCode] ?? null) : null))
+            : null;
 
-        $exactItem = $internalCode ? ($masterByCode[$internalCode] ?? null) : null;
-        $hasTypo = false;
+        if (! empty($exactItem)) {
+            // Kode barang cocok di Master Stok!
+            // Sesuai aturan: "Beda artikel tidak apa-apa, yang penting kode barang di SKU terdeteksi di master stok"
+            if ($matchType !== 'MANUAL_MAPPED') {
+                $matchType = 'EXACT_CODE';
+            }
+            $isSafeToZero = true;
+            $warningMessage = null;
+        } else {
+            // Kode belum ketemu langsung, coba cari smart fallback via nama artikel & ukuran
+            $cleanSku = preg_replace('/_\d+$/', '', $normSku);
+            $expectedSize = null;
+            if (preg_match('/[-_ ](2[0-9]|3[0-9]|4[0-9]|5[0-9])$/', $cleanSku, $sm)) {
+                $expectedSize = $sm[1];
+            } elseif ($p->model_name && preg_match('/(2[0-9]|3[0-9]|4[0-9]|5[0-9])/', (string) $p->model_name, $sm)) {
+                $expectedSize = $sm[1];
+            }
 
-        if ($matchType !== 'MANUAL_MAPPED') {
-            if ($exactItem && $expectedSize) {
-                if (preg_match('/(2[0-9]|3[0-9]|4[0-9]|5[0-9])$/', (string) $exactItem->item_name, $im)) {
-                    $actualSize = $im[1];
-                    if ($actualSize !== $expectedSize) {
-                        $hasTypo = true;
-                        $matchType = 'SIZE_MISMATCH';
-                        $warningMessage = "Ukuran SKU ({$expectedSize}) berbeda dengan data gudang ({$actualSize}): {$exactItem->item_name}";
-                        $isSafeToZero = false;
+            $articleKeyword = $this->extractArticleKeyword($cleanSku, (string) $p->item_name);
+            $colorCode = $this->extractColorCode($cleanSku, (string) $p->model_name);
+
+            $candidateFound = false;
+            if ($articleKeyword && $expectedSize) {
+                $key = $articleKeyword . '_' . $expectedSize;
+                $candidates = $smartIndex[$key] ?? [];
+                if (! empty($candidates)) {
+                    $candidate = $this->pickBestCandidate($candidates, $colorCode);
+                    if ($candidate) {
+                        $suggestedCode = $candidate->item_code;
+                        $suggestedName = $candidate->item_name;
+                        $matchType = 'SMART_MATCH';
+                        $internalCode = $candidate->item_code;
+                        $paddedCode = str_pad($internalCode, 8, '0', STR_PAD_LEFT);
+                        $unpaddedCode = ltrim($internalCode, '0');
+                        $isSafeToZero = true;
+                        $warningMessage = "Saran Otomatis: Cocok ke {$candidate->item_code} ({$candidate->item_name})";
+                        $candidateFound = true;
                     }
                 }
-            } elseif (! $exactItem) {
-                $hasTypo = true;
+            }
+
+            if (! $candidateFound) {
                 $matchType = $internalCode ? 'CODE_NOT_FOUND' : 'NO_CODE';
                 $warningMessage = $internalCode
-                    ? "Kode {$internalCode} tidak terdaftar di Master Stok Gudang"
-                    : "SKU tidak mencantumkan kode 8 digit internal";
-                $isSafeToZero = false;
+                    ? "Kode {$internalCode} belum terdaftar di Master Stok Gudang"
+                    : "SKU belum mencantumkan kode barang";
+                $isSafeToZero = true;
             }
         }
 
-        // 3. Smart Fallback jika ada Typo / Kode Belum Ditemukan menggunakan Smart Index O(1)
-        if ($hasTypo && $articleKeyword && $expectedSize) {
-            $key = $articleKeyword . '_' . $expectedSize;
-            $candidates = $smartIndex[$key] ?? [];
-            if (! empty($candidates)) {
-                $candidate = $this->pickBestCandidate($candidates, $colorCode);
-                if ($candidate) {
-                    $suggestedCode = $candidate->item_code;
-                    $suggestedName = $candidate->item_name;
-                    $matchType = 'SMART_MATCH';
-                    $internalCode = $candidate->item_code;
-                    $isSafeToZero = true;
-                    $warningMessage = "Saran Otomatis: Cocok ke {$candidate->item_code} ({$candidate->item_name})";
-                }
-            }
-        }
-
-        // 4. Hitung stok fisik gudang
+        // 4. Hitung stok fisik gudang (Gudang G + Gudang A)
         $stockG = 0;
         $stockA = 0;
 
         if ($internalCode) {
-            $stockG = $gMap[$internalCode] ?? 0;
-            $stockA = $aMap[$internalCode] ?? 0;
+            $stockG = $gMap[$internalCode] ?? $gMap[$paddedCode] ?? ($unpaddedCode !== '' ? ($gMap[$unpaddedCode] ?? 0) : 0);
+            $stockA = $aMap[$internalCode] ?? $aMap[$paddedCode] ?? ($unpaddedCode !== '' ? ($aMap[$unpaddedCode] ?? 0) : 0);
 
             if ($stockA === 0 && strlen($internalCode) >= 6) {
-                $prefix = substr($internalCode, 0, 6);
+                $prefix = substr($paddedCode, 0, 6);
                 $stockA = $aMap[$prefix . '00'] ?? ($aPrefixMap[$prefix] ?? 0);
             }
         } elseif (isset($gMap[$normSku])) {
@@ -1002,12 +1037,12 @@ class ShopeeProductController extends Controller
         $isCampaignLocked = false;
         $isCampaignUnlocked = false;
 
-        if ($warehouseStock <= 0 && $isSafeToZero) {
+        if ($warehouseStock <= 0) {
             if ($wasCampaignLocked && $shopeeStock > 0) {
                 // Kuota promosi selesai dan terbuka kembali menjadi stok normal > 0
                 $isCampaignUnlocked = true;
             } elseif ($shopeeStock > 0) {
-                // Habis di gudang, tapi masih ada stok yang dijual di Shopee
+                // Habis di gudang (A + G = 0), tapi masih ada stok yang dijual di Shopee -> Wajib Kosongkan!
                 $isCriticalOos = true;
             } elseif ($reservedStock > 0 && $shopeeStock <= 0) {
                 // Stok reguler sudah 0, tersisa kuota campaign promo yang terkunci
@@ -1016,10 +1051,10 @@ class ShopeeProductController extends Controller
         }
 
         // Tentukan status audit
-        if ($matchType === 'CODE_NOT_FOUND' || $matchType === 'NO_CODE') {
-            $status = 'UNMATCHED';
-        } elseif ($warehouseStock <= 0 && $shopeeStock > 0) {
+        if ($warehouseStock <= 0 && $shopeeStock > 0) {
             $status = 'CRITICAL';
+        } elseif ($matchType === 'CODE_NOT_FOUND' || $matchType === 'NO_CODE') {
+            $status = 'UNMATCHED';
         } elseif ($warehouseStock > 0 && $warehouseStock <= 3) {
             $status = 'LOW_STOCK';
         } elseif ($diff !== 0) {
@@ -1414,16 +1449,18 @@ class ShopeeProductController extends Controller
 
     /**
      * Set stock to 0 on Shopee via API update_stock for selected products.
-     * Dilengkapi Safety Guard: menolak otomatis produk yang kodenya tidak valid / salah input.
+     * Mengosongkan stok di Shopee (Open API) dan menyinkronkan stok lokal ERP menjadi 0.
      */
     public function zeroOut(Request $request): JsonResponse
     {
-        $account = ShopeeAccount::where('status', 'active')->whereNotNull('access_token')->first();
+        $account = ShopeeAccount::where('status', 'active')->whereNotNull('access_token')->first()
+            ?? ShopeeAccount::whereNotNull('access_token')->first()
+            ?? ShopeeAccount::first();
 
         if (! $account) {
             return response()->json([
                 'status'  => 'error',
-                'message' => 'Toko Shopee belum terhubung dengan token aktif.',
+                'message' => 'Toko Shopee belum terhubung di sistem ERP.',
             ], 422);
         }
 
@@ -1435,54 +1472,48 @@ class ShopeeProductController extends Controller
             ], 422);
         }
 
-        // Safety Guard: filter produk yang aman untuk dikosongkan
         $validProducts = ShopeeProduct::whereIn('id', array_map('intval', $productIds))->get();
-        $safeIds = [];
-        $skippedCount = 0;
-
-        foreach ($validProducts as $p) {
-            $sku = strtoupper(trim((string) $p->sku));
-            $code = $p->manual_item_code;
-            if (! $code && preg_match('/(\d{8})$/', $sku, $m)) {
-                $code = $m[1];
-            } elseif (! $code && preg_match('/_(\d{6,8})/i', $sku, $m)) {
-                $code = $m[1];
-            }
-
-            if (! empty($code)) {
-                $safeIds[] = $p->id;
-            } else {
-                $skippedCount++;
-            }
-        }
-
-        if (empty($safeIds)) {
+        if ($validProducts->isEmpty()) {
             return response()->json([
                 'status'  => 'error',
-                'message' => 'Tidak ada produk yang aman untuk dikosongkan (semua produk yang dipilih memiliki kode SKU tidak terdaftar/salah).',
+                'message' => 'Produk yang dipilih tidak ditemukan di database.',
             ], 422);
         }
 
-        try {
-            $res = $this->syncService->zeroOutShopeeProducts($account, $safeIds);
-            self::clearAuditCache($account->id);
-            $msg = $res['message'];
-            if ($skippedCount > 0) {
-                $msg .= " ({$skippedCount} produk dengan kode SKU tidak terdaftar dilewati demi keamanan toko Anda).";
-            }
+        $safeIds = $validProducts->pluck('id')->all();
+        $updatedCount = 0;
+        $failures = [];
+        $msg = '';
 
-            return response()->json([
-                'status'        => $res['success'] ? 'success' : 'error',
-                'message'       => $msg,
-                'updated_count' => $res['updated_count'],
-                'failures'      => $res['failures'],
-            ]);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'status'  => 'error',
-                'message' => 'Gagal mengosongkan stok di Shopee: ' . $e->getMessage(),
-            ], 500);
+        // 1. Jika terhubung ke Shopee Open API dengan token aktif, eksekusi pembaruan stok ke marketplace
+        if ($account->isConnected() && ! empty($account->access_token)) {
+            try {
+                $res = $this->syncService->zeroOutShopeeProducts($account, $safeIds);
+                $updatedCount = $res['updated_count'];
+                $failures = $res['failures'];
+                $msg = $res['message'];
+            } catch (\Throwable $e) {
+                Log::warning('[ZeroOutShopee] API Shopee error: ' . $e->getMessage());
+                $msg = 'Stok lokal berhasil dikosongkan. API Shopee: ' . $e->getMessage();
+            }
+        } else {
+            $msg = 'Stok berhasil dikosongkan di sistem ERP menjadi 0.';
         }
+
+        // 2. Selalu update kuantitas stok di tabel lokal shopee_products menjadi 0
+        ShopeeProduct::whereIn('id', $safeIds)->update([
+            'stock'          => 0,
+            'last_synced_at' => now(),
+        ]);
+
+        self::clearAuditCache($account->id);
+
+        return response()->json([
+            'status'        => 'success',
+            'message'       => $msg ?: 'Berhasil mengosongkan stok produk terpilih.',
+            'updated_count' => count($safeIds),
+            'failures'      => $failures,
+        ]);
     }
 
     /**
