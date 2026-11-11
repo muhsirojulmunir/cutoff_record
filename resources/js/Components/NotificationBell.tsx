@@ -1,7 +1,7 @@
 ﻿import { useEffect, useRef, useState } from 'react';
-import { Link } from '@inertiajs/react';
+import { Link, router, usePage } from '@inertiajs/react';
 
-import { WorkQueue, WorkQueueSeverity, WorkQueueType } from '../Types';
+import { PageProps, WorkQueue, WorkQueueSeverity, WorkQueueType } from '../Types';
 
 interface Props {
   queue: WorkQueue;
@@ -26,17 +26,34 @@ const TYPE_ICONS: Record<WorkQueueType, string> = {
 };
 
 const SEVERITY_STYLES: Record<WorkQueueSeverity, { icon: string; badge: string }> = {
-  critical: { icon: 'text-rose-400 bg-rose-500/10', badge: 'bg-rose-500/15 text-rose-400 border-rose-500/30' },
-  warning: { icon: 'text-orange-600 bg-orange-50', badge: 'bg-orange-50 text-orange-600 border-orange-300' },
-  info: { icon: 'text-teal-400 bg-teal-500/10', badge: 'bg-teal-500/15 text-teal-400 border-teal-500/30' },
+  critical: { icon: 'text-rose-600 bg-rose-50', badge: 'bg-rose-50 text-rose-700 border-rose-200' },
+  warning: { icon: 'text-amber-700 bg-amber-50', badge: 'bg-amber-50 text-amber-700 border-amber-200' },
+  info: { icon: 'text-teal-600 bg-teal-50', badge: 'bg-teal-50 text-teal-700 border-teal-200' },
 };
 
 export default function NotificationBell({ queue }: Props) {
+  const { auth } = usePage<PageProps>().props;
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const hasCritical = queue.critical > 0;
-  const badgeLabel = queue.total > 99 ? '99+' : String(queue.total);
+  const isSuperAdmin = Boolean(auth?.user?.is_super_admin || auth?.user?.role?.name === 'Super Admin');
+  const visibleItems = isSuperAdmin
+    ? queue.items
+    : queue.items.filter(
+        (item) => item.key !== 'shopee_critical_oos' && item.key !== 'shopee_stock_discrepancy'
+      );
+  const visibleTotal = visibleItems.length;
+  const hasCritical = visibleItems.some((item) => item.severity === 'critical');
+  const badgeLabel = visibleTotal > 99 ? '99+' : String(visibleTotal);
+
+  const handleZeroOutCritical = () => {
+    setOpen(false);
+    if (window.location.pathname === '/shopee-products') {
+      window.dispatchEvent(new CustomEvent('shopee:zero-out-critical'));
+    } else {
+      router.visit('/shopee-products?stock_status=oos_critical&open_zero_out=1');
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -59,13 +76,14 @@ export default function NotificationBell({ queue }: Props) {
   return (
     <div ref={containerRef} className="relative">
       <button
+        type="button"
         onClick={() => setOpen((prev) => !prev)}
-        title="Pengingat tugas"
-        aria-label={`Pengingat tugas${queue.total > 0 ? `, ${queue.total} menunggu` : ''}`}
-        className={`relative p-2 rounded-lg border transition-all ${
+        title="Notifikasi"
+        aria-label={`Notifikasi${visibleTotal > 0 ? `, ${visibleTotal} item` : ''}`}
+        className={`relative p-2 rounded-xl border transition-colors cursor-pointer ${
           open
-            ? 'text-teal-400 bg-teal-600/10 border-teal-500/30'
-            : 'text-gray-400 hover:text-gray-800 hover:bg-gray-100 border-gray-300 hover:border-gray-300'
+            ? 'text-slate-900 bg-slate-100 border-slate-300'
+            : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 border-slate-200 hover:border-slate-300 bg-white'
         }`}
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-5 h-5">
@@ -76,63 +94,107 @@ export default function NotificationBell({ queue }: Props) {
           />
         </svg>
 
-        {queue.total > 0 && (
-          <>
-            <span
-              className={`absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full text-[10px] font-bold text-white ${
-                hasCritical ? 'bg-rose-500' : 'bg-orange-500'
-              }`}
-            >
-              {badgeLabel}
-            </span>
-            {hasCritical && (
-              <span className="absolute -top-1.5 -right-1.5 w-[18px] h-[18px] rounded-full bg-rose-500 animate-ping opacity-60" />
-            )}
-          </>
+        {visibleTotal > 0 && (
+          <span
+            className={`absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full text-[10px] font-bold text-white shadow-2xs ${
+              hasCritical ? 'bg-rose-600' : 'bg-amber-600'
+            }`}
+          >
+            {badgeLabel}
+          </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-[340px] max-h-[70vh] flex flex-col bg-white border border-gray-300 rounded-xl overflow-hidden z-50">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-300 shrink-0">
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Tugas Menunggu Anda</p>
-            {queue.total > 0 && (
-              <span className="text-[10px] font-bold text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">{queue.total}</span>
+        <div className="absolute right-0 mt-2 w-[360px] sm:w-[390px] max-h-[75vh] flex flex-col bg-white border border-slate-200 rounded-2xl shadow-lg overflow-hidden z-50">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50/70 shrink-0">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Notifikasi</p>
+            {visibleTotal > 0 && (
+              <span className="text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded-full px-2 py-0.5">
+                {visibleTotal}
+              </span>
             )}
           </div>
 
-          {queue.items.length === 0 ? (
+          {visibleItems.length === 0 ? (
             <div className="px-4 py-8 text-center">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 mx-auto text-emerald-500/60">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 mx-auto text-emerald-500/70">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <p className="text-sm text-gray-500 mt-3">Tidak ada tugas tertunda</p>
-              <p className="text-xs text-gray-400 mt-1">Semua pengajuan sudah diproses.</p>
+              <p className="text-sm font-medium text-slate-700 mt-3">Tidak ada notifikasi</p>
+              <p className="text-xs text-slate-400 mt-1">Semua stok dan tugas operasional terpantau aman.</p>
             </div>
           ) : (
-            <div className="overflow-y-auto sidebar-scroll divide-y divide-gray-100">
-              {queue.items.map((item) => {
+            <div className="overflow-y-auto sidebar-scroll divide-y divide-slate-100">
+              {visibleItems.map((item) => {
                 const styles = SEVERITY_STYLES[item.severity];
+                if (item.key === 'shopee_critical_oos' && isSuperAdmin) {
+                  return (
+                    <div key={item.key} className="px-4 py-3.5 hover:bg-slate-50/60 transition-colors">
+                      <div className="flex items-start gap-3">
+                        <span className={`shrink-0 p-2 rounded-xl ${styles.icon}`}>
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor" className="w-4 h-4">
+                            <path strokeLinecap="round" strokeLinejoin="round" d={TYPE_ICONS[item.type]} />
+                          </svg>
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-semibold text-slate-900 truncate">{item.title}</p>
+                            <span className={`shrink-0 text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-md border ${styles.badge}`}>
+                              {item.count.toLocaleString('id-ID')}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-1 leading-relaxed">{item.description}</p>
+                          <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+                            <Link
+                              href={item.href}
+                              onClick={() => setOpen(false)}
+                              className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-rose-50 text-rose-800 border border-rose-200 text-[11px] font-semibold transition-colors"
+                            >
+                              Lihat SKU Kritis
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={handleZeroOutCritical}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold transition-colors cursor-pointer"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                              </svg>
+                              <span>Kosongkan di Shopee</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <Link
                     key={item.key}
                     href={item.href}
                     onClick={() => setOpen(false)}
-                    className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors group"
+                    className="flex items-start gap-3 px-4 py-3.5 hover:bg-slate-50 transition-colors group"
                   >
-                    <span className={`shrink-0 p-2 rounded-lg ${styles.icon}`}>
+                    <span className={`shrink-0 p-2 rounded-xl ${styles.icon}`}>
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor" className="w-4 h-4">
                         <path strokeLinecap="round" strokeLinejoin="round" d={TYPE_ICONS[item.type]} />
                       </svg>
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-gray-800 truncate group-hover:text-gray-900">{item.title}</p>
-                        <span className={`shrink-0 text-[10px] font-bold font-mono px-1.5 py-0.5 rounded border ${styles.badge}`}>
-                          {item.count}
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-slate-900 truncate group-hover:text-slate-950">{item.title}</p>
+                        <span className={`shrink-0 text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-md border ${styles.badge}`}>
+                          {item.count.toLocaleString('id-ID')}
                         </span>
                       </div>
-                      <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{item.description}</p>
+                      <p className="text-xs text-slate-500 mt-1 leading-relaxed">{item.description}</p>
+                      {item.key === 'shopee_stock_discrepancy' && (
+                        <span className="inline-block mt-1.5 text-[11px] font-semibold text-amber-700 group-hover:text-amber-800">
+                          Tampilkan {item.count.toLocaleString('id-ID')} Selisih Stok →
+                        </span>
+                      )}
                     </div>
                   </Link>
                 );

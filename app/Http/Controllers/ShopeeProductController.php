@@ -18,11 +18,142 @@ class ShopeeProductController extends Controller
     public function __construct(private readonly ShopeeSyncService $syncService) {}
 
     /**
-     * Clear cached reconciliation, summary stats, and schema checks.
+     * Clear cached reconciliation, summary stats, and file-based notification queue.
      */
     public static function clearAuditCache(?int $accountId = null): void
     {
-        // Safe no-op to prevent DB cache table crashes
+        try {
+            Cache::store('file')->forget('shopee_stock_alert_queue');
+        } catch (\Throwable $e) {
+            // Safe fallback if file cache is unavailable
+        }
+    }
+
+    /**
+     * Bangun struktur notifikasi topbar untuk peringatan SKU kritis & selisih stok Shopee.
+     *
+     * @return array{items: array<int, array<string, mixed>>, total: int, critical: int}
+     */
+    public static function buildStockWorkQueue(int $criticalOosCount, int $discrepancyCount, int $campaignUnlockedCount = 0): array
+    {
+        $items = [];
+
+        if ($criticalOosCount > 0 || $campaignUnlockedCount > 0) {
+            $desc = number_format($criticalOosCount, 0, ',', '.') . ' SKU stok gudang 0 pcs tetapi masih dijual di Shopee.';
+            if ($campaignUnlockedCount > 0) {
+                $desc .= ' Termasuk ' . number_format($campaignUnlockedCount, 0, ',', '.') . ' SKU promo terbuka.';
+            }
+
+            $items[] = [
+                'key'         => 'shopee_critical_oos',
+                'type'        => 'stock',
+                'title'       => 'SKU Habis di Gudang (Shopee)',
+                'description' => $desc,
+                'count'       => $criticalOosCount,
+                'amount'      => null,
+                'href'        => '/shopee-products?stock_status=oos_critical',
+                'severity'    => 'critical',
+            ];
+        }
+
+        if ($discrepancyCount > 0) {
+            $items[] = [
+                'key'         => 'shopee_stock_discrepancy',
+                'type'        => 'stock',
+                'title'       => 'SKU Selisih Stok (Gudang ≠ Shopee)',
+                'description' => number_format($discrepancyCount, 0, ',', '.') . ' SKU memiliki selisih stok antara Shopee dan Gudang A + G.',
+                'count'       => $discrepancyCount,
+                'amount'      => null,
+                'href'        => '/shopee-products?stock_status=discrepancy',
+                'severity'    => 'warning',
+            ];
+        }
+
+        return [
+            'items'    => $items,
+            'total'    => count($items),
+            'critical' => ($criticalOosCount > 0 || $campaignUnlockedCount > 0) ? 1 : 0,
+        ];
+    }
+
+    /**
+     * Ambil ringkasan notifikasi stok Shopee untuk topbar (khusus Super Admin).
+     * Menggunakan file cache agar aman tanpa ketergantungan tabel database cache.
+     *
+     * @return array{items: array<int, array<string, mixed>>, total: int, critical: int}
+     */
+    public function getStockAlertWorkQueue(): array
+    {
+        $empty = ['items' => [], 'total' => 0, 'critical' => 0];
+
+        try {
+            $cached = Cache::store('file')->get('shopee_stock_alert_queue');
+            if (is_array($cached) && isset($cached['items'])) {
+                return $cached;
+            }
+        } catch (\Throwable $e) {
+            // Lanjutkan evaluasi langsung bila file cache gagal dibaca
+        }
+
+        try {
+            if (
+                ! \Illuminate\Support\Facades\Schema::hasTable('master_stocks')
+                || ! \Illuminate\Support\Facades\Schema::hasTable('shopee_products')
+                || ! \Illuminate\Support\Facades\Schema::hasTable('shopee_accounts')
+            ) {
+                return $empty;
+            }
+
+            $account = ShopeeAccount::where('status', 'active')->first() ?? ShopeeAccount::first();
+            if (! $account) {
+                return $empty;
+            }
+
+            $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs')->get();
+            if ($masterStocks->isEmpty()) {
+                return $empty;
+            }
+
+            $maps     = $this->buildMasterStockMaps($masterStocks);
+            $allProds = ShopeeProduct::where('shopee_account_id', $account->id)->get();
+
+            $criticalOosCount      = 0;
+            $campaignUnlockedCount = 0;
+            $discrepancyCount      = 0;
+
+            foreach ($allProds as $p) {
+                $info = $this->resolveProductStockInfoFast(
+                    $p,
+                    $maps['masterByCode'],
+                    $maps['gMap'],
+                    $maps['aMap'],
+                    $maps['aPrefixMap'],
+                    $maps['smartIndex']
+                );
+
+                if ($info['is_critical_oos']) {
+                    $criticalOosCount++;
+                } elseif ($info['is_campaign_unlocked']) {
+                    $campaignUnlockedCount++;
+                }
+
+                if (! empty($info['matched_code']) && $info['diff'] !== 0) {
+                    $discrepancyCount++;
+                }
+            }
+
+            $queue = self::buildStockWorkQueue($criticalOosCount, $discrepancyCount, $campaignUnlockedCount);
+
+            try {
+                Cache::store('file')->put('shopee_stock_alert_queue', $queue, 120);
+            } catch (\Throwable $e) {
+                // Abaikan jika tidak bisa menulis file cache
+            }
+
+            return $queue;
+        } catch (\Throwable $e) {
+            return $empty;
+        }
     }
 
     /**
@@ -384,6 +515,19 @@ class ShopeeProductController extends Controller
             return $p;
         });
 
+        $stockWorkQueue = self::buildStockWorkQueue(
+            count($criticalOosIds),
+            count($discrepancyIds),
+            count($campaignUnlockedIds)
+        );
+        try {
+            \Illuminate\Support\Facades\Cache::store('file')->put('shopee_stock_alert_queue', $stockWorkQueue, 120);
+        } catch (\Throwable $e) {
+            // Abaikan error cache file pada environment hosting terbatas
+        }
+
+        $isSuperAdmin = $request->user()?->isSuperAdmin() ?? false;
+
         return Inertia::render('Shopee/Products', [
             'products' => $products,
             'filters'  => [
@@ -413,30 +557,7 @@ class ShopeeProductController extends Controller
                 'last_synced_at'          => $lastSyncedAt,
             ],
             'master_stock_summary' => $masterStockSummary,
-            'workQueue' => [
-                'items' => array_values(array_filter([
-                    count($criticalOosIds) > 0 ? [
-                        'key'         => 'shopee_critical_oos',
-                        'type'        => 'stock',
-                        'title'       => 'Stok Shopee Kritis (0 di Gudang)',
-                        'description' => count($criticalOosIds) . ' SKU habis di gudang tetapi masih dijual di Shopee.',
-                        'count'       => count($criticalOosIds),
-                        'href'        => '/shopee-products?stock_status=oos_critical',
-                        'severity'    => 'critical',
-                    ] : null,
-                    count($discrepancyIds) > 0 ? [
-                        'key'         => 'shopee_stock_discrepancy',
-                        'type'        => 'stock',
-                        'title'       => 'Selisih Stok Gudang vs Shopee',
-                        'description' => count($discrepancyIds) . ' SKU memiliki selisih kuantitas antara Shopee dan Gudang A+G.',
-                        'count'       => count($discrepancyIds),
-                        'href'        => '/shopee-products?stock_status=discrepancy',
-                        'severity'    => 'warning',
-                    ] : null,
-                ])),
-                'total' => (count($criticalOosIds) > 0 ? 1 : 0) + (count($discrepancyIds) > 0 ? 1 : 0),
-                'critical' => count($criticalOosIds) > 0 ? 1 : 0,
-            ],
+            'workQueue' => $isSuperAdmin ? $stockWorkQueue : ['items' => [], 'total' => 0, 'critical' => 0],
             'account'  => $account ? [
                 'id'           => $account->id,
                 'account_name' => $account->account_name,
@@ -1710,6 +1831,9 @@ class ShopeeProductController extends Controller
 
         try {
             $res = $this->syncService->updateShopeeProductsStock($account, $validated['updates']);
+            if (! empty($res['success'])) {
+                self::clearAuditCache($account->id);
+            }
             return response()->json([
                 'status'        => $res['success'] ? 'success' : 'error',
                 'message'       => $res['message'],

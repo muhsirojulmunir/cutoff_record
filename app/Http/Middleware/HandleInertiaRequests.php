@@ -57,8 +57,10 @@ class HandleInertiaRequests extends Middleware
                 'success' => $request->session()->get('success'),
                 'error'   => $request->session()->get('error'),
             ],
-            // Antrian tugas / notifikasi (kosong untuk clean starter)
-            'workQueue' => ['items' => [], 'total' => 0, 'critical' => 0],
+            // Antrian notifikasi stok Shopee (hanya tampil untuk Super Admin)
+            'workQueue' => ($request->user()?->isSuperAdmin() ?? false)
+                ? app(\App\Http\Controllers\ShopeeProductController::class)->getStockAlertWorkQueue()
+                : ['items' => [], 'total' => 0, 'critical' => 0],
         ];
     }
 }
