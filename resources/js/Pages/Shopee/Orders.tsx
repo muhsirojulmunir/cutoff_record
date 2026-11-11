@@ -197,6 +197,7 @@ export default function ShopeeOrdersPage({
   const toastTimerRef = useRef<number | null>(null);
   const activeBlobUrlRef = useRef<string | null>(null);
   const waybillAbortRef = useRef<AbortController | null>(null);
+  const syncInFlightRef = useRef(false);
   const masterCheckboxRef = useRef<HTMLInputElement | null>(null);
 
   // Sync & UI state
@@ -247,9 +248,19 @@ export default function ShopeeOrdersPage({
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      if (searchTimerRef.current !== null) window.clearTimeout(searchTimerRef.current);
-      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
-      if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+      syncInFlightRef.current = false;
+      if (searchTimerRef.current !== null) {
+        window.clearTimeout(searchTimerRef.current);
+        searchTimerRef.current = null;
+      }
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+        copyTimerRef.current = null;
+      }
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = null;
+      }
       waybillAbortRef.current?.abort();
       waybillAbortRef.current = null;
       revokeActiveBlobUrl();
@@ -412,14 +423,19 @@ export default function ShopeeOrdersPage({
   };
 
   const handleSyncOrders = () => {
-    if (!isShopeeConnected || isSyncing) return;
+    if (!isShopeeConnected || syncInFlightRef.current || isSyncing) return;
+    syncInFlightRef.current = true;
     router.post(
       '/shopee-orders/sync',
       { days: syncDays },
       {
         preserveScroll: true,
-        onStart: () => setIsSyncing(true),
+        onStart: () => {
+          syncInFlightRef.current = true;
+          if (isMountedRef.current) setIsSyncing(true);
+        },
         onFinish: () => {
+          syncInFlightRef.current = false;
           if (isMountedRef.current) setIsSyncing(false);
         },
       }
@@ -812,12 +828,6 @@ export default function ShopeeOrdersPage({
     filters.date_to !== '' ||
     filters.sort !== 'ship_by_asc';
 
-  const showSubTabBar =
-    filters.tab === 'to_ship' ||
-    filters.tab === 'shipped' ||
-    filters.tab === 'all' ||
-    filters.print_status !== 'all';
-
   const showPrintPills =
     filters.tab === 'to_ship' ||
     filters.tab === 'shipped' ||
@@ -1136,9 +1146,9 @@ export default function ShopeeOrdersPage({
           </div>
 
           {/* Sub-Tabs & Print Status Pills */}
-          {showSubTabBar && (
+          {showPrintPills && (
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/70 px-4 py-3 sm:px-5">
-              {filters.tab === 'to_ship' ? (
+              {filters.tab === 'to_ship' && (
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                     Proses:
@@ -1168,43 +1178,39 @@ export default function ShopeeOrdersPage({
                     );
                   })}
                 </div>
-              ) : (
-                <div />
               )}
 
-              {showPrintPills && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                    Status Cetak:
-                  </span>
-                  {printStatusOptions.map((opt) => {
-                    const active = filters.print_status === opt.key;
-                    return (
-                      <button
-                        key={opt.key}
-                        type="button"
-                        onClick={() => navigateWithFilters({ print_status: opt.key })}
-                        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
-                          active
-                            ? 'border-orange-300 bg-orange-50 text-[#EE4D2D]'
-                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        <span>{opt.label}</span>
-                        {opt.count !== null && (
-                          <span
-                            className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${
-                              active ? 'bg-orange-100 text-[#EE4D2D]' : 'bg-slate-100 text-slate-600'
-                            }`}
-                          >
-                            {opt.count.toLocaleString('id-ID')}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  Status Cetak:
+                </span>
+                {printStatusOptions.map((opt) => {
+                  const active = filters.print_status === opt.key;
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => navigateWithFilters({ print_status: opt.key })}
+                      className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+                        active
+                          ? 'border-orange-300 bg-orange-50 text-[#EE4D2D]'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>{opt.label}</span>
+                      {opt.count !== null && (
+                        <span
+                          className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${
+                            active ? 'bg-orange-100 text-[#EE4D2D]' : 'bg-slate-100 text-slate-600'
+                          }`}
+                        >
+                          {opt.count.toLocaleString('id-ID')}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -1273,6 +1279,7 @@ export default function ShopeeOrdersPage({
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
+                    onMouseDown={(e) => e.stopPropagation()}
                     onClick={() => setIsDatePickerOpen((o) => !o)}
                     className={`flex w-full cursor-pointer items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-xs font-medium transition-colors ${
                       filters.date_from || filters.date_to
@@ -1316,10 +1323,14 @@ export default function ShopeeOrdersPage({
                   {(filters.date_from || filters.date_to) && (
                     <button
                       type="button"
-                      onClick={() => navigateWithFilters({ date_from: '', date_to: '' })}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={() => {
+                        setIsDatePickerOpen(false);
+                        navigateWithFilters({ date_from: '', date_to: '' });
+                      }}
                       title="Hapus filter tanggal"
                       aria-label="Hapus filter tanggal"
-                      className="shrink-0 rounded-xl border border-slate-200 bg-white p-2.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                      className="shrink-0 cursor-pointer rounded-xl border border-slate-200 bg-white p-2.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-3.5 w-3.5">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -1633,7 +1644,7 @@ export default function ShopeeOrdersPage({
                       ) : (
                         <div className="space-y-3">
                           {items.map((item, idx) => {
-                            const imgKey = `${order.order_sn}-${idx}`;
+                            const imgKey = `${order.order_sn}-${idx}-${item.image_url ?? ''}`;
                             const skuText = item.sku || item.model_sku || item.item_sku;
                             const qty = resolveItemQty(item);
                             const unitPrice = resolveItemUnitPrice(item);
