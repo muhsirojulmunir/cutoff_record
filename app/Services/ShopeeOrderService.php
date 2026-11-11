@@ -22,6 +22,8 @@ class ShopeeOrderService
 
     private string $host;
 
+    private bool $schemaEnsured = false;
+
     public function __construct(
         private readonly ShopeeSyncService $syncService,
     ) {
@@ -29,13 +31,28 @@ class ShopeeOrderService
     }
 
     /**
+     * Reset cache status pemeriksaan skema (berguna pada skenario test yang me-reset DB).
+     */
+    public function resetSchemaCache(): void
+    {
+        $this->schemaEnsured = false;
+    }
+
+    /**
      * Pastikan tabel shopee_orders tersedia di database (aman untuk deploy tanpa shell).
      */
     public function ensureSchema(): void
     {
+        if ($this->schemaEnsured) {
+            return;
+        }
+
         try {
             if (! Schema::hasTable('shopee_orders')) {
                 Schema::create('shopee_orders', ShopeeOrder::buildSchemaCallback());
+            }
+            if (Schema::hasTable('shopee_orders')) {
+                $this->schemaEnsured = true;
             }
         } catch (\Throwable $e) {
             Log::warning('ShopeeOrderService ensureSchema notice: ' . $e->getMessage());
@@ -202,9 +219,10 @@ class ShopeeOrderService
     {
         $this->ensureSchema();
 
+        $resolvedPackageNumber = $this->resolvePackageNumber($account, $orderSn, $packageNumber);
         $query = $this->filterNonEmpty([
             'order_sn'       => $orderSn,
-            'package_number' => $packageNumber,
+            'package_number' => $resolvedPackageNumber,
         ]);
 
         $data = $this->getApi($account, '/api/v2/logistics/get_tracking_number', $query);
@@ -234,16 +252,11 @@ class ShopeeOrderService
     {
         $this->ensureSchema();
 
-        if ($packageNumber === null || $packageNumber === '') {
-            $existing = ShopeeOrder::where('shopee_account_id', $account->id)
-                ->where('order_sn', $orderSn)
-                ->first(['package_number']);
-            $packageNumber = $existing?->package_number ?: null;
-        }
+        $resolvedPackageNumber = $this->resolvePackageNumber($account, $orderSn, $packageNumber);
 
         $query = $this->filterNonEmpty([
             'order_sn'       => $orderSn,
-            'package_number' => $packageNumber,
+            'package_number' => $resolvedPackageNumber,
         ]);
 
         $data = $this->getApi($account, '/api/v2/logistics/get_shipping_parameter', $query);
@@ -252,7 +265,7 @@ class ShopeeOrderService
 
         return [
             'order_sn'                 => $orderSn,
-            'package_number'           => $packageNumber ?: null,
+            'package_number'           => $resolvedPackageNumber,
             'info_needed'              => $infoNeeded,
             'pickup_supported'         => isset($infoNeeded['pickup']),
             'dropoff_supported'        => isset($infoNeeded['dropoff']),
@@ -451,11 +464,16 @@ class ShopeeOrderService
         $warnings = [];
         foreach ($orders as $order) {
             if (empty($order->tracking_number)) {
-                $tn = $this->fetchTrackingNumber($account, $order->order_sn, $order->package_number ?: null);
-                if (! empty($tn)) {
-                    $order->tracking_number = $tn;
-                } else {
-                    $warnings[] = "No. Resi untuk {$order->order_sn} belum tersedia dari Shopee.";
+                try {
+                    $tn = $this->fetchTrackingNumber($account, $order->order_sn, $order->package_number ?: null);
+                    if (! empty($tn)) {
+                        $order->tracking_number = $tn;
+                    } else {
+                        $warnings[] = "No. Resi untuk {$order->order_sn} belum tersedia dari Shopee.";
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning("Shopee waybill fetchTrackingNumber warning ({$order->order_sn}): " . $e->getMessage());
+                    $warnings[] = "Gagal mengambil No. Resi {$order->order_sn}: {$e->getMessage()}";
                 }
             }
         }
@@ -477,6 +495,8 @@ class ShopeeOrderService
             }
         }
 
+        $this->markWaybillFailedOrders($orders, $failedSnMessages);
+
         $eligibleOrders = array_values(array_filter(
             $orders,
             static fn (ShopeeOrder $o): bool => ! isset($failedSnMessages[$o->order_sn])
@@ -493,6 +513,7 @@ class ShopeeOrderService
         }
 
         $docQueryList = $this->buildWaybillOrderList($eligibleOrders, true, false);
+        $statusBySn = [];
 
         for ($attempt = 1; $attempt <= 5; $attempt++) {
             $resultResp = $this->postApi($account, '/api/v2/logistics/get_shipping_document_result', [
@@ -511,6 +532,9 @@ class ShopeeOrderService
                 }
                 $sn = (string) ($entry['order_sn'] ?? '');
                 $status = strtoupper((string) ($entry['status'] ?? ''));
+                if ($sn !== '' && $status !== '') {
+                    $statusBySn[$sn] = $status;
+                }
                 if ($status === 'FAILED' && $sn !== '') {
                     $failErr = trim((string) ($entry['fail_error'] ?? ''));
                     $failMsg = trim((string) ($entry['fail_message'] ?? ''));
@@ -529,26 +553,44 @@ class ShopeeOrderService
             }
         }
 
-        $readyOrders = array_values(array_filter(
-            $eligibleOrders,
-            static fn (ShopeeOrder $o): bool => ! isset($failedSnMessages[$o->order_sn])
-        ));
+        $this->markWaybillFailedOrders($eligibleOrders, $failedSnMessages);
 
-        $failedIds = [];
+        $readyOrders = [];
+        $processingSns = [];
+        $processingIds = [];
         foreach ($eligibleOrders as $order) {
             if (isset($failedSnMessages[$order->order_sn])) {
-                $failedIds[] = $order->id;
                 $msg = $failedSnMessages[$order->order_sn];
                 if (! in_array("Resi {$order->order_sn} gagal dibuat Shopee: {$msg}", $warnings, true)) {
                     $warnings[] = "Resi {$order->order_sn} gagal disiapkan Shopee: {$msg}";
                 }
+                continue;
             }
+
+            $docStatus = $statusBySn[$order->order_sn] ?? null;
+            if ($docStatus !== null && in_array($docStatus, ['PROCESSING', 'WAITING'], true)) {
+                $processingSns[] = $order->order_sn;
+                $processingIds[] = (int) $order->id;
+                $warnings[] = "Dokumen resi {$order->order_sn} masih diproses Shopee ({$docStatus}), silakan cetak ulang beberapa saat lagi.";
+                continue;
+            }
+
+            $readyOrders[] = $order;
         }
-        if (! empty($failedIds)) {
-            ShopeeOrder::whereIn('id', $failedIds)->update(['label_document_status' => 'FAILED']);
+
+        if (! empty($processingIds)) {
+            ShopeeOrder::whereIn('id', $processingIds)->update(['label_document_status' => 'PROCESSING']);
         }
 
         if (empty($readyOrders)) {
+            if (! empty($processingSns)) {
+                $errDetail = 'Dokumen resi A4 Shopee masih dalam proses pembuatan setelah 5x pengecekan (' . implode(', ', $processingSns) . '). Silakan coba beberapa saat lagi.';
+                if (! empty($failedSnMessages)) {
+                    $errDetail .= ' Gagal: ' . implode('; ', $failedSnMessages);
+                }
+                throw new RuntimeException($errDetail);
+            }
+
             throw new RuntimeException(
                 'Dokumen resi A4 Shopee gagal disiapkan: ' . implode('; ', $failedSnMessages)
             );
@@ -819,7 +861,7 @@ class ShopeeOrderService
         return null;
     }
 
-    private function ensureConnectedAccount(ShopeeAccount $account): ShopeeAccount
+    private function ensureConnectedAccount(ShopeeAccount &$account): ShopeeAccount
     {
         if (
             empty($account->partner_id)
@@ -830,7 +872,14 @@ class ShopeeOrderService
             throw new RuntimeException('Akun Shopee belum terhubung lengkap (Partner ID, Shop ID, atau Access Token kosong).');
         }
 
-        return $this->syncService->getValidTokenAccount($account);
+        $fresh = $this->syncService->getValidTokenAccount($account);
+        if ($fresh !== $account) {
+            $account->setRawAttributes($fresh->getAttributes(), true);
+            $account->syncOriginal();
+            $account->exists = $fresh->exists;
+        }
+
+        return $account;
     }
 
     private function buildSignedUrl(ShopeeAccount $account, string $path, array $extraQuery = []): string
@@ -855,9 +904,9 @@ class ShopeeOrderService
         return $this->host . $path . '?' . http_build_query($query);
     }
 
-    private function getApi(ShopeeAccount $account, string $path, array $query = []): array
+    private function getApi(ShopeeAccount &$account, string $path, array $query = []): array
     {
-        $account = $this->ensureConnectedAccount($account);
+        $this->ensureConnectedAccount($account);
         $url = $this->buildSignedUrl($account, $path, $query);
 
         $response = Http::timeout(25)->get($url);
@@ -865,9 +914,9 @@ class ShopeeOrderService
         return $this->decodeJsonResponse($response, $path);
     }
 
-    private function postApi(ShopeeAccount $account, string $path, array $body = [], int $timeout = 25): array
+    private function postApi(ShopeeAccount &$account, string $path, array $body = [], int $timeout = 25): array
     {
-        $account = $this->ensureConnectedAccount($account);
+        $this->ensureConnectedAccount($account);
         $url = $this->buildSignedUrl($account, $path);
 
         $response = Http::timeout($timeout)->asJson()->post($url, $body);
@@ -875,9 +924,9 @@ class ShopeeOrderService
         return $this->decodeJsonResponse($response, $path);
     }
 
-    private function postBinaryApi(ShopeeAccount $account, string $path, array $body = [], int $timeout = 40): Response
+    private function postBinaryApi(ShopeeAccount &$account, string $path, array $body = [], int $timeout = 40): Response
     {
-        $account = $this->ensureConnectedAccount($account);
+        $this->ensureConnectedAccount($account);
         $url = $this->buildSignedUrl($account, $path);
 
         $response = Http::timeout($timeout)->asJson()->post($url, $body);
@@ -1138,12 +1187,56 @@ class ShopeeOrderService
         };
     }
 
+    private function resolvePackageNumber(ShopeeAccount $account, string $orderSn, ?string $packageNumber): ?string
+    {
+        $trimmed = $packageNumber !== null ? trim($packageNumber) : '';
+        if ($trimmed !== '') {
+            return $trimmed;
+        }
+
+        $existing = ShopeeOrder::where('shopee_account_id', $account->id)
+            ->where('order_sn', $orderSn)
+            ->first(['package_number']);
+
+        $fromDb = trim((string) ($existing?->package_number ?? ''));
+
+        return $fromDb !== '' ? $fromDb : null;
+    }
+
+    /**
+     * @param  array<int, ShopeeOrder>  $orders
+     * @param  array<string, string>  $failedSnMessages
+     */
+    private function markWaybillFailedOrders(array $orders, array $failedSnMessages): void
+    {
+        $failedIds = [];
+        foreach ($orders as $order) {
+            if (isset($failedSnMessages[$order->order_sn])) {
+                $failedIds[] = (int) $order->id;
+            }
+        }
+
+        if (! empty($failedIds)) {
+            ShopeeOrder::whereIn('id', $failedIds)->update(['label_document_status' => 'FAILED']);
+        }
+    }
+
     /**
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
     private function filterNonEmpty(array $data): array
     {
-        return array_filter($data, static fn ($value): bool => $value !== null && $value !== '');
+        $filtered = [];
+        foreach ($data as $key => $value) {
+            if (is_string($value)) {
+                $value = trim($value);
+            }
+            if ($value !== null && $value !== '') {
+                $filtered[$key] = $value;
+            }
+        }
+
+        return $filtered;
     }
 }
