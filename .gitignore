@@ -38,8 +38,7 @@ Thumbs.db
 /docs/
 /scratch/
 
-# Konfigurasi AI & workflow internal
+# Konfigurasi AI lokal (tidak diikutkan ke repository)
 /.agents/
 /.claude/
-/.github/
 
