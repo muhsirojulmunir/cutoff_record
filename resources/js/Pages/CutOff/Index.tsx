@@ -1601,7 +1601,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                   <th className="py-2.5 px-2.5">SKU Pengganti</th>
                   <th className="py-2.5 px-2.5">Info Gudang</th>
                   <th className="py-2.5 px-3">Status Pesanan</th>
-                  <th className="py-2.5 px-3">Keuangan & DPP</th>
+                  <th className="py-2.5 px-3">EST Bersih</th>
                   {canManage && (
                     <th className="py-2.5 px-2 text-center w-12 sticky right-0 bg-slate-900 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)]">
                       Aksi
@@ -1807,9 +1807,9 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                                   </div>
                                 </div>
                               ))}
-                              <div className="pt-1 border-t border-dashed border-slate-200 flex items-center gap-2 text-[10px] text-slate-500">
-                                <span className="font-semibold text-slate-700">
-                                  Total {order.financial_breakdown.items.length} Produk · QTY {order.qty}
+                              <div className="pt-1 border-t border-dashed border-slate-200 flex items-center gap-2 text-[11px] text-slate-500">
+                                <span>
+                                  Qty : <strong className="text-slate-900 font-semibold">{order.qty}</strong>
                                 </span>
                                 {order.recheck_qty !== null && (
                                   <span className="text-emerald-600 font-medium">Recheck: {order.recheck_qty}</span>
