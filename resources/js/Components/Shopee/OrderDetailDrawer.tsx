@@ -187,6 +187,10 @@ export default function OrderDetailDrawer({
   }, []);
 
   useEffect(() => {
+    if (copyTimerRef.current) {
+      clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = null;
+    }
     setCopiedField(null);
     setFailedImages({});
   }, [order?.order_sn]);
@@ -204,7 +208,7 @@ export default function OrderDetailDrawer({
     window.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      document.body.style.overflow = previousOverflow || 'unset';
+      document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isOpen]);
@@ -298,7 +302,7 @@ export default function OrderDetailDrawer({
       />
 
       {/* Right Slide-Over Panel */}
-      <aside className="relative z-10 flex h-full w-full max-w-2xl flex-col border-l border-slate-200 bg-white shadow-xl">
+      <aside className="relative z-10 flex h-full w-full max-w-2xl flex-col border-l border-slate-200 bg-white shadow-lg">
         {/* Sticky Header */}
         <header className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-6 py-4">
           <div className="min-w-0 space-y-2">

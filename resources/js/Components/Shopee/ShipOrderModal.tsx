@@ -148,6 +148,9 @@ export default function ShipOrderModal({
 }: ShipOrderModalProps) {
   const isMountedRef = useRef(true);
   const singleShippedSnRef = useRef<string | null>(null);
+  const submitAbortRef = useRef<AbortController | null>(null);
+  const submitSeqRef = useRef(0);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -155,6 +158,12 @@ export default function ShipOrderModal({
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      submitAbortRef.current?.abort();
+      submitAbortRef.current = null;
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+        copyTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -195,9 +204,18 @@ export default function ShipOrderModal({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [show, submitting]);
 
-  // Reset modal state on close or target switch so reopening never flashes stale results
+  // Reset modal state and abort/invalidate any in-flight submission on close or target switch
   useEffect(() => {
+    submitSeqRef.current += 1;
+    submitAbortRef.current?.abort();
+    submitAbortRef.current = null;
+    if (copyTimerRef.current) {
+      clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = null;
+    }
+
     singleShippedSnRef.current = null;
+    setSubmitting(false);
     setSubmitError(null);
     setParamsError(null);
     setSingleResult(null);
@@ -380,14 +398,70 @@ export default function ShipOrderModal({
   const handleCopyTracking = async (code: string) => {
     try {
       await navigator.clipboard.writeText(code);
+      if (!isMountedRef.current) return;
       setCopiedTracking(true);
-      setTimeout(() => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => {
         if (isMountedRef.current) setCopiedTracking(false);
       }, 2000);
     } catch {
       // Clipboard API blocked
     }
   };
+
+  async function submitJsonPost<T extends { status?: string }>(
+    url: string,
+    payload: Record<string, unknown>,
+    fallbackError: string,
+    networkError: string
+  ): Promise<{ data: T; isStale: () => boolean } | null> {
+    submitAbortRef.current?.abort();
+    const controller = new AbortController();
+    submitAbortRef.current = controller;
+    const seq = ++submitSeqRef.current;
+    const isStale = () => controller.signal.aborted || !isMountedRef.current || seq !== submitSeqRef.current;
+
+    setSubmitting(true);
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'X-CSRF-TOKEN': getCsrfToken(),
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await parseJsonSafe<T & Record<string, unknown>>(response);
+      if (isStale()) return null;
+
+      if (!response.ok || !data || data.status === 'error') {
+        setSubmitError(
+          extractErrorMessage(data as Record<string, unknown> | null, response.status, fallbackError)
+        );
+        return null;
+      }
+
+      return { data, isStale };
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return null;
+      if (!isStale()) {
+        setSubmitError(err instanceof Error ? err.message : networkError);
+      }
+      return null;
+    } finally {
+      if (submitAbortRef.current === controller) {
+        submitAbortRef.current = null;
+      }
+      if (!isStale()) {
+        setSubmitting(false);
+      }
+    }
+  }
 
   const handleSingleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -408,7 +482,7 @@ export default function ShipOrderModal({
         setSubmitError('Alamat penjemputan (Pick-up) belum tersedia di akun Shopee. Gunakan Antar ke Counter jika tersedia.');
         return;
       }
-      if (selectedAddressId === null) {
+      if (selectedAddressId === null || !selectedAddress) {
         setSubmitError('Silakan pilih alamat penjemputan kurir terlebih dahulu.');
         return;
       }
@@ -477,46 +551,18 @@ export default function ShipOrderModal({
       }
     }
 
-    setSubmitting(true);
-    try {
-      const response = await fetch(`/shopee-orders/${encodeURIComponent(order.order_sn)}/ship`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          'X-CSRF-TOKEN': getCsrfToken(),
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-        body: JSON.stringify(payload),
-      });
+    const result = await submitJsonPost<ShopeeShipResult>(
+      `/shopee-orders/${encodeURIComponent(order.order_sn)}/ship`,
+      payload,
+      'Gagal mengatur pengiriman pesanan',
+      'Gagal menghubungi server saat mengatur pengiriman.'
+    );
+    if (!result || result.isStale()) return;
 
-      const data = await parseJsonSafe<ShopeeShipResult & Record<string, unknown>>(response);
-      if (!isMountedRef.current) return;
-
-      if (!response.ok || !data || data.status === 'error') {
-        setSubmitError(
-          extractErrorMessage(
-            data as Record<string, unknown> | null,
-            response.status,
-            'Gagal mengatur pengiriman pesanan'
-          )
-        );
-        return;
-      }
-
-      singleShippedSnRef.current = data.order_sn;
-      setSingleResult(data);
-      onShipped?.(data);
-      onSuccess?.(data);
-    } catch (err) {
-      if (!isMountedRef.current) return;
-      setSubmitError(err instanceof Error ? err.message : 'Gagal menghubungi server saat mengatur pengiriman.');
-    } finally {
-      if (isMountedRef.current) {
-        setSubmitting(false);
-      }
-    }
+    singleShippedSnRef.current = result.data.order_sn;
+    setSingleResult(result.data);
+    onShipped?.(result.data);
+    onSuccess?.(result.data);
   };
 
   const handleMassSubmit = async (e: React.FormEvent) => {
@@ -524,7 +570,6 @@ export default function ShipOrderModal({
     if (submitting || eligibleMassOrders.length === 0) return;
 
     setSubmitError(null);
-    setSubmitting(true);
 
     const payload: Record<string, unknown> = {
       order_sns: eligibleMassOrders.map((o) => o.order_sn),
@@ -534,44 +579,17 @@ export default function ShipOrderModal({
       payload.sender_real_name = massSenderName.trim();
     }
 
-    try {
-      const response = await fetch('/shopee-orders/mass-ship', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          'X-CSRF-TOKEN': getCsrfToken(),
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-        body: JSON.stringify(payload),
-      });
+    const result = await submitJsonPost<ShopeeMassShipResult>(
+      '/shopee-orders/mass-ship',
+      payload,
+      'Gagal menjalankan atur pengiriman massal',
+      'Gagal menghubungi server saat proses pengiriman massal.'
+    );
+    if (!result || result.isStale()) return;
 
-      const data = await parseJsonSafe<ShopeeMassShipResult & Record<string, unknown>>(response);
-      if (!isMountedRef.current) return;
-
-      if (!response.ok || !data || data.status === 'error') {
-        setSubmitError(
-          extractErrorMessage(
-            data as Record<string, unknown> | null,
-            response.status,
-            'Gagal menjalankan atur pengiriman massal'
-          )
-        );
-        return;
-      }
-
-      setMassResult(data);
-      onMassShipped?.(data);
-      onSuccess?.(data);
-    } catch (err) {
-      if (!isMountedRef.current) return;
-      setSubmitError(err instanceof Error ? err.message : 'Gagal menghubungi server saat proses pengiriman massal.');
-    } finally {
-      if (isMountedRef.current) {
-        setSubmitting(false);
-      }
-    }
+    setMassResult(result.data);
+    onMassShipped?.(result.data);
+    onSuccess?.(result.data);
   };
 
   const modalTitle =

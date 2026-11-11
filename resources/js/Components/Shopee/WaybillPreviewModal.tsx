@@ -42,7 +42,7 @@ export default function WaybillPreviewModal({
     window.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      document.body.style.overflow = previousOverflow || 'unset';
+      document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [show]);
@@ -66,7 +66,7 @@ export default function WaybillPreviewModal({
         onClick={onClose}
       />
 
-      <div className="relative z-10 my-auto flex w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+      <div className="relative z-10 my-auto flex w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg">
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
