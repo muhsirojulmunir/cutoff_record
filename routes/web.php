@@ -86,6 +86,17 @@ Route::middleware('auth')->group(function () {
     Route::post('/marketplace/shopee/sync-products', [\App\Http\Controllers\ShopeeIntegrationController::class, 'syncProducts'])->name('shopee.sync-products');
     Route::get('/marketplace/shopee/products', [\App\Http\Controllers\ShopeeIntegrationController::class, 'productsList'])->name('shopee.products');
 
+    // Pesanan Saya Shopee (Eksklusif Super Admin - Fulfillment & Cetak Resi A4)
+    Route::get('/shopee-orders', [\App\Http\Controllers\ShopeeOrderController::class, 'index'])->name('shopee-orders.index');
+    Route::post('/shopee-orders/sync', [\App\Http\Controllers\ShopeeOrderController::class, 'sync'])->name('shopee-orders.sync');
+    Route::post('/shopee-orders/mass-ship', [\App\Http\Controllers\ShopeeOrderController::class, 'massShip'])->name('shopee-orders.mass-ship');
+    Route::post('/shopee-orders/mass-waybill-a4', [\App\Http\Controllers\ShopeeOrderController::class, 'massPrintWaybill'])->name('shopee-orders.mass-waybill');
+    Route::post('/shopee-orders/{orderSn}/refresh', [\App\Http\Controllers\ShopeeOrderController::class, 'refreshDetail'])->name('shopee-orders.refresh');
+    Route::get('/shopee-orders/{orderSn}/shipping-parameters', [\App\Http\Controllers\ShopeeOrderController::class, 'shippingParameters'])->name('shopee-orders.shipping-params');
+    Route::post('/shopee-orders/{orderSn}/ship', [\App\Http\Controllers\ShopeeOrderController::class, 'ship'])->name('shopee-orders.ship');
+    Route::get('/shopee-orders/{orderSn}/waybill-a4', [\App\Http\Controllers\ShopeeOrderController::class, 'printWaybill'])->name('shopee-orders.waybill');
+    Route::post('/shopee-orders/{orderSn}/handle-cancel', [\App\Http\Controllers\ShopeeOrderController::class, 'handleCancellation'])->name('shopee-orders.handle-cancel');
+
     // Integrasi TikTok Shop Open API
     Route::get('/marketplace/tiktok', [\App\Http\Controllers\TiktokIntegrationController::class, 'index'])->name('tiktok.index');
     Route::post('/marketplace/tiktok/credentials', [\App\Http\Controllers\TiktokIntegrationController::class, 'saveCredentials'])->name('tiktok.credentials');
