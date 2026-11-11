@@ -18,9 +18,17 @@ class ShopeeSyncService
 {
     private string $host;
 
+    /** @var array<string, bool> */
+    private array $cutOffColumnCache = [];
+
     public function __construct()
     {
         $this->host = config('services.shopee.host', 'https://partner.shopeemobile.com');
+    }
+
+    private function hasCutOffColumn(string $column): bool
+    {
+        return $this->cutOffColumnCache[$column] ??= Schema::hasColumn('cut_off_orders', $column);
     }
 
     /**
@@ -353,55 +361,105 @@ class ShopeeSyncService
             }
         }
 
-        // Ambil rincian escrow secara paralel (Http::pool) untuk pesanan yang belum terambil di escrowMap
-        // Chunk kecil (5) agar tidak terkena rate limit QPS Shopee pada endpoint get_escrow_detail
-        $missingEscrowSns = array_values(array_diff($orderSns, array_keys($escrowMap)));
-        if (! empty($missingEscrowSns)) {
-            $chunksMissing = array_chunk($missingEscrowSns, 5);
-            foreach ($chunksMissing as $snBatch) {
-                try {
-                    $poolResponses = Http::pool(function (Pool $pool) use ($account, $snBatch) {
-                        $reqs = [];
-                        foreach ($snBatch as $sn) {
-                            $url = $this->buildSingleEscrowUrl($account, (string) $sn);
-                            $reqs[$sn] = $pool->as((string) $sn)->timeout(15)->get($url);
-                        }
-                        return $reqs;
-                    });
+        if (empty($detailedOrders)) {
+            $account->update([
+                'last_synced_at'   => now(),
+                'last_sync_status' => 'success',
+                'last_sync_error'  => null,
+            ]);
 
-                    foreach ($poolResponses as $sn => $res) {
-                        if ($res instanceof Response && $res->successful()) {
-                            $data = $res->json();
-                            if (! empty($data['error'])) {
-                                Log::warning("Shopee single escrow error ({$sn}): " . ($data['message'] ?? $data['error']));
-                                continue;
-                            }
-                            $parsed = $this->parseSingleEscrowResponse(is_array($data) ? $data : []);
-                            if (! empty($parsed)) {
-                                $escrowMap[$sn] = $parsed;
-                            }
-                        } elseif ($res instanceof Response) {
-                            Log::warning("Shopee single escrow HTTP {$res->status()} ({$sn})");
-                        }
-                    }
-                } catch (\Throwable $e) {
-                    Log::warning('Shopee parallel single escrow pool warning: ' . $e->getMessage());
-                }
-            }
+            return [
+                'total_fetched' => 0,
+                'created'       => 0,
+                'updated'       => 0,
+                'message'       => 'Tidak ada pesanan Shopee pada rentang waktu tersebut.',
+            ];
         }
 
-        // 3. Ingest into CutOffOrder table (Optimized: 1 Single Preload Query + DB Transaction)
-        $this->ensureSchema();
-        $hasCancelBy           = Schema::hasColumn('cut_off_orders', 'cancel_by');
-        $hasCancelReason       = Schema::hasColumn('cut_off_orders', 'cancel_reason');
-        $hasFinancialBreakdown = Schema::hasColumn('cut_off_orders', 'financial_breakdown');
+        return $this->ingestDetailedOrdersToCutOff($account, $detailedOrders, $escrowMap, true);
+    }
 
+    /**
+     * Simpan/perbarui daftar detailed order Shopee ke tabel cut_off_orders
+     * dengan tetap menerapkan rumus Est. Bersih (Subtotal - Voucher Penjual) * 79%.
+     *
+     * @param  array<int, array<string, mixed>>  $detailedOrders
+     * @param  array<string, array<string, mixed>>  $escrowMap
+     * @return array{total_fetched: int, created: int, updated: int, message: string}
+     */
+    public function ingestDetailedOrdersToCutOff(
+        ShopeeAccount $account,
+        array $detailedOrders,
+        array $escrowMap = [],
+        bool $fetchMissingEscrow = true
+    ): array {
         $allOrderSnsToSave = [];
         foreach ($detailedOrders as $o) {
             if (! empty($o['order_sn'])) {
                 $allOrderSnsToSave[] = $o['order_sn'];
             }
         }
+
+        if (empty($allOrderSnsToSave)) {
+            $account->update([
+                'last_synced_at'   => now(),
+                'last_sync_status' => 'success',
+                'last_sync_error'  => null,
+            ]);
+
+            return [
+                'total_fetched' => count($detailedOrders),
+                'created'       => 0,
+                'updated'       => 0,
+                'message'       => 'Tidak ada pesanan Shopee untuk disinkronkan.',
+            ];
+        }
+
+        // Ambil rincian escrow secara paralel (Http::pool) untuk pesanan yang belum terambil di escrowMap
+        // Chunk kecil (5) agar tidak terkena rate limit QPS Shopee pada endpoint get_escrow_detail
+        if ($fetchMissingEscrow) {
+            $missingEscrowSns = array_values(array_diff($allOrderSnsToSave, array_keys($escrowMap)));
+            if (! empty($missingEscrowSns)) {
+                $chunksMissing = array_chunk($missingEscrowSns, 5);
+                foreach ($chunksMissing as $snBatch) {
+                    try {
+                        $poolResponses = Http::pool(function (Pool $pool) use ($account, $snBatch) {
+                            $reqs = [];
+                            foreach ($snBatch as $sn) {
+                                $url = $this->buildSingleEscrowUrl($account, (string) $sn);
+                                $reqs[$sn] = $pool->as((string) $sn)->timeout(15)->get($url);
+                            }
+                            return $reqs;
+                        });
+
+                        foreach ($poolResponses as $sn => $res) {
+                            if ($res instanceof Response && $res->successful()) {
+                                $data = $res->json();
+                                if (! empty($data['error'])) {
+                                    Log::warning("Shopee single escrow error ({$sn}): " . ($data['message'] ?? $data['error']));
+                                    continue;
+                                }
+                                $parsed = $this->parseSingleEscrowResponse(is_array($data) ? $data : []);
+                                if (! empty($parsed)) {
+                                    $escrowMap[$sn] = $parsed;
+                                }
+                            } elseif ($res instanceof Response) {
+                                Log::warning("Shopee single escrow HTTP {$res->status()} ({$sn})");
+                            }
+                        }
+                    } catch (\Throwable $e) {
+                        Log::warning('Shopee parallel single escrow pool warning: ' . $e->getMessage());
+                    }
+                }
+            }
+        }
+
+        // 3. Ingest into CutOffOrder table (Optimized: 1 Single Preload Query + DB Transaction)
+        $this->ensureSchema();
+        $this->cutOffColumnCache = [];
+        $hasCancelBy             = $this->hasCutOffColumn('cancel_by');
+        $hasCancelReason         = $this->hasCutOffColumn('cancel_reason');
+        $hasFinancialBreakdown   = $this->hasCutOffColumn('financial_breakdown');
 
         $existingOrders = CutOffOrder::whereIn('order_number', $allOrderSnsToSave)
             ->get()
@@ -411,7 +469,8 @@ class ShopeeSyncService
         $updatedCount = 0;
 
         \Illuminate\Support\Facades\DB::transaction(function () use (
-            $account, $detailedOrders, $existingOrders, &$escrowMap, $hasCancelBy, $hasCancelReason, $hasFinancialBreakdown,
+            $account, $detailedOrders, $existingOrders, &$escrowMap, $fetchMissingEscrow,
+            $hasCancelBy, $hasCancelReason, $hasFinancialBreakdown,
             &$createdCount, &$updatedCount
         ) {
             foreach ($detailedOrders as $order) {
@@ -451,7 +510,7 @@ class ShopeeSyncService
                 // Rumus ERP: Est. Bersih = (Subtotal Pesanan - Voucher Ditanggung Penjual) * 79%
                 // Jika Voucher Ditanggung Penjual = 0, maka (Subtotal Pesanan - 0) * 79%
                 $escrowIncome = $escrowMap[$orderSn] ?? [];
-                if (empty($escrowIncome)) {
+                if ($fetchMissingEscrow && empty($escrowIncome)) {
                     /** @var \App\Models\ShopeeAccount $account */
                     $escrowIncome = $this->fetchSingleEscrowDetail($account, $orderSn);
                     if (! empty($escrowIncome)) {
@@ -497,20 +556,11 @@ class ShopeeSyncService
                 $cancelReason = ! empty($order['cancel_reason']) ? trim((string) $order['cancel_reason']) : null;
 
                 // Status mapping: JANGAN ubah jika status resmi Shopee sudah 'CANCELLED' (Batal)
-                if ($rawStatus !== 'CANCELLED' && $statusText !== 'Batal' && ! empty($order['package_list'])) {
-                    foreach ($order['package_list'] as $pkg) {
-                        $logStatus = strtoupper((string) ($pkg['logistics_status'] ?? ''));
-                        if (in_array($logStatus, ['LOGISTICS_DELIVERED'], true)) {
-                            $statusText = 'Selesai';
-                            break;
-                        } elseif (in_array($logStatus, ['LOGISTICS_PICKUP_DONE'], true)) {
-                            if (str_contains($statusText, 'Perlu Dikirim') || $statusText === 'Diproses' || empty($statusText)) {
-                                $statusText = 'Dikirim';
-                            }
-                            break;
-                        }
-                    }
-                }
+                $statusText = $this->applyPackageLogisticsStatus(
+                    $rawStatus,
+                    $statusText,
+                    is_array($order['package_list'] ?? null) ? $order['package_list'] : null
+                );
 
                 // Hitung Keuangan:
                 // est_net_income: SELALU menyimpan nilai rumus resmi (Subtotal Pesanan - Voucher Ditanggung Penjual) * 79% (sama persis dengan spreadsheet admin)
@@ -618,7 +668,7 @@ class ShopeeSyncService
         $account->update([
             'last_synced_at'   => now(),
             'last_sync_status' => 'success',
-            'last_sync_error'  => null, 
+            'last_sync_error'  => null,
         ]);
 
         return [
@@ -627,6 +677,95 @@ class ShopeeSyncService
             'updated'       => $updatedCount,
             'message'       => "Sinkronisasi berhasil! {$createdCount} pesanan baru ditambahkan, {$updatedCount} diperbarui.",
         ];
+    }
+
+    /**
+     * Sinkronkan perubahan status & kurir 1 pesanan Shopee dari Pesanan Saya ke cut_off_orders.
+     */
+    public function syncOrderStatusToCutOff(
+        string $orderSn,
+        string $rawStatus,
+        ?string $shippingCourier = null,
+        ?array $packageList = null,
+        ?string $cancelBy = null,
+        ?string $cancelReason = null
+    ): void {
+        $existing = CutOffOrder::where('channel', 'SH')
+            ->where('order_number', $orderSn)
+            ->first();
+
+        if (! $existing) {
+            return;
+        }
+
+        $statusText = $this->mapOrderStatus($rawStatus);
+
+        $existingPayment = (string) $existing->payment_method;
+        $isExplicitNonCod = stripos($existingPayment, 'non-cod') !== false
+            || stripos($existingPayment, 'non cod') !== false;
+        $isCod = ! $isExplicitNonCod && (
+            stripos($existingPayment, 'cod') !== false
+            || stripos($existingPayment, 'cash on delivery') !== false
+            || ($existingPayment === '' && str_contains((string) $existing->order_status, '[COD]'))
+        );
+
+        if ($isCod && ($statusText === 'Perlu Dikirim' || $statusText === 'Belum Bayar' || strtoupper($rawStatus) === 'UNPAID')) {
+            $statusText = 'Perlu Dikirim [COD]';
+        }
+
+        $statusText = $this->applyPackageLogisticsStatus($rawStatus, $statusText, $packageList);
+
+        $updates = [
+            'order_status' => $statusText,
+        ];
+
+        if (! empty($shippingCourier)) {
+            $updates['shipping_courier'] = $shippingCourier;
+        }
+
+        if ($statusText === 'Batal') {
+            $updates['marketplace_net_payout'] = 0;
+            if (! empty($cancelReason)) {
+                $updates['keterangan_solutif'] = $cancelBy ? "[{$cancelBy}] {$cancelReason}" : $cancelReason;
+            } elseif (! empty($cancelBy)) {
+                $updates['keterangan_solutif'] = "Dibatalkan oleh {$cancelBy}";
+            } elseif (empty($existing->keterangan_solutif)) {
+                $updates['keterangan_solutif'] = 'Pesanan Dibatalkan';
+            }
+            if ($this->hasCutOffColumn('cancel_by') && $cancelBy) {
+                $updates['cancel_by'] = $cancelBy;
+            }
+            if ($this->hasCutOffColumn('cancel_reason') && $cancelReason) {
+                $updates['cancel_reason'] = $cancelReason;
+            }
+        }
+
+        $existing->update($updates);
+    }
+
+    /**
+     * Terapkan pembaruan status dari logistics_status pada package_list jika pesanan tidak dibatalkan.
+     */
+    private function applyPackageLogisticsStatus(string $rawStatus, string $statusText, ?array $packageList): string
+    {
+        if (strtoupper($rawStatus) === 'CANCELLED' || $statusText === 'Batal' || empty($packageList)) {
+            return $statusText;
+        }
+
+        foreach ($packageList as $pkg) {
+            $logStatus = strtoupper((string) ($pkg['logistics_status'] ?? ''));
+            if ($logStatus === 'LOGISTICS_DELIVERED') {
+                return 'Selesai';
+            }
+            if ($logStatus === 'LOGISTICS_PICKUP_DONE') {
+                if (str_contains($statusText, 'Perlu Dikirim') || $statusText === 'Diproses' || empty($statusText)) {
+                    return 'Dikirim';
+                }
+                return $statusText;
+            }
+        }
+
+        return $statusText;
     }
 
     /**
@@ -652,7 +791,7 @@ class ShopeeSyncService
     /**
      * Fetch raw order list from Shopee API v2 (supports cursor pagination).
      */
-    private function fetchOrderListRaw(ShopeeAccount $account, int $timeFrom, int $timeTo, int $pageSize = 100): array
+    public function fetchOrderListRaw(ShopeeAccount $account, int $timeFrom, int $timeTo, int $pageSize = 100, ?string $orderStatus = null): array
     {
         $path        = '/api/v2/order/get_order_list';
         $accessToken = (string) ($account->access_token ?? '');
@@ -679,6 +818,10 @@ class ShopeeSyncService
                 'time_to'          => $timeTo,
                 'page_size'        => $pageSize,
             ];
+
+            if (! empty($orderStatus)) {
+                $queryParams['order_status'] = $orderStatus;
+            }
 
             if (! empty($cursor)) {
                 $queryParams['cursor'] = $cursor;
@@ -708,7 +851,7 @@ class ShopeeSyncService
     /**
      * Build signed URL for get_order_detail.
      */
-    public function buildOrderDetailUrl(ShopeeAccount $account, array $orderSns): string
+    public function buildOrderDetailUrl(ShopeeAccount $account, array $orderSns, ?string $optionalFields = null): string
     {
         $path        = '/api/v2/order/get_order_detail';
         $timestamp   = time();
@@ -720,6 +863,8 @@ class ShopeeSyncService
         $baseStr = sprintf('%s%s%s%s%s', $partnerId, $path, $timestamp, $accessToken, $shopId);
         $sign    = hash_hmac('sha256', $baseStr, $partnerKey);
 
+        $defaultOptionalFields = 'buyer_user_id,buyer_username,item_list,package_list,shipping_carrier,total_amount,cancel_by,cancel_reason,payment_info,payment_method,ship_by_date';
+
         $queryParams = [
             'partner_id'               => $partnerId,
             'timestamp'                => $timestamp,
@@ -727,7 +872,7 @@ class ShopeeSyncService
             'access_token'             => $accessToken,
             'shop_id'                  => $shopId,
             'order_sn_list'            => implode(',', $orderSns),
-            'response_optional_fields' => 'buyer_user_id,buyer_username,item_list,package_list,shipping_carrier,total_amount,cancel_by,cancel_reason,payment_info,payment_method,ship_by_date',
+            'response_optional_fields' => ! empty($optionalFields) ? $optionalFields : $defaultOptionalFields,
         ];
 
         return $this->host . $path . '?' . http_build_query($queryParams);
@@ -736,11 +881,11 @@ class ShopeeSyncService
     /**
      * Fetch raw order details in batch from Shopee API v2.
      */
-    private function fetchOrderDetailRaw(ShopeeAccount $account, array $orderSns): array
+    public function fetchOrderDetailRaw(ShopeeAccount $account, array $orderSns, ?string $optionalFields = null): array
     {
         if (empty($orderSns)) return [];
 
-        $url = $this->buildOrderDetailUrl($account, $orderSns);
+        $url = $this->buildOrderDetailUrl($account, $orderSns, $optionalFields);
 
         $response = Http::timeout(25)->get($url);
         $data = $response->json();
@@ -925,6 +1070,14 @@ class ShopeeSyncService
             Log::warning("Shopee fetchSingleEscrowDetail exception ({$orderSn}): " . $e->getMessage());
             return [];
         }
+    }
+
+    /**
+     * Kembalikan akun Shopee dengan token yang masih valid (auto-refresh bila kedaluwarsa).
+     */
+    public function getValidTokenAccount(ShopeeAccount $account): ShopeeAccount
+    {
+        return $this->ensureValidToken($account);
     }
 
     /**
