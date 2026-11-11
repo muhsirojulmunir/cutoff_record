@@ -821,6 +821,8 @@ class ShopeeSyncService
         $escrowList = [];
         if (! empty($resp['escrow_detail_list']) && is_array($resp['escrow_detail_list'])) {
             $escrowList = $resp['escrow_detail_list'];
+        } elseif (! empty($resp['escrow_list']) && is_array($resp['escrow_list'])) {
+            $escrowList = $resp['escrow_list'];
         } elseif (array_is_list($resp)) {
             $escrowList = $resp;
         } elseif (! empty($resp['order_sn'])) {
@@ -956,9 +958,10 @@ class ShopeeSyncService
         }
 
         // 1. Hitung Subtotal Pesanan & susun daftar produk untuk breakdown rincian per item
-        $subtotalOrder   = 0.0;
-        $itemVouchers    = 0.0;
-        $normalizedItems = [];
+        $subtotalOrder     = 0.0;
+        $sumOriginalPrices = 0.0;
+        $itemVouchers      = 0.0;
+        $normalizedItems   = [];
 
         foreach ($items as $it) {
             $itemPrice = (float) ($it['model_discounted_price'] ?? 0);
@@ -971,15 +974,21 @@ class ShopeeSyncService
             if ($itemPrice <= 0) {
                 $itemPrice = (float) ($it['original_price'] ?? 0);
             }
+            $origUnitPrice = (float) ($it['model_original_price'] ?? $it['original_price'] ?? $itemPrice);
+            if ($origUnitPrice < $itemPrice) {
+                $origUnitPrice = $itemPrice;
+            }
+
             $itemQty = (int) ($it['model_quantity_purchased'] ?? $it['quantity_purchased'] ?? $it['model_quantity'] ?? 1);
             if ($itemQty <= 0) {
                 $itemQty = 1;
             }
 
-            $lineSubtotal   = round($itemPrice * $itemQty, 2);
-            $subtotalOrder += $lineSubtotal;
+            $lineSubtotal       = round($itemPrice * $itemQty, 2);
+            $subtotalOrder     += $lineSubtotal;
+            $sumOriginalPrices += round($origUnitPrice * $itemQty, 2);
 
-            $itemVouchers += (float) ($it['discount_from_voucher_seller'] ?? $it['voucher_from_seller'] ?? 0);
+            $itemVouchers += (float) ($it['discount_from_voucher_seller'] ?? $it['voucher_from_seller'] ?? $it['seller_voucher_discount'] ?? 0);
 
             $normalizedItems[] = [
                 'name'      => $it['item_name'] ?? 'Produk Shopee',
@@ -990,14 +999,43 @@ class ShopeeSyncService
             ];
         }
 
+        // Sesuaikan jika ada bundle deal / seller_discount level keranjang yang belum memotong model_discounted_price
+        $origCogs             = (float) ($escrowIncome['original_cost_of_goods_sold'] ?? 0);
+        $escrowSellerDiscount = max(0.0, (float) ($escrowIncome['seller_discount'] ?? 0));
+        $catalogDiscount      = max(0.0, $sumOriginalPrices - $subtotalOrder);
+        $unappliedDiscount    = max(0.0, round($escrowSellerDiscount - $catalogDiscount, 2));
+
+        $adjustedSubtotal = $subtotalOrder;
+        if ($subtotalOrder > 0 && $origCogs > 0 && $origCogs < $subtotalOrder) {
+            $adjustedSubtotal = round($origCogs, 2);
+        } elseif ($subtotalOrder > 0 && $unappliedDiscount > 0 && $unappliedDiscount < $subtotalOrder) {
+            $adjustedSubtotal = round($subtotalOrder - $unappliedDiscount, 2);
+        }
+
+        if ($subtotalOrder > 0 && abs($adjustedSubtotal - $subtotalOrder) > 0.01 && ! empty($normalizedItems)) {
+            $ratio = $adjustedSubtotal / $subtotalOrder;
+            foreach ($normalizedItems as &$ni) {
+                $ni['subtotal'] = round($ni['subtotal'] * $ratio, 2);
+            }
+            unset($ni);
+            $subtotalOrder = $adjustedSubtotal;
+        }
+
         // 2. Hitung Voucher Ditanggung Penjual (Kolom AC di Excel Shopee)
+        // PENTING: Jangan pernah fallback ke seller_discount / seller_promo karena itu diskon produk/harga coret (bukan voucher)
         $paymentInfo        = $order['payment_info'] ?? [];
         $escrowItemVouchers = 0.0;
         if (! empty($escrowIncome['items']) && is_array($escrowIncome['items'])) {
             foreach ($escrowIncome['items'] as $ei) {
-                $escrowItemVouchers += (float) ($ei['discount_from_voucher_seller'] ?? $ei['voucher_from_seller'] ?? 0);
+                $escrowItemVouchers += (float) ($ei['discount_from_voucher_seller'] ?? $ei['voucher_from_seller'] ?? $ei['seller_voucher_discount'] ?? 0);
             }
         }
+
+        $paymentVoucher = (float) (
+            $paymentInfo['voucher_from_seller']
+            ?? $paymentInfo['seller_voucher_discount']
+            ?? ($paymentInfo['voucher_info']['discount_by_shop_voucher'] ?? 0)
+        );
 
         $sellerVoucher = 0.0;
         if (! empty($escrowIncome['voucher_from_seller']) && (float) $escrowIncome['voucher_from_seller'] > 0) {
@@ -1006,14 +1044,8 @@ class ShopeeSyncService
             $sellerVoucher = (float) $escrowIncome['seller_voucher_discount'];
         } elseif ($escrowItemVouchers > 0) {
             $sellerVoucher = $escrowItemVouchers;
-        } elseif (! empty($escrowIncome['seller_discount']) && (float) $escrowIncome['seller_discount'] > 0) {
-            $sellerVoucher = (float) $escrowIncome['seller_discount'];
-        } elseif (! empty($escrowIncome['seller_promo']) && (float) $escrowIncome['seller_promo'] > 0) {
-            $sellerVoucher = (float) $escrowIncome['seller_promo'];
-        } elseif (! empty($paymentInfo['voucher_from_seller']) && (float) $paymentInfo['voucher_from_seller'] > 0) {
-            $sellerVoucher = (float) $paymentInfo['voucher_from_seller'];
-        } elseif (! empty($paymentInfo['seller_voucher_discount']) && (float) $paymentInfo['seller_voucher_discount'] > 0) {
-            $sellerVoucher = (float) $paymentInfo['seller_voucher_discount'];
+        } elseif ($paymentVoucher > 0) {
+            $sellerVoucher = $paymentVoucher;
         } elseif ($itemVouchers > 0) {
             $sellerVoucher = $itemVouchers;
         } elseif (! empty($order['voucher_from_seller']) && (float) $order['voucher_from_seller'] > 0) {
@@ -1025,8 +1057,7 @@ class ShopeeSyncService
         }
 
         if ($subtotalOrder <= 0) {
-            $origCogs = (float) ($escrowIncome['original_cost_of_goods_sold'] ?? 0);
-            $cogs     = (float) ($escrowIncome['cost_of_goods_sold'] ?? 0);
+            $cogs = (float) ($escrowIncome['cost_of_goods_sold'] ?? 0);
 
             if ($origCogs > 0) {
                 $subtotalOrder = $origCogs;
