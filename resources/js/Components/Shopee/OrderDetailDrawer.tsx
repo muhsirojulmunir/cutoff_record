@@ -1,10 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { ShopeeOrderItem, ShopeeOrderRecord } from '../../Types/shopeeOrder';
 import {
-  ShopeeOrderItem,
-  ShopeeOrderRecord,
-  ShopeeOrderStatus,
-} from '../../Types/shopeeOrder';
+  ACTIVE_DEADLINE_STATUSES,
+  formatCurrencyIDR,
+  formatFulfillmentMethod,
+  formatOrderTimestampWIB,
+  getOrderStatusMeta,
+  isShippableOrderStatus,
+  isWaybillBlockedStatus,
+  normalizeOrderStatus,
+  parseWibDate,
+  useOverlayScrollLockAndEscape,
+} from './overlayHelpers';
 
 export interface OrderDetailDrawerProps {
   order: ShopeeOrderRecord | null;
@@ -16,120 +24,6 @@ export interface OrderDetailDrawerProps {
   isRefreshing?: boolean;
   isPrinting?: boolean;
   isCancelling?: boolean;
-}
-
-const PRE_SHIP_STATUSES = new Set(['READY_TO_SHIP', 'RETRY_SHIP']);
-const WAYBILL_BLOCKED_STATUSES = new Set(['UNPAID', 'READY_TO_SHIP', 'RETRY_SHIP', 'CANCELLED']);
-const ACTIVE_DEADLINE_STATUSES = new Set(['READY_TO_SHIP', 'RETRY_SHIP', 'PROCESSED']);
-
-interface StatusBadgeMeta {
-  label: string;
-  classes: string;
-}
-
-function getOrderStatusMeta(status: ShopeeOrderStatus): StatusBadgeMeta {
-  switch (String(status).toUpperCase()) {
-    case 'UNPAID':
-      return {
-        label: 'Belum Bayar',
-        classes: 'border-slate-200 bg-slate-100 text-slate-700',
-      };
-    case 'READY_TO_SHIP':
-      return {
-        label: 'Perlu Dikirim (Belum Diproses)',
-        classes: 'border-orange-200 bg-orange-50 text-[#EE4D2D]',
-      };
-    case 'RETRY_SHIP':
-      return {
-        label: 'Perlu Atur Ulang Pengiriman',
-        classes: 'border-amber-200 bg-amber-50 text-amber-800',
-      };
-    case 'PROCESSED':
-      return {
-        label: 'Telah Diproses (Siap Cetak Resi)',
-        classes: 'border-sky-200 bg-sky-50 text-sky-800',
-      };
-    case 'SHIPPED':
-      return {
-        label: 'Dikirim',
-        classes: 'border-indigo-200 bg-indigo-50 text-indigo-800',
-      };
-    case 'TO_CONFIRM_RECEIVE':
-      return {
-        label: 'Pesanan Tiba',
-        classes: 'border-teal-200 bg-teal-50 text-teal-800',
-      };
-    case 'COMPLETED':
-      return {
-        label: 'Selesai',
-        classes: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-      };
-    case 'IN_CANCEL':
-      return {
-        label: 'Pengajuan Pembatalan',
-        classes: 'border-rose-200 bg-rose-50 text-rose-800',
-      };
-    case 'CANCELLED':
-      return {
-        label: 'Dibatalkan',
-        classes: 'border-rose-300 bg-rose-100 text-rose-800',
-      };
-    case 'TO_RETURN':
-      return {
-        label: 'Pengembalian',
-        classes: 'border-amber-200 bg-amber-50 text-amber-800',
-      };
-    default:
-      return {
-        label: status || '-',
-        classes: 'border-slate-200 bg-slate-100 text-slate-700',
-      };
-  }
-}
-
-function formatFulfillmentMethod(method: string | null | undefined): string {
-  switch (method) {
-    case 'pickup':
-      return 'Pick-up (Jemput Kurir)';
-    case 'dropoff':
-      return 'Antar ke Counter (Drop-off)';
-    case 'non_integrated':
-      return 'Non-Integrated';
-    default:
-      return method || 'Belum diatur';
-  }
-}
-
-function formatRupiah(value: number | string | null | undefined): string {
-  const num = Number(value ?? 0);
-  const safe = Number.isFinite(num) ? num : 0;
-  return `Rp ${Math.round(safe).toLocaleString('id-ID')}`;
-}
-
-function parseWibDate(raw: string | null | undefined): Date | null {
-  if (!raw) return null;
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(trimmed)
-    ? `${trimmed.replace(' ', 'T')}+07:00`
-    : trimmed;
-  const parsed = new Date(normalized);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function formatDateTimeWib(raw: string | null | undefined): string {
-  const date = parseWibDate(raw);
-  if (!date) return '-';
-  const formatted = date.toLocaleString('id-ID', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'Asia/Jakarta',
-  });
-  return `${formatted} WIB`;
 }
 
 function isInstantCarrier(carrier: string | null | undefined): boolean {
@@ -174,44 +68,29 @@ export default function OrderDetailDrawer({
   const [mounted, setMounted] = useState(false);
   const [copiedField, setCopiedField] = useState<'order_sn' | 'tracking_number' | null>(null);
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
-  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  const copyTimerRef = useRef<number | null>(null);
   const isOpen = Boolean(order);
 
   useEffect(() => {
     setMounted(true);
     return () => {
-      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+        copyTimerRef.current = null;
+      }
     };
   }, []);
 
   useEffect(() => {
-    if (copyTimerRef.current) {
-      clearTimeout(copyTimerRef.current);
+    if (copyTimerRef.current !== null) {
+      window.clearTimeout(copyTimerRef.current);
       copyTimerRef.current = null;
     }
     setCopiedField(null);
     setFailedImages({});
   }, [order?.order_sn]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onCloseRef.current();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen]);
+  useOverlayScrollLockAndEscape(isOpen, onClose);
 
   if (!order || !mounted) return null;
 
@@ -219,16 +98,20 @@ export default function OrderDetailDrawer({
     try {
       await navigator.clipboard.writeText(value);
       setCopiedField(field);
-      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
-      copyTimerRef.current = setTimeout(() => {
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+      copyTimerRef.current = window.setTimeout(() => {
         setCopiedField(null);
+        copyTimerRef.current = null;
       }, 2000);
     } catch {
       // Clipboard API unavailable
     }
   };
 
-  const statusMeta = getOrderStatusMeta(order.order_status);
+  const normalizedStatus = normalizeOrderStatus(order.order_status);
+  const statusMeta = getOrderStatusMeta(normalizedStatus);
   const items = Array.isArray(order.items_json) ? order.items_json : [];
   const recipient = order.recipient_data;
   const fallbackAddressParts = [
@@ -245,44 +128,44 @@ export default function OrderDetailDrawer({
   const shipByParsed = parseWibDate(order.ship_by_date);
   const deadlineMs = shipByParsed ? shipByParsed.getTime() - Date.now() : null;
   const showDeadlineAlert =
-    ACTIVE_DEADLINE_STATUSES.has(order.order_status) &&
+    ACTIVE_DEADLINE_STATUSES.has(normalizedStatus) &&
     deadlineMs !== null &&
     deadlineMs <= 6 * 60 * 60 * 1000;
   const isOverdue = showDeadlineAlert && deadlineMs !== null && deadlineMs < 0;
 
-  const canShip = PRE_SHIP_STATUSES.has(order.order_status);
-  const canPrintWaybill = !WAYBILL_BLOCKED_STATUSES.has(order.order_status);
-  const isInCancel = order.order_status === 'IN_CANCEL';
+  const canShip = isShippableOrderStatus(normalizedStatus);
+  const canPrintWaybill = !isWaybillBlockedStatus(normalizedStatus);
+  const isInCancel = normalizedStatus === 'IN_CANCEL';
   const hasCancellationBox = Boolean(
     order.buyer_cancel_reason ||
       order.cancel_reason ||
       order.cancel_by ||
-      order.order_status === 'IN_CANCEL' ||
-      order.order_status === 'CANCELLED'
+      normalizedStatus === 'IN_CANCEL' ||
+      normalizedStatus === 'CANCELLED'
   );
 
   const timelineItems = [
     {
       label: 'Order Dibuat',
-      value: formatDateTimeWib(order.order_created_at),
+      value: formatOrderTimestampWIB(order.order_created_at),
       highlight: false,
       note: null as string | null,
     },
     {
       label: 'Batas Kirim',
-      value: formatDateTimeWib(order.ship_by_date),
+      value: formatOrderTimestampWIB(order.ship_by_date),
       highlight: showDeadlineAlert,
       note: isOverdue ? 'Melewati tenggat' : showDeadlineAlert ? 'Segera kirim' : null,
     },
     {
       label: 'Pengiriman Diatur',
-      value: formatDateTimeWib(order.shipping_arranged_at),
+      value: formatOrderTimestampWIB(order.shipping_arranged_at),
       highlight: false,
       note: null as string | null,
     },
     {
       label: 'Terakhir Cetak Resi',
-      value: formatDateTimeWib(order.label_printed_at),
+      value: formatOrderTimestampWIB(order.label_printed_at),
       highlight: false,
       note: order.label_print_count > 0 ? `Dicetak ${order.label_print_count}x` : null,
     },
@@ -737,15 +620,15 @@ export default function OrderDetailDrawer({
 
                       <div className="shrink-0 text-right tabular-nums">
                         <div className="text-xs font-semibold text-slate-900">
-                          {formatRupiah(discountedPrice)} <span className="text-slate-500">× {qty}</span>
+                          {formatCurrencyIDR(discountedPrice)} <span className="text-slate-500">× {qty}</span>
                         </div>
                         {showOriginal && (
                           <div className="text-[11px] text-slate-400 line-through">
-                            {formatRupiah(originalPrice)}
+                            {formatCurrencyIDR(originalPrice)}
                           </div>
                         )}
                         <div className="mt-0.5 text-xs font-bold text-slate-900">
-                          {formatRupiah(discountedPrice * qty)}
+                          {formatCurrencyIDR(discountedPrice * qty)}
                         </div>
                       </div>
                     </div>
@@ -765,13 +648,13 @@ export default function OrderDetailDrawer({
               <div className="flex items-center justify-between text-slate-600">
                 <span>Estimasi Ongkos Kirim</span>
                 <span className="font-medium text-slate-800 tabular-nums">
-                  {formatRupiah(order.estimated_shipping_fee)}
+                  {formatCurrencyIDR(order.estimated_shipping_fee)}
                 </span>
               </div>
               <div className="flex items-center justify-between border-t border-slate-200 pt-2">
                 <span className="font-bold text-slate-900">Total Pembayaran</span>
                 <span className="text-sm font-bold text-slate-900 tabular-nums">
-                  {formatRupiah(order.total_amount)}
+                  {formatCurrencyIDR(order.total_amount)}
                 </span>
               </div>
             </div>
@@ -779,7 +662,7 @@ export default function OrderDetailDrawer({
 
           {order.last_synced_at && (
             <p className="text-right text-[11px] text-slate-400 tabular-nums">
-              Terakhir sinkron: {formatDateTimeWib(order.last_synced_at)}
+              Terakhir sinkron: {formatOrderTimestampWIB(order.last_synced_at)}
             </p>
           )}
         </div>

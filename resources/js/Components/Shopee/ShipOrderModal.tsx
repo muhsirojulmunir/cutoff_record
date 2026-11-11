@@ -11,6 +11,14 @@ import {
   ShopeeShipResult,
   ShopeeShippingParameterResponse,
 } from '../../Types/shopeeOrder';
+import {
+  SpinnerIcon,
+  formatFulfillmentMethod,
+  getCsrfToken,
+  isShippableOrderStatus,
+  isWaybillBlockedStatus,
+  useOverlayScrollLockAndEscape,
+} from './overlayHelpers';
 
 export interface ShipOrderModalProps {
   show: boolean;
@@ -25,14 +33,6 @@ export interface ShipOrderModalProps {
 }
 
 type MassPreferredMethod = 'auto' | 'pickup' | 'dropoff';
-
-const SHIP_ELIGIBLE_STATUSES = new Set(['READY_TO_SHIP', 'RETRY_SHIP']);
-const WAYBILL_BLOCKED_STATUSES = new Set(['UNPAID', 'READY_TO_SHIP', 'RETRY_SHIP', 'CANCELLED']);
-
-function getCsrfToken(): string {
-  if (typeof document === 'undefined') return '';
-  return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
-}
 
 async function parseJsonSafe<T>(response: Response): Promise<T | null> {
   try {
@@ -122,19 +122,6 @@ function pickDefaultAddress(addresses: ShopeePickupAddress[]): ShopeePickupAddre
   return preferred ?? addresses[0];
 }
 
-function methodLabel(method: string | null | undefined): string {
-  switch (method) {
-    case 'pickup':
-      return 'Pick-up (Jemput Kurir)';
-    case 'dropoff':
-      return 'Antar ke Counter (Drop-off)';
-    case 'non_integrated':
-      return 'Kurir Non-Integrated';
-    default:
-      return method || '-';
-  }
-}
-
 export default function ShipOrderModal({
   show,
   mode,
@@ -150,9 +137,8 @@ export default function ShipOrderModal({
   const singleShippedSnRef = useRef<string | null>(null);
   const submitAbortRef = useRef<AbortController | null>(null);
   const submitSeqRef = useRef(0);
-  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  const copyTimerRef = useRef<number | null>(null);
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -160,8 +146,8 @@ export default function ShipOrderModal({
       isMountedRef.current = false;
       submitAbortRef.current?.abort();
       submitAbortRef.current = null;
-      if (copyTimerRef.current) {
-        clearTimeout(copyTimerRef.current);
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
         copyTimerRef.current = null;
       }
     };
@@ -191,36 +177,32 @@ export default function ShipOrderModal({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [retryCounter, setRetryCounter] = useState(0);
+  submittingRef.current = submitting;
 
-  // Escape key handler
-  useEffect(() => {
-    if (!show) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !submitting) {
-        onCloseRef.current();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [show, submitting]);
+  // Reference-counted scroll lock + LIFO topmost-only Escape handler
+  useOverlayScrollLockAndEscape(show, onClose, {
+    canClose: () => !submittingRef.current,
+  });
 
   // Reset modal state and abort/invalidate any in-flight submission on close or target switch
   useEffect(() => {
     submitSeqRef.current += 1;
     submitAbortRef.current?.abort();
     submitAbortRef.current = null;
-    if (copyTimerRef.current) {
-      clearTimeout(copyTimerRef.current);
+    if (copyTimerRef.current !== null) {
+      window.clearTimeout(copyTimerRef.current);
       copyTimerRef.current = null;
     }
 
     singleShippedSnRef.current = null;
+    submittingRef.current = false;
     setSubmitting(false);
     setSubmitError(null);
     setParamsError(null);
     setSingleResult(null);
     setMassResult(null);
     setCopiedTracking(false);
+    setSelectedSlug('');
     setSenderRealName('');
     setTrackingNumber('');
     setManualBranchId('');
@@ -382,12 +364,17 @@ export default function ShipOrderModal({
     return tabs;
   }, [shippingParams]);
 
-  // Mass mode eligible subset (capped at Shopee Open Platform v2 max 50)
+  // Mass mode: pisahkan pesanan berstatus valid vs batas API Shopee Open Platform v2 (maks 50 per batch)
   const eligibleMassOrders = useMemo(
-    () => orders.filter((o) => SHIP_ELIGIBLE_STATUSES.has(o.order_status)).slice(0, 50),
+    () => orders.filter((o) => isShippableOrderStatus(o.order_status)),
     [orders]
   );
-  const skippedMassCount = orders.length - eligibleMassOrders.length;
+  const targetMassOrders = useMemo(
+    () => eligibleMassOrders.slice(0, 50),
+    [eligibleMassOrders]
+  );
+  const ineligibleMassCount = orders.length - eligibleMassOrders.length;
+  const truncatedMassCount = Math.max(0, eligibleMassOrders.length - 50);
 
   const handleAddressChange = (nextAddressId: number) => {
     setSelectedAddressId(nextAddressId);
@@ -400,8 +387,11 @@ export default function ShipOrderModal({
       await navigator.clipboard.writeText(code);
       if (!isMountedRef.current) return;
       setCopiedTracking(true);
-      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
-      copyTimerRef.current = setTimeout(() => {
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+      copyTimerRef.current = window.setTimeout(() => {
+        copyTimerRef.current = null;
         if (isMountedRef.current) setCopiedTracking(false);
       }, 2000);
     } catch {
@@ -519,10 +509,15 @@ export default function ShipOrderModal({
         payload.branch_id = parsedBranch;
       }
 
-      if (needsSlug && selectedSlug) {
-        payload.slug = selectedSlug;
-      } else if (dropoffInfoNeeded.includes('slug') && !selectedSlug) {
-        setSubmitError('Slug drop-off kurir wajib dipilih.');
+      const normalizedSlug = selectedSlug.trim();
+      if (needsSlug && normalizedSlug) {
+        payload.slug = normalizedSlug;
+      } else if (dropoffInfoNeeded.includes('slug') && !normalizedSlug) {
+        setSubmitError(
+          dropoffSlugs.length > 0
+            ? 'Slug drop-off kurir wajib dipilih.'
+            : 'Slug drop-off kurir wajib diisi.'
+        );
         return;
       }
 
@@ -567,12 +562,12 @@ export default function ShipOrderModal({
 
   const handleMassSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (submitting || eligibleMassOrders.length === 0) return;
+    if (submitting || targetMassOrders.length === 0) return;
 
     setSubmitError(null);
 
     const payload: Record<string, unknown> = {
-      order_sns: eligibleMassOrders.map((o) => o.order_sn),
+      order_sns: targetMassOrders.map((o) => o.order_sn),
       preferred_method: massMethod,
     };
     if (massMethod === 'dropoff' && massSenderName.trim()) {
@@ -594,7 +589,7 @@ export default function ShipOrderModal({
 
   const modalTitle =
     mode === 'mass'
-      ? `Atur Pengiriman Massal (${eligibleMassOrders.length} Pesanan)`
+      ? `Atur Pengiriman Massal (${targetMassOrders.length} Pesanan)`
       : order
         ? `Atur Pengiriman — ${order.order_sn}`
         : 'Atur Pengiriman Shopee';
@@ -602,7 +597,7 @@ export default function ShipOrderModal({
   const canPrintAfterSingleShip = Boolean(
     singleResult &&
       onPrintWaybill &&
-      !WAYBILL_BLOCKED_STATUSES.has(singleResult.order_status)
+      !isWaybillBlockedStatus(singleResult.order_status)
   );
 
   return (
@@ -651,7 +646,9 @@ export default function ShipOrderModal({
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span className="text-slate-500">Metode Fulfillment</span>
-                <span className="font-semibold text-slate-800">{methodLabel(singleResult.fulfillment_method)}</span>
+                <span className="font-semibold text-slate-800">
+                  {formatFulfillmentMethod(singleResult.fulfillment_method, '-')}
+                </span>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span className="text-slate-500">No. Resi Resmi</span>
@@ -737,14 +734,7 @@ export default function ShipOrderModal({
 
             {loadingParams ? (
               <div className="flex flex-col items-center justify-center gap-2.5 rounded-xl border border-slate-200 bg-white py-10 text-center">
-                <svg className="h-6 w-6 animate-spin text-[#EE4D2D]" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                  />
-                </svg>
+                <SpinnerIcon className="h-6 w-6 text-[#EE4D2D]" />
                 <p className="text-xs font-medium text-slate-600">
                   Mengambil parameter alamat & jadwal kurir dari Shopee API...
                 </p>
@@ -974,7 +964,7 @@ export default function ShipOrderModal({
                           </div>
                         )}
 
-                        {needsSlug && dropoffSlugs.length > 0 && (
+                        {needsSlug && (
                           <div className="space-y-1.5">
                             <label
                               htmlFor="shopee-dropoff-slug"
@@ -982,18 +972,29 @@ export default function ShipOrderModal({
                             >
                               Layanan Counter (Slug)
                             </label>
-                            <select
-                              id="shopee-dropoff-slug"
-                              value={selectedSlug}
-                              onChange={(e) => setSelectedSlug(e.target.value)}
-                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-[#EE4D2D] focus:outline-none focus:ring-1 focus:ring-[#EE4D2D]"
-                            >
-                              {dropoffSlugs.map((s) => (
-                                <option key={s.slug} value={s.slug}>
-                                  {s.slug_name || s.slug}
-                                </option>
-                              ))}
-                            </select>
+                            {dropoffSlugs.length > 0 ? (
+                              <select
+                                id="shopee-dropoff-slug"
+                                value={selectedSlug}
+                                onChange={(e) => setSelectedSlug(e.target.value)}
+                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-[#EE4D2D] focus:outline-none focus:ring-1 focus:ring-[#EE4D2D]"
+                              >
+                                {dropoffSlugs.map((s) => (
+                                  <option key={s.slug} value={s.slug}>
+                                    {s.slug_name || s.slug}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                id="shopee-dropoff-slug"
+                                type="text"
+                                value={selectedSlug}
+                                onChange={(e) => setSelectedSlug(e.target.value)}
+                                placeholder="Masukkan slug counter kurir (mis. jne_reg)"
+                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-mono text-xs text-slate-900 focus:border-[#EE4D2D] focus:outline-none focus:ring-1 focus:ring-[#EE4D2D]"
+                              />
+                            )}
                           </div>
                         )}
 
@@ -1088,16 +1089,7 @@ export default function ShipOrderModal({
                     disabled={submitting || supportedTabs.length === 0}
                     className="inline-flex items-center gap-2 rounded-xl bg-[#EE4D2D] px-4 py-2 text-xs font-semibold text-white hover:bg-[#d94122] disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {submitting && (
-                      <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                        />
-                      </svg>
-                    )}
+                    {submitting && <SpinnerIcon className="h-3.5 w-3.5" />}
                     {submitting ? 'Memproses...' : 'Konfirmasi & Buat No. Resi'}
                   </button>
                 </div>
@@ -1133,7 +1125,7 @@ export default function ShipOrderModal({
                 <div className="min-w-0">
                   <span className="font-mono font-bold text-slate-900">{item.order_sn}</span>
                   <span className="ml-2 text-[11px] text-emerald-700">
-                    {methodLabel(item.fulfillment_method)}
+                    {formatFulfillmentMethod(item.fulfillment_method, '-')}
                   </span>
                 </div>
                 <span className="shrink-0 font-mono text-[11px] font-semibold text-emerald-800">
@@ -1164,11 +1156,21 @@ export default function ShipOrderModal({
         </div>
       ) : (
         <form onSubmit={handleMassSubmit} className="space-y-4">
-          {skippedMassCount > 0 && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900">
-              {orders.length > 50
-                ? 'Shopee membatasi maksimal 50 pesanan per batch. Hanya 50 pesanan valid pertama yang akan diproses.'
-                : `${skippedMassCount} pesanan dilewati karena statusnya bukan Belum Diproses / Atur Ulang.`}
+          {(ineligibleMassCount > 0 || truncatedMassCount > 0) && (
+            <div className="space-y-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900">
+              {ineligibleMassCount > 0 && (
+                <p>
+                  <span className="font-semibold tabular-nums">{ineligibleMassCount}</span> pesanan dilewati
+                  karena statusnya bukan Belum Diproses / Atur Ulang.
+                </p>
+              )}
+              {truncatedMassCount > 0 && (
+                <p>
+                  Shopee membatasi maksimal 50 pesanan per batch.{' '}
+                  <span className="font-semibold tabular-nums">{truncatedMassCount}</span> pesanan valid
+                  lainnya tidak disertakan dalam batch ini.
+                </p>
+              )}
             </div>
           )}
 
@@ -1248,15 +1250,15 @@ export default function ShipOrderModal({
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-500">
               <span>Pesanan Akan Diproses</span>
-              <span className="tabular-nums">{eligibleMassOrders.length} pesanan</span>
+              <span className="tabular-nums">{targetMassOrders.length} pesanan</span>
             </div>
-            {eligibleMassOrders.length === 0 ? (
+            {targetMassOrders.length === 0 ? (
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center text-xs text-slate-500">
                 Tidak ada pesanan berstatus Perlu Dikirim (Belum Diproses) yang valid untuk diproses.
               </div>
             ) : (
               <div className="max-h-48 divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/60">
-                {eligibleMassOrders.map((item) => (
+                {targetMassOrders.map((item) => (
                   <div key={item.order_sn} className="flex items-center justify-between gap-3 px-3.5 py-2 text-xs">
                     <div className="min-w-0">
                       <span className="font-mono font-semibold text-slate-900">{item.order_sn}</span>
@@ -1290,20 +1292,11 @@ export default function ShipOrderModal({
             </button>
             <button
               type="submit"
-              disabled={submitting || eligibleMassOrders.length === 0}
+              disabled={submitting || targetMassOrders.length === 0}
               className="inline-flex items-center gap-2 rounded-xl bg-[#EE4D2D] px-4 py-2 text-xs font-semibold text-white hover:bg-[#d94122] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting && (
-                <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                  />
-                </svg>
-              )}
-              {submitting ? 'Memproses Batch...' : `Proses ${eligibleMassOrders.length} Pengiriman`}
+              {submitting && <SpinnerIcon className="h-3.5 w-3.5" />}
+              {submitting ? 'Memproses Batch...' : `Proses ${targetMassOrders.length} Pengiriman`}
             </button>
           </div>
         </form>

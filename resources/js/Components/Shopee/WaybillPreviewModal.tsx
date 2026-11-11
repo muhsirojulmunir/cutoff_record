@@ -1,8 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useOverlayScrollLockAndEscape } from './overlayHelpers';
 
 export interface WaybillPreviewModalProps {
-  show: boolean;
+  /** Opsional: bila diabaikan, modal dianggap terbuka selama `pdfUrl` bernilai non-null. */
+  show?: boolean;
   /** URL dokumen PDF A4 (blob: atau endpoint waybill-a4). Siklus hidup object URL dikelola oleh komponen induk. */
   pdfUrl: string | null;
   title: string;
@@ -22,32 +24,15 @@ export default function WaybillPreviewModal({
   onClose,
 }: WaybillPreviewModalProps) {
   const [mounted, setMounted] = useState(false);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  const isOpen = show ?? Boolean(pdfUrl);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  useEffect(() => {
-    if (!show) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+  useOverlayScrollLockAndEscape(isOpen, onClose);
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onCloseRef.current();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [show]);
-
-  if (!show || !mounted) return null;
+  if (!isOpen || !mounted) return null;
 
   const handleOpenNewTab = () => {
     if (!pdfUrl) return;
@@ -56,7 +41,7 @@ export default function WaybillPreviewModal({
 
   const modalContent = (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
+      className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto p-3 sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-label={title}
