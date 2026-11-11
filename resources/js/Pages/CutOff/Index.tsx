@@ -31,6 +31,30 @@ interface CutOffOrder {
   marketplace_net_payout: number | string | null;
   sheet_dpp: string | null;
   dpp_number: string | null;
+  financial_breakdown?: CutOffOrderFinancialBreakdown | null;
+}
+
+interface CutOffOrderBreakdownItem {
+  name: string;
+  variation: string | null;
+  sku: string | null;
+  qty: number;
+  subtotal: number;
+  voucher_share: number;
+  net_before_fee: number;
+  est_net_income: number;
+}
+
+interface CutOffOrderFinancialBreakdown {
+  subtotal_order: number;
+  seller_voucher: number;
+  voucher_per_item: number;
+  item_count: number;
+  net_base: number;
+  fee_rate: number;
+  is_cancelled?: boolean;
+  est_net_income: number;
+  items: CutOffOrderBreakdownItem[];
 }
 
 interface JlExcelRow {
@@ -358,12 +382,92 @@ function getShippingSla(
   };
 }
 
+function formatBreakdownCurrency(amount: number): string {
+  const rounded = Math.round(amount * 100) / 100;
+  const hasDecimals = Math.abs(rounded - Math.round(rounded)) > 0.001;
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: hasDecimals ? 2 : 0,
+    maximumFractionDigits: hasDecimals ? 2 : 0,
+  }).format(rounded);
+}
+
 export default function CutOffIndex({ orders, filters, summary, channels, couriers = [] }: Props) {
   const { auth } = usePage<any>().props;
   const isManagement = auth?.user?.role?.name === 'Management';
   const canManage = !isManagement;
   const isSuperAdmin = auth?.user?.role?.name === 'Super Admin' || auth?.user?.roles?.includes('Super Admin');
   const [isTruncating, setIsTruncating] = useState(false);
+  const [isSyncingShopee, setIsSyncingShopee] = useState(false);
+  const [hoveredBreakdown, setHoveredBreakdown] = useState<{
+    order: CutOffOrder;
+    breakdown: CutOffOrderFinancialBreakdown;
+    isEstimatedFallback: boolean;
+    rect: { top: number; bottom: number; left: number; right: number };
+  } | null>(null);
+
+  function openBreakdownTooltip(e: React.MouseEvent<HTMLElement>, order: CutOffOrder) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const bd = order.financial_breakdown;
+    if (bd && Array.isArray(bd.items) && bd.items.length > 0) {
+      setHoveredBreakdown({
+        order,
+        breakdown: bd,
+        isEstimatedFallback: false,
+        rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
+      });
+      return;
+    }
+
+    const estNet = Number(order.est_net_income ?? 0);
+    const estBase = estNet > 0 ? Math.round(estNet / 0.79) : 0;
+    const fallbackBreakdown: CutOffOrderFinancialBreakdown = {
+      subtotal_order: estBase,
+      seller_voucher: 0,
+      voucher_per_item: 0,
+      item_count: 1,
+      net_base: estBase,
+      fee_rate: 0.79,
+      is_cancelled: (order.order_status ?? '').toLowerCase().includes('batal'),
+      est_net_income: estNet,
+      items: [
+        {
+          name: order.product_name || 'Produk',
+          variation: order.variation_name || null,
+          sku: order.sku_utama || null,
+          qty: Number(order.qty ?? 1),
+          subtotal: estBase,
+          voucher_share: 0,
+          net_before_fee: estBase,
+          est_net_income: estNet,
+        },
+      ],
+    };
+
+    setHoveredBreakdown({
+      order,
+      breakdown: fallbackBreakdown,
+      isEstimatedFallback: true,
+      rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
+    });
+  }
+
+  function handleSyncShopeeRecent() {
+    setIsMoreMenuOpen(false);
+    setIsSyncingShopee(true);
+    router.post('/cut-off-orders/sync-shopee', { days: 7 }, {
+      preserveScroll: true,
+      onFinish: () => setIsSyncingShopee(false),
+    });
+  }
+
+  useEffect(() => {
+    if (!hoveredBreakdown) return;
+    const clear = () => setHoveredBreakdown(null);
+    window.addEventListener('scroll', clear, true);
+    return () => window.removeEventListener('scroll', clear, true);
+  }, [hoveredBreakdown]);
 
   function handleTruncate() {
     if (confirm('PERINGATAN: Apakah Anda yakin ingin MENGOSONGKAN SELURUH data Pesanan Cut Off?\n\nTindakan ini akan menghapus semua riwayat pesanan cut off agar Anda bisa menarik data murni dari API marketplace.\n\nTabel lain (Akun Toko, Returan Online, User Management) TIDAK akan terhapus.')) {
@@ -590,6 +694,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
           const refSkuIdx = rawHeaders.indexOf('nomor referensi sku');
           const skuIndukIdx = rawHeaders.indexOf('sku induk');
           const jumlahIdx = rawHeaders.indexOf('jumlah');
+          const totalHargaProdukIdx = rawHeaders.findIndex((h: string) => h.includes('total harga produk'));
           const subtotalIdx = rawHeaders.indexOf('subtotal pesanan');
           const voucherPenjualIdx = rawHeaders.indexOf('voucher ditanggung penjual');
           const usernameIdx = rawHeaders.indexOf('username (pembeli)');
@@ -601,8 +706,12 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
             if (!row || noPesananIdx === -1 || !row[noPesananIdx]) continue;
             const sn = String(row[noPesananIdx]).trim();
             const subtotal = subtotalIdx !== -1 ? parseIndonesianNumber(row[subtotalIdx]) : 0;
+            const itemSubtotal = subtotal > 0 ? subtotal : (totalHargaProdukIdx !== -1 ? parseIndonesianNumber(row[totalHargaProdukIdx]) : 0);
             const voucher = voucherPenjualIdx !== -1 ? parseIndonesianNumber(row[voucherPenjualIdx]) : 0;
             const qty = jumlahIdx !== -1 ? (parseInt(String(row[jumlahIdx]), 10) || 1) : 1;
+            const itemName = namaProdukIdx !== -1 && row[namaProdukIdx] ? String(row[namaProdukIdx]).trim() : 'Produk Shopee';
+            const itemVariation = namaVariasiIdx !== -1 && row[namaVariasiIdx] ? String(row[namaVariasiIdx]).trim() : null;
+            const itemSku = (refSkuIdx !== -1 && row[refSkuIdx] ? String(row[refSkuIdx]).trim() : '') || (skuIndukIdx !== -1 && row[skuIndukIdx] ? String(row[skuIndukIdx]).trim() : null);
 
             if (!orderMap.has(sn)) {
               let orderDate = '';
@@ -621,10 +730,10 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                 jl_number: null,
                 buyer_username: usernameIdx !== -1 && row[usernameIdx] ? String(row[usernameIdx]).trim() : null,
                 shipping_courier: opsiPengirimanIdx !== -1 && row[opsiPengirimanIdx] ? String(row[opsiPengirimanIdx]).trim() : null,
-                sku_utama: (refSkuIdx !== -1 && row[refSkuIdx] ? String(row[refSkuIdx]).trim() : '') || (skuIndukIdx !== -1 && row[skuIndukIdx] ? String(row[skuIndukIdx]).trim() : null),
+                sku_utama: itemSku,
                 sku_pengganti: null,
-                product_name: namaProdukIdx !== -1 && row[namaProdukIdx] ? String(row[namaProdukIdx]).trim() : null,
-                variation_name: namaVariasiIdx !== -1 && row[namaVariasiIdx] ? String(row[namaVariasiIdx]).trim() : null,
+                product_name: itemName,
+                variation_name: itemVariation,
                 qty: qty,
                 recheck_qty: null,
                 package_count: '1',
@@ -635,19 +744,43 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                 voucher: voucher,
                 sheet_dpp: null,
                 dpp_number: null,
+                items: [
+                  {
+                    name: itemName,
+                    variation: itemVariation,
+                    sku: itemSku,
+                    qty,
+                    subtotal: itemSubtotal,
+                  },
+                ],
               });
             } else {
               const existing = orderMap.get(sn);
               existing.qty += qty;
               existing.subtotal += subtotal;
               existing.voucher = Math.max(existing.voucher, voucher);
+              existing.items.push({
+                name: itemName,
+                variation: itemVariation,
+                sku: itemSku,
+                qty,
+                subtotal: itemSubtotal,
+              });
             }
           }
 
           for (const item of orderMap.values()) {
             // Rumus Resmi ERP: Est. Bersih = (Subtotal Pesanan - Voucher Ditanggung Penjual) * 79%
+            const itemCount = Math.max(1, item.items.length);
+            const exactVoucherPerItem = item.voucher / itemCount;
+            const voucherPerItem = Math.round(exactVoucherPerItem * 100) / 100;
             const netBase = Math.max(0, item.subtotal - item.voucher);
             const estBersih = Math.round(netBase * 0.79);
+            const isCancelledOrder = String(item.order_status || '').toLowerCase().includes('batal');
+            const variationDisplay = item.items.length > 1 && item.variation_name
+              ? `${item.variation_name} (+${item.items.length - 1} item)`
+              : item.variation_name;
+
             parsed.push({
               order_date: item.order_date,
               channel: item.channel,
@@ -658,10 +791,10 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
               sku_utama: item.sku_utama,
               sku_pengganti: item.sku_pengganti,
               product_name: item.product_name,
-              variation_name: item.variation_name,
+              variation_name: variationDisplay,
               qty: item.qty,
               recheck_qty: item.recheck_qty,
-              package_count: item.package_count,
+              package_count: String(item.items.length || 1),
               info_gudang: item.info_gudang,
               order_status: item.order_status,
               keterangan_solutif: item.keterangan_solutif,
@@ -669,6 +802,25 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
               marketplace_net_payout: estBersih,
               sheet_dpp: item.sheet_dpp,
               dpp_number: item.dpp_number,
+              financial_breakdown: {
+                subtotal_order: Math.round(item.subtotal * 100) / 100,
+                seller_voucher: Math.round(item.voucher * 100) / 100,
+                voucher_per_item: voucherPerItem,
+                item_count: itemCount,
+                net_base: Math.round(netBase * 100) / 100,
+                fee_rate: 0.79,
+                is_cancelled: isCancelledOrder,
+                est_net_income: estBersih,
+                items: item.items.map((prod: any) => {
+                  const netBeforeFee = Math.max(0, prod.subtotal - exactVoucherPerItem);
+                  return {
+                    ...prod,
+                    voucher_share: voucherPerItem,
+                    net_before_fee: Math.round(netBeforeFee * 100) / 100,
+                    est_net_income: Math.round(netBeforeFee * 0.79),
+                  };
+                }),
+              },
             });
           }
         } else {
@@ -1159,7 +1311,28 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                 </button>
 
                 {isMoreMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-white border border-slate-200 shadow-xl py-2 z-40">
+                  <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-white border border-slate-200 shadow-xl py-2 z-40">
+                    <div className="px-3 py-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                      Sinkronisasi Data
+                    </div>
+                    <button
+                      onClick={handleSyncShopeeRecent}
+                      disabled={isSyncingShopee}
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className={`w-4 h-4 text-blue-600 shrink-0 ${isSyncingShopee ? 'animate-spin' : ''}`}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                      </svg>
+                      <div>
+                        <p className="font-semibold text-slate-800">
+                          {isSyncingShopee ? 'Menyinkronkan Shopee...' : 'Sinkron & Hitung Ulang Shopee (7 Hari)'}
+                        </p>
+                        <p className="text-[10px] text-slate-400">Perbarui voucher penjual, rincian produk & Est. Bersih</p>
+                      </div>
+                    </button>
+
+                    <div className="my-1.5 border-t border-slate-100" />
+
                     <div className="px-3 py-1 text-[11px] font-bold text-rose-500 uppercase tracking-wider">
                       Zona Bahaya
                     </div>
@@ -1605,36 +1778,77 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                         </td>
 
                         {/* Kolom Barang (Variasi, SKU, QTY) */}
-                        <td className="py-2.5 px-3 min-w-[150px] max-w-[210px]">
-                          {/* 1. Variasi */}
-                          <div className="mb-0.5">
-                            <p className="font-semibold text-slate-900 text-xs leading-snug truncate" title={order.variation_name || order.product_name || undefined}>
-                              {order.variation_name || order.product_name || '—'}
-                            </p>
-                          </div>
+                        <td className="py-2.5 px-3 min-w-[175px] max-w-[260px]">
+                          {order.financial_breakdown?.items && order.financial_breakdown.items.length > 1 ? (
+                            <div className="space-y-1.5">
+                              {order.financial_breakdown.items.map((item, itemIdx) => (
+                                <div
+                                  key={`${order.id}-item-${itemIdx}`}
+                                  className={itemIdx > 0 ? 'pt-1.5 border-t border-slate-100' : ''}
+                                >
+                                  <p
+                                    className="font-semibold text-slate-900 text-xs leading-snug truncate"
+                                    title={item.variation || item.name || undefined}
+                                  >
+                                    {itemIdx + 1}. {item.variation || item.name || '—'}
+                                  </p>
+                                  <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-slate-500">
+                                    {item.sku ? (
+                                      <span className="font-mono font-medium text-slate-700 truncate select-all" title={item.sku}>
+                                        {item.sku}
+                                      </span>
+                                    ) : (
+                                      <span className="text-amber-700 font-medium">Tanpa SKU</span>
+                                    )}
+                                    <span className="text-slate-300">·</span>
+                                    <span className="shrink-0">
+                                      QTY: <strong className="text-slate-900 font-semibold">{item.qty}</strong>
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                              <div className="pt-1 border-t border-dashed border-slate-200 flex items-center gap-2 text-[10px] text-slate-500">
+                                <span className="font-semibold text-slate-700">
+                                  Total {order.financial_breakdown.items.length} Produk · QTY {order.qty}
+                                </span>
+                                {order.recheck_qty !== null && (
+                                  <span className="text-emerald-600 font-medium">Recheck: {order.recheck_qty}</span>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              {/* 1. Variasi */}
+                              <div className="mb-0.5">
+                                <p className="font-semibold text-slate-900 text-xs leading-snug truncate" title={order.variation_name || order.product_name || undefined}>
+                                  {order.variation_name || order.product_name || '—'}
+                                </p>
+                              </div>
 
-                          {/* 2. SKU Utama */}
-                          <div className="flex items-center gap-1.5 my-0.5">
-                            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">SKU:</span>
-                            {order.sku_utama && order.sku_utama.trim() !== '' && order.sku_utama !== '-' ? (
-                              <span className="font-mono text-[11px] font-medium text-slate-700 truncate select-all" title={order.sku_utama}>
-                                {order.sku_utama}
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                                Tanpa SKU
-                              </span>
-                            )}
-                          </div>
+                              {/* 2. SKU Utama */}
+                              <div className="flex items-center gap-1.5 my-0.5">
+                                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">SKU:</span>
+                                {order.sku_utama && order.sku_utama.trim() !== '' && order.sku_utama !== '-' ? (
+                                  <span className="font-mono text-[11px] font-medium text-slate-700 truncate select-all" title={order.sku_utama}>
+                                    {order.sku_utama}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                    Tanpa SKU
+                                  </span>
+                                )}
+                              </div>
 
-                          {/* 3. QTY */}
-                          <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                            <span>QTY: <strong className="text-slate-900 font-semibold">{order.qty}</strong></span>
-                            {order.recheck_qty !== null && (
-                              <span className="text-emerald-600 font-medium">Recheck: {order.recheck_qty}</span>
-                            )}
-                          </div>
+                              {/* 3. QTY */}
+                              <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                                <span>QTY: <strong className="text-slate-900 font-semibold">{order.qty}</strong></span>
+                                {order.recheck_qty !== null && (
+                                  <span className="text-emerald-600 font-medium">Recheck: {order.recheck_qty}</span>
+                                )}
+                              </div>
+                            </>
+                          )}
                         </td>
 
                         {/* SKU Pengganti */}
@@ -1747,9 +1961,32 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
 
                         {/* Keuangan & DPP */}
                         <td className="py-2.5 px-3 whitespace-nowrap">
-                          <p className="font-semibold text-slate-900">
-                            {formatRupiah(order.est_net_income)}
-                          </p>
+                          <div
+                            className="inline-flex flex-col items-start group/bd cursor-help"
+                            onMouseEnter={(e) => openBreakdownTooltip(e, order)}
+                            onMouseLeave={() => setHoveredBreakdown(null)}
+                          >
+                            <div className="inline-flex items-center gap-1">
+                              <span className="font-semibold text-slate-900 underline decoration-dotted decoration-slate-300 underline-offset-4 group-hover/bd:text-blue-700 group-hover/bd:decoration-blue-400 transition-colors">
+                                {formatRupiah(order.est_net_income)}
+                              </span>
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                strokeWidth={1.8}
+                                stroke="currentColor"
+                                className="w-3.5 h-3.5 text-slate-400 group-hover/bd:text-blue-600 transition-colors"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                              </svg>
+                            </div>
+                            {order.financial_breakdown && order.financial_breakdown.seller_voucher > 0 && (
+                              <span className="text-[10px] font-medium text-rose-600 mt-0.5 tabular-nums">
+                                Voucher -{formatBreakdownCurrency(order.financial_breakdown.seller_voucher)}
+                              </span>
+                            )}
+                          </div>
                           <div className="flex flex-col gap-0.5 mt-0.5">
                             {order.dpp_number ? (
                               <span className="inline-block font-mono text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 w-fit">
@@ -2656,6 +2893,111 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
             )}
           </div>
         </div>,
+        document.body
+      )}
+
+      {/* Portal Tooltip: Rincian Perhitungan Est. Bersih */}
+      {hoveredBreakdown && typeof document !== 'undefined' && createPortal(
+        (() => {
+          const { order, breakdown, isEstimatedFallback, rect } = hoveredBreakdown;
+          const openUpward = rect.bottom + 280 > window.innerHeight && rect.top > 240;
+          const topPos = openUpward ? Math.max(12, rect.top - 8) : rect.bottom + 8;
+          const rightPos = Math.max(12, window.innerWidth - rect.right);
+          const feePct = Math.round((breakdown.fee_rate ?? 0.79) * 100);
+          const itemCount = breakdown.items.length;
+
+          return (
+            <div
+              className="fixed z-[9999] pointer-events-none w-[360px] max-w-[calc(100vw-24px)] rounded-xl border border-slate-200 bg-white p-3.5 text-left text-slate-800 shadow-lg"
+              style={{
+                top: `${topPos}px`,
+                right: `${rightPos}px`,
+                transform: openUpward ? 'translateY(-100%)' : undefined,
+              }}
+            >
+              <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Rincian Est. Bersih ({order.order_number})
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    Rumus: (Subtotal - Voucher Penjual) × {feePct}%
+                  </div>
+                </div>
+                {itemCount > 1 && (
+                  <span className="shrink-0 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                    {itemCount} Produk
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-2.5 space-y-2 max-h-56 overflow-hidden">
+                {breakdown.items.map((item, idx) => (
+                  <div
+                    key={`${item.sku || item.name}-${idx}`}
+                    className="rounded-lg border border-slate-100 bg-slate-50/70 px-2.5 py-2 text-[11px]"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-slate-900 truncate">
+                          {itemCount > 1 ? `${idx + 1}. ` : ''}
+                          {item.variation || item.name}
+                        </div>
+                        <div className="text-[10px] font-mono text-slate-500 truncate">
+                          {item.sku ? `SKU: ${item.sku}` : item.name} · Qty {item.qty}
+                        </div>
+                      </div>
+                      <div className="shrink-0 font-semibold text-slate-900 tabular-nums">
+                        {formatBreakdownCurrency(item.est_net_income)}
+                      </div>
+                    </div>
+
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-600 tabular-nums">
+                      <span>Subtotal {formatBreakdownCurrency(item.subtotal)}</span>
+                      {breakdown.seller_voucher > 0 && (
+                        <span className="text-rose-600">
+                          - Voucher {formatBreakdownCurrency(item.voucher_share)}
+                        </span>
+                      )}
+                      <span className="text-slate-400">× {feePct}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-2.5 pt-2 border-t border-slate-200 space-y-1 text-[11px] tabular-nums">
+                <div className="flex items-center justify-between text-slate-600">
+                  <span>Subtotal Pesanan</span>
+                  <span className="font-medium text-slate-900">{formatBreakdownCurrency(breakdown.subtotal_order)}</span>
+                </div>
+                <div className="flex items-center justify-between text-slate-600">
+                  <span>
+                    Voucher Ditanggung Penjual
+                    {breakdown.seller_voucher > 0 && itemCount > 1
+                      ? ` (÷ ${itemCount} = ${formatBreakdownCurrency(breakdown.voucher_per_item)})`
+                      : ''}
+                  </span>
+                  <span className={breakdown.seller_voucher > 0 ? 'font-medium text-rose-600' : 'text-slate-400'}>
+                    -{formatBreakdownCurrency(breakdown.seller_voucher)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-slate-600">
+                  <span>Dasar Perhitungan ({feePct}%)</span>
+                  <span className="font-medium text-slate-800">{formatBreakdownCurrency(breakdown.net_base)}</span>
+                </div>
+                <div className="flex items-center justify-between pt-1 border-t border-dashed border-slate-200 text-xs font-bold text-slate-950">
+                  <span>Total Est. Bersih</span>
+                  <span className="text-emerald-700">{formatRupiah(Number(order.est_net_income ?? breakdown.est_net_income ?? 0))}</span>
+                </div>
+                {isEstimatedFallback && (
+                  <div className="text-[10px] text-amber-600 pt-0.5">
+                    Data lama sebelum sinkron breakdown — jalankan Sinkron & Hitung Ulang Shopee di menu Opsi untuk rincian per item.
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })(),
         document.body
       )}
     </AppLayout>

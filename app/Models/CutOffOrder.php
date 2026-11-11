@@ -39,6 +39,7 @@ class CutOffOrder extends Model
         'marketplace_net_payout',
         'sheet_dpp',
         'dpp_number',
+        'financial_breakdown',
     ];
 
     protected function casts(): array
@@ -50,6 +51,84 @@ class CutOffOrder extends Model
             'recheck_qty'            => 'integer',
             'est_net_income'         => 'decimal:2',
             'marketplace_net_payout' => 'decimal:2',
+            'financial_breakdown'    => 'array',
+        ];
+    }
+
+    /**
+     * Susun rincian perhitungan Est. Bersih pesanan (multi-produk maupun tunggal).
+     * Voucher ditanggung penjual dibagi rata per produk: (Subtotal - Voucher/N) x 79%.
+     */
+    public static function buildFinancialBreakdown(
+        array $rawItems,
+        float $sellerVoucher = 0.0,
+        float $feeRate = 0.79,
+        ?float $overrideSubtotal = null,
+        bool $isCancelled = false
+    ): array {
+        $items = [];
+        foreach ($rawItems as $raw) {
+            $name = trim((string) ($raw['name'] ?? $raw['product_name'] ?? $raw['item_name'] ?? ''));
+            $variation = trim((string) ($raw['variation'] ?? $raw['model_name'] ?? ''));
+            $sku = trim((string) ($raw['sku'] ?? $raw['model_sku'] ?? $raw['item_sku'] ?? ''));
+            if ($sku !== '' && strlen($sku) > 6 && ! str_contains($sku, ' ')) {
+                $sku = strtoupper($sku);
+            }
+            $qty = max(1, (int) ($raw['qty'] ?? $raw['model_quantity_purchased'] ?? 1));
+            $subtotal = round((float) ($raw['subtotal'] ?? 0), 2);
+
+            $items[] = [
+                'name'      => $name !== '' ? $name : 'Produk',
+                'variation' => $variation !== '' ? $variation : null,
+                'sku'       => $sku !== '' ? $sku : null,
+                'qty'       => $qty,
+                'subtotal'  => $subtotal,
+            ];
+        }
+
+        $itemsSubtotal = array_reduce($items, static fn (float $sum, array $i): float => $sum + $i['subtotal'], 0.0);
+        $subtotalOrder = ($overrideSubtotal !== null && $overrideSubtotal > 0)
+            ? round($overrideSubtotal, 2)
+            : round($itemsSubtotal, 2);
+
+        if (count($items) === 1 && $items[0]['subtotal'] <= 0 && $subtotalOrder > 0) {
+            $items[0]['subtotal'] = $subtotalOrder;
+        }
+
+        $voucherTotal = max(0.0, round($sellerVoucher, 2));
+        $itemCount = max(1, count($items));
+        $exactVoucherPerItem = $voucherTotal / $itemCount;
+        $voucherPerItem = round($voucherTotal / $itemCount, 2);
+
+        $mappedItems = [];
+        foreach ($items as $item) {
+            $netBeforeFee = max(0.0, $item['subtotal'] - $exactVoucherPerItem);
+            $itemEstNet = $isCancelled ? 0.0 : round($netBeforeFee * $feeRate);
+            $mappedItems[] = [
+                'name'           => $item['name'],
+                'variation'      => $item['variation'],
+                'sku'            => $item['sku'],
+                'qty'            => $item['qty'],
+                'subtotal'       => round($item['subtotal'], 2),
+                'voucher_share'  => $voucherPerItem,
+                'net_before_fee' => round($netBeforeFee, 2),
+                'est_net_income' => $itemEstNet,
+            ];
+        }
+
+        $netBase = max(0.0, $subtotalOrder - $voucherTotal);
+        $orderEstNet = $isCancelled ? 0.0 : round($netBase * $feeRate);
+
+        return [
+            'subtotal_order'   => round($subtotalOrder, 2),
+            'seller_voucher'   => $voucherTotal,
+            'voucher_per_item' => $voucherPerItem,
+            'item_count'       => count($mappedItems),
+            'net_base'         => round($netBase, 2),
+            'fee_rate'         => $feeRate,
+            'is_cancelled'     => $isCancelled,
+            'est_net_income'   => $orderEstNet,
+            'items'            => $mappedItems,
         ];
     }
 

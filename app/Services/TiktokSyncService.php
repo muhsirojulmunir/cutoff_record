@@ -373,8 +373,10 @@ class TiktokSyncService
             $pageToken = $res['data']['next_page_token'] ?? null;
         } while (! empty($pageToken) && $pageCount < $maxPages);
 
-        $hasCancelBy     = Schema::hasColumn('cut_off_orders', 'cancel_by');
-        $hasCancelReason = Schema::hasColumn('cut_off_orders', 'cancel_reason');
+        app(ShopeeSyncService::class)->ensureSchema();
+        $hasCancelBy           = Schema::hasColumn('cut_off_orders', 'cancel_by');
+        $hasCancelReason       = Schema::hasColumn('cut_off_orders', 'cancel_reason');
+        $hasFinancialBreakdown = Schema::hasColumn('cut_off_orders', 'financial_breakdown');
 
         $createdCount = 0;
         $updatedCount = 0;
@@ -386,8 +388,18 @@ class TiktokSyncService
             $lineItems = $order['line_items'] ?? [];
             $firstItem = $lineItems[0] ?? [];
             $totalQty  = 0;
+            $normalizedItems = [];
             foreach ($lineItems as $item) {
-                $totalQty += (int) ($item['quantity'] ?? 1);
+                $itemQty = max(1, (int) ($item['quantity'] ?? 1));
+                $totalQty += $itemQty;
+                $unitPrice = (float) ($item['sale_price'] ?? $item['original_price'] ?? 0);
+                $normalizedItems[] = [
+                    'name'      => $item['product_name'] ?? 'Produk TikTok Shop',
+                    'variation' => ! empty($item['sku_name']) ? trim((string) $item['sku_name']) : null,
+                    'sku'       => $item['seller_sku'] ?? $item['sku_id'] ?? null,
+                    'qty'       => $itemQty,
+                    'subtotal'  => round($unitPrice * $itemQty, 2),
+                ];
             }
             if ($totalQty <= 0) $totalQty = 1;
 
@@ -398,8 +410,28 @@ class TiktokSyncService
             $payment        = $order['payment'] ?? [];
             $productPrice   = (float) ($payment['original_total_product_price'] ?? $payment['total_amount'] ?? 0);
             $sellerDiscount = (float) ($payment['seller_discount'] ?? 0);
-            $netProduct     = max(0, $productPrice - $sellerDiscount);
-            $calculatedNet  = $statusText === 'Batal' ? 0 : round($netProduct * 0.79);
+            if (empty($normalizedItems)) {
+                $normalizedItems[] = [
+                    'name'      => 'Produk TikTok Shop',
+                    'variation' => null,
+                    'sku'       => null,
+                    'qty'       => $totalQty,
+                    'subtotal'  => round($productPrice, 2),
+                ];
+            }
+            $breakdown     = CutOffOrder::buildFinancialBreakdown(
+                $normalizedItems,
+                $sellerDiscount,
+                0.79,
+                $productPrice > 0 ? $productPrice : null,
+                $statusText === 'Batal'
+            );
+            $calculatedNet = $breakdown['est_net_income'];
+
+            $variationName = ! empty($firstItem['sku_name']) ? trim((string) $firstItem['sku_name']) : null;
+            if (count($lineItems) > 1 && $variationName) {
+                $variationName .= ' (+' . (count($lineItems) - 1) . ' item)';
+            }
 
             // Format tanggal tepat WIB (Asia/Jakarta)
             $createTime = $order['create_time'] ?? null;
@@ -434,7 +466,7 @@ class TiktokSyncService
                 'payment_method'         => $paymentMethod,
                 'sku_utama'              => $firstItem['seller_sku'] ?? $firstItem['sku_id'] ?? null,
                 'product_name'           => $firstItem['product_name'] ?? 'Produk TikTok Shop',
-                'variation_name'         => $firstItem['sku_name'] ?? null,
+                'variation_name'         => $variationName,
                 'qty'                    => $totalQty,
                 'package_count'          => count($lineItems) ?: 1,
                 'order_status'           => $statusText,
@@ -451,6 +483,9 @@ class TiktokSyncService
             if ($hasCancelReason && $cancelReason) {
                 $payload['cancel_reason'] = $cancelReason;
             }
+            if ($hasFinancialBreakdown) {
+                $payload['financial_breakdown'] = $breakdown;
+            }
 
             if ($existing) {
                 $updateFields = [
@@ -458,6 +493,8 @@ class TiktokSyncService
                     'order_status'           => $statusText,
                     'shipping_courier'       => $payload['shipping_courier'] ?? $existing->shipping_courier,
                     'variation_name'         => $payload['variation_name'] ?? $existing->variation_name,
+                    'qty'                    => $totalQty,
+                    'package_count'          => $payload['package_count'],
                     'est_net_income'         => $calculatedNet,
                     'marketplace_net_payout' => $calculatedNet,
                 ];
@@ -473,6 +510,9 @@ class TiktokSyncService
                 }
                 if ($hasCancelReason && $cancelReason) {
                     $updateFields['cancel_reason'] = $cancelReason;
+                }
+                if ($hasFinancialBreakdown) {
+                    $updateFields['financial_breakdown'] = $breakdown;
                 }
 
                 $existing->update($updateFields);

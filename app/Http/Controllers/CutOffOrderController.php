@@ -3,10 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\CutOffOrder;
+use App\Models\ShopeeAccount;
+use App\Services\ShopeeSyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -153,6 +156,10 @@ class CutOffOrderController extends Controller
         ]);
 
         $rows = $request->input('rows');
+        $shopeeService = app(ShopeeSyncService::class);
+        $shopeeService->ensureSchema();
+        $hasFinancialBreakdown = Schema::hasColumn('cut_off_orders', 'financial_breakdown');
+
         $inserted = 0;
         $batch = [];
         $now = now();
@@ -162,7 +169,7 @@ class CutOffOrderController extends Controller
                 continue;
             }
 
-            $batch[] = [
+            $rowPayload = [
                 'order_date'             => !empty($r['order_date']) ? $r['order_date'] : $now->toDateString(),
                 'channel'                => !empty($r['channel']) ? $r['channel'] : 'MANUAL',
                 'order_number'           => $r['order_number'],
@@ -186,6 +193,14 @@ class CutOffOrderController extends Controller
                 'created_at'             => $now,
                 'updated_at'             => $now,
             ];
+
+            if ($hasFinancialBreakdown) {
+                $rowPayload['financial_breakdown'] = !empty($r['financial_breakdown'])
+                    ? json_encode($r['financial_breakdown'], JSON_UNESCAPED_UNICODE)
+                    : null;
+            }
+
+            $batch[] = $rowPayload;
 
             if (count($batch) >= 500) {
                 CutOffOrder::insert($batch);
@@ -574,6 +589,60 @@ class CutOffOrderController extends Controller
     }
 
     /**
+     * Sinkronisasi ulang pesanan Shopee 7 hari terakhir beserta rincian escrow/voucher penjual (Super Admin only).
+     */
+    public function syncShopeeRecent(Request $request, ShopeeSyncService $shopeeService): RedirectResponse
+    {
+        $user = $request->user();
+        $isSuperAdmin = $user && (
+            (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) ||
+            $user->role?->name === 'Super Admin' ||
+            $user->roles->contains('name', 'Super Admin')
+        );
+
+        if (! $isSuperAdmin) {
+            abort(403, 'Hanya Super Admin yang diizinkan menyinkronkan ulang pesanan Shopee.');
+        }
+
+        $accounts = ShopeeAccount::where('status', 'active')
+            ->whereNotNull('access_token')
+            ->get();
+
+        if ($accounts->isEmpty()) {
+            return redirect()->route('cut-off-orders.index')->with('error', 'Tidak ada akun Shopee aktif yang terhubung.');
+        }
+
+        $days = max(1, min(14, (int) $request->input('days', 7)));
+        $timeTo = time();
+        $timeFrom = $timeTo - ($days * 86400);
+
+        $totalCreated = 0;
+        $totalUpdated = 0;
+        $errors = [];
+
+        foreach ($accounts as $account) {
+            try {
+                $res = $shopeeService->syncOrdersToCutOff($account, $timeFrom, $timeTo);
+                $totalCreated += (int) ($res['created'] ?? 0);
+                $totalUpdated += (int) ($res['updated'] ?? 0);
+            } catch (\Throwable $e) {
+                $errors[] = ($account->shop_name ?? ('Toko #' . $account->shop_id)) . ': ' . $e->getMessage();
+            }
+        }
+
+        if (! empty($errors) && $totalCreated === 0 && $totalUpdated === 0) {
+            return redirect()->route('cut-off-orders.index')->with('error', 'Gagal menyinkronkan Shopee: ' . implode(' | ', $errors));
+        }
+
+        $msg = "Sinkron & hitung ulang Shopee ({$days} hari terakhir) selesai: {$totalUpdated} diperbarui, {$totalCreated} baru.";
+        if (! empty($errors)) {
+            $msg .= ' Catatan: ' . implode(' | ', $errors);
+        }
+
+        return redirect()->route('cut-off-orders.index')->with('success', $msg);
+    }
+
+    /**
      * Kosongkan seluruh data tabel Cut Off Orders (Super Admin only).
      */
     public function truncate(Request $request): RedirectResponse
@@ -581,7 +650,8 @@ class CutOffOrderController extends Controller
         $user = $request->user();
         $isSuperAdmin = $user && (
             (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) ||
-            $user->role?->name === 'Super Admin'
+            $user->role?->name === 'Super Admin' ||
+            $user->roles->contains('name', 'Super Admin')
         );
 
         if (! $isSuperAdmin) {

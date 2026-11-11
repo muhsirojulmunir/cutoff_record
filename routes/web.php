@@ -40,6 +40,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/cut-off-orders/import', [CutOffOrderController::class, 'importBatch'])->name('cut-off-orders.import');
     Route::post('/cut-off-orders/import-jl/preview', [CutOffOrderController::class, 'previewImportJl'])->name('cut-off-orders.import-jl.preview');
     Route::post('/cut-off-orders/import-jl', [CutOffOrderController::class, 'importJl'])->name('cut-off-orders.import-jl');
+    Route::post('/cut-off-orders/sync-shopee', [CutOffOrderController::class, 'syncShopeeRecent'])->name('cut-off-orders.sync-shopee');
     Route::post('/cut-off-orders/truncate', [CutOffOrderController::class, 'truncate'])->name('cut-off-orders.truncate');
     Route::put('/cut-off-orders/{cutOffOrder}', [CutOffOrderController::class, 'update'])->name('cut-off-orders.update');
     Route::delete('/cut-off-orders/{cutOffOrder}', [CutOffOrderController::class, 'destroy'])->name('cut-off-orders.destroy');
