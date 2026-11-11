@@ -7,6 +7,9 @@ use App\Models\ShopeeOrder;
 use App\Services\ShopeeOrderService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
+use Illuminate\Database\RecordsNotFoundException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
@@ -18,6 +21,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
+use PDOException;
 use RuntimeException;
 
 class ShopeeOrderController extends Controller
@@ -184,11 +188,13 @@ class ShopeeOrderController extends Controller
         @set_time_limit(300);
 
         if (! empty($validated['start_date']) && ! empty($validated['end_date'])) {
-            $timeFrom = Carbon::parse($validated['start_date'], 'Asia/Jakarta')->startOfDay()->timestamp;
-            $timeTo = Carbon::parse($validated['end_date'], 'Asia/Jakarta')->endOfDay()->timestamp;
-            if ($timeFrom > $timeTo) {
-                [$timeFrom, $timeTo] = [$timeTo, $timeFrom];
+            $startDate = Carbon::parse($validated['start_date'], 'Asia/Jakarta');
+            $endDate = Carbon::parse($validated['end_date'], 'Asia/Jakarta');
+            if ($startDate->gt($endDate)) {
+                [$startDate, $endDate] = [$endDate, $startDate];
             }
+            $timeFrom = $startDate->copy()->startOfDay()->timestamp;
+            $timeTo = $endDate->copy()->endOfDay()->timestamp;
         } else {
             $days = (int) ($validated['days'] ?? 7);
             $timeTo = time();
@@ -221,7 +227,7 @@ class ShopeeOrderController extends Controller
             return response()->json([
                 'status'  => 'success',
                 'message' => "Detail pesanan {$order->order_sn} berhasil diperbarui dari Shopee.",
-                'order'   => $order,
+                'order'   => $order->makeHidden(['raw_payload']),
             ], 200);
         } catch (\Throwable $e) {
             return $this->actionErrorResponse($e);
@@ -304,7 +310,9 @@ class ShopeeOrderController extends Controller
             }
 
             $account = $this->requireConnectedAccount();
-            $result = $this->orderService->shipOrder($account, $orderSn, $validated);
+            $result = $this->sanitizeOrderResult(
+                $this->orderService->shipOrder($account, $orderSn, $validated)
+            );
 
             return response()->json(array_merge(['status' => 'success'], $result), 200);
         } catch (ValidationException $e) {
@@ -429,10 +437,12 @@ class ShopeeOrderController extends Controller
             ]);
 
             $account = $this->requireConnectedAccount();
-            $result = $this->orderService->handleBuyerCancellation(
-                $account,
-                $orderSn,
-                strtoupper((string) $validated['operation'])
+            $result = $this->sanitizeOrderResult(
+                $this->orderService->handleBuyerCancellation(
+                    $account,
+                    $orderSn,
+                    strtoupper((string) $validated['operation'])
+                )
             );
 
             return response()->json(array_merge(['status' => 'success'], $result), 200);
@@ -581,12 +591,32 @@ class ShopeeOrderController extends Controller
      */
     private function buildWaybillPdfResponse(array $result): Response
     {
+        $rawFilename = basename(str_replace('\\', '/', (string) ($result['filename'] ?? 'resi-shopee-A4.pdf')));
+        $safeFilename = preg_replace('/[^A-Za-z0-9._-]+/', '-', str_replace(["\r", "\n", '"'], '', $rawFilename)) ?: 'resi-shopee-A4.pdf';
+        $safeFilename = trim($safeFilename, '.-') ?: 'resi-shopee-A4.pdf';
+        if (! str_ends_with(strtolower($safeFilename), '.pdf')) {
+            $safeFilename .= '.pdf';
+        }
+
         return response($result['pdf_binary'], 200, [
             'Content-Type'          => 'application/pdf',
-            'Content-Disposition'   => 'inline; filename="' . $result['filename'] . '"',
+            'Content-Disposition'   => 'inline; filename="' . $safeFilename . '"',
             'X-Shopee-Orders-Count' => (string) count($result['orders']),
             'Cache-Control'         => 'no-store, no-cache, must-revalidate',
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     * @return array<string, mixed>
+     */
+    private function sanitizeOrderResult(array $result): array
+    {
+        if (($result['order'] ?? null) instanceof ShopeeOrder) {
+            $result['order']->makeHidden(['raw_payload']);
+        }
+
+        return $result;
     }
 
     private function validationErrorResponse(ValidationException $e): JsonResponse
@@ -602,12 +632,19 @@ class ShopeeOrderController extends Controller
     {
         $status = $this->resolveActionExceptionStatus($e);
         if ($status >= 500) {
-            Log::error('ShopeeOrderController action error: ' . $e->getMessage());
+            Log::error('ShopeeOrderController action error: ' . $e->getMessage(), [
+                'exception' => $e::class,
+                'status'    => $status,
+            ]);
         }
+
+        $message = $status === 500
+            ? 'Terjadi kesalahan internal server saat memproses pesanan Shopee.'
+            : $e->getMessage();
 
         return response()->json([
             'status'  => 'error',
-            'message' => $e->getMessage(),
+            'message' => $message,
         ], $status);
     }
 
@@ -615,6 +652,18 @@ class ShopeeOrderController extends Controller
     {
         if ($e instanceof ConnectionException || $e instanceof RequestException) {
             return 502;
+        }
+
+        // Guard against DB/ORM exceptions (QueryException extends PDOException extends RuntimeException;
+        // ModelNotFoundException extends RecordsNotFoundException extends RuntimeException) and non-operational errors.
+        if (
+            $e instanceof QueryException
+            || $e instanceof PDOException
+            || $e instanceof ModelNotFoundException
+            || $e instanceof RecordsNotFoundException
+            || ! ($e instanceof RuntimeException)
+        ) {
+            return 500;
         }
 
         $msg = $e->getMessage();
