@@ -2528,7 +2528,8 @@ class ShopeeProductController extends Controller
             return response()->json(['status' => 'success', 'variants' => []]);
         }
 
-        $keywords = preg_split('/[\s\-_,]+/', strtolower($q), -1, PREG_SPLIT_NO_EMPTY);
+        // Pisahkan hanya berdasarkan spasi/koma agar tanda '-' dan '_' pada pencarian SKU (mis. 'blanco-H-') tetap utuh.
+        $keywords = preg_split('/[\s,]+/', strtolower($q), -1, PREG_SPLIT_NO_EMPTY);
         $filler = ['record', 'sepatu', 'spt', 'shoes', 'anak', 'pria', 'wanita'];
         $cleanKeywords = array_values(array_filter($keywords, function ($k) use ($filler, $keywords) {
             return count($keywords) === 1 || ! in_array($k, $filler, true);
@@ -2547,7 +2548,7 @@ class ShopeeProductController extends Controller
             $query->where(function ($sub) use ($cleanKeywords) {
                 foreach ($cleanKeywords as $kw) {
                     $sub->where(function ($w) use ($kw) {
-                        // 1. Pencocokan mutlak pada kolom SKU
+                        // 1. Pencocokan langsung pada kolom SKU (menjaga delimiter '-' / '_')
                         $w->where('sku', 'like', "%{$kw}%")
                           // 2. Fallback HANYA jika SKU produk memang null / kosong di Shopee
                           ->orWhere(function ($fallback) use ($kw) {
@@ -2565,34 +2566,49 @@ class ShopeeProductController extends Controller
 
         $products = $query->orderBy('item_name', 'asc')->orderBy('model_name', 'asc')->get();
 
-        // Strict SKU Filter: Pastikan variasi yang muncul benar-benar memuat kata kunci pada SKU-nya.
-        // Jika user mencari 'theon', hanya variasi dengan SKU 'RECORD-THEON-...' yang boleh muncul.
-        // Variasi dengan SKU 'RECORD-CARSON-...' mutlak ditolak meskipun nama variasinya tertulis THEON-CARSON.
+        // Strict SKU Filter: Pastikan variasi yang muncul benar-benar sesuai pola SKU/kata kunci.
+        // Delimiter '-'/'_' harus cocok persis; kode pendek (1-2 karakter seperti 'h') wajib cocok per segmen SKU (bukan 'khaki').
         if (! empty($cleanKeywords)) {
             $products = $products->filter(function ($p) use ($cleanKeywords) {
-                $skuLower   = strtolower(trim((string) $p->sku));
-                $modelLower = strtolower(trim((string) $p->model_name));
+                $skuLower      = strtolower(trim((string) $p->sku));
+                $modelLower    = strtolower(trim((string) $p->model_name));
+                $itemLower     = strtolower((string) $p->item_name);
+                $skuSegments   = $skuLower !== '' ? preg_split('/[-_\s,\/]+/', $skuLower, -1, PREG_SPLIT_NO_EMPTY) : [];
+                $modelSegments = $modelLower !== '' ? preg_split('/[-_\s,\/]+/', $modelLower, -1, PREG_SPLIT_NO_EMPTY) : [];
 
                 foreach ($cleanKeywords as $kw) {
-                    // Cek kode warna khusus (misal 'hitam' / 'putih' cocok dengan '-hp-' di SKU)
-                    $matchesColorCode = ($kw === 'hitam' || $kw === 'putih') && (
-                        str_contains($skuLower, '-hp-') || str_contains($skuLower, '_hp_') || str_contains($modelLower, 'hp')
-                    );
+                    $hasSkuDelimiter = str_contains($kw, '-') || str_contains($kw, '_');
 
-                    // Jika keyword berupa angka ukuran (misal '30', '31'), boleh cocok di SKU atau model_name
-                    $matchesSize = is_numeric($kw) && (str_contains($skuLower, $kw) || str_contains($modelLower, $kw));
+                    if ($skuLower !== '') {
+                        if ($hasSkuDelimiter) {
+                            if (str_contains($skuLower, $kw)) {
+                                continue;
+                            }
+                            return false;
+                        }
 
-                    // Jika ada SKU: SKU WAJIB memuat keyword (misal 'theon')
-                    if (! empty($skuLower)) {
+                        if (strlen($kw) <= 2) {
+                            if (in_array($kw, $skuSegments, true) || (is_numeric($kw) && in_array($kw, $modelSegments, true))) {
+                                continue;
+                            }
+                            return false;
+                        }
+
+                        // Cek kode warna khusus (misal 'hitam' / 'putih' cocok dengan '-hp-' / '-h-' di SKU)
+                        $matchesColorCode = ($kw === 'hitam' || $kw === 'putih') && (
+                            str_contains($skuLower, '-hp-') || str_contains($skuLower, '_hp_') || str_contains($modelLower, 'hp')
+                        );
+                        $matchesSize = is_numeric($kw) && (str_contains($skuLower, $kw) || str_contains($modelLower, $kw));
+
                         if (str_contains($skuLower, $kw) || $matchesColorCode || $matchesSize) {
                             continue;
                         }
-                        // SKU tidak memuat keyword -> TOLAK!
+
                         return false;
                     }
 
                     // Fallback jika SKU kosong di Shopee
-                    if (str_contains($modelLower, $kw) || str_contains(strtolower((string) $p->item_name), $kw)) {
+                    if (str_contains($modelLower, $kw) || str_contains($itemLower, $kw)) {
                         continue;
                     }
 
