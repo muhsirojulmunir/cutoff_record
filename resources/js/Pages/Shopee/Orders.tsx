@@ -1113,7 +1113,7 @@ export default function ShopeeOrdersPage({
 
         const contentType = response.headers.get('content-type') ?? '';
         if (!response.ok || !contentType.toLowerCase().includes('application/pdf')) {
-          let errMessage = `Gagal menyiapkan PDF Resi A4 Shopee (HTTP ${response.status}).`;
+          let errMessage = `Gagal menyiapkan PDF Resi Shopee (HTTP ${response.status}).`;
           try {
             const payload = (await response.json()) as { message?: string };
             if (payload?.message) errMessage = payload.message;
@@ -1127,13 +1127,13 @@ export default function ShopeeOrdersPage({
         const blob = await response.blob();
         if (controller.signal.aborted || !isMountedRef.current) return;
         if (blob.size === 0) {
-          showToast('error', 'Dokumen PDF Resi A4 kosong dari Shopee.');
+          showToast('error', 'Dokumen PDF Resi kosong dari Shopee.');
           return;
         }
 
         const fallbackFilename = isMass
-          ? `resi-shopee-massal-${capped.length}-pesanan-A4.pdf`
-          : `resi-shopee-${capped[0].order_sn}-A4.pdf`;
+          ? `resi-shopee-massal-${capped.length}-pesanan-thermal.pdf`
+          : `resi-shopee-${capped[0].order_sn}-thermal-100x150.pdf`;
         const filename = extractFilenameFromHeader(
           response.headers.get('content-disposition'),
           fallbackFilename
@@ -1149,8 +1149,8 @@ export default function ShopeeOrdersPage({
           show: true,
           pdfUrl: blobUrl,
           title: isMass
-            ? `Resi A4 Massal (${resolvedCount} Pesanan)`
-            : `Resi A4 — ${capped[0].order_sn}`,
+            ? `Resi Thermal Massal (${resolvedCount} Pesanan)`
+            : `Resi Thermal — ${capped[0].order_sn}`,
           filename,
           orderCount: resolvedCount,
           warnings,
@@ -1159,8 +1159,8 @@ export default function ShopeeOrdersPage({
         showToast(
           'success',
           isMass
-            ? `PDF Resi A4 berhasil disiapkan untuk ${resolvedCount} pesanan.`
-            : `PDF Resi A4 untuk ${capped[0].order_sn} siap dicetak.`
+            ? `PDF Resi Thermal 100x150mm berhasil disiapkan untuk ${resolvedCount} pesanan.`
+            : `PDF Resi Thermal 100x150mm untuk ${capped[0].order_sn} siap dicetak.`
         );
 
         router.reload({ only: ['orders', 'tabCounts'] });
@@ -1169,7 +1169,7 @@ export default function ShopeeOrdersPage({
         if (isMountedRef.current) {
           showToast(
             'error',
-            err instanceof Error ? err.message : 'Kendala jaringan saat mengunduh PDF Resi A4.'
+            err instanceof Error ? err.message : 'Kendala jaringan saat mengunduh PDF Resi.'
           );
         }
       } finally {
@@ -1850,7 +1850,7 @@ export default function ShopeeOrdersPage({
               <div className="text-xs text-amber-900">
                 <p className="font-bold">Koneksi Toko Shopee Belum Aktif</p>
                 <p className="mt-0.5 text-amber-800">
-                  Kredensial atau otorisasi toko Shopee belum tersedia. Hubungkan akun toko untuk menyinkronkan pesanan, mengatur pengiriman, dan mencetak resi A4 resmi.
+                  Kredensial atau otorisasi toko Shopee belum tersedia. Hubungkan akun toko untuk menyinkronkan pesanan, mengatur pengiriman, dan mencetak resi resmi.
                 </p>
               </div>
             </div>
@@ -2294,8 +2294,8 @@ export default function ShopeeOrdersPage({
                   )}
                   <span className="tabular-nums">
                     {printingTarget === 'MASS'
-                      ? 'Menyiapkan Resi A4...'
-                      : `Cetak Resi A4 Massal${
+                      ? 'Menyiapkan Resi...'
+                      : `Cetak Resi Massal${
                           selectedPrintableOrders.length > 0
                             ? ` (${Math.min(selectedPrintableOrders.length, MAX_SHOPEE_BATCH)}${
                                 selectedPrintableOrders.length > MAX_SHOPEE_BATCH
@@ -2738,8 +2738,8 @@ export default function ShopeeOrdersPage({
                             {isPrintingThis
                               ? 'Menyiapkan...'
                               : order.label_print_count > 0
-                                ? 'Cetak Ulang A4'
-                                : 'Cetak Resi A4'}
+                                ? 'Cetak Ulang Resi'
+                                : 'Cetak Resi'}
                           </span>
                         </button>
                       )}
@@ -2762,7 +2762,7 @@ export default function ShopeeOrdersPage({
                               />
                             </svg>
                           )}
-                          <span>{isPrintingThis ? 'Menyiapkan...' : 'Cetak Ulang A4'}</span>
+                          <span>{isPrintingThis ? 'Menyiapkan...' : 'Cetak Ulang Resi'}</span>
                         </button>
                       )}
 

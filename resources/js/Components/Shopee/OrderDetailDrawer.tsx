@@ -888,8 +888,8 @@ export default function OrderDetailDrawer({
                 {isPrinting
                   ? 'Menyiapkan Resi...'
                   : order.label_print_count > 0
-                    ? 'Cetak Ulang Resi A4'
-                    : 'Cetak Resi A4'}
+                    ? 'Cetak Ulang Resi'
+                    : 'Cetak Resi'}
               </button>
             )}
 

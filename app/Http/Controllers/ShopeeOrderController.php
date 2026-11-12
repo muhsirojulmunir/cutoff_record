@@ -524,7 +524,7 @@ class ShopeeOrderController extends Controller
     }
 
     /**
-     * Buat dan stream PDF Resi A4 resmi Shopee untuk 1 pesanan.
+     * Buat dan stream PDF Resi Thermal resmi Shopee (THERMAL_AIR_WAYBILL / 100x150mm) untuk 1 pesanan.
      */
     public function printWaybill(Request $request, string $orderSn): Response|JsonResponse
     {
@@ -542,7 +542,7 @@ class ShopeeOrderController extends Controller
     }
 
     /**
-     * Buat dan stream PDF Resi A4 gabungan resmi Shopee (1..50 pesanan).
+     * Buat dan stream PDF Resi Thermal gabungan resmi Shopee (1..50 pesanan).
      */
     public function massPrintWaybill(Request $request): Response|JsonResponse
     {
@@ -802,9 +802,9 @@ class ShopeeOrderController extends Controller
      */
     private function buildWaybillPdfResponse(array $result): Response
     {
-        $rawFilename = basename(str_replace('\\', '/', (string) ($result['filename'] ?? 'resi-shopee-A4.pdf')));
-        $safeFilename = preg_replace('/[^A-Za-z0-9._-]+/', '-', str_replace(["\r", "\n", '"'], '', $rawFilename)) ?: 'resi-shopee-A4.pdf';
-        $safeFilename = trim($safeFilename, '.-') ?: 'resi-shopee-A4.pdf';
+        $rawFilename = basename(str_replace('\\', '/', (string) ($result['filename'] ?? 'resi-shopee-thermal.pdf')));
+        $safeFilename = preg_replace('/[^A-Za-z0-9._-]+/', '-', str_replace(["\r", "\n", '"'], '', $rawFilename)) ?: 'resi-shopee-thermal.pdf';
+        $safeFilename = trim($safeFilename, '.-') ?: 'resi-shopee-thermal.pdf';
         if (! str_ends_with(strtolower($safeFilename), '.pdf')) {
             $safeFilename .= '.pdf';
         }

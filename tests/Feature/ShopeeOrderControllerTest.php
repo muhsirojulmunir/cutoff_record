@@ -789,14 +789,14 @@ class ShopeeOrderControllerTest extends TestCase
             ),
         ]);
 
-        // 1. Single waybill A4
+        // 1. Single waybill Thermal 100x150
         $singleResponse = $this->actingAs($this->superAdmin)
             ->get("/shopee-orders/{$sn1}/waybill-a4");
 
         $singleResponse->assertOk();
         $singleResponse->assertHeader('Content-Type', 'application/pdf');
         $singleResponse->assertHeader('X-Shopee-Orders-Count', '1');
-        $this->assertStringContainsString("resi-shopee-{$sn1}-A4.pdf", (string) $singleResponse->headers->get('Content-Disposition'));
+        $this->assertStringContainsString("resi-shopee-{$sn1}-thermal-100x150.pdf", (string) $singleResponse->headers->get('Content-Disposition'));
         $this->assertStringStartsWith('%PDF-1.4', $singleResponse->getContent());
 
         $wb1AfterSingle = ShopeeOrder::where('order_sn', $sn1)->firstOrFail();
@@ -806,7 +806,7 @@ class ShopeeOrderControllerTest extends TestCase
         $this->assertNotNull($wb1AfterSingle->label_printed_at);
         $this->assertSame(0, $wb2AfterSingle->label_print_count);
 
-        // 2. Mass waybill A4 (batch 2 pesanan)
+        // 2. Mass waybill Thermal 100x150 (batch 2 pesanan)
         $massResponse = $this->actingAs($this->superAdmin)
             ->post('/shopee-orders/mass-waybill-a4', [
                 'order_sns' => [$sn1, $sn2],
@@ -828,7 +828,7 @@ class ShopeeOrderControllerTest extends TestCase
             $orderList = $req->data()['order_list'] ?? [];
 
             return ! empty($orderList)
-                && ($orderList[0]['shipping_document_type'] ?? null) === 'NORMAL_AIR_WAYBILL';
+                && ($orderList[0]['shipping_document_type'] ?? null) === 'THERMAL_AIR_WAYBILL';
         });
 
         Http::assertSent(function (HttpClientRequest $req): bool {
@@ -836,7 +836,7 @@ class ShopeeOrderControllerTest extends TestCase
                 return false;
             }
 
-            return ($req->data()['shipping_document_type'] ?? null) === 'NORMAL_AIR_WAYBILL';
+            return ($req->data()['shipping_document_type'] ?? null) === 'THERMAL_AIR_WAYBILL';
         });
     }
 

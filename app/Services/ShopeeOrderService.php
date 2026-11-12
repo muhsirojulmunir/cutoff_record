@@ -18,7 +18,7 @@ class ShopeeOrderService
 {
     public const ORDER_DETAIL_FIELDS = 'buyer_user_id,buyer_username,recipient_address,item_list,package_list,shipping_carrier,total_amount,cancel_by,cancel_reason,buyer_cancel_reason,payment_info,payment_method,ship_by_date,message_to_seller,note,estimated_shipping_fee,cod';
 
-    public const WAYBILL_DOCUMENT_TYPE = 'NORMAL_AIR_WAYBILL';
+    public const WAYBILL_DOCUMENT_TYPE = 'THERMAL_AIR_WAYBILL';
 
     public const MAX_BATCH_SIZE = 50;
 
@@ -591,14 +591,14 @@ class ShopeeOrderService
     }
 
     /**
-     * Buat dan unduh dokumen resi PDF A4 resmi Shopee (NORMAL_AIR_WAYBILL) untuk 1..50 pesanan.
+     * Buat dan unduh dokumen resi PDF Thermal A6 (100x150 mm) resmi Shopee (THERMAL_AIR_WAYBILL) untuk 1..50 pesanan.
      *
      * @param  array<int, string>  $orderSns
      * @return array{pdf_binary: string, filename: string, orders: array<int, ShopeeOrder>, warnings: array<int, string>}
      */
     public function createAndDownloadWaybillA4(ShopeeAccount $account, array $orderSns): array
     {
-        $orderSns = $this->normalizeOrderSnList($orderSns, 'cetak resi A4');
+        $orderSns = $this->normalizeOrderSnList($orderSns, 'cetak resi');
         $this->ensureSchema();
         $account = $this->ensureConnectedAccount($account);
 
@@ -675,7 +675,7 @@ class ShopeeOrderService
 
         if (empty($eligibleOrders)) {
             throw new RuntimeException(
-                'Gagal membuat dokumen resi A4 di Shopee: ' . implode('; ', $failedSnMessages)
+                'Gagal membuat dokumen resi di Shopee: ' . implode('; ', $failedSnMessages)
             );
         }
 
@@ -755,7 +755,7 @@ class ShopeeOrderService
 
         if (empty($readyOrders)) {
             if (! empty($processingSns)) {
-                $errDetail = 'Dokumen resi A4 Shopee masih dalam proses pembuatan setelah 5x pengecekan (' . implode(', ', $processingSns) . '). Silakan coba beberapa saat lagi.';
+                $errDetail = 'Dokumen resi Shopee masih dalam proses pembuatan setelah 5x pengecekan (' . implode(', ', $processingSns) . '). Silakan coba beberapa saat lagi.';
                 if (! empty($failedSnMessages)) {
                     $errDetail .= ' Gagal: ' . implode('; ', $failedSnMessages);
                 }
@@ -763,7 +763,7 @@ class ShopeeOrderService
             }
 
             throw new RuntimeException(
-                'Dokumen resi A4 Shopee gagal disiapkan: ' . implode('; ', $failedSnMessages)
+                'Dokumen resi Shopee gagal disiapkan: ' . implode('; ', $failedSnMessages)
             );
         }
 
@@ -804,8 +804,8 @@ class ShopeeOrderService
         }
 
         $filename = count($orderedResult) === 1
-            ? 'resi-shopee-' . $orderedResult[0]->order_sn . '-A4.pdf'
-            : 'resi-shopee-massal-' . count($orderedResult) . '-pesanan-' . $printedAt->format('Ymd-His') . '-A4.pdf';
+            ? 'resi-shopee-' . $orderedResult[0]->order_sn . '-thermal-100x150.pdf'
+            : 'resi-shopee-massal-' . count($orderedResult) . '-pesanan-' . $printedAt->format('Ymd-His') . '-thermal.pdf';
 
         return [
             'pdf_binary' => $binary,

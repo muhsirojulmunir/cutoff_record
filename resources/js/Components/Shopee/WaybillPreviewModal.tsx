@@ -75,7 +75,7 @@ export default function WaybillPreviewModal({
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="truncate text-sm font-bold text-slate-900">{title}</h3>
                 <span className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-2.5 py-0.5 text-[11px] font-bold text-[#EE4D2D] tabular-nums">
-                  {orderCount} Pesanan • A4
+                  {orderCount} Pesanan • 100×150 mm (A6 Thermal)
                 </span>
               </div>
               <p className="mt-0.5 truncate font-mono text-[11px] text-slate-500">{filename}</p>
@@ -126,11 +126,11 @@ export default function WaybillPreviewModal({
                     d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
                   />
                 </svg>
-                Unduh PDF A4
+                Unduh PDF
               </a>
             ) : (
               <span className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3.5 py-2 text-xs font-semibold text-slate-400">
-                Unduh PDF A4
+                Unduh PDF
               </span>
             )}
 
@@ -211,9 +211,9 @@ export default function WaybillPreviewModal({
                 </svg>
               </div>
               <div className="space-y-1">
-                <p className="text-sm font-bold text-slate-800">Dokumen PDF Resi A4 Tidak Tersedia</p>
+                <p className="text-sm font-bold text-slate-800">Dokumen PDF Resi Tidak Tersedia</p>
                 <p className="max-w-md text-xs text-slate-500">
-                  Dokumen resi belum berhasil dimuat atau telah ditutup. Tutup jendela ini lalu klik kembali tombol Cetak Resi A4 pada pesanan yang diinginkan.
+                  Dokumen resi belum berhasil dimuat atau telah ditutup. Tutup jendela ini lalu klik kembali tombol Cetak Resi pada pesanan yang diinginkan.
                 </p>
               </div>
               <button
@@ -228,8 +228,8 @@ export default function WaybillPreviewModal({
 
           {pdfUrl && (
             <p className="text-[11px] text-slate-500">
-              Format resmi Shopee <span className="font-mono font-semibold text-slate-700">NORMAL_AIR_WAYBILL</span> (Kertas A4). Gunakan ikon printer di tampilan PDF atau klik{' '}
-              <span className="font-semibold text-slate-700">Buka Tab Penuh / Print</span> untuk mencetak langsung.
+              Format resmi Shopee <span className="font-mono font-semibold text-slate-700">THERMAL_AIR_WAYBILL</span> (Thermal A6 / 100×150 mm — Kassen). Gunakan ikon printer di tampilan PDF atau klik{' '}
+              <span className="font-semibold text-slate-700">Buka Tab Penuh / Print</span> lalu pilih ukuran kertas 100×150 mm (A6) & skala 100%.
             </p>
           )}
         </div>
