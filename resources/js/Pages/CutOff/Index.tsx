@@ -1392,7 +1392,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
               <span className="text-xs font-semibold text-slate-500">produk</span>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Hari ini ({summary.daily_date_label}) · {summary.daily_orders.toLocaleString('id-ID')} pesanan
+              Diproses hari ini ({summary.daily_date_label}) · {summary.daily_orders.toLocaleString('id-ID')} pesanan
             </p>
           </div>
 

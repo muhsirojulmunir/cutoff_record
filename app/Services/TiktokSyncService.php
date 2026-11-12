@@ -377,6 +377,7 @@ class TiktokSyncService
         $hasCancelBy           = Schema::hasColumn('cut_off_orders', 'cancel_by');
         $hasCancelReason       = Schema::hasColumn('cut_off_orders', 'cancel_reason');
         $hasFinancialBreakdown = Schema::hasColumn('cut_off_orders', 'financial_breakdown');
+        $hasProcessedAt        = Schema::hasColumn('cut_off_orders', 'processed_at');
 
         $createdCount = 0;
         $updatedCount = 0;
@@ -474,6 +475,24 @@ class TiktokSyncService
                 ->orderBy('id', 'asc')
                 ->first();
 
+            $shouldKeepProcessedAt = $hasProcessedAt
+                && $existing
+                && ! $existing->trashed()
+                && ! CutOffOrder::isExcludedStatus($existing->order_status)
+                && $existing->processed_at !== null;
+
+            $processedAt = null;
+            if ($hasProcessedAt) {
+                if ($shouldKeepProcessedAt) {
+                    $processedAt = $existing->processed_at->format('Y-m-d H:i:s');
+                } else {
+                    $procTs = $order['rts_time'] ?? $order['update_time'] ?? null;
+                    $processedAt = ! empty($procTs)
+                        ? Carbon::createFromTimestamp((int) $procTs, 'Asia/Jakarta')->format('Y-m-d H:i:s')
+                        : now('Asia/Jakarta')->format('Y-m-d H:i:s');
+                }
+            }
+
             $payload = [
                 'order_date'             => $orderDate,
                 'channel'                => 'TT',
@@ -503,6 +522,9 @@ class TiktokSyncService
             if ($hasFinancialBreakdown) {
                 $payload['financial_breakdown'] = $breakdown;
             }
+            if ($hasProcessedAt) {
+                $payload['processed_at'] = $processedAt;
+            }
 
             if ($existing) {
                 $updateFields = [
@@ -515,6 +537,10 @@ class TiktokSyncService
                     'est_net_income'         => $calculatedNet,
                     'marketplace_net_payout' => $calculatedNet,
                 ];
+
+                if ($hasProcessedAt && ! $shouldKeepProcessedAt) {
+                    $updateFields['processed_at'] = $processedAt;
+                }
 
                 if ($shipByDate && empty($existing->ship_by_date)) {
                     $updateFields['ship_by_date'] = $shipByDate;

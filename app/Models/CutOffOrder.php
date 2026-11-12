@@ -16,6 +16,7 @@ class CutOffOrder extends Model
     protected $fillable = [
         'row_no',
         'order_date',
+        'processed_at',
         'ship_by_date',
         'channel',
         'order_number',
@@ -46,6 +47,7 @@ class CutOffOrder extends Model
     {
         return [
             'order_date'             => 'datetime:Y-m-d H:i:s',
+            'processed_at'           => 'datetime:Y-m-d H:i:s',
             'ship_by_date'           => 'datetime:Y-m-d H:i:s',
             'qty'                    => 'integer',
             'recheck_qty'            => 'integer',
@@ -201,6 +203,76 @@ class CutOffOrder extends Model
         self::applyProcessedOnlyConstraint($query);
 
         return $query;
+    }
+
+    /**
+     * Isi awal kolom processed_at dan bersihkan baris lama yang belum diproses/dibatalkan.
+     * Dipanggil sekali saat kolom processed_at baru dibuat oleh migrasi atau ensureSchema().
+     */
+    public static function backfillProcessedAt(): void
+    {
+        $patterns = [
+            '%batal%',
+            '%cancel%',
+            '%belum bayar%',
+            '%perlu dikirim%',
+            '%tertahan%',
+            '%unpaid%',
+            '%ready_to_ship%',
+            '%in_cancel%',
+            '%cancelled%',
+            '%on_hold%',
+            '%awaiting_shipment%',
+        ];
+
+        \Illuminate\Support\Facades\DB::table('cut_off_orders')
+            ->whereNull('deleted_at')
+            ->whereNotNull('order_status')
+            ->where(function ($q) use ($patterns) {
+                foreach ($patterns as $pattern) {
+                    $q->orWhereRaw('LOWER(order_status) LIKE ?', [$pattern]);
+                }
+            })
+            ->update(['deleted_at' => now()]);
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('shopee_orders')) {
+            $driver = \Illuminate\Support\Facades\DB::getDriverName();
+            if ($driver === 'mysql') {
+                \Illuminate\Support\Facades\DB::statement("
+                    UPDATE cut_off_orders co
+                    INNER JOIN shopee_orders so ON co.order_number = so.order_sn
+                    SET co.processed_at = so.shipping_arranged_at
+                    WHERE co.deleted_at IS NULL
+                      AND (co.channel = 'SH' OR co.channel LIKE 'SH%')
+                      AND co.processed_at IS NULL
+                      AND so.shipping_arranged_at IS NOT NULL
+                ");
+            } else {
+                self::query()
+                    ->onlyProcessed()
+                    ->whereNull('processed_at')
+                    ->where(function ($q) {
+                        $q->where('channel', 'SH')->orWhere('channel', 'like', 'SH%');
+                    })
+                    ->whereExists(function ($q) {
+                        $q->select(\Illuminate\Support\Facades\DB::raw(1))
+                            ->from('shopee_orders')
+                            ->whereColumn('shopee_orders.order_sn', 'cut_off_orders.order_number')
+                            ->whereNotNull('shopee_orders.shipping_arranged_at');
+                    })
+                    ->update([
+                        'processed_at' => \Illuminate\Support\Facades\DB::raw('(SELECT shipping_arranged_at FROM shopee_orders WHERE shopee_orders.order_sn = cut_off_orders.order_number AND shipping_arranged_at IS NOT NULL LIMIT 1)'),
+                    ]);
+            }
+        }
+
+        self::query()
+            ->onlyProcessed()
+            ->whereNull('processed_at')
+            ->whereNotNull('order_date')
+            ->update([
+                'processed_at' => \Illuminate\Support\Facades\DB::raw('order_date'),
+            ]);
     }
 
     /**

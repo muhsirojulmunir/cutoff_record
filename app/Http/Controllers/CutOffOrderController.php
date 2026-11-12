@@ -20,6 +20,8 @@ class CutOffOrderController extends Controller
      */
     public function index(Request $request): Response
     {
+        $this->ensureProcessedAtColumnReady();
+
         $filters = $request->only([
             'search',
             'channel',
@@ -56,8 +58,8 @@ class CutOffOrderController extends Controller
             ->onlyProcessed()
             ->selectRaw(
                 "COUNT(*) as total_orders,
-                COALESCE(SUM(CASE WHEN order_date >= ? AND order_date < ? THEN (CASE WHEN qty IS NULL OR qty < 1 THEN 1 ELSE qty END) ELSE 0 END), 0) as daily_products,
-                COUNT(CASE WHEN order_date >= ? AND order_date < ? THEN 1 END) as daily_orders,
+                COALESCE(SUM(CASE WHEN COALESCE(processed_at, order_date) >= ? AND COALESCE(processed_at, order_date) < ? THEN (CASE WHEN qty IS NULL OR qty < 1 THEN 1 ELSE qty END) ELSE 0 END), 0) as daily_products,
+                COUNT(CASE WHEN COALESCE(processed_at, order_date) >= ? AND COALESCE(processed_at, order_date) < ? THEN 1 END) as daily_orders,
                 COUNT(CASE WHEN order_status LIKE '%RJ%' OR order_status LIKE '%Retur%' THEN 1 END) as total_rj,
                 COUNT(CASE WHEN dpp_number IS NOT NULL AND dpp_number != '' THEN 1 END) as total_has_dpp,
                 COALESCE(SUM(est_net_income), 0) as total_est_income,
@@ -145,7 +147,17 @@ class CutOffOrderController extends Controller
         ]);
 
         if (empty($validated['order_date'])) {
-            $validated['order_date'] = now()->toDateString();
+            $validated['order_date'] = now('Asia/Jakarta')->toDateString();
+        }
+
+        if (
+            ! CutOffOrder::isExcludedStatus($validated['order_status'] ?? null)
+            && Schema::hasColumn('cut_off_orders', 'processed_at')
+        ) {
+            $todayDate = now('Asia/Jakarta')->toDateString();
+            $validated['processed_at'] = substr((string) $validated['order_date'], 0, 10) === $todayDate
+                ? now('Asia/Jakarta')->format('Y-m-d H:i:s')
+                : $validated['order_date'];
         }
 
         $order = CutOffOrder::create($validated);
@@ -171,6 +183,7 @@ class CutOffOrderController extends Controller
         $shopeeService = app(ShopeeSyncService::class);
         $shopeeService->ensureSchema();
         $hasFinancialBreakdown = Schema::hasColumn('cut_off_orders', 'financial_breakdown');
+        $hasProcessedAt        = Schema::hasColumn('cut_off_orders', 'processed_at');
 
         $inserted = 0;
         $batch = [];
@@ -210,6 +223,9 @@ class CutOffOrderController extends Controller
                 $rowPayload['financial_breakdown'] = !empty($r['financial_breakdown'])
                     ? json_encode($r['financial_breakdown'], JSON_UNESCAPED_UNICODE)
                     : null;
+            }
+            if ($hasProcessedAt) {
+                $rowPayload['processed_at'] = $rowPayload['order_date'];
             }
 
             $batch[] = $rowPayload;
@@ -560,6 +576,35 @@ class CutOffOrderController extends Controller
             ],
             'rows'           => $rows,
         ]);
+    }
+
+    /**
+     * Pastikan kolom processed_at sudah ada dan ter-backfill (khusus deploy FTP tanpa shell).
+     */
+    private function ensureProcessedAtColumnReady(): void
+    {
+        $cacheKey = 'cut_off_processed_at_schema_v1';
+        if (! app()->runningUnitTests()) {
+            try {
+                if (\Illuminate\Support\Facades\Cache::store('file')->get($cacheKey) === true) {
+                    return;
+                }
+            } catch (\Throwable) {
+                // Abaikan error cache file dan cek langsung ke DB
+            }
+        }
+
+        if (! Schema::hasColumn('cut_off_orders', 'processed_at')) {
+            app(ShopeeSyncService::class)->ensureSchema();
+        }
+
+        if (! app()->runningUnitTests() && Schema::hasColumn('cut_off_orders', 'processed_at')) {
+            try {
+                \Illuminate\Support\Facades\Cache::store('file')->put($cacheKey, true, 86400);
+            } catch (\Throwable) {
+                // Abaikan error tulis cache file
+            }
+        }
     }
 
     /**

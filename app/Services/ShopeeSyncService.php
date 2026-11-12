@@ -538,6 +538,7 @@ class ShopeeSyncService
         $hasCancelBy             = $this->hasCutOffColumn('cancel_by');
         $hasCancelReason         = $this->hasCutOffColumn('cancel_reason');
         $hasFinancialBreakdown   = $this->hasCutOffColumn('financial_breakdown');
+        $hasProcessedAt          = $this->hasCutOffColumn('processed_at');
 
         $existingOrders = CutOffOrder::withTrashed()
             ->whereIn('order_number', $allOrderSnsToSave)
@@ -546,13 +547,20 @@ class ShopeeSyncService
             ->get()
             ->keyBy('order_number');
 
+        $shopeeArrangedAtMap = Schema::hasTable('shopee_orders')
+            ? ShopeeOrder::where('shopee_account_id', $account->id)
+                ->whereIn('order_sn', $allOrderSnsToSave)
+                ->whereNotNull('shipping_arranged_at')
+                ->pluck('shipping_arranged_at', 'order_sn')
+            : collect();
+
         $createdCount = 0;
         $updatedCount = 0;
         $orderRecorder = app(ShopeeOrderRecorder::class);
 
         \Illuminate\Support\Facades\DB::transaction(function () use (
-            $account, $detailedOrders, $existingOrders, &$escrowMap, $fetchMissingEscrow,
-            $hasCancelBy, $hasCancelReason, $hasFinancialBreakdown, $orderRecorder,
+            $account, $detailedOrders, $existingOrders, $shopeeArrangedAtMap, &$escrowMap, $fetchMissingEscrow,
+            $hasCancelBy, $hasCancelReason, $hasFinancialBreakdown, $hasProcessedAt, $orderRecorder,
             &$createdCount, &$updatedCount
         ) {
             foreach ($detailedOrders as $order) {
@@ -677,6 +685,30 @@ class ShopeeSyncService
                     ? \Carbon\Carbon::createFromTimestamp((int) $order['ship_by_date'], 'Asia/Jakarta')->format('Y-m-d H:i:s')
                     : null;
 
+                $shouldKeepExistingProcessedAt = $hasProcessedAt
+                    && $existing
+                    && ! $existing->trashed()
+                    && ! CutOffOrder::isExcludedStatus($existing->order_status)
+                    && $existing->processed_at !== null;
+
+                $processedAt = null;
+                if ($hasProcessedAt) {
+                    if ($shouldKeepExistingProcessedAt) {
+                        $processedAt = $existing->processed_at->format('Y-m-d H:i:s');
+                    } else {
+                        $arranged = $shopeeArrangedAtMap->get($orderSn);
+                        if ($arranged instanceof \Carbon\CarbonInterface) {
+                            $processedAt = $arranged->copy()->timezone('Asia/Jakarta')->format('Y-m-d H:i:s');
+                        } elseif (! empty($arranged)) {
+                            $processedAt = (string) $arranged;
+                        } elseif (! empty($order['update_time'])) {
+                            $processedAt = \Carbon\Carbon::createFromTimestamp((int) $order['update_time'], 'Asia/Jakarta')->format('Y-m-d H:i:s');
+                        } else {
+                            $processedAt = now('Asia/Jakarta')->format('Y-m-d H:i:s');
+                        }
+                    }
+                }
+
                 $variationName = ! empty($firstItem['model_name']) ? trim((string) $firstItem['model_name']) : null;
                 if (count($items) > 1 && $variationName) {
                     $variationName .= ' (+' . (count($items) - 1) . ' item)';
@@ -711,6 +743,9 @@ class ShopeeSyncService
                 if ($hasFinancialBreakdown) {
                     $payload['financial_breakdown'] = $calc['breakdown'];
                 }
+                if ($hasProcessedAt) {
+                    $payload['processed_at'] = $processedAt;
+                }
 
                 if ($existing) {
                     // Update existing record (including exact order_date with time, qty, package_count, financial_breakdown)
@@ -731,6 +766,9 @@ class ShopeeSyncService
 
                     if ($shipByDate) {
                         $updateData['ship_by_date'] = $shipByDate;
+                    }
+                    if ($hasProcessedAt && ! $shouldKeepExistingProcessedAt) {
+                        $updateData['processed_at'] = $processedAt;
                     }
 
                     if ($hasCancelBy) {
@@ -850,8 +888,21 @@ class ShopeeSyncService
             return;
         }
 
-        if ($existing->trashed()) {
+        $wasTrashed = $existing->trashed();
+        if ($wasTrashed) {
             $existing->restore();
+        }
+
+        if (
+            $this->hasCutOffColumn('processed_at')
+            && ($existing->processed_at === null || $wasTrashed || CutOffOrder::isExcludedStatus($existing->order_status))
+        ) {
+            $arrangedAt = Schema::hasTable('shopee_orders')
+                ? ShopeeOrder::where('order_sn', $orderSn)->whereNotNull('shipping_arranged_at')->value('shipping_arranged_at')
+                : null;
+            $updates['processed_at'] = $arrangedAt
+                ? \Carbon\Carbon::parse($arrangedAt, 'Asia/Jakarta')->format('Y-m-d H:i:s')
+                : now('Asia/Jakarta')->format('Y-m-d H:i:s');
         }
 
         $existing->update($updates);
@@ -1623,6 +1674,16 @@ class ShopeeSyncService
                     });
                 }
             }
+
+            if (! Schema::hasColumn('cut_off_orders', 'processed_at')) {
+                Schema::table('cut_off_orders', function (Blueprint $table) {
+                    $table->dateTime('processed_at')->nullable()->after('order_date')->index();
+                });
+
+                CutOffOrder::backfillProcessedAt();
+            }
+
+            $this->cutOffColumnCache = [];
 
             // Koreksi otomatis pesanan Shopee 3 Nov yang jamnya sempat tersimpan dalam UTC (+7 jam ke WIB)
             DB::table('cut_off_orders')
