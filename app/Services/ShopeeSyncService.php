@@ -436,7 +436,8 @@ class ShopeeSyncService
         ShopeeAccount $account,
         array $detailedOrders,
         array $escrowMap = [],
-        bool $fetchMissingEscrow = true
+        bool $fetchMissingEscrow = true,
+        bool $updateAccountTimestamps = true
     ): array {
         $allOrderSnsToSave = [];
         foreach ($detailedOrders as $o) {
@@ -446,11 +447,13 @@ class ShopeeSyncService
         }
 
         if (empty($allOrderSnsToSave)) {
-            $account->update([
-                'last_synced_at'   => now(),
-                'last_sync_status' => 'success',
-                'last_sync_error'  => null,
-            ]);
+            if ($updateAccountTimestamps) {
+                $account->update([
+                    'last_synced_at'   => now(),
+                    'last_sync_status' => 'success',
+                    'last_sync_error'  => null,
+                ]);
+            }
 
             return [
                 'total_fetched'  => count($detailedOrders),
@@ -710,11 +713,13 @@ class ShopeeSyncService
 
         $shopeeStats = $orderRecorder->upsertFromDetails($account, $detailedOrders);
 
-        $account->update([
-            'last_synced_at'   => now(),
-            'last_sync_status' => 'success',
-            'last_sync_error'  => null,
-        ]);
+        if ($updateAccountTimestamps) {
+            $account->update([
+                'last_synced_at'   => now(),
+                'last_sync_status' => 'success',
+                'last_sync_error'  => null,
+            ]);
+        }
 
         return [
             'total_fetched'  => count($detailedOrders),

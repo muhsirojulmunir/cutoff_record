@@ -836,7 +836,13 @@ class ShopeeOrderService
         $preExistingEmptyTracking = $this->collectPreExistingSameStatusEmptyTracking($account, $detailedOrders);
 
         if ($syncCutOff) {
-            $cutOffResult = $this->syncService->ingestDetailedOrdersToCutOff($account, $detailedOrders, $escrowMap, true);
+            $cutOffResult = $this->syncService->ingestDetailedOrdersToCutOff(
+                $account,
+                $detailedOrders,
+                $escrowMap,
+                true,
+                $updateAccountTimestamps
+            );
             $syncedOrders = (int) ($cutOffResult['shopee_synced'] ?? 0);
             $changedOrders = (int) ($cutOffResult['shopee_changed'] ?? 0);
             $created = (int) ($cutOffResult['created'] ?? 0);
