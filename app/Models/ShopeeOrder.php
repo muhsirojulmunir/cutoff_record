@@ -15,6 +15,13 @@ class ShopeeOrder extends Model
 
     protected $table = 'shopee_orders';
 
+    protected static function booted(): void
+    {
+        $invalidate = static fn () => CutOffOrder::bumpCacheVersion();
+        static::saved($invalidate);
+        static::deleted($invalidate);
+    }
+
     public const TAB_ALL = 'all';
     public const TAB_UNPAID = 'unpaid';
     public const TAB_TO_SHIP = 'to_ship';
