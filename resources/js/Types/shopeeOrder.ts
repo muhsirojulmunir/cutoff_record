@@ -129,6 +129,9 @@ export interface ShopeeTabCounts {
   cancelled: number;
   unprinted: number;
   printed: number;
+  logistics_pending_pickup?: number;
+  logistics_handed_over?: number;
+  logistics_issue?: number;
 }
 
 /**
@@ -151,6 +154,11 @@ export type ShopeeSubTab = 'all' | 'unprocessed' | 'processed';
  * Filter status cetak resi.
  */
 export type ShopeePrintStatusFilter = 'all' | 'unprinted' | 'printed';
+
+/**
+ * Filter status penerimaan kurir / ekspedisi.
+ */
+export type ShopeeLogisticsFilter = 'all' | 'pending_pickup' | 'handed_over' | 'issue';
 
 /**
  * Filter tipe layanan pengiriman (Tipe Pesanan) pada Pesanan Saya Shopee.
@@ -180,6 +188,7 @@ export interface ShopeeOrderFilters {
   sub_tab: ShopeeSubTab;
   order_type: ShopeeOrderType;
   print_status: ShopeePrintStatusFilter;
+  logistics_status?: ShopeeLogisticsFilter;
   search: string;
   courier: string;
   date_from: string;
@@ -425,5 +434,28 @@ export interface ShopeeRefreshDetailResponse {
   status: 'success' | 'error';
   message: string;
   order: ShopeeOrderRecord;
+}
+
+/**
+ * 1 titik checkpoint perjalanan paket dari API get_tracking_info.
+ */
+export interface ShopeeTrackingEvent {
+  update_time: number;
+  update_time_formatted: string;
+  description: string;
+  logistics_status: string | null;
+}
+
+/**
+ * Respons endpoint GET /shopee-orders/{orderSn}/tracking-info.
+ */
+export interface ShopeeTrackingInfoResponse {
+  status: 'success' | 'error';
+  order_sn: string;
+  package_number: string | null;
+  logistics_status: string | null;
+  tracking_info: ShopeeTrackingEvent[];
+  order?: ShopeeOrderRecord;
+  message?: string;
 }
 

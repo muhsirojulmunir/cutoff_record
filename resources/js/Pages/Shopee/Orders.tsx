@@ -12,6 +12,7 @@ import {
   formatCurrencyIDR,
   formatFulfillmentMethod,
   formatOrderTimestampWIB,
+  getCourierAcceptanceMeta,
   getCsrfToken,
   getOrderStatusMeta,
   isShippableOrderStatus,
@@ -23,6 +24,7 @@ import {
 import {
   ShopeeAutoSyncResponse,
   ShopeeBuyerCancellationResult,
+  ShopeeLogisticsFilter,
   ShopeeMainTab,
   ShopeeMassShipResult,
   ShopeeOrderFilters,
@@ -320,6 +322,9 @@ function buildFilterParams(next: ShopeeOrderFilters): Record<string, string> {
   if (next.print_status !== 'all') {
     params.print_status = next.print_status;
   }
+  if (next.logistics_status && next.logistics_status !== 'all') {
+    params.logistics_status = next.logistics_status;
+  }
   if (next.search.trim() !== '') {
     params.search = next.search.trim();
   }
@@ -388,6 +393,12 @@ export default function ShopeeOrdersPage({
 
   // Overlay & action state
   const [drawerOrder, setDrawerOrder] = useState<ShopeeOrderRecord | null>(null);
+  const [drawerAutoTrack, setDrawerAutoTrack] = useState(false);
+
+  const openOrderDrawer = useCallback((order: ShopeeOrderRecord, autoTrack = false) => {
+    setDrawerAutoTrack(autoTrack);
+    setDrawerOrder(order);
+  }, []);
   const [shipModal, setShipModal] = useState<ShipModalState>({
     show: false,
     mode: 'single',
@@ -877,6 +888,7 @@ export default function ShopeeOrdersPage({
         sub_tab: patch.sub_tab ?? base.sub_tab,
         order_type: patch.order_type ?? base.order_type ?? 'all',
         print_status: patch.print_status ?? base.print_status,
+        logistics_status: patch.logistics_status ?? base.logistics_status ?? 'all',
         search: patch.search ?? base.search,
         courier: patch.courier ?? base.courier,
         date_from: patch.date_from ?? base.date_from,
@@ -943,6 +955,7 @@ export default function ShopeeOrdersPage({
       sub_tab: filtersRef.current.tab === 'to_ship' ? 'unprocessed' : 'all',
       order_type: 'all',
       print_status: 'all',
+      logistics_status: 'all',
       search: '',
       courier: '',
       date_from: '',
@@ -1352,11 +1365,36 @@ export default function ShopeeOrdersPage({
     { key: 'printed', label: 'Sudah Dicetak', count: tabCounts?.printed ?? 0 },
   ];
 
+  const activeLogisticsStatus: ShopeeLogisticsFilter = filters.logistics_status ?? 'all';
+  const logisticsStatusOptions: Array<{
+    key: ShopeeLogisticsFilter;
+    label: string;
+    count: number | null;
+  }> = [
+    { key: 'all', label: 'Semua', count: null },
+    {
+      key: 'pending_pickup',
+      label: 'Belum Diterima Ekspedisi',
+      count: tabCounts?.logistics_pending_pickup ?? 0,
+    },
+    {
+      key: 'handed_over',
+      label: 'Sudah Diterima Ekspedisi',
+      count: tabCounts?.logistics_handed_over ?? 0,
+    },
+    {
+      key: 'issue',
+      label: 'Kendala Kurir',
+      count: tabCounts?.logistics_issue ?? 0,
+    },
+  ];
+
   const defaultSubTab: ShopeeSubTab = filters.tab === 'to_ship' ? 'unprocessed' : 'all';
   const hasActiveFilters =
     filters.sub_tab !== defaultSubTab ||
     activeOrderType !== 'all' ||
     filters.print_status !== 'all' ||
+    activeLogisticsStatus !== 'all' ||
     filters.search !== '' ||
     filters.courier !== '' ||
     filters.date_from !== '' ||
@@ -1826,6 +1864,7 @@ export default function ShopeeOrdersPage({
                         sub_tab: t.key === 'to_ship' ? 'unprocessed' : 'all',
                         order_type: 'all',
                         print_status: 'all',
+                        logistics_status: 'all',
                       })
                     }
                     className={`relative inline-flex cursor-pointer items-center gap-2 border-b-2 px-3.5 py-3.5 text-xs transition-colors whitespace-nowrap ${
@@ -1937,6 +1976,39 @@ export default function ShopeeOrdersPage({
               )}
             </div>
           )}
+
+          {/* Row 2b: Status Ekspedisi (Konfirmasi Penerimaan Kurir) */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50/30 px-4 py-2.5 sm:px-5">
+            <span className="mr-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              Status Ekspedisi
+            </span>
+            {logisticsStatusOptions.map((opt) => {
+              const active = activeLogisticsStatus === opt.key;
+              return (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => navigateWithFilters({ logistics_status: opt.key })}
+                  className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
+                    active
+                      ? 'border-[#EE4D2D] bg-[#FFF5F2] font-semibold text-[#EE4D2D]'
+                      : 'border-slate-200 bg-white font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  <span>{opt.label}</span>
+                  {opt.count !== null && (
+                    <span
+                      className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${
+                        active ? 'bg-orange-100 text-[#EE4D2D]' : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {opt.count.toLocaleString('id-ID')}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
 
           {/* Filter Inputs + Bulk Selection Bar */}
           <div className="space-y-3.5 p-4 sm:px-5">
@@ -2550,6 +2622,45 @@ export default function ShopeeOrdersPage({
                         </p>
                       )}
 
+                      {(() => {
+                        const courierMeta = getCourierAcceptanceMeta(
+                          order.order_status,
+                          order.logistics_status
+                        );
+                        const canCheckTracking = Boolean(
+                          order.tracking_number ||
+                            normalizedStatus === 'PROCESSED' ||
+                            normalizedStatus === 'SHIPPED' ||
+                            normalizedStatus === 'TO_CONFIRM_RECEIVE'
+                        );
+                        return (
+                          <div className="space-y-1 pt-0.5">
+                            <span className="text-[11px] text-slate-400">Status Ekspedisi</span>
+                            <div>
+                              <span
+                                title={courierMeta.detail}
+                                className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-bold ${courierMeta.badgeClasses}`}
+                              >
+                                <span className={`h-1.5 w-1.5 rounded-full ${courierMeta.dotClasses}`} />
+                                <span>{courierMeta.label}</span>
+                              </span>
+                            </div>
+                            <p className="text-[11px] leading-snug text-slate-500">
+                              {courierMeta.detail}
+                            </p>
+                            {canCheckTracking && (
+                              <button
+                                type="button"
+                                onClick={() => openOrderDrawer(order, true)}
+                                className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-semibold text-[#EE4D2D] hover:underline"
+                              >
+                                <span>Lacak Ekspedisi Live</span>
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       <div className="space-y-0.5 pt-0.5">
                         <div className="flex items-center gap-1.5">
                           <span className="text-[11px] text-slate-400">Batas Kirim</span>
@@ -2659,7 +2770,7 @@ export default function ShopeeOrdersPage({
 
                       <button
                         type="button"
-                        onClick={() => setDrawerOrder(order)}
+                        onClick={() => openOrderDrawer(order, false)}
                         className="inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="h-4 w-4 text-slate-500">
@@ -2770,13 +2881,28 @@ export default function ShopeeOrdersPage({
       {/* Order Detail Slide-Over Drawer */}
       <OrderDetailDrawer
         order={drawerOrder}
-        onClose={() => setDrawerOrder(null)}
+        onClose={() => {
+          setDrawerOrder(null);
+          setDrawerAutoTrack(false);
+        }}
         onOpenShip={(targetOrder) => openSingleShipModal(targetOrder)}
         onPrintWaybill={handlePrintSingleWaybill}
         onRefresh={handleRefreshSingleOrder}
         onHandleCancel={(targetOrder, operation) =>
           setCancelTarget({ order: targetOrder, operation })
         }
+        onOrderUpdated={(updatedOrder) => {
+          const prevLog = drawerOrder?.logistics_status ?? null;
+          const prevStatus = drawerOrder?.order_status ?? null;
+          setDrawerOrder(updatedOrder);
+          if (
+            updatedOrder.logistics_status !== prevLog ||
+            updatedOrder.order_status !== prevStatus
+          ) {
+            router.reload({ only: ['orders', 'tabCounts'] });
+          }
+        }}
+        autoLoadTracking={drawerAutoTrack}
         isRefreshing={Boolean(drawerOrder && refreshingOrderSn === drawerOrder.order_sn)}
         isPrinting={Boolean(
           drawerOrder && (printingTarget === drawerOrder.order_sn || printingTarget === 'MASS')

@@ -314,6 +314,96 @@ class ShopeeOrderService
     }
 
     /**
+     * Ambil riwayat tracking langsung dari Shopee Open Platform v2 (/api/v2/logistics/get_tracking_info)
+     * untuk memverifikasi apakah paket sudah diterima/di-scan oleh pihak ekspedisi.
+     *
+     * @return array{order_sn: string, package_number: ?string, logistics_status: ?string, tracking_info: array<int, array{update_time: int, update_time_formatted: string, description: string, logistics_status: ?string}>, order: ShopeeOrder}
+     */
+    public function getTrackingInfo(ShopeeAccount $account, string $orderSn, ?string $packageNumber = null): array
+    {
+        $this->ensureSchema();
+        $account = $this->ensureConnectedAccount($account);
+
+        $localOrder = ShopeeOrder::where('shopee_account_id', $account->id)
+            ->where('order_sn', $orderSn)
+            ->first();
+
+        $resolvedPackageNumber = $packageNumber ?: $localOrder?->package_number;
+        if (! $resolvedPackageNumber) {
+            $resolvedPackageNumber = $this->resolvePackageNumber($account, $orderSn, null);
+        }
+
+        $query = $this->filterNonEmpty([
+            'order_sn'       => $orderSn,
+            'package_number' => $resolvedPackageNumber,
+        ]);
+
+        $data = $this->getApi($account, '/api/v2/logistics/get_tracking_info', $query);
+        $resp = is_array($data['response'] ?? null) ? $data['response'] : [];
+
+        $logisticsStatus = strtoupper(trim((string) ($resp['logistics_status'] ?? '')));
+        $rawEvents = is_array($resp['tracking_info'] ?? null) ? $resp['tracking_info'] : [];
+
+        $events = [];
+        foreach ($rawEvents as $ev) {
+            if (! is_array($ev)) {
+                continue;
+            }
+            $ts = (int) ($ev['update_time'] ?? 0);
+            $desc = trim((string) ($ev['description'] ?? ''));
+            if ($ts <= 0 && $desc === '') {
+                continue;
+            }
+
+            $events[] = [
+                'update_time'           => $ts,
+                'update_time_formatted' => $ts > 0
+                    ? \Carbon\Carbon::createFromTimestamp($ts, 'Asia/Jakarta')->format('d M Y, H:i') . ' WIB'
+                    : '-',
+                'description'           => $desc !== '' ? $desc : '-',
+                'logistics_status'      => ! empty($ev['logistics_status']) ? strtoupper((string) $ev['logistics_status']) : null,
+            ];
+        }
+
+        usort($events, static fn (array $a, array $b): int => $b['update_time'] <=> $a['update_time']);
+
+        if ($localOrder && $logisticsStatus !== '') {
+            $updates = [
+                'logistics_status' => $logisticsStatus,
+                'last_synced_at'   => now('Asia/Jakarta'),
+            ];
+            if ($logisticsStatus === 'LOGISTICS_PICKUP_DONE' && strtoupper((string) $localOrder->order_status) === 'PROCESSED') {
+                $updates['order_status'] = 'SHIPPED';
+            } elseif ($logisticsStatus === 'LOGISTICS_DELIVERY_DONE' && in_array(strtoupper((string) $localOrder->order_status), ['PROCESSED', 'SHIPPED'], true)) {
+                $updates['order_status'] = 'TO_CONFIRM_RECEIVE';
+            }
+            $localOrder->update($updates);
+            $localOrder = $localOrder->fresh();
+
+            if (isset($updates['order_status'])) {
+                $this->syncService->syncOrderStatusToCutOff(
+                    $localOrder->order_sn,
+                    $localOrder->order_status,
+                    $localOrder->shipping_carrier,
+                    is_array($localOrder->package_list_json) ? $localOrder->package_list_json : null,
+                    $localOrder->cancel_by,
+                    $localOrder->cancel_reason
+                );
+            }
+        } elseif (! $localOrder) {
+            $localOrder = $this->refreshSingleOrder($account, $orderSn);
+        }
+
+        return [
+            'order_sn'         => $orderSn,
+            'package_number'   => $resp['package_number'] ?? $resolvedPackageNumber,
+            'logistics_status' => $logisticsStatus !== '' ? $logisticsStatus : ($localOrder->logistics_status ?: null),
+            'tracking_info'    => $events,
+            'order'            => $localOrder->makeHidden(['raw_payload']),
+        ];
+    }
+
+    /**
      * Ambil opsi parameter pengiriman (Pickup / Drop-off / Non-integrated) dari Shopee API v2.
      */
     public function getShippingParameter(ShopeeAccount $account, string $orderSn, ?string $packageNumber = null): array

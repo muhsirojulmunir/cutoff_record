@@ -1,11 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ShopeeOrderItem, ShopeeOrderRecord } from '../../Types/shopeeOrder';
+import {
+  ShopeeOrderItem,
+  ShopeeOrderRecord,
+  ShopeeTrackingEvent,
+  ShopeeTrackingInfoResponse,
+} from '../../Types/shopeeOrder';
 import {
   ACTIVE_DEADLINE_STATUSES,
+  SpinnerIcon,
   formatCurrencyIDR,
   formatFulfillmentMethod,
   formatOrderTimestampWIB,
+  getCourierAcceptanceMeta,
   getOrderStatusMeta,
   isShippableOrderStatus,
   isWaybillBlockedStatus,
@@ -21,6 +28,8 @@ export interface OrderDetailDrawerProps {
   onPrintWaybill: (order: ShopeeOrderRecord) => void;
   onRefresh: (order: ShopeeOrderRecord) => void | Promise<void>;
   onHandleCancel: (order: ShopeeOrderRecord, operation: 'ACCEPT' | 'REJECT') => void | Promise<void>;
+  onOrderUpdated?: (order: ShopeeOrderRecord) => void;
+  autoLoadTracking?: boolean;
   isRefreshing?: boolean;
   isPrinting?: boolean;
   isCancelling?: boolean;
@@ -61,6 +70,8 @@ export default function OrderDetailDrawer({
   onPrintWaybill,
   onRefresh,
   onHandleCancel,
+  onOrderUpdated,
+  autoLoadTracking = false,
   isRefreshing = false,
   isPrinting = false,
   isCancelling = false,
@@ -68,8 +79,45 @@ export default function OrderDetailDrawer({
   const [mounted, setMounted] = useState(false);
   const [copiedField, setCopiedField] = useState<'order_sn' | 'tracking_number' | null>(null);
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
+  const [trackingEvents, setTrackingEvents] = useState<ShopeeTrackingEvent[] | null>(null);
+  const [trackingStatus, setTrackingStatus] = useState<string | null>(null);
+  const [isLoadingTracking, setIsLoadingTracking] = useState(false);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
   const copyTimerRef = useRef<number | null>(null);
   const isOpen = Boolean(order);
+
+  const loadTrackingInfo = async (targetSn: string) => {
+    setIsLoadingTracking(true);
+    setTrackingError(null);
+
+    try {
+      const res = await fetch(`/shopee-orders/${encodeURIComponent(targetSn)}/tracking-info`, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+      });
+      const payload = (await res.json().catch(() => null)) as ShopeeTrackingInfoResponse | null;
+      if (!res.ok || !payload || payload.status === 'error') {
+        setTrackingError(payload?.message || `Gagal memuat tracking ekspedisi (HTTP ${res.status}).`);
+        return;
+      }
+
+      setTrackingEvents(Array.isArray(payload.tracking_info) ? payload.tracking_info : []);
+      setTrackingStatus(payload.logistics_status ?? null);
+      if (payload.order && onOrderUpdated) {
+        onOrderUpdated(payload.order);
+      }
+    } catch (err: unknown) {
+      setTrackingError(
+        err instanceof Error ? err.message : 'Terjadi kendala jaringan saat melacak ekspedisi.'
+      );
+    } finally {
+      setIsLoadingTracking(false);
+    }
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -88,7 +136,14 @@ export default function OrderDetailDrawer({
     }
     setCopiedField(null);
     setFailedImages({});
-  }, [order?.order_sn]);
+    setTrackingEvents(null);
+    setTrackingStatus(null);
+    setTrackingError(null);
+
+    if (order?.order_sn && autoLoadTracking) {
+      void loadTrackingInfo(order.order_sn);
+    }
+  }, [order?.order_sn, autoLoadTracking]);
 
   useOverlayScrollLockAndEscape(isOpen, onClose);
 
@@ -530,12 +585,83 @@ export default function OrderDetailDrawer({
                   <span className="font-mono text-slate-700">{order.package_number || '-'}</span>
                 </div>
 
-                {order.logistics_status && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">Status Ekspedisi</span>
+                  {(() => {
+                    const meta = getCourierAcceptanceMeta(
+                      order.order_status,
+                      trackingStatus ?? order.logistics_status
+                    );
+                    return (
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${meta.badgeClasses}`}
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full ${meta.dotClasses}`} />
+                        <span>{meta.label}</span>
+                      </span>
+                    );
+                  })()}
+                </div>
+
+                {(trackingStatus || order.logistics_status) && (
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-slate-500">Status Logistik</span>
-                    <span className="font-mono text-[11px] text-slate-600">{order.logistics_status}</span>
+                    <span className="text-slate-500">Kode Logistik</span>
+                    <span className="font-mono text-[11px] text-slate-600">
+                      {trackingStatus ?? order.logistics_status}
+                    </span>
                   </div>
                 )}
+
+                <div className="border-t border-slate-100 pt-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      Riwayat Scan Ekspedisi
+                    </span>
+                    <button
+                      type="button"
+                      disabled={isLoadingTracking}
+                      onClick={() => void loadTrackingInfo(order.order_sn)}
+                      className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isLoadingTracking && <SpinnerIcon className="h-3 w-3 text-slate-600" />}
+                      <span>
+                        {isLoadingTracking
+                          ? 'Melacak...'
+                          : trackingEvents !== null
+                            ? 'Perbarui Tracking'
+                            : 'Cek Tracking Live'}
+                      </span>
+                    </button>
+                  </div>
+
+                  {trackingError && (
+                    <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11px] text-rose-700">
+                      {trackingError}
+                    </p>
+                  )}
+
+                  {trackingEvents !== null && !trackingError && (
+                    trackingEvents.length === 0 ? (
+                      <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800">
+                        Belum ada catatan scan masuk dari pihak ekspedisi (paket masih menunggu pickup / serah terima).
+                      </p>
+                    ) : (
+                      <ol className="mt-2.5 space-y-2 border-l-2 border-emerald-200 pl-3">
+                        {trackingEvents.map((ev, evIdx) => (
+                          <li key={`${ev.update_time}-${evIdx}`} className="relative text-[11px]">
+                            <span
+                              className={`absolute -left-[17px] top-1 h-2 w-2 rounded-full ${
+                                evIdx === 0 ? 'bg-emerald-600' : 'bg-slate-300'
+                              }`}
+                            />
+                            <p className="font-semibold text-slate-800">{ev.description}</p>
+                            <p className="text-[10px] text-slate-500 tabular-nums">{ev.update_time_formatted}</p>
+                          </li>
+                        ))}
+                      </ol>
+                    )
+                  )}
+                </div>
               </div>
             </div>
           </section>

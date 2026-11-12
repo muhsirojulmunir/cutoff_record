@@ -101,6 +101,105 @@ export function getOrderStatusMeta(status: ShopeeOrderStatus | null | undefined)
   );
 }
 
+export type CourierAcceptanceState = 'handed_over' | 'pending_pickup' | 'issue' | 'not_ready';
+
+export interface CourierAcceptanceMeta {
+  state: CourierAcceptanceState;
+  label: string;
+  detail: string;
+  badgeClasses: string;
+  dotClasses: string;
+}
+
+const HANDED_OVER_LOGISTICS = new Set<string>([
+  'LOGISTICS_PICKUP_DONE',
+  'LOGISTICS_DELIVERY_DONE',
+  'LOGISTICS_DELIVERED',
+]);
+
+const ISSUE_LOGISTICS_LABELS: Record<string, string> = {
+  LOGISTICS_PICKUP_RETRY: 'Pickup Ulang Kurir',
+  LOGISTICS_PICKUP_FAILED: 'Gagal Pickup Kurir',
+  LOGISTICS_DELIVERY_FAILED: 'Pengiriman Gagal',
+  LOGISTICS_LOST: 'Paket Dilaporkan Hilang',
+  LOGISTICS_REQUEST_CANCELED: 'Pengiriman Dibatalkan',
+  LOGISTICS_INVALID: 'Resi Tidak Valid / Batal',
+};
+
+/**
+ * Terjemahkan kombinasi order_status + logistics_status menjadi status penerimaan kurir yang jelas.
+ */
+export function getCourierAcceptanceMeta(
+  orderStatus: ShopeeOrderStatus | null | undefined,
+  logisticsStatus: string | null | undefined
+): CourierAcceptanceMeta {
+  const normOrder = normalizeOrderStatus(orderStatus);
+  const normLog = String(logisticsStatus ?? '').trim().toUpperCase();
+
+  if (normLog && ISSUE_LOGISTICS_LABELS[normLog]) {
+    return {
+      state: 'issue',
+      label: 'Kendala Ekspedisi',
+      detail: ISSUE_LOGISTICS_LABELS[normLog],
+      badgeClasses: 'border-rose-200 bg-rose-50 text-rose-800',
+      dotClasses: 'bg-rose-500',
+    };
+  }
+
+  if (
+    HANDED_OVER_LOGISTICS.has(normLog) ||
+    normOrder === 'SHIPPED' ||
+    normOrder === 'TO_CONFIRM_RECEIVE' ||
+    normOrder === 'COMPLETED'
+  ) {
+    const isDelivered =
+      normLog === 'LOGISTICS_DELIVERY_DONE' ||
+      normLog === 'LOGISTICS_DELIVERED' ||
+      normOrder === 'TO_CONFIRM_RECEIVE' ||
+      normOrder === 'COMPLETED';
+    return {
+      state: 'handed_over',
+      label: 'Sudah Diterima Ekspedisi',
+      detail: isDelivered ? 'Paket sudah terkirim / diterima pembeli' : 'Kurir sudah scan masuk & memproses paket',
+      badgeClasses: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+      dotClasses: 'bg-emerald-500',
+    };
+  }
+
+  if (
+    normOrder === 'PROCESSED' ||
+    normLog === 'LOGISTICS_REQUEST_CREATED' ||
+    normLog === 'LOGISTICS_READY' ||
+    normLog === 'LOGISTICS_PENDING_ARRANGE'
+  ) {
+    return {
+      state: 'pending_pickup',
+      label: 'Belum Diterima Ekspedisi',
+      detail: 'Resi siap, menunggu kurir pickup / scan di agen',
+      badgeClasses: 'border-amber-200 bg-amber-50 text-amber-800',
+      dotClasses: 'bg-amber-500',
+    };
+  }
+
+  if (normOrder === 'CANCELLED' || normOrder === 'IN_CANCEL' || normOrder === 'TO_RETURN') {
+    return {
+      state: 'not_ready',
+      label: normOrder === 'TO_RETURN' ? 'Proses Retur' : 'Pesanan Dibatalkan',
+      detail: normOrder === 'TO_RETURN' ? 'Paket dalam alur pengembalian' : 'Tidak dikirim ke ekspedisi',
+      badgeClasses: 'border-slate-200 bg-slate-100 text-slate-600',
+      dotClasses: 'bg-slate-400',
+    };
+  }
+
+  return {
+    state: 'not_ready',
+    label: 'Belum Diatur Pengiriman',
+    detail: 'Resi belum dibuat untuk diserahkan ke kurir',
+    badgeClasses: 'border-slate-200 bg-slate-100 text-slate-600',
+    dotClasses: 'bg-slate-400',
+  };
+}
+
 export function formatFulfillmentMethod(
   method: string | null | undefined,
   emptyLabel = 'Belum diatur'

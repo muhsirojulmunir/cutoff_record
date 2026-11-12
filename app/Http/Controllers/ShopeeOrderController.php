@@ -79,6 +79,11 @@ class ShopeeOrderController extends Controller
         $rawPrintStatus = strtolower(trim((string) $request->input('print_status', 'all')));
         $printStatus = in_array($rawPrintStatus, self::VALID_PRINT_STATUSES, true) ? $rawPrintStatus : 'all';
 
+        $rawLogisticsStatus = strtolower(trim((string) $request->input('logistics_status', ShopeeOrder::LOGISTICS_FILTER_ALL)));
+        $logisticsStatus = in_array($rawLogisticsStatus, ShopeeOrder::VALID_LOGISTICS_FILTERS, true)
+            ? $rawLogisticsStatus
+            : ShopeeOrder::LOGISTICS_FILTER_ALL;
+
         $search = trim((string) $request->input('search', ''));
 
         $rawCourier = trim((string) $request->input('courier', ''));
@@ -126,7 +131,8 @@ class ShopeeOrderController extends Controller
                 ->where('shopee_account_id', $account->id)
                 ->forTab($tab, $subTab)
                 ->forOrderType($orderType)
-                ->forPrintStatus($printStatus);
+                ->forPrintStatus($printStatus)
+                ->forLogisticsStatus($logisticsStatus);
 
             if ($search !== '') {
                 $likePattern = '%' . $this->escapeLike($search) . '%';
@@ -173,15 +179,16 @@ class ShopeeOrderController extends Controller
             'orderTypeCounts' => $orderTypeCounts,
             'carriers'        => $carriers,
             'filters'         => [
-                'tab'          => $tab,
-                'sub_tab'      => $subTab,
-                'order_type'   => $orderType,
-                'print_status' => $printStatus,
-                'search'       => $search,
-                'courier'      => $courier,
-                'date_from'    => $dateFrom,
-                'date_to'      => $dateTo,
-                'sort'         => $sort,
+                'tab'              => $tab,
+                'sub_tab'          => $subTab,
+                'order_type'       => $orderType,
+                'print_status'     => $printStatus,
+                'logistics_status' => $logisticsStatus,
+                'search'           => $search,
+                'courier'          => $courier,
+                'date_from'        => $dateFrom,
+                'date_to'          => $dateTo,
+                'sort'             => $sort,
             ],
         ]);
     }
@@ -343,6 +350,31 @@ class ShopeeOrderController extends Controller
                 'status'  => 'success',
                 'message' => "Detail pesanan {$order->order_sn} berhasil diperbarui dari Shopee.",
                 'order'   => $order->makeHidden(['raw_payload']),
+            ], 200);
+        } catch (\Throwable $e) {
+            return $this->actionErrorResponse($e);
+        }
+    }
+
+    /**
+     * Ambil status & riwayat tracking kurir live dari Shopee API v2 untuk 1 pesanan.
+     */
+    public function trackingInfo(Request $request, string $orderSn): JsonResponse
+    {
+        $this->authorizeSuperAdmin($request);
+
+        try {
+            $orderSn = $this->normalizeOrderSn($orderSn);
+            $account = $this->requireConnectedAccount();
+            $result = $this->orderService->getTrackingInfo($account, $orderSn);
+
+            return response()->json([
+                'status'           => 'success',
+                'order_sn'         => $result['order_sn'],
+                'package_number'   => $result['package_number'],
+                'logistics_status' => $result['logistics_status'],
+                'tracking_info'    => $result['tracking_info'],
+                'order'            => $result['order'],
             ], 200);
         } catch (\Throwable $e) {
             return $this->actionErrorResponse($e);
@@ -627,8 +659,11 @@ class ShopeeOrderController extends Controller
             'shipped'             => 0,
             'completed'           => 0,
             'cancelled'           => 0,
-            'unprinted'           => 0,
-            'printed'             => 0,
+            'unprinted'                  => 0,
+            'printed'                    => 0,
+            'logistics_pending_pickup'   => 0,
+            'logistics_handed_over'      => 0,
+            'logistics_issue'            => 0,
         ];
     }
 
@@ -650,6 +685,10 @@ class ShopeeOrderController extends Controller
      */
     private function fetchTabCounts(int $accountId): array
     {
+        $handedOverSql = ShopeeOrder::handedOverPredicateSql();
+        $issueSql = ShopeeOrder::issueLogisticsPredicateSql();
+        $pendingPickupSql = ShopeeOrder::pendingPickupPredicateSql();
+
         $row = ShopeeOrder::query()
             ->where('shopee_account_id', $accountId)
             ->selectRaw("
@@ -662,21 +701,27 @@ class ShopeeOrderController extends Controller
                 COALESCE(SUM(CASE WHEN order_status IN ('TO_CONFIRM_RECEIVE', 'COMPLETED') THEN 1 ELSE 0 END), 0) as completed,
                 COALESCE(SUM(CASE WHEN order_status IN ('IN_CANCEL', 'CANCELLED', 'TO_RETURN') THEN 1 ELSE 0 END), 0) as cancelled,
                 COALESCE(SUM(CASE WHEN COALESCE(label_print_count, 0) = 0 THEN 1 ELSE 0 END), 0) as unprinted,
-                COALESCE(SUM(CASE WHEN COALESCE(label_print_count, 0) > 0 THEN 1 ELSE 0 END), 0) as printed
+                COALESCE(SUM(CASE WHEN COALESCE(label_print_count, 0) > 0 THEN 1 ELSE 0 END), 0) as printed,
+                COALESCE(SUM(CASE WHEN {$pendingPickupSql} THEN 1 ELSE 0 END), 0) as logistics_pending_pickup,
+                COALESCE(SUM(CASE WHEN {$handedOverSql} THEN 1 ELSE 0 END), 0) as logistics_handed_over,
+                COALESCE(SUM(CASE WHEN {$issueSql} THEN 1 ELSE 0 END), 0) as logistics_issue
             ")
             ->first();
 
         return [
-            'all'                 => (int) ($row?->all_count ?? 0),
-            'unpaid'              => (int) ($row?->unpaid ?? 0),
-            'to_ship'             => (int) ($row?->to_ship ?? 0),
-            'to_ship_unprocessed' => (int) ($row?->to_ship_unprocessed ?? 0),
-            'to_ship_processed'   => (int) ($row?->to_ship_processed ?? 0),
-            'shipped'             => (int) ($row?->shipped ?? 0),
-            'completed'           => (int) ($row?->completed ?? 0),
-            'cancelled'           => (int) ($row?->cancelled ?? 0),
-            'unprinted'           => (int) ($row?->unprinted ?? 0),
-            'printed'             => (int) ($row?->printed ?? 0),
+            'all'                        => (int) ($row?->all_count ?? 0),
+            'unpaid'                     => (int) ($row?->unpaid ?? 0),
+            'to_ship'                    => (int) ($row?->to_ship ?? 0),
+            'to_ship_unprocessed'        => (int) ($row?->to_ship_unprocessed ?? 0),
+            'to_ship_processed'          => (int) ($row?->to_ship_processed ?? 0),
+            'shipped'                    => (int) ($row?->shipped ?? 0),
+            'completed'                  => (int) ($row?->completed ?? 0),
+            'cancelled'                  => (int) ($row?->cancelled ?? 0),
+            'unprinted'                  => (int) ($row?->unprinted ?? 0),
+            'printed'                    => (int) ($row?->printed ?? 0),
+            'logistics_pending_pickup'   => (int) ($row?->logistics_pending_pickup ?? 0),
+            'logistics_handed_over'      => (int) ($row?->logistics_handed_over ?? 0),
+            'logistics_issue'            => (int) ($row?->logistics_issue ?? 0),
         ];
     }
 

@@ -949,4 +949,69 @@ class ShopeeOrderControllerTest extends TestCase
         $this->assertStringContainsString('Logistics & Order API', $message);
         $this->assertStringContainsString('Invalid access_token', $message);
     }
+
+    public function test_logistics_status_filter_and_live_tracking_info_endpoint(): void
+    {
+        $pendingSn = '261112TRKPEND01';
+        $handedSn = '261112TRKHAND02';
+
+        $this->makeShopeeOrder([
+            'order_sn'         => $pendingSn,
+            'package_number'   => 'PKG-PEND-01',
+            'order_status'     => 'PROCESSED',
+            'logistics_status' => 'LOGISTICS_REQUEST_CREATED',
+            'tracking_number'  => 'SPXPEND01',
+        ]);
+        $this->makeShopeeOrder([
+            'order_sn'         => $handedSn,
+            'package_number'   => 'PKG-HAND-02',
+            'order_status'     => 'SHIPPED',
+            'logistics_status' => 'LOGISTICS_PICKUP_DONE',
+            'tracking_number'  => 'SPXHAND02',
+        ]);
+        $this->makeCutOffOrder($pendingSn, ['order_status' => 'Diproses']);
+
+        $this->actingAs($this->superAdmin)
+            ->get('/shopee-orders?tab=all&logistics_status=pending_pickup')
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('filters.logistics_status', 'pending_pickup')
+                ->where('tabCounts.logistics_pending_pickup', 1)
+                ->where('tabCounts.logistics_handed_over', 1)
+                ->has('orders.data', 1)
+                ->where('orders.data.0.order_sn', $pendingSn)
+            );
+
+        $tsOld = now()->subHour()->timestamp;
+        $tsNew = now()->subMinutes(5)->timestamp;
+
+        Http::fake([
+            '*/api/v2/logistics/get_tracking_info*' => Http::response([
+                'error'    => '',
+                'message'  => '',
+                'response' => [
+                    'order_sn'         => $pendingSn,
+                    'package_number'   => 'PKG-PEND-01',
+                    'logistics_status' => 'LOGISTICS_PICKUP_DONE',
+                    'tracking_info'    => [
+                        ['update_time' => $tsOld, 'description' => 'Menunggu kurir pickup'],
+                        ['update_time' => $tsNew, 'description' => 'Paket sudah diterima pihak ekspedisi'],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this->actingAs($this->superAdmin)
+            ->getJson("/shopee-orders/{$pendingSn}/tracking-info");
+
+        $response->assertOk()
+            ->assertJsonPath('status', 'success')
+            ->assertJsonPath('logistics_status', 'LOGISTICS_PICKUP_DONE')
+            ->assertJsonPath('tracking_info.0.update_time', $tsNew)
+            ->assertJsonPath('order.order_status', 'SHIPPED');
+
+        $this->assertSame('LOGISTICS_PICKUP_DONE', ShopeeOrder::where('order_sn', $pendingSn)->value('logistics_status'));
+        $this->assertSame('SHIPPED', ShopeeOrder::where('order_sn', $pendingSn)->value('order_status'));
+        $this->assertSame('Dikirim', CutOffOrder::where('order_number', $pendingSn)->value('order_status'));
+    }
 }

@@ -39,6 +39,36 @@ class ShopeeOrder extends Model
         self::ORDERTYPE_KILAT,
     ];
 
+    public const LOGISTICS_FILTER_ALL = 'all';
+    public const LOGISTICS_FILTER_PENDING_PICKUP = 'pending_pickup';
+    public const LOGISTICS_FILTER_HANDED_OVER = 'handed_over';
+    public const LOGISTICS_FILTER_ISSUE = 'issue';
+
+    /** @var array<int, string> */
+    public const VALID_LOGISTICS_FILTERS = [
+        self::LOGISTICS_FILTER_ALL,
+        self::LOGISTICS_FILTER_PENDING_PICKUP,
+        self::LOGISTICS_FILTER_HANDED_OVER,
+        self::LOGISTICS_FILTER_ISSUE,
+    ];
+
+    /** @var array<int, string> */
+    public const HANDED_OVER_LOGISTICS_STATUSES = [
+        'LOGISTICS_PICKUP_DONE',
+        'LOGISTICS_DELIVERY_DONE',
+        'LOGISTICS_DELIVERED',
+    ];
+
+    /** @var array<int, string> */
+    public const ISSUE_LOGISTICS_STATUSES = [
+        'LOGISTICS_PICKUP_RETRY',
+        'LOGISTICS_PICKUP_FAILED',
+        'LOGISTICS_DELIVERY_FAILED',
+        'LOGISTICS_LOST',
+        'LOGISTICS_REQUEST_CANCELED',
+        'LOGISTICS_INVALID',
+    ];
+
     /** @var array<string, array<int, string>> */
     public const TAB_STATUS_GROUPS = [
         self::TAB_UNPAID    => ['UNPAID'],
@@ -138,6 +168,44 @@ class ShopeeOrder extends Model
         if ($printStatus === 'printed') {
             return $query->where('label_print_count', '>', 0);
         }
+        return $query;
+    }
+
+    public static function handedOverPredicateSql(): string
+    {
+        $statuses = "'" . implode("','", self::HANDED_OVER_LOGISTICS_STATUSES) . "'";
+
+        return "(UPPER(COALESCE(logistics_status, '')) IN ({$statuses}) OR UPPER(COALESCE(order_status, '')) IN ('SHIPPED','TO_CONFIRM_RECEIVE','COMPLETED'))";
+    }
+
+    public static function issueLogisticsPredicateSql(): string
+    {
+        $statuses = "'" . implode("','", self::ISSUE_LOGISTICS_STATUSES) . "'";
+
+        return "(UPPER(COALESCE(logistics_status, '')) IN ({$statuses}))";
+    }
+
+    public static function pendingPickupPredicateSql(): string
+    {
+        $handedOver = self::handedOverPredicateSql();
+        $issue = self::issueLogisticsPredicateSql();
+
+        return "(NOT {$handedOver} AND NOT {$issue} AND UPPER(COALESCE(order_status, '')) IN ('READY_TO_SHIP','RETRY_SHIP','PROCESSED'))";
+    }
+
+    public function scopeForLogisticsStatus(Builder $query, ?string $logisticsFilter): Builder
+    {
+        $normalized = strtolower(trim((string) $logisticsFilter));
+        if ($normalized === self::LOGISTICS_FILTER_HANDED_OVER) {
+            return $query->whereRaw(self::handedOverPredicateSql());
+        }
+        if ($normalized === self::LOGISTICS_FILTER_ISSUE) {
+            return $query->whereRaw(self::issueLogisticsPredicateSql());
+        }
+        if ($normalized === self::LOGISTICS_FILTER_PENDING_PICKUP) {
+            return $query->whereRaw(self::pendingPickupPredicateSql());
+        }
+
         return $query;
     }
 
