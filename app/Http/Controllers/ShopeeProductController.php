@@ -4,12 +4,18 @@ namespace App\Http\Controllers;
 
 use App\Models\ShopeeAccount;
 use App\Models\ShopeeProduct;
+use App\Models\ShopeeStockZeroBatch;
+use App\Models\ShopeeStockZeroItem;
 use App\Models\MasterStock;
+use App\Models\User;
 use App\Services\ShopeeSyncService;
+use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -23,10 +29,50 @@ class ShopeeProductController extends Controller
     public static function clearAuditCache(?int $accountId = null): void
     {
         try {
-            Cache::store('file')->forget('shopee_stock_alert_queue');
+            $store = Cache::store('file');
+            $store->forget('shopee_stock_alert_queue');
+            $store->forget('shopee_products_light_cols_v1');
         } catch (\Throwable $e) {
             // Safe fallback if file cache is unavailable
         }
+    }
+
+    /**
+     * Ambil daftar kolom shopee_products tanpa raw_data agar query ringan dan tidak menarik JSON besar.
+     *
+     * @return array<int, string>
+     */
+    private function getLightProductColumns(): array
+    {
+        if (! app()->runningUnitTests()) {
+            try {
+                $cached = Cache::store('file')->get('shopee_products_light_cols_v1');
+                if (is_array($cached) && ! empty($cached)) {
+                    return $cached;
+                }
+            } catch (\Throwable) {
+                // Lanjutkan baca skema langsung
+            }
+        }
+
+        try {
+            $cols = array_values(array_diff(\Illuminate\Support\Facades\Schema::getColumnListing('shopee_products'), ['raw_data']));
+            if (! empty($cols)) {
+                if (! app()->runningUnitTests()) {
+                    try {
+                        Cache::store('file')->put('shopee_products_light_cols_v1', $cols, 3600);
+                    } catch (\Throwable) {
+                        // Abaikan error tulis file cache
+                    }
+                }
+
+                return $cols;
+            }
+        } catch (\Throwable) {
+            // Fallback aman bila schema listing gagal
+        }
+
+        return ['*'];
     }
 
     /**
@@ -96,12 +142,27 @@ class ShopeeProductController extends Controller
         }
 
         try {
-            if (
-                ! \Illuminate\Support\Facades\Schema::hasTable('master_stocks')
-                || ! \Illuminate\Support\Facades\Schema::hasTable('shopee_products')
-                || ! \Illuminate\Support\Facades\Schema::hasTable('shopee_accounts')
-            ) {
-                return $empty;
+            $tablesReady = false;
+            if (! app()->runningUnitTests()) {
+                $tablesReady = Cache::store('file')->get('shopee_workqueue_tables_ready_v1') === true;
+            }
+
+            if (! $tablesReady) {
+                $tablesReady = \Illuminate\Support\Facades\Schema::hasTable('master_stocks')
+                    && \Illuminate\Support\Facades\Schema::hasTable('shopee_products')
+                    && \Illuminate\Support\Facades\Schema::hasTable('shopee_accounts');
+
+                if (! $tablesReady) {
+                    return $empty;
+                }
+
+                if (! app()->runningUnitTests()) {
+                    try {
+                        Cache::store('file')->put('shopee_workqueue_tables_ready_v1', true, 3600);
+                    } catch (\Throwable) {
+                        // Abaikan error tulis file cache
+                    }
+                }
             }
 
             $account = ShopeeAccount::where('status', 'active')->first() ?? ShopeeAccount::first();
@@ -115,7 +176,9 @@ class ShopeeProductController extends Controller
             }
 
             $maps     = $this->buildMasterStockMaps($masterStocks);
-            $allProds = ShopeeProduct::where('shopee_account_id', $account->id)->get();
+            $allProds = ShopeeProduct::select($this->getLightProductColumns())
+                ->where('shopee_account_id', $account->id)
+                ->get();
 
             $criticalOosCount      = 0;
             $campaignUnlockedCount = 0;
@@ -145,7 +208,7 @@ class ShopeeProductController extends Controller
             $queue = self::buildStockWorkQueue($criticalOosCount, $discrepancyCount, $campaignUnlockedCount);
 
             try {
-                Cache::store('file')->put('shopee_stock_alert_queue', $queue, 120);
+                Cache::store('file')->put('shopee_stock_alert_queue', $queue, 900);
             } catch (\Throwable $e) {
                 // Abaikan jika tidak bisa menulis file cache
             }
@@ -162,9 +225,17 @@ class ShopeeProductController extends Controller
      */
     public function index(Request $request): \Inertia\Response
     {
-        // Pastikan skema tabel aman tanpa throw error jika di hosting cPanel
+        // Pastikan skema tabel aman tanpa memperlambat tiap buka halaman (dijalankan berkala / saat sync)
         try {
-            $this->syncService->ensureProductSchema();
+            $schemaVerified = ! app()->runningUnitTests()
+                && Cache::store('file')->get('shopee_product_schema_verified_v1') === true;
+
+            if (! $schemaVerified) {
+                $this->syncService->ensureProductSchema();
+                if (! app()->runningUnitTests()) {
+                    Cache::store('file')->put('shopee_product_schema_verified_v1', true, 86400);
+                }
+            }
         } catch (\Throwable $e) {
             // Abaikan jika tidak punya akses alter table di cPanel
         }
@@ -267,8 +338,10 @@ class ShopeeProductController extends Controller
         if ($masterStockSummary['has_master_stock'] && $account && $masterStocks->isNotEmpty()) {
             $maps = $this->buildMasterStockMaps($masterStocks);
 
-            // Ambil produk tanpa memaksakan nama kolom baru agar aman jika server belum menjalankan migrasi
-            $allProds = ShopeeProduct::where('shopee_account_id', $account->id)->get();
+            // Ambil kolom produk tanpa raw_data (JSON besar) dan tetap aman walau skema berbeda
+            $allProds = ShopeeProduct::select($this->getLightProductColumns())
+                ->where('shopee_account_id', $account->id)
+                ->get();
 
             foreach ($allProds as $p) {
                 $info = $this->resolveProductStockInfoFast(
@@ -404,14 +477,19 @@ class ShopeeProductController extends Controller
             $query->where('shopee_products.shopee_account_id', $account->id);
         }
 
+        $lightCols = $this->getLightProductColumns();
+        $lightSelectCols = $lightCols === ['*']
+            ? ['shopee_products.*']
+            : array_map(static fn (string $col): string => 'shopee_products.' . $col, $lightCols);
+
         if ($periodSalesSub) {
             $query->leftJoinSub($periodSalesSub, 'period_sales_sub', function ($join) {
                 $join->on('shopee_products.sku', '=', 'period_sales_sub.sku_utama')
                      ->whereRaw("shopee_products.sku IS NOT NULL AND TRIM(shopee_products.sku) != '' AND TRIM(shopee_products.sku) != '0' AND TRIM(shopee_products.sku) != '-' AND TRIM(shopee_products.sku) != '--' AND TRIM(shopee_products.sku) != '@' AND LOWER(TRIM(shopee_products.sku)) NOT IN ('null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku')");
             });
-            $query->select('shopee_products.*', DB::raw('COALESCE(period_sales_sub.period_sales, 0) as period_sales'));
+            $query->select(array_merge($lightSelectCols, [DB::raw('COALESCE(period_sales_sub.period_sales, 0) as period_sales')]));
         } else {
-            $query->select('shopee_products.*', DB::raw('COALESCE(shopee_products.sales, 0) as period_sales'));
+            $query->select(array_merge($lightSelectCols, [DB::raw('COALESCE(shopee_products.sales, 0) as period_sales')]));
         }
 
         // Apply Search
@@ -521,7 +599,7 @@ class ShopeeProductController extends Controller
             count($campaignUnlockedIds)
         );
         try {
-            \Illuminate\Support\Facades\Cache::store('file')->put('shopee_stock_alert_queue', $stockWorkQueue, 120);
+            \Illuminate\Support\Facades\Cache::store('file')->put('shopee_stock_alert_queue', $stockWorkQueue, 900);
         } catch (\Throwable $e) {
             // Abaikan error cache file pada environment hosting terbatas
         }
@@ -558,6 +636,7 @@ class ShopeeProductController extends Controller
             ],
             'master_stock_summary' => $masterStockSummary,
             'workQueue' => $isSuperAdmin ? $stockWorkQueue : ['items' => [], 'total' => 0, 'critical' => 0],
+            'zeroRestoreSummary' => $isSuperAdmin ? $this->buildZeroRestoreSummary($account?->id) : null,
             'account'  => $account ? [
                 'id'           => $account->id,
                 'account_name' => $account->account_name,
@@ -1598,6 +1677,9 @@ class ShopeeProductController extends Controller
      */
     public function zeroOut(Request $request): JsonResponse
     {
+        $user = $this->ensureSuperAdminUser($request);
+        $this->syncService->ensureZeroHistorySchema();
+
         $account = ShopeeAccount::where('status', 'active')->whereNotNull('access_token')->first()
             ?? ShopeeAccount::whereNotNull('access_token')->first()
             ?? ShopeeAccount::first();
@@ -1617,7 +1699,14 @@ class ShopeeProductController extends Controller
             ], 422);
         }
 
-        $validProducts = ShopeeProduct::whereIn('id', array_map('intval', $productIds))->get();
+        $validProducts = ShopeeProduct::where('shopee_account_id', $account->id)
+            ->whereIn('id', array_unique(array_map('intval', $productIds)))
+            ->get();
+
+        if ($validProducts->isEmpty()) {
+            $validProducts = ShopeeProduct::whereIn('id', array_unique(array_map('intval', $productIds)))->get();
+        }
+
         if ($validProducts->isEmpty()) {
             return response()->json([
                 'status'  => 'error',
@@ -1625,40 +1714,725 @@ class ShopeeProductController extends Controller
             ], 422);
         }
 
-        $safeIds = $validProducts->pluck('id')->all();
-        $updatedCount = 0;
+        $rawSource = (string) $request->input('source', 'bulk');
+        $source = in_array($rawSource, ['notification_critical', 'audit_bulk', 'single', 'bulk'], true)
+            ? $rawSource
+            : 'bulk';
+
+        $safeIds = $validProducts->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $now = now();
+        $batchCode = 'ZOB-' . $now->copy()->timezone('Asia/Jakarta')->format('Ymd-His') . '-' . strtoupper(Str::random(4));
+
+        // 1. Rekam snapshot stok Shopee persis sebelum pengosongan dijalankan
+        $batch = DB::transaction(function () use ($account, $batchCode, $source, $validProducts, $safeIds, $user, $now) {
+            $batch = ShopeeStockZeroBatch::create([
+                'shopee_account_id' => $account->id,
+                'batch_code'        => $batchCode,
+                'source'            => $source,
+                'note'              => $this->buildZeroNote($source, count($safeIds)),
+                'total_requested'   => count($safeIds),
+                'zeroed_count'      => 0,
+                'failed_count'      => 0,
+                'restored_count'    => 0,
+                'status'            => 'zeroed',
+                'zeroed_by'         => $user->id,
+                'zeroed_by_name'    => $user->name ?? 'Super Admin',
+                'zeroed_at'         => $now,
+            ]);
+
+            foreach ($validProducts as $product) {
+                ShopeeStockZeroItem::create([
+                    'batch_id'                     => $batch->id,
+                    'shopee_account_id'            => $product->shopee_account_id ?? $account->id,
+                    'shopee_product_id'            => $product->id,
+                    'item_id'                      => (int) $product->item_id,
+                    'model_id'                     => (int) ($product->model_id ?? 0),
+                    'item_name'                    => (string) $product->item_name,
+                    'model_name'                   => $product->model_name,
+                    'sku'                          => $product->sku,
+                    'previous_stock'               => max(0, (int) $product->stock),
+                    'previous_reserved_stock'      => max(0, (int) ($product->reserved_stock ?? 0)),
+                    'previous_locked_campaign_qty' => max(0, (int) ($product->locked_campaign_qty ?? 0)),
+                    'previous_was_campaign_locked' => (bool) ($product->was_campaign_locked ?? false),
+                    'zeroed_stock'                 => 0,
+                    'status'                       => 'zeroed',
+                ]);
+            }
+
+            return $batch;
+        });
+
         $failures = [];
         $msg = '';
+        $succeededIds = [];
+        $zeroedStocks = [];
+        $failedItems = [];
 
-        // 1. Jika terhubung ke Shopee Open API dengan token aktif, eksekusi pembaruan stok ke marketplace
+        // 2. Jika terhubung ke Shopee Open API dengan token aktif, eksekusi ke marketplace
         if ($account->isConnected() && ! empty($account->access_token)) {
             try {
                 $res = $this->syncService->zeroOutShopeeProducts($account, $safeIds);
-                $updatedCount = $res['updated_count'];
-                $failures = $res['failures'];
-                $msg = $res['message'];
+                $failures = $res['failures'] ?? [];
+                $msg = $res['message'] ?? '';
+                $succeededIds = array_map('intval', $res['succeeded_ids'] ?? []);
+                $zeroedStocks = $res['zeroed_stocks'] ?? [];
+                $failedItems = $res['failed_items'] ?? [];
             } catch (\Throwable $e) {
                 Log::warning('[ZeroOutShopee] API Shopee error: ' . $e->getMessage());
-                $msg = 'Stok lokal berhasil dikosongkan. API Shopee: ' . $e->getMessage();
+                $errMsg = 'Gagal mengosongkan stok di Shopee Open API: ' . $e->getMessage();
+
+                DB::transaction(function () use ($batch, $errMsg) {
+                    ShopeeStockZeroItem::where('batch_id', $batch->id)->update([
+                        'status'        => 'zero_failed',
+                        'error_message' => $errMsg,
+                    ]);
+                    $this->recalculateZeroBatch($batch);
+                });
+
+                return response()->json([
+                    'status'        => 'error',
+                    'message'       => $errMsg,
+                    'updated_count' => 0,
+                    'failures'      => [['reason' => $e->getMessage()]],
+                    'batch'         => $this->formatZeroBatchPayload($batch->fresh('items')),
+                    'summary'       => $this->buildZeroRestoreSummary($account->id),
+                ], 422);
             }
+
+            // Sinkronkan status per-item snapshot tanpa menimpa stok lokal item yang gagal di API
+            DB::transaction(function () use ($batch, $succeededIds, $zeroedStocks, $failedItems, $msg) {
+                $items = ShopeeStockZeroItem::where('batch_id', $batch->id)->get();
+                foreach ($items as $item) {
+                    $pid = (int) $item->shopee_product_id;
+                    if (in_array($pid, $succeededIds, true)) {
+                        $item->update([
+                            'status'        => 'zeroed',
+                            'zeroed_stock'  => (int) ($zeroedStocks[$pid] ?? 0),
+                            'error_message' => null,
+                        ]);
+                    } else {
+                        $item->update([
+                            'status'        => 'zero_failed',
+                            'error_message' => $failedItems[$pid] ?? ($msg ?: 'Gagal mengosongkan stok di Shopee'),
+                        ]);
+                    }
+                }
+                $this->recalculateZeroBatch($batch);
+            });
         } else {
+            // Mode ERP lokal (toko belum terhubung ke API Shopee)
+            ShopeeProduct::whereIn('id', $safeIds)->update([
+                'stock'          => 0,
+                'last_synced_at' => $now,
+            ]);
+            $succeededIds = $safeIds;
             $msg = 'Stok berhasil dikosongkan di sistem ERP menjadi 0.';
+            DB::transaction(function () use ($batch) {
+                $this->recalculateZeroBatch($batch);
+            });
         }
 
-        // 2. Selalu update kuantitas stok di tabel lokal shopee_products menjadi 0
-        ShopeeProduct::whereIn('id', $safeIds)->update([
-            'stock'          => 0,
-            'last_synced_at' => now(),
+        $zeroedCount = count($succeededIds);
+        self::clearAuditCache($account->id);
+
+        $freshBatch = $batch->fresh('items');
+        $stockMaps = $freshBatch ? $this->resolveCurrentStockMapsForItems($freshBatch->items) : [];
+
+        return response()->json([
+            'status'        => $zeroedCount > 0 ? 'success' : 'error',
+            'message'       => $msg ?: ($zeroedCount > 0 ? 'Berhasil mengosongkan stok produk terpilih.' : 'Gagal mengosongkan stok produk terpilih.'),
+            'updated_count' => $zeroedCount,
+            'failures'      => $failures,
+            'batch'         => $freshBatch ? $this->formatZeroBatchPayload($freshBatch, $stockMaps) : null,
+            'summary'       => $this->buildZeroRestoreSummary($account->id),
+        ], $zeroedCount > 0 ? 200 : 422);
+    }
+
+    /**
+     * Ambil daftar riwayat batch pengosongan dan pemulihan stok Shopee (khusus Super Admin).
+     */
+    public function zeroHistory(Request $request): JsonResponse
+    {
+        $this->ensureSuperAdminUser($request);
+        $this->syncService->ensureZeroHistorySchema();
+
+        $account = ShopeeAccount::where('status', 'active')->whereNotNull('access_token')->first()
+            ?? ShopeeAccount::whereNotNull('access_token')->first()
+            ?? ShopeeAccount::first();
+
+        $filter = (string) $request->input('filter', 'all');
+        $search = trim((string) $request->input('search', ''));
+        $limit = max(1, min(100, (int) $request->input('limit', 40)));
+
+        $query = ShopeeStockZeroBatch::with(['items' => fn ($q) => $q->orderBy('id')])
+            ->orderByDesc('zeroed_at')
+            ->orderByDesc('id');
+
+        if ($account) {
+            $query->where(function ($q) use ($account) {
+                $q->where('shopee_account_id', $account->id)
+                    ->orWhereNull('shopee_account_id');
+            });
+        }
+
+        if ($filter === 'restorable') {
+            $query->whereHas('items', fn ($q) => $q->whereIn('status', ['zeroed', 'restore_failed']));
+        } elseif ($filter === 'restored') {
+            $query->where('restored_count', '>', 0);
+        }
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('batch_code', 'like', "%{$search}%")
+                    ->orWhere('note', 'like', "%{$search}%")
+                    ->orWhere('zeroed_by_name', 'like', "%{$search}%")
+                    ->orWhere('restored_by_name', 'like', "%{$search}%")
+                    ->orWhereHas('items', function ($iq) use ($search) {
+                        $iq->where('sku', 'like', "%{$search}%")
+                            ->orWhere('item_name', 'like', "%{$search}%")
+                            ->orWhere('model_name', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        $batches = $query->limit($limit)->get();
+        $allItems = $batches->flatMap(fn ($b) => $b->items);
+        $stockMaps = $this->resolveCurrentStockMapsForItems($allItems);
+
+        return response()->json([
+            'status'  => 'success',
+            'summary' => $this->buildZeroRestoreSummary($account?->id),
+            'batches' => $batches->map(fn ($b) => $this->formatZeroBatchPayload($b, $stockMaps))->values(),
         ]);
+    }
+
+    /**
+     * Pulihkan stok Shopee kembali ke snapshot persis sebelum dikosongkan (khusus Super Admin).
+     */
+    public function restoreZeroBatch(Request $request): JsonResponse
+    {
+        $user = $this->ensureSuperAdminUser($request);
+        $this->syncService->ensureZeroHistorySchema();
+
+        $validated = $request->validate([
+            'batch_id'        => 'required|integer',
+            'item_ids'        => 'nullable|array',
+            'item_ids.*'      => 'integer',
+            'force_overwrite' => 'nullable|boolean',
+        ]);
+
+        $batch = ShopeeStockZeroBatch::find((int) $validated['batch_id']);
+        if (! $batch) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Batch riwayat pengosongan tidak ditemukan.',
+            ], 404);
+        }
+
+        $account = ($batch->shopee_account_id ? ShopeeAccount::find($batch->shopee_account_id) : null)
+            ?? ShopeeAccount::where('status', 'active')->whereNotNull('access_token')->first()
+            ?? ShopeeAccount::whereNotNull('access_token')->first()
+            ?? ShopeeAccount::first();
+
+        if (! $account) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Toko Shopee belum terdaftar di sistem ERP.',
+            ], 422);
+        }
+
+        $selectedItemIds = array_values(array_unique(array_map('intval', $validated['item_ids'] ?? [])));
+        $forceOverwrite = (bool) ($validated['force_overwrite'] ?? false);
+
+        // Fase 1: Klaim item yang memenuhi syarat secara atomik dalam transaksi singkat sebelum HTTP Shopee
+        $claim = DB::transaction(function () use ($batch, $account, $selectedItemIds, $forceOverwrite) {
+            $query = ShopeeStockZeroItem::where('batch_id', $batch->id)
+                ->whereIn('status', ['zeroed', 'restore_failed'])
+                ->lockForUpdate();
+
+            if (! empty($selectedItemIds)) {
+                $query->whereIn('id', $selectedItemIds);
+            }
+
+            $candidates = $query->get();
+            if ($candidates->isEmpty()) {
+                return [
+                    'error_status'  => 422,
+                    'error_message' => 'Tidak ada SKU yang perlu dipulihkan pada pilihan ini (kemungkinan sudah dipulihkan atau sedang diproses).',
+                ];
+            }
+
+            $skippedModified = [];
+            $missingCatalog = [];
+            $claimedItems = [];
+
+            foreach ($candidates as $item) {
+                $product = null;
+                if ($item->shopee_product_id) {
+                    $product = ShopeeProduct::where('id', $item->shopee_product_id)
+                        ->where('shopee_account_id', $account->id)
+                        ->first();
+                }
+                if (! $product) {
+                    $product = ShopeeProduct::where('shopee_account_id', $account->id)
+                        ->where('item_id', $item->item_id)
+                        ->where('model_id', $item->model_id)
+                        ->first();
+                }
+
+                if (! $product) {
+                    $msg = 'Produk/variasi tidak ditemukan di katalog Shopee lokal. Silakan Tarik Stok Shopee ulang.';
+                    $item->update([
+                        'status'        => 'restore_failed',
+                        'error_message' => $msg,
+                    ]);
+                    $missingCatalog[] = [
+                        'zero_item_id' => $item->id,
+                        'sku'          => $item->sku,
+                        'item_name'    => $item->item_name,
+                        'reason'       => $msg,
+                    ];
+                    continue;
+                }
+
+                if ($item->shopee_product_id !== $product->id) {
+                    $item->shopee_product_id = $product->id;
+                }
+
+                $currentStock = (int) $product->stock;
+                if (! $forceOverwrite && $currentStock > (int) $item->zeroed_stock) {
+                    $skippedModified[] = [
+                        'zero_item_id'   => $item->id,
+                        'sku'            => $item->sku,
+                        'item_name'      => $item->item_name,
+                        'current_stock'  => $currentStock,
+                        'previous_stock' => (int) $item->previous_stock,
+                    ];
+                    continue;
+                }
+
+                $item->update(['status' => 'restoring']);
+                $claimedItems[] = [
+                    'zero_item_id'                 => (int) $item->id,
+                    'product_id'                   => (int) $product->id,
+                    'target_stock'                 => max(0, (int) $item->previous_stock),
+                    'previous_locked_campaign_qty' => max(0, (int) $item->previous_locked_campaign_qty),
+                    'previous_was_campaign_locked' => (bool) $item->previous_was_campaign_locked,
+                ];
+            }
+
+            return [
+                'claimed'         => $claimedItems,
+                'skippedModified' => $skippedModified,
+                'missingCatalog'  => $missingCatalog,
+            ];
+        });
+
+        if (! empty($claim['error_status'])) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => $claim['error_message'],
+            ], (int) $claim['error_status']);
+        }
+
+        $claimed = $claim['claimed'];
+        $skippedModified = $claim['skippedModified'];
+        $missingCatalog = $claim['missingCatalog'];
+
+        if (empty($claimed)) {
+            if (! empty($missingCatalog)) {
+                $this->recalculateZeroBatch($batch);
+            }
+            $freshBatch = $batch->fresh('items');
+            $stockMaps = $freshBatch ? $this->resolveCurrentStockMapsForItems($freshBatch->items) : [];
+
+            $message = ! empty($skippedModified)
+                ? count($skippedModified) . ' SKU dilewati karena stoknya sudah terisi ulang secara manual (> ' . '0). Centang opsi timpa stok jika tetap ingin mengembalikan snapshot.'
+                : ($missingCatalog[0]['reason'] ?? 'Tidak ada SKU yang dapat dipulihkan.');
+
+            return response()->json([
+                'status'           => 'error',
+                'message'          => $message,
+                'restored_count'   => 0,
+                'skipped_modified' => $skippedModified,
+                'failures'         => $missingCatalog,
+                'batch'            => $freshBatch ? $this->formatZeroBatchPayload($freshBatch, $stockMaps) : null,
+                'summary'          => $this->buildZeroRestoreSummary($account->id),
+            ], 422);
+        }
+
+        $updates = array_map(fn ($entry) => [
+            'product_id' => $entry['product_id'],
+            'stock'      => $entry['target_stock'],
+        ], $claimed);
+
+        $now = now();
+        $succeededProductIds = [];
+        $failedByProductId = [];
+        $failures = $missingCatalog;
+        $apiMessage = '';
+
+        // Fase 2: Eksekusi pembaruan stok ke Shopee Live (atau lokal ERP jika belum terhubung)
+        if ($account->isConnected() && ! empty($account->access_token)) {
+            try {
+                $res = $this->syncService->updateShopeeProductsStock($account, $updates);
+                $succeededProductIds = array_map('intval', $res['succeeded_ids'] ?? []);
+                $failedByProductId = $res['failed_items'] ?? [];
+                $failures = array_merge($failures, $res['failures'] ?? []);
+                $apiMessage = (string) ($res['message'] ?? '');
+            } catch (\Throwable $e) {
+                Log::warning('[RestoreShopeeStock] API Shopee error: ' . $e->getMessage());
+                $errMsg = 'Gagal menghubungi API Shopee saat memulihkan: ' . $e->getMessage();
+
+                DB::transaction(function () use ($claimed, $batch, $errMsg) {
+                    $claimedZeroItemIds = array_column($claimed, 'zero_item_id');
+                    ShopeeStockZeroItem::whereIn('id', $claimedZeroItemIds)->update([
+                        'status'        => 'restore_failed',
+                        'error_message' => $errMsg,
+                    ]);
+                    $this->recalculateZeroBatch($batch);
+                });
+
+                $freshBatch = $batch->fresh('items');
+                $stockMaps = $freshBatch ? $this->resolveCurrentStockMapsForItems($freshBatch->items) : [];
+
+                return response()->json([
+                    'status'           => 'error',
+                    'message'          => $errMsg,
+                    'restored_count'   => 0,
+                    'skipped_modified' => $skippedModified,
+                    'failures'         => array_merge($failures, [['reason' => $e->getMessage()]]),
+                    'batch'            => $freshBatch ? $this->formatZeroBatchPayload($freshBatch, $stockMaps) : null,
+                    'summary'          => $this->buildZeroRestoreSummary($account->id),
+                ], 422);
+            }
+        } else {
+            // Mode ERP lokal saat akun Shopee belum terhubung API
+            foreach ($claimed as $entry) {
+                ShopeeProduct::where('id', $entry['product_id'])->update([
+                    'stock'          => $entry['target_stock'],
+                    'last_synced_at' => $now,
+                ]);
+                $succeededProductIds[] = (int) $entry['product_id'];
+            }
+            $apiMessage = 'Berhasil memulihkan stok ' . count($succeededProductIds) . ' SKU di sistem ERP.';
+        }
+
+        // Fase 3: Finalisasi status item, tanggal pemulihan, dan metadata kampanye
+        $restoredCountNow = 0;
+        DB::transaction(function () use ($claimed, $succeededProductIds, $failedByProductId, $batch, $user, $now, $apiMessage, &$restoredCountNow) {
+            $hasCampaignCol = \Illuminate\Support\Facades\Schema::hasColumn('shopee_products', 'locked_campaign_qty');
+
+            foreach ($claimed as $entry) {
+                $pid = (int) $entry['product_id'];
+                $zeroItem = ShopeeStockZeroItem::find($entry['zero_item_id']);
+                if (! $zeroItem) {
+                    continue;
+                }
+
+                if (in_array($pid, $succeededProductIds, true)) {
+                    $zeroItem->update([
+                        'status'           => 'restored',
+                        'error_message'    => null,
+                        'restored_by'      => $user->id,
+                        'restored_by_name' => $user->name ?? 'Super Admin',
+                        'restored_at'      => $now,
+                    ]);
+
+                    if ($hasCampaignCol) {
+                        ShopeeProduct::where('id', $pid)->update([
+                            'locked_campaign_qty' => $entry['previous_locked_campaign_qty'],
+                            'was_campaign_locked' => $entry['previous_was_campaign_locked'],
+                        ]);
+                    }
+                    $restoredCountNow++;
+                } else {
+                    $zeroItem->update([
+                        'status'        => 'restore_failed',
+                        'error_message' => $failedByProductId[$pid] ?? ($apiMessage ?: 'Gagal memulihkan stok di Shopee'),
+                    ]);
+                }
+            }
+
+            if ($restoredCountNow > 0) {
+                $batch->restored_by = $user->id;
+                $batch->restored_by_name = $user->name ?? 'Super Admin';
+                $batch->restored_at = $now;
+                $batch->save();
+            }
+            $this->recalculateZeroBatch($batch);
+        });
 
         self::clearAuditCache($account->id);
 
+        $freshBatch = $batch->fresh('items');
+        $stockMaps = $freshBatch ? $this->resolveCurrentStockMapsForItems($freshBatch->items) : [];
+
+        $skippedMsg = ! empty($skippedModified)
+            ? ' (' . count($skippedModified) . ' SKU dilewati karena stoknya sudah terisi ulang secara manual)'
+            : '';
+        $finalMsg = $restoredCountNow > 0
+            ? "Berhasil memulihkan stok {$restoredCountNow} SKU ke angka sebelum dikosongkan{$skippedMsg}."
+            : ($apiMessage ?: 'Gagal memulihkan SKU yang dipilih.');
+
         return response()->json([
-            'status'        => 'success',
-            'message'       => $msg ?: 'Berhasil mengosongkan stok produk terpilih.',
-            'updated_count' => count($safeIds),
-            'failures'      => $failures,
+            'status'           => $restoredCountNow > 0 ? 'success' : 'error',
+            'message'          => $finalMsg,
+            'restored_count'   => $restoredCountNow,
+            'skipped_modified' => $skippedModified,
+            'failures'         => $failures,
+            'batch'            => $freshBatch ? $this->formatZeroBatchPayload($freshBatch, $stockMaps) : null,
+            'summary'          => $this->buildZeroRestoreSummary($account->id),
+        ], $restoredCountNow > 0 ? 200 : 422);
+    }
+
+    private function ensureSuperAdminUser(Request $request): User
+    {
+        $user = $request->user();
+        $isSuperAdmin = $user && ($user->isSuperAdmin() || $user->role?->name === 'Super Admin');
+        if (! $isSuperAdmin) {
+            abort(403, 'Hanya Super Admin yang berwenang melakukan pengosongan atau pemulihan stok Shopee.');
+        }
+
+        return $user;
+    }
+
+    private function formatWibDateTime(?CarbonInterface $dt): ?string
+    {
+        if (! $dt) {
+            return null;
+        }
+
+        $wib = $dt->copy()->timezone('Asia/Jakarta');
+        $months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+        $monthName = $months[(int) $wib->format('n') - 1] ?? $wib->format('M');
+
+        return sprintf(
+            '%s %s %s, %s WIB',
+            $wib->format('d'),
+            $monthName,
+            $wib->format('Y'),
+            $wib->format('H:i')
+        );
+    }
+
+    private function resolveZeroSourceLabel(string $source): string
+    {
+        return match ($source) {
+            'notification_critical' => 'Dari Pemberitahuan',
+            'audit_bulk'            => 'Audit Stok Gudang',
+            'single'                => 'Set 0 Satuan',
+            default                 => 'Kosongkan Massal',
+        };
+    }
+
+    private function buildZeroNote(string $source, int $count): string
+    {
+        return match ($source) {
+            'notification_critical' => "Kosongkan {$count} SKU kritis dari Pemberitahuan",
+            'audit_bulk'            => "Kosongkan massal {$count} SKU dari Audit Stok",
+            'single'                => "Set 0 stok satuan ({$count} SKU)",
+            default                 => "Kosongkan {$count} SKU terpilih di Shopee",
+        };
+    }
+
+    private function recalculateZeroBatch(ShopeeStockZeroBatch $batch): void
+    {
+        $counts = ShopeeStockZeroItem::where('batch_id', $batch->id)
+            ->selectRaw("
+                COUNT(*) as total_cnt,
+                SUM(CASE WHEN status IN ('zeroed', 'restored', 'restore_failed', 'restoring') THEN 1 ELSE 0 END) as zeroed_cnt,
+                SUM(CASE WHEN status = 'zero_failed' THEN 1 ELSE 0 END) as failed_cnt,
+                SUM(CASE WHEN status = 'restored' THEN 1 ELSE 0 END) as restored_cnt,
+                SUM(CASE WHEN status IN ('zeroed', 'restore_failed') THEN 1 ELSE 0 END) as restorable_cnt
+            ")
+            ->first();
+
+        $totalCnt = (int) ($counts->total_cnt ?? 0);
+        $zeroedCnt = (int) ($counts->zeroed_cnt ?? 0);
+        $failedCnt = (int) ($counts->failed_cnt ?? 0);
+        $restoredCnt = (int) ($counts->restored_cnt ?? 0);
+        $restorableCnt = (int) ($counts->restorable_cnt ?? 0);
+
+        if ($zeroedCnt === 0 && $failedCnt > 0 && $restoredCnt === 0) {
+            $status = 'failed';
+        } elseif ($restorableCnt === 0 && $restoredCnt > 0) {
+            $status = 'restored';
+        } elseif ($restoredCnt > 0) {
+            $status = 'partially_restored';
+        } elseif ($failedCnt > 0 && $zeroedCnt > 0) {
+            $status = 'partial_zero_failed';
+        } else {
+            $status = 'zeroed';
+        }
+
+        $batch->update([
+            'total_requested' => $totalCnt > 0 ? $totalCnt : $batch->total_requested,
+            'zeroed_count'    => $zeroedCnt,
+            'failed_count'    => $failedCnt,
+            'restored_count'  => $restoredCnt,
+            'status'          => $status,
         ]);
+    }
+
+    /**
+     * @param \Illuminate\Support\Collection<int, ShopeeStockZeroItem> $items
+     * @return array{byId: array<int, int>, byComposite: array<string, int>}
+     */
+    private function resolveCurrentStockMapsForItems($items): array
+    {
+        $byId = [];
+        $byComposite = [];
+        if ($items->isEmpty()) {
+            return ['byId' => [], 'byComposite' => []];
+        }
+
+        $productIds = $items->pluck('shopee_product_id')->filter()->unique()->values()->all();
+        $itemIds = $items->pluck('item_id')->filter()->unique()->values()->all();
+
+        $products = ShopeeProduct::select(['id', 'shopee_account_id', 'item_id', 'model_id', 'stock'])
+            ->where(function ($q) use ($productIds, $itemIds) {
+                if (! empty($productIds)) {
+                    $q->whereIn('id', $productIds);
+                }
+                if (! empty($itemIds)) {
+                    $q->orWhereIn('item_id', $itemIds);
+                }
+            })
+            ->get();
+
+        foreach ($products as $p) {
+            $stock = (int) $p->stock;
+            $byId[(int) $p->id] = $stock;
+            $key = ((int) ($p->shopee_account_id ?? 0)) . ':' . ((int) $p->item_id) . ':' . ((int) ($p->model_id ?? 0));
+            $byComposite[$key] = $stock;
+        }
+
+        return ['byId' => $byId, 'byComposite' => $byComposite];
+    }
+
+    private function formatZeroBatchPayload(ShopeeStockZeroBatch $batch, array $stockMaps = []): array
+    {
+        $byId = $stockMaps['byId'] ?? [];
+        $byComposite = $stockMaps['byComposite'] ?? [];
+
+        $formattedItems = $batch->items->map(function (ShopeeStockZeroItem $item) use ($byId, $byComposite, $batch) {
+            $accId = (int) ($item->shopee_account_id ?? $batch->shopee_account_id ?? 0);
+            $compKey = $accId . ':' . ((int) $item->item_id) . ':' . ((int) ($item->model_id ?? 0));
+            $currentStock = $byId[(int) ($item->shopee_product_id ?? 0)]
+                ?? ($byComposite[$compKey] ?? null);
+
+            $isRestorable = in_array($item->status, ['zeroed', 'restore_failed'], true);
+
+            return [
+                'id'                      => (int) $item->id,
+                'batch_id'                => (int) $item->batch_id,
+                'shopee_product_id'       => $item->shopee_product_id ? (int) $item->shopee_product_id : null,
+                'item_id'                 => (int) $item->item_id,
+                'model_id'                => (int) ($item->model_id ?? 0),
+                'item_name'               => $item->item_name,
+                'model_name'              => $item->model_name,
+                'sku'                     => $item->sku,
+                'previous_stock'          => (int) $item->previous_stock,
+                'zeroed_stock'            => (int) $item->zeroed_stock,
+                'current_stock'           => $currentStock,
+                'status'                  => $item->status,
+                'is_restorable'           => $isRestorable,
+                'has_manual_stock_change' => $isRestorable && $currentStock !== null && $currentStock > (int) $item->zeroed_stock,
+                'error_message'           => $item->error_message,
+                'restored_by_name'        => $item->restored_by_name,
+                'restored_at'             => $item->restored_at?->toIso8601String(),
+                'restored_at_label'       => $this->formatWibDateTime($item->restored_at),
+            ];
+        })->values()->all();
+
+        $restorableCount = collect($formattedItems)->where('is_restorable', true)->count();
+        $restoreFailedCount = collect($formattedItems)->where('status', 'restore_failed')->count();
+
+        return [
+            'id'                   => (int) $batch->id,
+            'shopee_account_id'    => $batch->shopee_account_id ? (int) $batch->shopee_account_id : null,
+            'batch_code'           => $batch->batch_code,
+            'source'               => $batch->source,
+            'source_label'         => $this->resolveZeroSourceLabel((string) $batch->source),
+            'note'                 => $batch->note,
+            'total_requested'      => (int) $batch->total_requested,
+            'zeroed_count'         => (int) $batch->zeroed_count,
+            'failed_count'         => (int) $batch->failed_count,
+            'restored_count'       => (int) $batch->restored_count,
+            'restorable_count'     => $restorableCount,
+            'restore_failed_count' => $restoreFailedCount,
+            'status'               => $batch->status,
+            'zeroed_by_name'       => $batch->zeroed_by_name,
+            'zeroed_at'            => $batch->zeroed_at?->toIso8601String(),
+            'zeroed_at_label'      => $this->formatWibDateTime($batch->zeroed_at),
+            'restored_by_name'     => $batch->restored_by_name,
+            'restored_at'          => $batch->restored_at?->toIso8601String(),
+            'restored_at_label'    => $this->formatWibDateTime($batch->restored_at),
+            'items'                => $formattedItems,
+        ];
+    }
+
+    private function buildZeroRestoreSummary(?int $accountId): array
+    {
+        $this->syncService->ensureZeroHistorySchema();
+
+        $batchQuery = ShopeeStockZeroBatch::query();
+        $itemQuery = ShopeeStockZeroItem::query();
+        if ($accountId) {
+            $batchQuery->where(function ($q) use ($accountId) {
+                $q->where('shopee_account_id', $accountId)->orWhereNull('shopee_account_id');
+            });
+            $itemQuery->where(function ($q) use ($accountId) {
+                $q->where('shopee_account_id', $accountId)->orWhereNull('shopee_account_id');
+            });
+        }
+
+        $totalBatches = (clone $batchQuery)->count();
+        $restorableBatchesCount = (clone $batchQuery)
+            ->whereHas('items', fn ($q) => $q->whereIn('status', ['zeroed', 'restore_failed']))
+            ->count();
+        $restorableItemsCount = (clone $itemQuery)
+            ->whereIn('status', ['zeroed', 'restore_failed'])
+            ->count();
+        $restoredItemsCount = (clone $itemQuery)
+            ->where('status', 'restored')
+            ->count();
+
+        $latestRestorableBatch = (clone $batchQuery)
+            ->whereHas('items', fn ($q) => $q->whereIn('status', ['zeroed', 'restore_failed']))
+            ->orderByDesc('zeroed_at')
+            ->orderByDesc('id')
+            ->first();
+
+        $latestSummary = null;
+        if ($latestRestorableBatch) {
+            $restorableInLatest = ShopeeStockZeroItem::where('batch_id', $latestRestorableBatch->id)
+                ->whereIn('status', ['zeroed', 'restore_failed'])
+                ->count();
+
+            $latestSummary = [
+                'id'               => (int) $latestRestorableBatch->id,
+                'batch_code'       => $latestRestorableBatch->batch_code,
+                'source'           => $latestRestorableBatch->source,
+                'source_label'     => $this->resolveZeroSourceLabel((string) $latestRestorableBatch->source),
+                'note'             => $latestRestorableBatch->note,
+                'zeroed_by_name'   => $latestRestorableBatch->zeroed_by_name,
+                'zeroed_at_label'  => $this->formatWibDateTime($latestRestorableBatch->zeroed_at),
+                'total_requested'  => (int) $latestRestorableBatch->total_requested,
+                'zeroed_count'     => (int) $latestRestorableBatch->zeroed_count,
+                'restored_count'   => (int) $latestRestorableBatch->restored_count,
+                'restorable_count' => $restorableInLatest,
+            ];
+        }
+
+        return [
+            'total_batches'            => $totalBatches,
+            'restorable_batches_count' => $restorableBatchesCount,
+            'restorable_items_count'   => $restorableItemsCount,
+            'restored_items_count'     => $restoredItemsCount,
+            'latest_restorable_batch'  => $latestSummary,
+        ];
     }
 
     /**

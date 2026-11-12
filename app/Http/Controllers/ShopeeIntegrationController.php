@@ -254,6 +254,7 @@ class ShopeeIntegrationController extends Controller
 
         try {
             $result = $this->syncService->syncProductsFromShopee($account);
+            ShopeeProductController::clearAuditCache($account->id);
             return back()->with('success', $result['message']);
         } catch (\Exception $e) {
             return back()->with('error', 'Gagal sinkronisasi produk: ' . $e->getMessage());

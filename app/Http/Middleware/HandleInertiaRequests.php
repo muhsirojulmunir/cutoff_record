@@ -33,6 +33,9 @@ class HandleInertiaRequests extends Middleware
     public function share(Request $request): array
     {
         $user = $request->user();
+        if ($user) {
+            $user->loadMissing('role');
+        }
 
         return [
             ...parent::share($request),
@@ -57,10 +60,16 @@ class HandleInertiaRequests extends Middleware
                 'success' => $request->session()->get('success'),
                 'error'   => $request->session()->get('error'),
             ],
-            // Antrian notifikasi stok Shopee (hanya tampil untuk Super Admin)
-            'workQueue' => ($request->user()?->isSuperAdmin() ?? false)
-                ? app(\App\Http\Controllers\ShopeeProductController::class)->getStockAlertWorkQueue()
-                : ['items' => [], 'total' => 0, 'critical' => 0],
+            // Antrian notifikasi stok Shopee (hanya tampil untuk Super Admin).
+            // Closure membuat prop hanya dievaluasi saat benar-benar dibutuhkan (lewati partial reload & redirect).
+            'workQueue' => function () use ($request): array {
+                $currentUser = $request->user();
+                if (! ($currentUser?->isSuperAdmin() ?? false)) {
+                    return ['items' => [], 'total' => 0, 'critical' => 0];
+                }
+
+                return app(\App\Http\Controllers\ShopeeProductController::class)->getStockAlertWorkQueue();
+            },
         ];
     }
 }

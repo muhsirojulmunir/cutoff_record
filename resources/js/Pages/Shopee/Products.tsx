@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import AppLayout from '../../Layouts/AppLayout';
 import { PageProps } from '../../Types';
 import DualCalendarRangePicker, { formatDateIndo, formatYMD } from '../../Components/DualCalendarRangePicker';
+import ShopeeZeroRestoreModal, { ZeroRestoreSummary } from '../../Components/ShopeeZeroRestoreModal';
 
 interface ProductItem {
   id: number;
@@ -132,6 +133,7 @@ interface Props {
     is_connected: boolean;
   } | null;
   master_stock_summary?: MasterStockSummary;
+  zeroRestoreSummary?: ZeroRestoreSummary | null;
 }
 
 interface AuditItem {
@@ -251,6 +253,7 @@ export default function ShopeeProductsIndex({
   summary,
   account,
   master_stock_summary,
+  zeroRestoreSummary,
 }: Props) {
   const { auth, flash } = usePage<PageProps>().props;
   const isSuperAdmin = Boolean(auth?.user?.is_super_admin || auth?.user?.role?.name === 'Super Admin');
@@ -329,6 +332,19 @@ export default function ShopeeProductsIndex({
   const [copiedToast, setCopiedToast] = useState(false);
   const [zeroOutSuccessMessage, setZeroOutSuccessMessage] = useState<string | null>(null);
   const [toastNotice, setToastNotice] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
+  const [restoreInitialBatchId, setRestoreInitialBatchId] = useState<number | null>(null);
+  const [restoreInitialFilter, setRestoreInitialFilter] = useState<'all' | 'restorable' | 'restored'>('all');
+  const zeroOutSourceRef = useRef<'notification_critical' | 'audit_bulk' | 'bulk'>('audit_bulk');
+
+  function openRestoreModal(
+    batchId: number | null = null,
+    filterTab: 'all' | 'restorable' | 'restored' = 'all'
+  ) {
+    setRestoreInitialBatchId(batchId);
+    setRestoreInitialFilter(filterTab);
+    setIsRestoreModalOpen(true);
+  }
 
   // Auto hide toast notice after 4 seconds
   React.useEffect(() => {
@@ -567,7 +583,7 @@ export default function ShopeeProductsIndex({
           message: res.message || `Berhasil memperbarui stok ${selectedVariants.length} variasi di Shopee!`,
           type: 'success',
         });
-        router.reload({ only: ['products', 'summary', 'workQueue'] });
+        router.reload({ only: ['products', 'summary', 'workQueue', 'zeroRestoreSummary'] });
       } else {
         setRestockModal(prev => ({ ...prev, isSubmitting: false }));
         setToastNotice({ message: res.message || 'Gagal mengubah stok di Shopee.', type: 'error' });
@@ -627,7 +643,7 @@ export default function ShopeeProductsIndex({
         if (auditSource === 'MASTER') {
           runMasterAudit(masterWarehouseFilter);
         }
-        router.reload({ only: ['products', 'summary', 'workQueue'] });
+        router.reload({ only: ['products', 'summary', 'workQueue', 'zeroRestoreSummary'] });
       } else {
         setToastNotice({ message: resJson.message || 'Gagal menyimpan mapping.', type: 'error' });
       }
@@ -962,6 +978,7 @@ export default function ShopeeProductsIndex({
       return;
     }
 
+    zeroOutSourceRef.current = 'audit_bulk';
     playAlarmChime();
     setConfirmModal({
       isOpen: true,
@@ -980,6 +997,7 @@ export default function ShopeeProductsIndex({
       return;
     }
 
+    zeroOutSourceRef.current = 'notification_critical';
     playAlarmChime();
     setConfirmModal({
       isOpen: true,
@@ -993,7 +1011,7 @@ export default function ShopeeProductsIndex({
   // Eksekusi pengosongan SEMUA SKU Kritis via Shopee API (bisa dari Modal atau dari Banner Utama)
   async function executeZeroOutAll() {
     let productIds: number[] = [];
-    if (auditItems && auditItems.length > 0) {
+    if (zeroOutSourceRef.current !== 'notification_critical' && auditItems && auditItems.length > 0) {
       const criticalItems = auditItems.filter(
         i => i.status === 'CRITICAL' && i.id && i.shopee_stock > 0 && i.is_safe_to_zero !== false
       );
@@ -1016,7 +1034,10 @@ export default function ShopeeProductsIndex({
           'X-CSRF-TOKEN': csrfToken,
           'Accept': 'application/json',
         },
-        body: JSON.stringify({ product_ids: productIds }),
+        body: JSON.stringify({
+          product_ids: productIds,
+          source: zeroOutSourceRef.current,
+        }),
       });
 
       const resJson = await resp.json();
@@ -1048,7 +1069,7 @@ export default function ShopeeProductsIndex({
           });
         }
 
-        router.reload({ only: ['products', 'summary', 'workQueue'] });
+        router.reload({ only: ['products', 'summary', 'workQueue', 'zeroRestoreSummary'] });
       } else {
         setToastNotice({ message: resJson.message || 'Gagal mengosongkan stok di Shopee.', type: 'error' });
       }
@@ -1100,7 +1121,10 @@ export default function ShopeeProductsIndex({
           'X-CSRF-TOKEN': csrfToken,
           'Accept': 'application/json',
         },
-        body: JSON.stringify({ product_ids: [id] }),
+        body: JSON.stringify({
+          product_ids: [id],
+          source: 'single',
+        }),
       });
 
       const resJson = await resp.json();
@@ -1123,7 +1147,7 @@ export default function ShopeeProductsIndex({
           return item;
         }) : null);
 
-        router.reload({ only: ['products', 'summary', 'workQueue'] });
+        router.reload({ only: ['products', 'summary', 'workQueue', 'zeroRestoreSummary'] });
       } else {
         setToastNotice({ message: resJson.message || 'Gagal mengosongkan stok di Shopee.', type: 'error' });
       }
@@ -1258,7 +1282,7 @@ export default function ShopeeProductsIndex({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <div className="flex items-center gap-2 flex-wrap xl:flex-nowrap">
             {/* Tombol Isi / Tambah Stok Shopee Cepat */}
             <button
               type="button"
@@ -1271,6 +1295,30 @@ export default function ShopeeProductsIndex({
               </svg>
               <span>+ Isi / Tambah Stok</span>
             </button>
+
+            {/* Tombol Pulihkan & Riwayat Pemulihan (Khusus Super Admin) */}
+            {isSuperAdmin && (
+              <button
+                type="button"
+                onClick={() => openRestoreModal(null, 'all')}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border text-xs font-semibold shadow-2xs transition-colors cursor-pointer whitespace-nowrap active:scale-98 ${
+                  (zeroRestoreSummary?.restorable_items_count ?? 0) > 0
+                    ? 'border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-800'
+                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                }`}
+                title="Buka modal Pulihkan stok Shopee & lihat riwayat tanggal pengosongan/pemulihan"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-indigo-600">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+                </svg>
+                <span>Pulihkan</span>
+                {(zeroRestoreSummary?.restorable_items_count ?? 0) > 0 && (
+                  <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-600 text-white font-mono">
+                    {zeroRestoreSummary?.restorable_items_count}
+                  </span>
+                )}
+              </button>
+            )}
 
             {/* Tombol Audit Stok Gudang */}
             <button
@@ -1329,6 +1377,56 @@ export default function ShopeeProductsIndex({
             </button>
           </div>
         </div>
+
+        {/* Banner Cepat Pulihkan (Khusus Super Admin saat ada batch terbaru belum dipulihkan) */}
+        {isSuperAdmin && zeroRestoreSummary?.latest_restorable_batch && (
+          <div className="p-4 rounded-2xl bg-indigo-50/80 border border-indigo-200 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+                </svg>
+              </div>
+              <div className="text-xs min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-slate-900">
+                    {zeroRestoreSummary.latest_restorable_batch.restorable_count} SKU siap dipulihkan ke stok Shopee sebelumnya
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white text-indigo-700 border border-indigo-200 font-mono">
+                    {zeroRestoreSummary.latest_restorable_batch.batch_code}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-100 text-indigo-800">
+                    {zeroRestoreSummary.latest_restorable_batch.source_label}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 mt-1">
+                  Dikosongkan pada <strong>{zeroRestoreSummary.latest_restorable_batch.zeroed_at_label || '-'}</strong>
+                  {zeroRestoreSummary.latest_restorable_batch.zeroed_by_name ? ` oleh ${zeroRestoreSummary.latest_restorable_batch.zeroed_by_name}` : ''}.
+                  Klik <strong>Pulihkan</strong> untuk mengembalikan stok atau melihat riwayat tanggal pemulihan.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <button
+                type="button"
+                onClick={() => openRestoreModal(zeroRestoreSummary.latest_restorable_batch!.id, 'restorable')}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+                </svg>
+                <span>Pulihkan ({zeroRestoreSummary.latest_restorable_batch.restorable_count} SKU)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => openRestoreModal(null, 'all')}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-indigo-200 bg-white hover:bg-indigo-100/60 text-indigo-800 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                <span>Riwayat Pemulihan</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 4 Metric Summary Cards - High-End Anti AI-Slop */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -3707,6 +3805,21 @@ export default function ShopeeProductsIndex({
           </div>
         </div>,
         document.body
+      )}
+
+      {/* Modal Pulihkan Stok Shopee & Riwayat Pemulihan */}
+      {isSuperAdmin && (
+        <ShopeeZeroRestoreModal
+          isOpen={isRestoreModalOpen}
+          onClose={() => setIsRestoreModalOpen(false)}
+          initialBatchId={restoreInitialBatchId}
+          initialFilter={restoreInitialFilter}
+          onToast={(message, type) => setToastNotice({ message, type })}
+          onRestoredSuccess={(message) => {
+            setToastNotice({ message, type: 'success' });
+            router.reload({ only: ['products', 'summary', 'workQueue', 'zeroRestoreSummary'] });
+          }}
+        />
       )}
 
       {/* Floating Notification Toast (Anti Browser Alert) */}

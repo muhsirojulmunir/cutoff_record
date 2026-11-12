@@ -22,6 +22,8 @@ class ShopeeSyncService
     /** @var array<string, bool> */
     private array $cutOffColumnCache = [];
 
+    private static bool $zeroHistorySchemaChecked = false;
+
     public function __construct()
     {
         $this->host = config('services.shopee.host', 'https://partner.shopeemobile.com');
@@ -1597,6 +1599,73 @@ class ShopeeSyncService
     }
 
     /**
+     * Memastikan tabel riwayat pengosongan & pemulihan stok Shopee tersedia di database
+     * tanpa perlu menjalankan artisan migrate manual setelah deploy FTP cPanel.
+     */
+    public function ensureZeroHistorySchema(): void
+    {
+        $canUseMemoryCache = ! app()->runningUnitTests() && ! app()->runningInConsole();
+        if ($canUseMemoryCache && self::$zeroHistorySchemaChecked) {
+            return;
+        }
+
+        try {
+            if (! Schema::hasTable('shopee_stock_zero_batches')) {
+                Schema::create('shopee_stock_zero_batches', function (Blueprint $table) {
+                    $table->id();
+                    $table->unsignedBigInteger('shopee_account_id')->nullable()->index();
+                    $table->string('batch_code', 40)->unique();
+                    $table->string('source', 40)->default('bulk')->index();
+                    $table->string('note', 255)->nullable();
+                    $table->integer('total_requested')->default(0);
+                    $table->integer('zeroed_count')->default(0);
+                    $table->integer('failed_count')->default(0);
+                    $table->integer('restored_count')->default(0);
+                    $table->string('status', 30)->default('zeroed')->index();
+                    $table->unsignedBigInteger('zeroed_by')->nullable()->index();
+                    $table->string('zeroed_by_name', 120)->nullable();
+                    $table->timestamp('zeroed_at')->nullable()->index();
+                    $table->unsignedBigInteger('restored_by')->nullable()->index();
+                    $table->string('restored_by_name', 120)->nullable();
+                    $table->timestamp('restored_at')->nullable()->index();
+                    $table->timestamps();
+                });
+            }
+
+            if (! Schema::hasTable('shopee_stock_zero_items')) {
+                Schema::create('shopee_stock_zero_items', function (Blueprint $table) {
+                    $table->id();
+                    $table->unsignedBigInteger('batch_id')->index();
+                    $table->unsignedBigInteger('shopee_account_id')->nullable()->index();
+                    $table->unsignedBigInteger('shopee_product_id')->nullable()->index();
+                    $table->unsignedBigInteger('item_id')->index();
+                    $table->unsignedBigInteger('model_id')->default(0)->index();
+                    $table->string('item_name', 255);
+                    $table->string('model_name', 255)->nullable();
+                    $table->string('sku', 100)->nullable()->index();
+                    $table->integer('previous_stock')->default(0);
+                    $table->integer('previous_reserved_stock')->default(0);
+                    $table->integer('previous_locked_campaign_qty')->default(0);
+                    $table->boolean('previous_was_campaign_locked')->default(false);
+                    $table->integer('zeroed_stock')->default(0);
+                    $table->string('status', 30)->default('zeroed')->index();
+                    $table->text('error_message')->nullable();
+                    $table->unsignedBigInteger('restored_by')->nullable();
+                    $table->string('restored_by_name', 120)->nullable();
+                    $table->timestamp('restored_at')->nullable()->index();
+                    $table->timestamps();
+                });
+            }
+
+            if (Schema::hasTable('shopee_stock_zero_batches') && Schema::hasTable('shopee_stock_zero_items')) {
+                self::$zeroHistorySchemaChecked = true;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ShopeeSyncService ensureZeroHistorySchema notice: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Fetch raw return list from Shopee API v2.
      * Endpoint: /api/v2/returns/get_return_list
      */
@@ -2346,6 +2415,9 @@ class ShopeeSyncService
                 'message'       => 'Tidak ada produk Shopee yang ditemukan untuk dikosongkan.',
                 'updated_count' => 0,
                 'failures'      => [],
+                'succeeded_ids' => [],
+                'zeroed_stocks' => [],
+                'failed_items'  => [],
             ];
         }
 
@@ -2353,6 +2425,9 @@ class ShopeeSyncService
         $grouped = $products->groupBy('item_id');
         $successCount = 0;
         $failures = [];
+        $succeededIds = [];
+        $zeroedStocks = [];
+        $failedItems = [];
         $now = now();
 
         foreach ($grouped as $itemId => $items) {
@@ -2370,7 +2445,9 @@ class ShopeeSyncService
                 // Cek jika Shopee mengembalikan failure_list untuk model tertentu
                 $apiFailures = $apiRes['failure_list'] ?? [];
                 $failedModelIds = [];
+                $failedReasonByModel = [];
                 $campaignRetryList = [];
+                $campaignRetriedModelIds = [];
 
                 foreach ($apiFailures as $fail) {
                     $mId = (int) ($fail['model_id'] ?? 0);
@@ -2385,12 +2462,15 @@ class ShopeeSyncService
                             'model_id' => $mId,
                             'stock'    => $reserved,
                         ];
+                        $campaignRetriedModelIds[] = $mId;
                     } else {
                         $failedModelIds[] = $mId;
+                        $errMsg = $reason ?: 'Gagal update stok di Shopee';
+                        $failedReasonByModel[$mId] = $errMsg;
                         $failures[] = [
                             'item_id'  => $itemId,
                             'model_id' => $mId,
-                            'reason'   => $reason ?: 'Gagal update stok di Shopee',
+                            'reason'   => $errMsg,
                         ];
                     }
                 }
@@ -2403,19 +2483,24 @@ class ShopeeSyncService
                         foreach ($retryFailures as $rf) {
                             $rfmId = (int) ($rf['model_id'] ?? 0);
                             $failedModelIds[] = $rfmId;
+                            $errMsg = $rf['failed_reason'] ?? 'Gagal mentokkan kuota campaign';
+                            $failedReasonByModel[$rfmId] = $errMsg;
                             $failures[] = [
                                 'item_id'  => $itemId,
                                 'model_id' => $rfmId,
-                                'reason'   => $rf['failed_reason'] ?? 'Gagal mentokkan kuota campaign',
+                                'reason'   => $errMsg,
                             ];
                         }
                     } catch (\Throwable $re) {
                         foreach ($campaignRetryList as $cEntry) {
-                            $failedModelIds[] = $cEntry['model_id'];
+                            $cmId = (int) $cEntry['model_id'];
+                            $failedModelIds[] = $cmId;
+                            $errMsg = 'Gagal mentokkan kuota campaign: ' . $re->getMessage();
+                            $failedReasonByModel[$cmId] = $errMsg;
                             $failures[] = [
                                 'item_id'  => $itemId,
-                                'model_id' => $cEntry['model_id'],
-                                'reason'   => 'Gagal mentokkan kuota campaign: ' . $re->getMessage(),
+                                'model_id' => $cmId,
+                                'reason'   => $errMsg,
                             ];
                         }
                     }
@@ -2432,7 +2517,12 @@ class ShopeeSyncService
                             'was_campaign_locked' => $reserved > 0,
                             'last_synced_at'      => $now,
                         ]);
+                        $pid = (int) $product->id;
+                        $succeededIds[] = $pid;
+                        $zeroedStocks[$pid] = in_array($mId, $campaignRetriedModelIds, true) ? $reserved : 0;
                         $successCount++;
+                    } else {
+                        $failedItems[(int) $product->id] = $failedReasonByModel[$mId] ?? 'Gagal update stok di Shopee';
                     }
                 }
             } catch (\Throwable $e) {
@@ -2442,6 +2532,9 @@ class ShopeeSyncService
                     'sku'     => $items->pluck('sku')->filter()->implode(', '),
                     'reason'  => $e->getMessage(),
                 ];
+                foreach ($items as $product) {
+                    $failedItems[(int) $product->id] = $e->getMessage();
+                }
             }
         }
 
@@ -2449,6 +2542,9 @@ class ShopeeSyncService
             'success'       => $successCount > 0,
             'updated_count' => $successCount,
             'failures'      => $failures,
+            'succeeded_ids' => $succeededIds,
+            'zeroed_stocks' => $zeroedStocks,
+            'failed_items'  => $failedItems,
             'message'       => $successCount > 0
                 ? "Berhasil mengosongkan stok {$successCount} SKU variasi di Shopee!"
                 : "Gagal mengosongkan stok di Shopee. " . ($failures[0]['reason'] ?? 'Silakan periksa log.'),
@@ -2492,12 +2588,16 @@ class ShopeeSyncService
                 'message'       => 'Tidak ada produk Shopee yang ditemukan untuk diubah stoknya.',
                 'updated_count' => 0,
                 'failures'      => [],
+                'succeeded_ids' => [],
+                'failed_items'  => [],
             ];
         }
 
         $grouped = $products->groupBy('item_id');
         $successCount = 0;
         $failures = [];
+        $succeededIds = [];
+        $failedItems = [];
         $now = now();
         $hasCampaignCol = \Illuminate\Support\Facades\Schema::hasColumn('shopee_products', 'was_campaign_locked');
 
@@ -2515,14 +2615,17 @@ class ShopeeSyncService
                 $apiRes = $this->updateStockRaw($account, (int) $itemId, $stockList);
                 $apiFailures = $apiRes['failure_list'] ?? [];
                 $failedModelIds = [];
+                $failedReasonByModel = [];
 
                 foreach ($apiFailures as $fail) {
                     $mId = (int) ($fail['model_id'] ?? 0);
                     $failedModelIds[] = $mId;
+                    $errMsg = $fail['failed_reason'] ?? 'Gagal update stok di Shopee';
+                    $failedReasonByModel[$mId] = $errMsg;
                     $failures[] = [
                         'item_id'  => $itemId,
                         'model_id' => $mId,
-                        'reason'   => $fail['failed_reason'] ?? 'Gagal update stok di Shopee',
+                        'reason'   => $errMsg,
                     ];
                 }
 
@@ -2539,7 +2642,10 @@ class ShopeeSyncService
                             $updateData['was_campaign_locked'] = false;
                         }
                         $product->update($updateData);
+                        $succeededIds[] = (int) $product->id;
                         $successCount++;
+                    } else {
+                        $failedItems[(int) $product->id] = $failedReasonByModel[$mId] ?? 'Gagal update stok di Shopee';
                     }
                 }
             } catch (\Throwable $e) {
@@ -2551,6 +2657,7 @@ class ShopeeSyncService
                         'sku'      => $product->sku,
                         'reason'   => $e->getMessage(),
                     ];
+                    $failedItems[(int) $product->id] = $e->getMessage();
                 }
             }
         }
@@ -2559,6 +2666,8 @@ class ShopeeSyncService
             'success'       => $successCount > 0,
             'updated_count' => $successCount,
             'failures'      => $failures,
+            'succeeded_ids' => $succeededIds,
+            'failed_items'  => $failedItems,
             'message'       => $successCount > 0
                 ? "Berhasil memperbarui stok {$successCount} variasi di Shopee!" . (! empty($failures) ? " (" . count($failures) . " variasi gagal)" : "")
                 : "Gagal memperbarui stok di Shopee. " . ($failures[0]['reason'] ?? 'Silakan periksa koneksi token Shopee.'),

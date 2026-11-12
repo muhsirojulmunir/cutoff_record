@@ -35,12 +35,23 @@ class CutOffReturnController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
+        $rawSummary = DB::table('cut_off_returns')
+            ->whereNull('deleted_at')
+            ->selectRaw("
+                COUNT(*) as total_retur,
+                COALESCE(SUM(CASE WHEN marketplace = 'SH' THEN 1 ELSE 0 END), 0) as total_shopee,
+                COALESCE(SUM(CASE WHEN marketplace = 'TT' THEN 1 ELSE 0 END), 0) as total_tokopedia,
+                COALESCE(SUM(CASE WHEN no_pesanan_baru IS NOT NULL AND no_pesanan_baru != '' THEN 1 ELSE 0 END), 0) as total_pesanan_baru,
+                COALESCE(SUM(CASE WHEN marketplace IS NOT NULL AND marketplace NOT IN ('SH', 'TT') THEN 1 ELSE 0 END), 0) as total_lainnya
+            ")
+            ->first();
+
         $summary = [
-            'total_retur'        => CutOffReturn::count(),
-            'total_shopee'       => CutOffReturn::where('marketplace', 'SH')->count(),
-            'total_tokopedia'    => CutOffReturn::where('marketplace', 'TT')->count(),
-            'total_pesanan_baru' => CutOffReturn::whereNotNull('no_pesanan_baru')->where('no_pesanan_baru', '!=', '')->count(),
-            'total_lainnya'      => CutOffReturn::whereNotIn('marketplace', ['SH', 'TT'])->count(),
+            'total_retur'        => (int) ($rawSummary->total_retur ?? 0),
+            'total_shopee'       => (int) ($rawSummary->total_shopee ?? 0),
+            'total_tokopedia'    => (int) ($rawSummary->total_tokopedia ?? 0),
+            'total_pesanan_baru' => (int) ($rawSummary->total_pesanan_baru ?? 0),
+            'total_lainnya'      => (int) ($rawSummary->total_lainnya ?? 0),
         ];
 
         $marketplaces = CutOffReturn::query()

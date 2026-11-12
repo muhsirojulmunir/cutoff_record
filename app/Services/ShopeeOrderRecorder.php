@@ -5,17 +5,25 @@ namespace App\Services;
 use App\Models\ShopeeAccount;
 use App\Models\ShopeeOrder;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class ShopeeOrderRecorder
 {
+    private const SCHEMA_CACHE_KEY = 'shopee_orders_schema_exists_v1';
+
     private bool $schemaEnsured = false;
 
     public function resetSchemaCache(): void
     {
         $this->schemaEnsured = false;
+        try {
+            Cache::store('file')->forget(self::SCHEMA_CACHE_KEY);
+        } catch (\Throwable) {
+            // Abaikan error cache file
+        }
     }
 
     /**
@@ -27,12 +35,30 @@ class ShopeeOrderRecorder
             return;
         }
 
+        if (! app()->runningUnitTests()) {
+            try {
+                if (Cache::store('file')->get(self::SCHEMA_CACHE_KEY) === true) {
+                    $this->schemaEnsured = true;
+                    return;
+                }
+            } catch (\Throwable) {
+                // Lanjutkan pengecekan langsung jika cache file gagal
+            }
+        }
+
         try {
             if (! Schema::hasTable('shopee_orders')) {
                 Schema::create('shopee_orders', ShopeeOrder::buildSchemaCallback());
             }
             if (Schema::hasTable('shopee_orders')) {
                 $this->schemaEnsured = true;
+                if (! app()->runningUnitTests()) {
+                    try {
+                        Cache::store('file')->put(self::SCHEMA_CACHE_KEY, true, 86400);
+                    } catch (\Throwable) {
+                        // Abaikan error tulis cache file
+                    }
+                }
             }
         } catch (\Throwable $e) {
             Log::warning('ShopeeOrderRecorder ensureSchema notice: ' . $e->getMessage());

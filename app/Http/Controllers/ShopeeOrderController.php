@@ -16,6 +16,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
@@ -119,7 +120,9 @@ class ShopeeOrderController extends Controller
                 ->values()
                 ->all();
 
+            $lightOrderColumns = $this->getLightOrderColumns();
             $query = ShopeeOrder::query()
+                ->select($lightOrderColumns)
                 ->where('shopee_account_id', $account->id)
                 ->forTab($tab, $subTab)
                 ->forOrderType($orderType)
@@ -675,6 +678,44 @@ class ShopeeOrderController extends Controller
             'unprinted'           => (int) ($row?->unprinted ?? 0),
             'printed'             => (int) ($row?->printed ?? 0),
         ];
+    }
+
+    /**
+     * Ambil kolom shopee_orders tanpa raw_payload (longText) untuk mempercepat query daftar pesanan.
+     *
+     * @return array<int, string>
+     */
+    private function getLightOrderColumns(): array
+    {
+        if (! app()->runningUnitTests()) {
+            try {
+                $cached = Cache::store('file')->get('shopee_orders_light_cols_v1');
+                if (is_array($cached) && ! empty($cached)) {
+                    return $cached;
+                }
+            } catch (\Throwable) {
+                // Lanjutkan baca skema langsung bila file cache bermasalah
+            }
+        }
+
+        try {
+            $cols = array_values(array_diff(Schema::getColumnListing('shopee_orders'), ['raw_payload']));
+            if (! empty($cols)) {
+                if (! app()->runningUnitTests()) {
+                    try {
+                        Cache::store('file')->put('shopee_orders_light_cols_v1', $cols, 3600);
+                    } catch (\Throwable) {
+                        // Abaikan gagal tulis file cache
+                    }
+                }
+
+                return $cols;
+            }
+        } catch (\Throwable) {
+            // Fallback ke wildcard bila gagal inspect skema
+        }
+
+        return ['*'];
     }
 
     private function escapeLike(string $value): string

@@ -24,8 +24,6 @@ class DashboardController extends Controller
         $channel = $request->query('channel', 'all');
 
         $now = Carbon::now();
-        $todayStr = $now->toDateString();
-        $yesterdayStr = $now->copy()->subDay()->toDateString();
 
         // Daftar Channel untuk Dropdown
         $availableChannels = CutOffOrder::query()
@@ -42,7 +40,7 @@ class DashboardController extends Controller
             ])
             ->toArray();
 
-        // 1. Query Periode Terpilih
+        // 1. Query Periode Terpilih (pakai rentang tanggal [start, nextDay) agar index order_date terpakai)
         $query = CutOffOrder::query();
         $prevQuery = CutOffOrder::query();
 
@@ -51,14 +49,20 @@ class DashboardController extends Controller
             $prevQuery->where('channel', $channel);
         }
 
+        $applyDateRange = static function ($builder, Carbon $startDate, Carbon $endDate): void {
+            $builder->where('order_date', '>=', $startDate->toDateString())
+                    ->where('order_date', '<', $endDate->copy()->addDay()->toDateString());
+        };
+
         // Tentukan rentang tanggal & judul
         if ($range === 'today') {
             $timeframeTitle = 'Performa Hari Ini';
             $dateSubtitle = $now->isoFormat('dddd, D MMMM Y');
             $funnelPeriod = 'Hari Ini · ' . $now->isoFormat('D MMMM Y');
 
-            $query->whereDate('order_date', $todayStr);
-            $prevQuery->whereDate('order_date', $yesterdayStr);
+            $applyDateRange($query, $now, $now);
+            $yesterday = $now->copy()->subDay();
+            $applyDateRange($prevQuery, $yesterday, $yesterday);
             $comparisonLabel = 'dari kemarin';
         } elseif ($range === 'week') {
             $startWeek = $now->copy()->startOfWeek();
@@ -67,19 +71,17 @@ class DashboardController extends Controller
             $dateSubtitle = $startWeek->isoFormat('D MMMM') . ' – ' . $endWeek->isoFormat('D MMMM Y');
             $funnelPeriod = 'Minggu Ini · ' . $dateSubtitle;
 
-            $query->whereDate('order_date', '>=', $startWeek->toDateString())
-                  ->whereDate('order_date', '<=', $endWeek->toDateString());
-            $prevQuery->whereDate('order_date', '>=', $startWeek->copy()->subWeek()->toDateString())
-                      ->whereDate('order_date', '<=', $endWeek->copy()->subWeek()->toDateString());
+            $applyDateRange($query, $startWeek, $endWeek);
+            $applyDateRange($prevQuery, $startWeek->copy()->subWeek(), $endWeek->copy()->subWeek());
             $comparisonLabel = 'dari minggu lalu';
         } elseif ($range === 'month') {
             $timeframeTitle = 'Performa Bulan Ini';
             $dateSubtitle = $now->isoFormat('MMMM Y');
             $funnelPeriod = 'Bulan Ini · ' . $dateSubtitle;
 
-            $query->whereYear('order_date', $now->year)->whereMonth('order_date', $now->month);
+            $applyDateRange($query, $now->copy()->startOfMonth(), $now->copy()->endOfMonth());
             $prevMonth = $now->copy()->subMonth();
-            $prevQuery->whereYear('order_date', $prevMonth->year)->whereMonth('order_date', $prevMonth->month);
+            $applyDateRange($prevQuery, $prevMonth->copy()->startOfMonth(), $prevMonth->copy()->endOfMonth());
             $comparisonLabel = 'dari bulan lalu';
         } elseif ($range === 'all') {
             $timeframeTitle = 'Performa Semua Waktu';
@@ -93,22 +95,39 @@ class DashboardController extends Controller
             $dateSubtitle = '01 Jan ' . $now->year . ' – 31 Des ' . $now->year;
             $funnelPeriod = 'Tahun Ini · ' . $dateSubtitle;
 
-            $query->whereYear('order_date', $now->year);
-            $prevQuery->whereYear('order_date', $now->year - 1);
+            $startYear = $now->copy()->startOfYear();
+            $endYear = $now->copy()->endOfYear();
+            $applyDateRange($query, $startYear, $endYear);
+            $applyDateRange($prevQuery, $startYear->copy()->subYear(), $endYear->copy()->subYear());
             $comparisonLabel = 'dari tahun lalu';
         }
 
-        // Perhitungan Metrik Utama
-        $omset = (float) (clone $query)->sum('est_net_income');
-        $netPayout = (float) (clone $query)->sum('marketplace_net_payout');
-        $totalOrders = (int) (clone $query)->count();
-        $pengiriman = (int) (clone $query)->whereNotNull('shipping_courier')->where('shipping_courier', '!=', '')->count();
+        // Perhitungan Metrik Utama (1 query agregasi per periode)
+        $metricCols = "
+            COALESCE(SUM(est_net_income), 0) as total_omset,
+            COALESCE(SUM(marketplace_net_payout), 0) as total_net_payout,
+            COUNT(*) as total_orders,
+            COALESCE(SUM(CASE WHEN shipping_courier IS NOT NULL AND shipping_courier != '' THEN 1 ELSE 0 END), 0) as total_pengiriman
+        ";
 
-        // Data Periode Sebelumnya (Untuk Perbandingan % Tren)
-        $prevOmset = (float) (clone $prevQuery)->sum('est_net_income');
-        $prevNetPayout = (float) (clone $prevQuery)->sum('marketplace_net_payout');
-        $prevTotalOrders = (int) (clone $prevQuery)->count();
-        $prevPengiriman = (int) (clone $prevQuery)->whereNotNull('shipping_courier')->where('shipping_courier', '!=', '')->count();
+        $currentStats = (clone $query)->selectRaw($metricCols)->first();
+        $omset = (float) ($currentStats->total_omset ?? 0);
+        $netPayout = (float) ($currentStats->total_net_payout ?? 0);
+        $totalOrders = (int) ($currentStats->total_orders ?? 0);
+        $pengiriman = (int) ($currentStats->total_pengiriman ?? 0);
+
+        // Data Periode Sebelumnya (lewati untuk 'all' karena tidak dibandingkan)
+        $prevOmset = 0.0;
+        $prevNetPayout = 0.0;
+        $prevTotalOrders = 0;
+        $prevPengiriman = 0;
+        if ($range !== 'all') {
+            $prevStats = (clone $prevQuery)->selectRaw($metricCols)->first();
+            $prevOmset = (float) ($prevStats->total_omset ?? 0);
+            $prevNetPayout = (float) ($prevStats->total_net_payout ?? 0);
+            $prevTotalOrders = (int) ($prevStats->total_orders ?? 0);
+            $prevPengiriman = (int) ($prevStats->total_pengiriman ?? 0);
+        }
 
         $calcChange = function ($current, $prev) use ($range) {
             if ($range === 'all' || $prev == 0) {
@@ -153,8 +172,8 @@ class DashboardController extends Controller
                 DB::raw('count(*) as order_count'),
                 DB::raw('coalesce(sum(est_net_income), 0) as total_income')
             )
-            ->whereYear('order_date', '>=', 2024)
-            ->whereYear('order_date', '<=', 2027)
+            ->where('order_date', '>=', '2024-01-01')
+            ->where('order_date', '<', '2028-01-01')
             ->groupBy('date')
             ->orderByDesc('date')
             ->limit(14)
@@ -252,6 +271,10 @@ class DashboardController extends Controller
             'pengirimanChange' => $calcChange($pengiriman, $prevPengiriman) . $comparisonLabel,
         ];
 
+        $userStats = User::query()
+            ->selectRaw("COUNT(*) as total_users, COALESCE(SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END), 0) as active_users")
+            ->first();
+
         return Inertia::render('Dashboard', [
             'filters' => [
                 'range'   => $range,
@@ -267,8 +290,8 @@ class DashboardController extends Controller
             'courierBreakdown' => $courierBreakdown,
             'topProducts'      => $topProducts,
             'stats'            => [
-                'totalUsers'  => User::count(),
-                'activeUsers' => User::where('status', 'active')->count(),
+                'totalUsers'  => (int) ($userStats->total_users ?? 0),
+                'activeUsers' => (int) ($userStats->active_users ?? 0),
                 'totalRoles'  => Role::count(),
                 'appName'     => config('app.name'),
             ],
