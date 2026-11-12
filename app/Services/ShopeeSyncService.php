@@ -2378,12 +2378,72 @@ class ShopeeSyncService
         $response = Http::timeout(25)->post($url, $payload);
         $data = $response->json();
 
+        // Shopee sering mengisi `error` (mis. product.error_busi / "please check the failure_list")
+        // sekaligus mengembalikan detail per-model di `response.failure_list` / `response.success_list`.
+        $respPayload = is_array($data['response'] ?? null) ? $data['response'] : null;
+        if ($respPayload !== null && (! empty($respPayload['failure_list']) || ! empty($respPayload['success_list']))) {
+            return $respPayload;
+        }
+
         if ($response->failed() || ! empty($data['error'])) {
             $msg = $data['message'] ?? $data['error'] ?? 'Gagal mengubah stok di Shopee';
             throw new RuntimeException("Shopee Update Stock API Error: {$msg}");
         }
 
-        return $data['response'] ?? [];
+        return $respPayload ?? [];
+    }
+
+    /**
+     * Pecah stock_list per 50 variasi sesuai batas maksimum API Shopee /api/v2/product/update_stock.
+     */
+    private function updateStockRawChunked(ShopeeAccount $account, int $itemId, array $stockList): array
+    {
+        if (count($stockList) <= 50) {
+            return $this->updateStockRaw($account, $itemId, $stockList);
+        }
+
+        $mergedFailures = [];
+        $mergedSuccess = [];
+        foreach (array_chunk($stockList, 50) as $chunk) {
+            $res = $this->updateStockRaw($account, $itemId, $chunk);
+            foreach ($res['failure_list'] ?? [] as $fail) {
+                $mergedFailures[] = $fail;
+            }
+            foreach ($res['success_list'] ?? [] as $ok) {
+                $mergedSuccess[] = $ok;
+            }
+        }
+
+        return [
+            'failure_list' => $mergedFailures,
+            'success_list' => $mergedSuccess,
+        ];
+    }
+
+    private function extractLocationId(ShopeeProduct $product): ?string
+    {
+        $raw = is_array($product->raw_data) ? $product->raw_data : null;
+        if (! $raw) {
+            return null;
+        }
+
+        $locId = $raw['stock_info_v2']['seller_stock'][0]['location_id'] ?? null;
+        if (! is_string($locId) || trim($locId) === '') {
+            return null;
+        }
+
+        return trim($locId);
+    }
+
+    private function isPromoLockReason(string $reason): bool
+    {
+        foreach (['campaign', 'promot', 'reserved', 'promo', 'flash', 'discount', 'lock'] as $kw) {
+            if (stripos($reason, $kw) !== false) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -2440,7 +2500,7 @@ class ShopeeSyncService
             }
 
             try {
-                $apiRes = $this->updateStockRaw($account, (int) $itemId, $stockList);
+                $apiRes = $this->updateStockRawChunked($account, (int) $itemId, $stockList);
 
                 // Cek jika Shopee mengembalikan failure_list untuk model tertentu
                 $apiFailures = $apiRes['failure_list'] ?? [];
@@ -2448,6 +2508,7 @@ class ShopeeSyncService
                 $failedReasonByModel = [];
                 $campaignRetryList = [];
                 $campaignRetriedModelIds = [];
+                $locationRetryList = [];
 
                 foreach ($apiFailures as $fail) {
                     $mId = (int) ($fail['model_id'] ?? 0);
@@ -2455,14 +2516,25 @@ class ShopeeSyncService
 
                     $matchingProd = $items->first(fn ($p) => (int) ($p->model_id ?? 0) === $mId);
                     $reserved = $matchingProd ? (int) ($matchingProd->reserved_stock ?? 0) : 0;
+                    $locId = $matchingProd ? $this->extractLocationId($matchingProd) : null;
 
                     // Jika gagal karena proteksi promosi/campaign dan ada kuota promo, mentokkan ke kuota promo
-                    if ($reserved > 0 && (stripos($reason, 'campaign') !== false || stripos($reason, 'promot') !== false || stripos($reason, 'reserved') !== false || stripos($reason, 'promo') !== false)) {
-                        $campaignRetryList[] = [
+                    if ($reserved > 0 && $this->isPromoLockReason($reason)) {
+                        $retryEntry = [
                             'model_id' => $mId,
                             'stock'    => $reserved,
                         ];
+                        if ($locId) {
+                            $retryEntry['location_id'] = $locId;
+                        }
+                        $campaignRetryList[] = $retryEntry;
                         $campaignRetriedModelIds[] = $mId;
+                    } elseif ($locId && (stripos($reason, 'location') !== false || stripos($reason, 'warehouse') !== false)) {
+                        $locationRetryList[] = [
+                            'model_id'    => $mId,
+                            'stock'       => 0,
+                            'location_id' => $locId,
+                        ];
                     } else {
                         $failedModelIds[] = $mId;
                         $errMsg = $reason ?: 'Gagal update stok di Shopee';
@@ -2475,10 +2547,54 @@ class ShopeeSyncService
                     }
                 }
 
+                // Retry khusus jika Shopee meminta location_id multi-gudang
+                if (! empty($locationRetryList)) {
+                    try {
+                        $locRes = $this->updateStockRawChunked($account, (int) $itemId, $locationRetryList);
+                        foreach ($locRes['failure_list'] ?? [] as $lf) {
+                            $lfmId = (int) ($lf['model_id'] ?? 0);
+                            $lfReason = (string) ($lf['failed_reason'] ?? '');
+                            $matchingProd = $items->first(fn ($p) => (int) ($p->model_id ?? 0) === $lfmId);
+                            $reserved = $matchingProd ? (int) ($matchingProd->reserved_stock ?? 0) : 0;
+                            $locId = $matchingProd ? $this->extractLocationId($matchingProd) : null;
+
+                            if ($reserved > 0 && $this->isPromoLockReason($lfReason)) {
+                                $retryEntry = ['model_id' => $lfmId, 'stock' => $reserved];
+                                if ($locId) {
+                                    $retryEntry['location_id'] = $locId;
+                                }
+                                $campaignRetryList[] = $retryEntry;
+                                $campaignRetriedModelIds[] = $lfmId;
+                            } else {
+                                $failedModelIds[] = $lfmId;
+                                $errMsg = $lfReason ?: 'Gagal update stok di Shopee';
+                                $failedReasonByModel[$lfmId] = $errMsg;
+                                $failures[] = [
+                                    'item_id'  => $itemId,
+                                    'model_id' => $lfmId,
+                                    'reason'   => $errMsg,
+                                ];
+                            }
+                        }
+                    } catch (\Throwable $le) {
+                        foreach ($locationRetryList as $lEntry) {
+                            $lmId = (int) $lEntry['model_id'];
+                            $failedModelIds[] = $lmId;
+                            $errMsg = $le->getMessage();
+                            $failedReasonByModel[$lmId] = $errMsg;
+                            $failures[] = [
+                                'item_id'  => $itemId,
+                                'model_id' => $lmId,
+                                'reason'   => $errMsg,
+                            ];
+                        }
+                    }
+                }
+
                 // Lakukan retry untuk variasi yang terkunci campaign (mentokkan kuota)
                 if (! empty($campaignRetryList)) {
                     try {
-                        $retryRes = $this->updateStockRaw($account, (int) $itemId, $campaignRetryList);
+                        $retryRes = $this->updateStockRawChunked($account, (int) $itemId, $campaignRetryList);
                         $retryFailures = $retryRes['failure_list'] ?? [];
                         foreach ($retryFailures as $rf) {
                             $rfmId = (int) ($rf['model_id'] ?? 0);
@@ -2612,21 +2728,61 @@ class ShopeeSyncService
             }
 
             try {
-                $apiRes = $this->updateStockRaw($account, (int) $itemId, $stockList);
+                $apiRes = $this->updateStockRawChunked($account, (int) $itemId, $stockList);
                 $apiFailures = $apiRes['failure_list'] ?? [];
                 $failedModelIds = [];
                 $failedReasonByModel = [];
+                $locationRetryList = [];
 
                 foreach ($apiFailures as $fail) {
                     $mId = (int) ($fail['model_id'] ?? 0);
-                    $failedModelIds[] = $mId;
-                    $errMsg = $fail['failed_reason'] ?? 'Gagal update stok di Shopee';
-                    $failedReasonByModel[$mId] = $errMsg;
-                    $failures[] = [
-                        'item_id'  => $itemId,
-                        'model_id' => $mId,
-                        'reason'   => $errMsg,
-                    ];
+                    $errMsg = (string) ($fail['failed_reason'] ?? 'Gagal update stok di Shopee');
+                    $matchingProd = $items->first(fn ($p) => (int) ($p->model_id ?? 0) === $mId);
+                    $locId = $matchingProd ? $this->extractLocationId($matchingProd) : null;
+
+                    if ($locId && (stripos($errMsg, 'location') !== false || stripos($errMsg, 'warehouse') !== false) && $matchingProd) {
+                        $locationRetryList[] = [
+                            'model_id'    => $mId,
+                            'stock'       => $stocksByProdId[$matchingProd->id] ?? 0,
+                            'location_id' => $locId,
+                        ];
+                    } else {
+                        $failedModelIds[] = $mId;
+                        $failedReasonByModel[$mId] = $errMsg;
+                        $failures[] = [
+                            'item_id'  => $itemId,
+                            'model_id' => $mId,
+                            'reason'   => $errMsg,
+                        ];
+                    }
+                }
+
+                if (! empty($locationRetryList)) {
+                    try {
+                        $locRes = $this->updateStockRawChunked($account, (int) $itemId, $locationRetryList);
+                        foreach ($locRes['failure_list'] ?? [] as $lf) {
+                            $lfmId = (int) ($lf['model_id'] ?? 0);
+                            $errMsg = (string) ($lf['failed_reason'] ?? 'Gagal update stok di Shopee');
+                            $failedModelIds[] = $lfmId;
+                            $failedReasonByModel[$lfmId] = $errMsg;
+                            $failures[] = [
+                                'item_id'  => $itemId,
+                                'model_id' => $lfmId,
+                                'reason'   => $errMsg,
+                            ];
+                        }
+                    } catch (\Throwable $le) {
+                        foreach ($locationRetryList as $lEntry) {
+                            $lmId = (int) $lEntry['model_id'];
+                            $failedModelIds[] = $lmId;
+                            $failedReasonByModel[$lmId] = $le->getMessage();
+                            $failures[] = [
+                                'item_id'  => $itemId,
+                                'model_id' => $lmId,
+                                'reason'   => $le->getMessage(),
+                            ];
+                        }
+                    }
                 }
 
                 // Update database lokal untuk variasi yang sukses
