@@ -47,7 +47,8 @@ return [
     ],
 
     'shopee' => [
-        'host' => env('SHOPEE_API_HOST', 'https://partner.shopeemobile.com'),
+        'host'        => env('SHOPEE_API_HOST', 'https://partner.shopeemobile.com'),
+        'webhook_url' => env('SHOPEE_WEBHOOK_URL'),
     ],
 
     'tiktok' => [

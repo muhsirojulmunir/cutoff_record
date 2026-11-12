@@ -62,10 +62,18 @@ class ShopeeOrderController extends Controller
         $rawTab = strtolower(trim((string) $request->input('tab', ShopeeOrder::TAB_TO_SHIP)));
         $tab = in_array($rawTab, self::VALID_TABS, true) ? $rawTab : ShopeeOrder::TAB_TO_SHIP;
 
-        $rawSubTab = strtolower(trim((string) $request->input('sub_tab', ShopeeOrder::SUBTAB_ALL)));
+        $hasExplicitSubTab = $request->has('sub_tab') && trim((string) $request->input('sub_tab')) !== '';
+        $rawSubTab = $hasExplicitSubTab
+            ? strtolower(trim((string) $request->input('sub_tab')))
+            : ShopeeOrder::SUBTAB_UNPROCESSED;
         $subTab = ($tab === ShopeeOrder::TAB_TO_SHIP && in_array($rawSubTab, self::VALID_SUBTABS, true))
             ? $rawSubTab
             : ShopeeOrder::SUBTAB_ALL;
+
+        $rawOrderType = strtolower(trim((string) $request->input('order_type', ShopeeOrder::ORDERTYPE_ALL)));
+        $orderType = in_array($rawOrderType, ShopeeOrder::VALID_ORDER_TYPES, true)
+            ? $rawOrderType
+            : ShopeeOrder::ORDERTYPE_ALL;
 
         $rawPrintStatus = strtolower(trim((string) $request->input('print_status', 'all')));
         $printStatus = in_array($rawPrintStatus, self::VALID_PRINT_STATUSES, true) ? $rawPrintStatus : 'all';
@@ -85,6 +93,7 @@ class ShopeeOrderController extends Controller
         $sort = in_array($rawSort, self::VALID_SORTS, true) ? $rawSort : 'ship_by_asc';
 
         $tabCounts = $this->emptyTabCounts();
+        $orderTypeCounts = $this->emptyOrderTypeCounts();
         $carriers = [];
 
         if (! $account) {
@@ -94,6 +103,11 @@ class ShopeeOrderController extends Controller
                 ->withQueryString();
         } else {
             $tabCounts = $this->fetchTabCounts($account->id);
+            $orderTypeCounts = ShopeeOrder::computeOrderTypeCounts(
+                ShopeeOrder::query()
+                    ->where('shopee_account_id', $account->id)
+                    ->forTab($tab, $subTab)
+            );
 
             $carriers = ShopeeOrder::query()
                 ->where('shopee_account_id', $account->id)
@@ -108,6 +122,7 @@ class ShopeeOrderController extends Controller
             $query = ShopeeOrder::query()
                 ->where('shopee_account_id', $account->id)
                 ->forTab($tab, $subTab)
+                ->forOrderType($orderType)
                 ->forPrintStatus($printStatus);
 
             if ($search !== '') {
@@ -149,13 +164,15 @@ class ShopeeOrderController extends Controller
         }
 
         return Inertia::render('Shopee/Orders', [
-            'account'   => $account?->toSafeArray(),
-            'orders'    => $orders,
-            'tabCounts' => $tabCounts,
-            'carriers'  => $carriers,
-            'filters'   => [
+            'account'         => $account?->toSafeArray(),
+            'orders'          => $orders,
+            'tabCounts'       => $tabCounts,
+            'orderTypeCounts' => $orderTypeCounts,
+            'carriers'        => $carriers,
+            'filters'         => [
                 'tab'          => $tab,
                 'sub_tab'      => $subTab,
+                'order_type'   => $orderType,
                 'print_status' => $printStatus,
                 'search'       => $search,
                 'courier'      => $courier,
@@ -202,13 +219,108 @@ class ShopeeOrderController extends Controller
         }
 
         try {
-            $result = $this->orderService->syncOrders($account, $timeFrom, $timeTo, null, true);
+            $result = $this->orderService->syncOrders($account, $timeFrom, $timeTo, null, true, true);
 
             return back()->with('success', $result['message']);
         } catch (\Throwable $e) {
             Log::warning('ShopeeOrderController sync error: ' . $e->getMessage());
 
             return back()->with('error', 'Gagal sinkronisasi pesanan Shopee: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Endpoint JSON non-blocking untuk Live Auto-Sync 30 detik (read-only + Cache::lock + cooldown).
+     */
+    public function autoSync(Request $request): JsonResponse
+    {
+        $this->authorizeSuperAdmin($request);
+
+        try {
+            $account = $this->resolveShopeeAccount();
+            if (! $this->isAccountConnected($account)) {
+                return response()->json([
+                    'status'         => 'skipped',
+                    'skipped'        => true,
+                    'reason'         => 'disconnected',
+                    'total_fetched'  => 0,
+                    'synced_orders'  => 0,
+                    'changed_orders' => 0,
+                    'cutoff_created' => 0,
+                    'cutoff_updated' => 0,
+                    'last_synced_at' => null,
+                    'message'        => 'Akun Shopee belum terhubung.',
+                ], 200);
+            }
+
+            @ini_set('max_execution_time', '90');
+            @set_time_limit(90);
+
+            $cooldown = $request->boolean('force') ? 0 : 20;
+            $result = $this->orderService->runIncrementalAutoSync($account, 10800, $cooldown);
+
+            return response()->json($result, 200);
+        } catch (\Throwable $e) {
+            return $this->actionErrorResponse($e);
+        }
+    }
+
+    /**
+     * Endpoint JSON sinkronisasi per chunk tanggal (maksimal 2 hari per request agar bebas 503).
+     */
+    public function syncChunk(Request $request): JsonResponse
+    {
+        $this->authorizeSuperAdmin($request);
+
+        try {
+            $validated = $request->validate([
+                'start_date' => ['required', 'date'],
+                'end_date'   => ['required', 'date'],
+            ]);
+
+            $startDate = Carbon::parse($validated['start_date'], 'Asia/Jakarta')->startOfDay();
+            $endDate = Carbon::parse($validated['end_date'], 'Asia/Jakarta')->startOfDay();
+            if ($startDate->gt($endDate)) {
+                [$startDate, $endDate] = [$endDate, $startDate];
+            }
+
+            if ($startDate->diffInDays($endDate, true) > 2) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Maksimal 2 hari per chunk sinkronisasi agar server bebas timeout.',
+                ], 422);
+            }
+
+            $account = $this->requireConnectedAccount();
+
+            @ini_set('max_execution_time', '90');
+            @set_time_limit(90);
+
+            $timeFrom = $startDate->timestamp;
+            $timeTo = min(time(), $endDate->copy()->endOfDay()->timestamp);
+
+            if ($timeTo <= $timeFrom) {
+                return response()->json([
+                    'status'         => 'success',
+                    'total_fetched'  => 0,
+                    'synced_orders'  => 0,
+                    'changed_orders' => 0,
+                    'cutoff_created' => 0,
+                    'cutoff_updated' => 0,
+                    'last_synced_at' => $account->last_synced_at?->setTimezone('Asia/Jakarta')->format('d M Y, H:i:s'),
+                    'message'        => 'Tidak ada rentang waktu aktif pada tanggal tersebut.',
+                ], 200);
+            }
+
+            $result = $this->orderService->syncOrders($account, $timeFrom, $timeTo, null, true, true);
+
+            return response()->json(array_merge([
+                'status' => 'success',
+            ], $result), 200);
+        } catch (ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Throwable $e) {
+            return $this->actionErrorResponse($e);
         }
     }
 
@@ -514,6 +626,19 @@ class ShopeeOrderController extends Controller
             'cancelled'           => 0,
             'unprinted'           => 0,
             'printed'             => 0,
+        ];
+    }
+
+    /**
+     * @return array{all: int, regular: int, instant: int, kilat: int}
+     */
+    private function emptyOrderTypeCounts(): array
+    {
+        return [
+            'all'     => 0,
+            'regular' => 0,
+            'instant' => 0,
+            'kilat'   => 0,
         ];
     }
 
