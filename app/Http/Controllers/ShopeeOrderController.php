@@ -263,11 +263,11 @@ class ShopeeOrderController extends Controller
                 ], 200);
             }
 
-            @ini_set('max_execution_time', '90');
-            @set_time_limit(90);
+            @ini_set('max_execution_time', '45');
+            @set_time_limit(45);
 
             $cooldown = $request->boolean('force') ? 0 : 20;
-            $result = $this->orderService->runIncrementalAutoSync($account, 10800, $cooldown);
+            $result = $this->orderService->runIncrementalAutoSync($account, 1800, $cooldown);
 
             return response()->json($result, 200);
         } catch (\Throwable $e) {

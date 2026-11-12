@@ -158,9 +158,21 @@ class ShopeeOrderService
                 $timeFrom = $nowTs - $lookbackSeconds;
                 $orderSns = $this->collectOrderSnsInWindow($freshAccount, $timeFrom, $nowTs, null, true);
 
-                $allOrderSns = array_fill_keys($orderSns, true);
+                // Prioritaskan pesanan terbaru dari jendela 30 menit, lalu rotasi maksimal 15 pesanan aktif lama
+                // dan batasi 1 batch (50 pesanan) per tick 30s agar bebas timeout HTTP 503 di hosting.
+                $allOrderSns = [];
+                foreach ($orderSns as $sn) {
+                    $snStr = trim((string) $sn);
+                    if ($snStr !== '') {
+                        $allOrderSns[$snStr] = true;
+                        if (count($allOrderSns) >= self::MAX_BATCH_SIZE) {
+                            break;
+                        }
+                    }
+                }
 
-                if (Schema::hasTable('shopee_orders')) {
+                $remainingSlots = max(0, min(15, self::MAX_BATCH_SIZE - count($allOrderSns)));
+                if ($remainingSlots > 0 && Schema::hasTable('shopee_orders')) {
                     $activeQuery = ShopeeOrder::where('shopee_account_id', $freshAccount->id)
                         ->whereIn('order_status', ['UNPAID', 'READY_TO_SHIP', 'RETRY_SHIP', 'PROCESSED', 'IN_CANCEL'])
                         ->orderByRaw('CASE WHEN last_synced_at IS NULL THEN 0 ELSE 1 END ASC, last_synced_at ASC');
@@ -169,7 +181,7 @@ class ShopeeOrderService
                         $activeQuery->whereNotIn('order_sn', $orderSns);
                     }
 
-                    $activeLocalSns = $activeQuery->limit(self::MAX_BATCH_SIZE)->pluck('order_sn');
+                    $activeLocalSns = $activeQuery->limit($remainingSlots)->pluck('order_sn');
                     foreach ($activeLocalSns as $activeSn) {
                         $snStr = trim((string) $activeSn);
                         if ($snStr !== '') {
@@ -183,7 +195,8 @@ class ShopeeOrderService
                     array_keys($allOrderSns),
                     true,
                     true,
-                    'Tidak ada pesanan baru atau pembaruan status saat ini.'
+                    'Tidak ada pesanan baru atau pembaruan status saat ini.',
+                    true
                 );
 
                 return array_merge([
@@ -889,7 +902,8 @@ class ShopeeOrderService
         array $orderSns,
         bool $syncCutOff = true,
         bool $updateAccountTimestamps = true,
-        string $emptyMessage = 'Tidak ada pesanan Shopee pada rentang waktu tersebut.'
+        string $emptyMessage = 'Tidak ada pesanan Shopee pada rentang waktu tersebut.',
+        bool $lightweightAutoSync = false
     ): array {
         $normalizedSns = array_values(array_unique(array_filter(
             array_map(static fn ($sn): string => trim((string) $sn), $orderSns),
@@ -915,7 +929,7 @@ class ShopeeOrderService
         [
             'detailed_orders' => $detailedOrders,
             'escrow_map'      => $escrowMap,
-        ] = $this->fetchDetailsAndEscrowConcurrent($account, $normalizedSns, $syncCutOff);
+        ] = $this->fetchDetailsAndEscrowConcurrent($account, $normalizedSns, $syncCutOff, ! $lightweightAutoSync);
 
         if (empty($detailedOrders)) {
             if ($updateAccountTimestamps) {
@@ -940,7 +954,7 @@ class ShopeeOrderService
                 $account,
                 $detailedOrders,
                 $escrowMap,
-                true,
+                ! $lightweightAutoSync,
                 $updateAccountTimestamps
             );
             $syncedOrders = (int) ($cutOffResult['shopee_synced'] ?? 0);
@@ -960,7 +974,8 @@ class ShopeeOrderService
         }
 
         $trackingUpdated = 0;
-        $trackingMap = $this->fetchMissingTrackingNumbersPool($account, $detailedOrders, 20, $trackingUpdated);
+        $trackingPoolLimit = $lightweightAutoSync ? 6 : 20;
+        $trackingMap = $this->fetchMissingTrackingNumbersPool($account, $detailedOrders, $trackingPoolLimit, $trackingUpdated);
         if ($trackingUpdated > 0 && ! empty($preExistingEmptyTracking)) {
             $newlyTrackedExistingCount = 0;
             foreach (array_keys($trackingMap) as $trackedSn) {
@@ -1083,7 +1098,8 @@ class ShopeeOrderService
     private function fetchDetailsAndEscrowConcurrent(
         ShopeeAccount &$account,
         array $orderSns,
-        bool $fetchEscrow = true
+        bool $fetchEscrow = true,
+        bool $allowSerialEscrowFallback = true
     ): array {
         $normalizedSns = array_values(array_unique(array_filter(
             array_map(static fn ($sn): string => trim((string) $sn), $orderSns),
@@ -1183,7 +1199,7 @@ class ShopeeOrderService
             }
         }
 
-        if ($fetchEscrow) {
+        if ($fetchEscrow && $allowSerialEscrowFallback) {
             foreach ($failedEscrowChunks as $chunk) {
                 $batchEscrow = $this->syncService->fetchEscrowDetailBatch($account, $chunk);
                 if (! empty($batchEscrow)) {

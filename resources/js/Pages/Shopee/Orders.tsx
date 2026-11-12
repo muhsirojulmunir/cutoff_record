@@ -362,6 +362,7 @@ export default function ShopeeOrdersPage({
   const autoSyncAbortRef = useRef<AbortController | null>(null);
   const chunkAbortRef = useRef<AbortController | null>(null);
   const autoSyncInFlightRef = useRef(false);
+  const consecutiveAutoSyncFailuresRef = useRef(0);
   const chunkSyncInFlightRef = useRef(false);
   const navSequenceRef = useRef(0);
   const countdownRef = useRef<number>(LIVE_AUTO_SYNC_INTERVAL_SEC);
@@ -634,12 +635,21 @@ export default function ShopeeOrdersPage({
         }
 
         if (!result.ok || !result.data) {
-          if (result.authOrSessionExpired || result.nonJsonOrServerHtml) {
+          if (result.authOrSessionExpired) {
             isLiveAutoSyncRef.current = false;
             setIsLiveAutoSync(false);
             setSyncAlert(result.errorMessage);
             showToast('error', result.errorMessage);
-          } else if (!options?.silentError) {
+            return;
+          }
+
+          // Jangan hentikan Live Auto-Sync saat terjadi HTTP 5xx / timeout sementara (503, dll):
+          // biarkan countdown tetap jalan dan coba ulang otomatis seperti Pesanan Cut Off.
+          consecutiveAutoSyncFailuresRef.current += 1;
+          if (
+            !options?.silentError ||
+            consecutiveAutoSyncFailuresRef.current >= 3
+          ) {
             setSyncAlert(result.errorMessage);
           }
           return;
@@ -647,12 +657,17 @@ export default function ShopeeOrdersPage({
 
         const payload = result.data;
         if (payload.status === 'error') {
-          if (!options?.silentError) {
+          consecutiveAutoSyncFailuresRef.current += 1;
+          if (
+            !options?.silentError ||
+            consecutiveAutoSyncFailuresRef.current >= 3
+          ) {
             setSyncAlert(payload.message || 'Gagal menyegarkan pesanan Shopee secara otomatis.');
           }
           return;
         }
 
+        consecutiveAutoSyncFailuresRef.current = 0;
         setSyncAlert(null);
         if (payload.last_synced_at) {
           setLocalLastSyncedAt(payload.last_synced_at);
@@ -681,8 +696,12 @@ export default function ShopeeOrdersPage({
           return;
         }
         if (!isMountedRef.current) return;
-        if (!options?.silentError) {
-          setSyncAlert('Koneksi ke server terputus saat menyegarkan pesanan otomatis.');
+        consecutiveAutoSyncFailuresRef.current += 1;
+        if (
+          !options?.silentError ||
+          consecutiveAutoSyncFailuresRef.current >= 3
+        ) {
+          setSyncAlert('Koneksi ke server sempat terputus; Live Auto-Sync akan mencoba ulang otomatis.');
         }
       } finally {
         if (autoSyncAbortRef.current === controller) {
@@ -748,7 +767,7 @@ export default function ShopeeOrdersPage({
       if (countdownRef.current <= 1) {
         countdownRef.current = LIVE_AUTO_SYNC_INTERVAL_SEC;
         setLiveCountdown(LIVE_AUTO_SYNC_INTERVAL_SEC);
-        void runAutoSync({ silentError: false });
+        void runAutoSync({ silentError: true });
       } else {
         countdownRef.current -= 1;
         setLiveCountdown(countdownRef.current);
@@ -815,7 +834,7 @@ export default function ShopeeOrdersPage({
               result.data?.message ||
               result.errorMessage ||
               `Gagal sinkronisasi tanggal ${dayStr}.`;
-            if (result.authOrSessionExpired || result.nonJsonOrServerHtml) {
+            if (result.authOrSessionExpired) {
               setIsLiveAutoSync(false);
             }
             const progressPrefix =
