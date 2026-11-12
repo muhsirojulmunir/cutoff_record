@@ -162,103 +162,152 @@ class DashboardController extends Controller
             'ongkirPercent'   => 0.0,
         ];
 
-        // 3. Tren Volume & Penjualan Harian (14 Hari Transaksi Terakhir)
-        $dailyTrendQuery = CutOffOrder::query()->onlyProcessed();
-        if ($channel && $channel !== 'all') {
-            $dailyTrendQuery->where('channel', $channel);
-        }
-        $dailyTrend = $dailyTrendQuery
-            ->select(
-                DB::raw('DATE(order_date) as date'),
-                DB::raw('count(*) as order_count'),
-                DB::raw('coalesce(sum(est_net_income), 0) as total_income')
-            )
-            ->where('order_date', '>=', '2024-01-01')
-            ->where('order_date', '<', '2028-01-01')
-            ->groupBy('date')
-            ->orderByDesc('date')
-            ->limit(14)
-            ->get()
-            ->sortBy('date')
-            ->values()
-            ->map(fn ($item) => [
-                'date'         => (string) $item->date,
-                'order_count'  => (int) $item->order_count,
-                'total_income' => (float) $item->total_income,
-            ])
-            ->toArray();
+        // 3. Tren Volume & Penjualan Harian (14 Hari Transaksi Terakhir, lookback 120 hari + cache 60s)
+        CutOffOrder::ensurePerformanceIndexesOnce();
+        $cacheVer = CutOffOrder::getCacheVersion();
 
-        // 4. Performa Toko & Marketplace
-        $channelBreakdown = (clone $query)
-            ->select('channel', DB::raw('count(*) as count'), DB::raw('coalesce(sum(est_net_income), 0) as total_income'))
-            ->whereNotNull('channel')
-            ->where('channel', '!=', '')
-            ->groupBy('channel')
-            ->orderByDesc('count')
-            ->limit(6)
-            ->get()
-            ->map(fn ($item) => [
-                'channel'      => (string) $item->channel,
-                'count'        => (int) $item->count,
-                'total_income' => (float) $item->total_income,
-            ])
-            ->toArray();
+        $computeDailyTrend = static function () use ($channel): array {
+            $recentCutoff = Carbon::now('Asia/Jakarta')->subDays(120)->toDateString();
 
-        // 5. Performa Jasa Pengiriman (Kurir)
-        $courierBreakdown = (clone $query)
-            ->select('shipping_courier', DB::raw('count(*) as count'), DB::raw('coalesce(sum(est_net_income), 0) as total_income'))
-            ->whereNotNull('shipping_courier')
-            ->where('shipping_courier', '!=', '')
-            ->groupBy('shipping_courier')
-            ->orderByDesc('count')
-            ->limit(6)
-            ->get()
-            ->map(fn ($item) => [
-                'shipping_courier' => (string) $item->shipping_courier,
-                'count'            => (int) $item->count,
-                'total_income'     => (float) $item->total_income,
-            ])
-            ->toArray();
+            $runTrend = static function (string $fromDate) use ($channel): array {
+                $dailyTrendQuery = CutOffOrder::query()->onlyProcessed();
+                if ($channel && $channel !== 'all') {
+                    $dailyTrendQuery->where('channel', $channel);
+                }
 
-        // 6. Produk Paling Menguntungkan
-        $rawTopProducts = (clone $query)
-            ->select(
-                'sku_utama',
-                'product_name',
-                DB::raw('count(*) as total_orders'),
-                DB::raw('sum(qty) as total_qty'),
-                DB::raw('coalesce(sum(est_net_income), 0) as total_omset')
-            )
-            ->whereNotNull('sku_utama')
-            ->where('sku_utama', '!=', '')
-            ->groupBy('sku_utama', 'product_name')
-            ->orderByDesc('total_omset')
-            ->limit(6)
-            ->get();
+                return $dailyTrendQuery
+                    ->select(
+                        DB::raw('DATE(order_date) as date'),
+                        DB::raw('count(*) as order_count'),
+                        DB::raw('coalesce(sum(est_net_income), 0) as total_income')
+                    )
+                    ->where('order_date', '>=', $fromDate)
+                    ->where('order_date', '<', '2028-01-01')
+                    ->groupBy('date')
+                    ->orderByDesc('date')
+                    ->limit(14)
+                    ->get()
+                    ->sortBy('date')
+                    ->values()
+                    ->map(fn ($item) => [
+                        'date'         => (string) $item->date,
+                        'order_count'  => (int) $item->order_count,
+                        'total_income' => (float) $item->total_income,
+                    ])
+                    ->toArray();
+            };
 
-        $maxProfit = 0;
-        $topProducts = [];
-        foreach ($rawTopProducts as $idx => $item) {
-            $prodOmset = (float) $item->total_omset;
-            $prodModal = $prodOmset * 0.564;
-            $prodLaba = max(0, $prodOmset - $prodModal);
-
-            if ($idx === 0) {
-                $maxProfit = $prodLaba > 0 ? $prodLaba : 1;
+            $trend = $runTrend($recentCutoff);
+            if (count($trend) < 14) {
+                $trend = $runTrend('2024-01-01');
             }
 
-            $topProducts[] = [
-                'rank'    => $idx + 1,
-                'sku'     => $item->sku_utama,
-                'name'    => $item->product_name ?: $item->sku_utama,
-                'orders'  => (int) $item->total_orders,
-                'qty'     => (int) $item->total_qty,
-                'omset'   => $prodOmset,
-                'modal'   => $prodModal,
-                'laba'    => $prodLaba,
-                'percent' => $maxProfit > 0 ? min(100, round(($prodLaba / $maxProfit) * 100)) : 0,
+            return $trend;
+        };
+
+        $computeBreakdowns = static function () use ($query): array {
+            $channelBreakdown = (clone $query)
+                ->select('channel', DB::raw('count(*) as count'), DB::raw('coalesce(sum(est_net_income), 0) as total_income'))
+                ->whereNotNull('channel')
+                ->where('channel', '!=', '')
+                ->groupBy('channel')
+                ->orderByDesc('count')
+                ->limit(6)
+                ->get()
+                ->map(fn ($item) => [
+                    'channel'      => (string) $item->channel,
+                    'count'        => (int) $item->count,
+                    'total_income' => (float) $item->total_income,
+                ])
+                ->toArray();
+
+            $courierBreakdown = (clone $query)
+                ->select('shipping_courier', DB::raw('count(*) as count'), DB::raw('coalesce(sum(est_net_income), 0) as total_income'))
+                ->whereNotNull('shipping_courier')
+                ->where('shipping_courier', '!=', '')
+                ->groupBy('shipping_courier')
+                ->orderByDesc('count')
+                ->limit(6)
+                ->get()
+                ->map(fn ($item) => [
+                    'shipping_courier' => (string) $item->shipping_courier,
+                    'count'            => (int) $item->count,
+                    'total_income'     => (float) $item->total_income,
+                ])
+                ->toArray();
+
+            $rawTopProducts = (clone $query)
+                ->select(
+                    'sku_utama',
+                    'product_name',
+                    DB::raw('count(*) as total_orders'),
+                    DB::raw('sum(qty) as total_qty'),
+                    DB::raw('coalesce(sum(est_net_income), 0) as total_omset')
+                )
+                ->whereNotNull('sku_utama')
+                ->where('sku_utama', '!=', '')
+                ->groupBy('sku_utama', 'product_name')
+                ->orderByDesc('total_omset')
+                ->limit(6)
+                ->get();
+
+            $maxProfit = 0;
+            $topProducts = [];
+            foreach ($rawTopProducts as $idx => $item) {
+                $prodOmset = (float) $item->total_omset;
+                $prodModal = $prodOmset * 0.564;
+                $prodLaba = max(0, $prodOmset - $prodModal);
+
+                if ($idx === 0) {
+                    $maxProfit = $prodLaba > 0 ? $prodLaba : 1;
+                }
+
+                $topProducts[] = [
+                    'rank'    => $idx + 1,
+                    'sku'     => $item->sku_utama,
+                    'name'    => $item->product_name ?: $item->sku_utama,
+                    'orders'  => (int) $item->total_orders,
+                    'qty'     => (int) $item->total_qty,
+                    'omset'   => $prodOmset,
+                    'modal'   => $prodModal,
+                    'laba'    => $prodLaba,
+                    'percent' => $maxProfit > 0 ? min(100, round(($prodLaba / $maxProfit) * 100)) : 0,
+                ];
+            }
+
+            return [
+                'channelBreakdown' => $channelBreakdown,
+                'courierBreakdown' => $courierBreakdown,
+                'topProducts'      => $topProducts,
             ];
+        };
+
+        $todayStr = Carbon::now('Asia/Jakarta')->toDateString();
+        if (app()->runningUnitTests()) {
+            $dailyTrend = $computeDailyTrend();
+            $breakdowns = $computeBreakdowns();
+        } else {
+            try {
+                $store = \Illuminate\Support\Facades\Cache::store('file');
+                $dailyTrend = $store->remember(
+                    'dashboard_daily_trend_v1_' . md5("{$cacheVer}|{$channel}|{$todayStr}"),
+                    60,
+                    $computeDailyTrend
+                );
+                $breakdowns = $store->remember(
+                    'dashboard_breakdowns_v1_' . md5("{$cacheVer}|{$range}|{$channel}|{$todayStr}"),
+                    30,
+                    $computeBreakdowns
+                );
+            } catch (\Throwable) {
+                $dailyTrend = $computeDailyTrend();
+                $breakdowns = $computeBreakdowns();
+            }
         }
+
+        $channelBreakdown = $breakdowns['channelBreakdown'];
+        $courierBreakdown = $breakdowns['courierBreakdown'];
+        $topProducts      = $breakdowns['topProducts'];
 
         // Metrik Ringkasan untuk Card
         $summary = [

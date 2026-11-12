@@ -379,75 +379,21 @@ class ShopeeProductController extends Controller
             }
         }
 
-        // 3. Ringkasan Global Statistik Shopee & Subquery Agregasi Penjualan Periode
-        $hasCutOffTable   = \Illuminate\Support\Facades\Schema::hasTable('cut_off_orders');
-        $periodSalesSub   = null;
-        $totalPeriodSales = 0;
-        $periodSalesCount = 0;
+        // 3. Ringkasan Global Statistik Shopee & Penjualan Periode (1 query agregasi cepat + cache 60 detik, bebas leftJoinSub O(N*M))
+        \App\Models\CutOffOrder::ensurePerformanceIndexesOnce();
 
-        if ($hasCutOffTable) {
-            $invalidSkus = ['0', '', '-', '--', '---', '@', '.', 'null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku'];
+        $hasCutOffTable = app()->runningUnitTests()
+            ? \Illuminate\Support\Facades\Schema::hasTable('cut_off_orders')
+            : (bool) \Illuminate\Support\Facades\Cache::store('file')->remember(
+                'shopee_has_cut_off_table_v1',
+                86400,
+                static fn (): bool => \Illuminate\Support\Facades\Schema::hasTable('cut_off_orders')
+            );
 
-            $subQuery = DB::table('cut_off_orders')
-                ->select('sku_utama', DB::raw('CAST(SUM(qty) AS UNSIGNED) as period_sales'))
-                ->where(function ($q) {
-                    $q->where('channel', 'SH')
-                      ->orWhere('channel', 'like', 'SH%');
-                })
-                ->where(function ($q) {
-                    $q->whereNull('order_status')
-                      ->orWhere(function ($sub) {
-                          $sub->where('order_status', 'not like', '%Batal%')
-                              ->where('order_status', 'not like', '%RJ%')
-                              ->where('order_status', 'not like', '%Retur%');
-                      });
-                })
-                ->whereNotNull('sku_utama')
-                ->whereNotIn('sku_utama', $invalidSkus)
-                ->whereRaw("TRIM(sku_utama) != '' AND TRIM(sku_utama) != '0' AND TRIM(sku_utama) != '-' AND TRIM(sku_utama) != '--' AND TRIM(sku_utama) != '@' AND LOWER(TRIM(sku_utama)) NOT IN ('null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku')");
-
-            if (! empty($dateFrom)) {
-                $subQuery->where('order_date', '>=', $dateFrom . ' 00:00:00');
-            }
-            if (! empty($dateTo)) {
-                $subQuery->where('order_date', '<=', $dateTo . ' 23:59:59');
-            }
-
-            $subQuery->groupBy('sku_utama');
-            $periodSalesSub = $subQuery;
-
-            try {
-                $summarySales = DB::table('cut_off_orders')
-                    ->where(function ($q) {
-                        $q->where('channel', 'SH')
-                          ->orWhere('channel', 'like', 'SH%');
-                    })
-                    ->where(function ($q) {
-                        $q->whereNull('order_status')
-                          ->orWhere(function ($sub) {
-                              $sub->where('order_status', 'not like', '%Batal%')
-                                  ->where('order_status', 'not like', '%RJ%')
-                                  ->where('order_status', 'not like', '%Retur%');
-                          });
-                    })
-                    ->whereNotNull('sku_utama')
-                    ->whereNotIn('sku_utama', $invalidSkus)
-                    ->whereRaw("TRIM(sku_utama) != '' AND TRIM(sku_utama) != '0' AND TRIM(sku_utama) != '-' AND TRIM(sku_utama) != '--' AND TRIM(sku_utama) != '@' AND LOWER(TRIM(sku_utama)) NOT IN ('null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku')");
-
-                if (! empty($dateFrom)) {
-                    $summarySales->where('order_date', '>=', $dateFrom . ' 00:00:00');
-                }
-                if (! empty($dateTo)) {
-                    $summarySales->where('order_date', '<=', $dateTo . ' 23:59:59');
-                }
-
-                $salesStats = $summarySales->selectRaw('COALESCE(SUM(qty), 0) as total_sold, COUNT(DISTINCT sku_utama) as total_skus')->first();
-                $totalPeriodSales = (int) ($salesStats->total_sold ?? 0);
-                $periodSalesCount = (int) ($salesStats->total_skus ?? 0);
-            } catch (\Throwable $e) {
-                // Abaikan jika query ringkasan bermasalah
-            }
-        }
+        $periodSalesData  = $hasCutOffTable ? $this->getShopeePeriodSalesSummary($dateFrom, $dateTo) : null;
+        $periodSalesMap   = $periodSalesData['by_sku_lower'] ?? [];
+        $totalPeriodSales = (int) ($periodSalesData['total_sold'] ?? 0);
+        $periodSalesCount = (int) ($periodSalesData['total_skus'] ?? 0);
 
         $qStats = ShopeeProduct::query();
         if ($account) {
@@ -482,14 +428,32 @@ class ShopeeProductController extends Controller
             ? ['shopee_products.*']
             : array_map(static fn (string $col): string => 'shopee_products.' . $col, $lightCols);
 
-        if ($periodSalesSub) {
-            $query->leftJoinSub($periodSalesSub, 'period_sales_sub', function ($join) {
-                $join->on('shopee_products.sku', '=', 'period_sales_sub.sku_utama')
-                     ->whereRaw("shopee_products.sku IS NOT NULL AND TRIM(shopee_products.sku) != '' AND TRIM(shopee_products.sku) != '0' AND TRIM(shopee_products.sku) != '-' AND TRIM(shopee_products.sku) != '--' AND TRIM(shopee_products.sku) != '@' AND LOWER(TRIM(shopee_products.sku)) NOT IN ('null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku')");
-            });
-            $query->select(array_merge($lightSelectCols, [DB::raw('COALESCE(period_sales_sub.period_sales, 0) as period_sales')]));
-        } else {
-            $query->select(array_merge($lightSelectCols, [DB::raw('COALESCE(shopee_products.sales, 0) as period_sales')]));
+        $query->select($lightSelectCols);
+
+        // Hanya hitung peta ID produk terjual ketika filter/sort membutuhkan penjualan periode
+        $needsPeriodSalesIds = $periodSalesData !== null && (
+            in_array($stockStatus, ['has_sales', 'no_sales'], true)
+            || in_array($sort, ['sales_desc', 'sales_asc'], true)
+        );
+
+        $productSalesById = [];
+        $soldProductIds   = [];
+        if ($needsPeriodSalesIds && ! empty($periodSalesMap)) {
+            $skuRows = ShopeeProduct::query()
+                ->when($account, fn ($q) => $q->where('shopee_account_id', $account->id))
+                ->whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->select(['id', 'sku'])
+                ->get();
+
+            foreach ($skuRows as $row) {
+                $norm = strtolower(trim((string) $row->sku));
+                if ($norm !== '' && isset($periodSalesMap[$norm]) && $periodSalesMap[$norm] > 0) {
+                    $pid = (int) $row->id;
+                    $productSalesById[$pid] = (int) $periodSalesMap[$norm];
+                    $soldProductIds[] = $pid;
+                }
+            }
         }
 
         // Apply Search
@@ -508,14 +472,16 @@ class ShopeeProductController extends Controller
         } elseif ($stockStatus === 'out_of_stock') {
             $query->where('shopee_products.stock', '<=', 0);
         } elseif ($stockStatus === 'has_sales') {
-            if ($periodSalesSub) {
-                $query->whereRaw('COALESCE(period_sales_sub.period_sales, 0) > 0');
+            if ($periodSalesData !== null) {
+                $query->whereIn('shopee_products.id', ! empty($soldProductIds) ? $soldProductIds : [-1]);
             } else {
                 $query->where('shopee_products.sales', '>', 0);
             }
         } elseif ($stockStatus === 'no_sales') {
-            if ($periodSalesSub) {
-                $query->whereRaw('COALESCE(period_sales_sub.period_sales, 0) <= 0');
+            if ($periodSalesData !== null) {
+                if (! empty($soldProductIds)) {
+                    $query->whereNotIn('shopee_products.id', $soldProductIds);
+                }
             } else {
                 $query->where(function ($q) {
                     $q->whereNull('shopee_products.sales')->orWhere('shopee_products.sales', '<=', 0);
@@ -538,10 +504,27 @@ class ShopeeProductController extends Controller
         // Apply Sorting
         switch ($sort) {
             case 'sales_desc':
-                $query->orderBy('period_sales', 'desc')->orderBy('shopee_products.stock', 'desc');
-                break;
             case 'sales_asc':
-                $query->orderBy('period_sales', 'asc')->orderBy('shopee_products.stock', 'asc');
+                $dir = $sort === 'sales_asc' ? 'ASC' : 'DESC';
+                if ($periodSalesData !== null) {
+                    if (! empty($productSalesById)) {
+                        $ranked = $productSalesById;
+                        if (count($ranked) > 1500) {
+                            $dir === 'ASC' ? asort($ranked) : arsort($ranked);
+                            $ranked = array_slice($ranked, 0, 1500, true);
+                        }
+                        $cases = [];
+                        foreach ($ranked as $pid => $qty) {
+                            $cases[] = 'WHEN ' . ((int) $pid) . ' THEN ' . ((int) $qty);
+                        }
+                        $caseSql = 'CASE shopee_products.id ' . implode(' ', $cases) . ' ELSE 0 END';
+                        $query->orderByRaw("{$caseSql} {$dir}")->orderBy('shopee_products.stock', strtolower($dir));
+                    } else {
+                        $query->orderBy('shopee_products.stock', strtolower($dir));
+                    }
+                } else {
+                    $query->orderBy('shopee_products.sales', strtolower($dir))->orderBy('shopee_products.stock', strtolower($dir));
+                }
                 break;
             case 'stock_asc':
                 $query->orderBy('shopee_products.stock', 'asc')->orderBy('shopee_products.sku', 'asc');
@@ -561,7 +544,7 @@ class ShopeeProductController extends Controller
         $products = $query->paginate(50)->withQueryString();
 
         // 5. Lampirkan hasil komparasi stok gudang dari array lookup instan O(1) & sales periode
-        $products->getCollection()->transform(function ($p) use ($stockInfoById) {
+        $products->getCollection()->transform(function ($p) use ($stockInfoById, $periodSalesMap, $periodSalesData) {
             $skuTrimmed = trim((string) ($p->sku ?? ''));
             $isInvalidSku = empty($skuTrimmed)
                 || in_array(strtolower($skuTrimmed), ['0', '-', '--', '---', '@', '.', 'null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku'], true);
@@ -569,8 +552,14 @@ class ShopeeProductController extends Controller
             if ($isInvalidSku) {
                 $p->sales = 0;
                 $p->period_sales = 0;
+            } elseif ($periodSalesData !== null) {
+                $qty = (int) ($periodSalesMap[strtolower($skuTrimmed)] ?? 0);
+                $p->sales = $qty;
+                $p->period_sales = $qty;
             } else {
-                $p->sales = (int) ($p->period_sales ?? $p->sales ?? 0);
+                $qty = (int) ($p->sales ?? 0);
+                $p->sales = $qty;
+                $p->period_sales = $qty;
             }
 
             if (! empty($stockInfoById) && isset($stockInfoById[$p->id])) {
@@ -644,6 +633,92 @@ class ShopeeProductController extends Controller
                 'is_connected' => $account->isConnected() && ! empty($account->access_token),
             ] : null,
         ]);
+    }
+
+    /**
+     * Hitung ringkasan penjualan Shopee periode dari cut_off_orders dalam 1 query + cache 60 detik.
+     * Menghindari scan berulang & derived-table leftJoinSub yang memicu full scan di MySQL.
+     *
+     * @return array{by_sku_lower: array<string, int>, total_sold: int, total_skus: int}
+     */
+    private function getShopeePeriodSalesSummary(?string $dateFrom, ?string $dateTo): array
+    {
+        $cacheVer = \App\Models\CutOffOrder::getCacheVersion();
+        $cacheKey = 'shopee_period_sales_v1_' . md5("{$cacheVer}|{$dateFrom}|{$dateTo}");
+
+        $compute = static function () use ($dateFrom, $dateTo): array {
+            $invalidSkus = [
+                '0' => true, '' => true, '-' => true, '--' => true, '---' => true,
+                '@' => true, '.' => true, 'null' => true, 'undefined' => true,
+                'none' => true, 'n/a' => true, 'na' => true, 'tanpa sku' => true,
+            ];
+
+            $query = DB::table('cut_off_orders')
+                ->whereNull('deleted_at')
+                ->where(function ($q) {
+                    $q->where('channel', 'SH')
+                      ->orWhere('channel', 'like', 'SH%');
+                })
+                ->where(function ($q) {
+                    $q->whereNull('order_status')
+                      ->orWhere(function ($sub) {
+                          $sub->where('order_status', 'not like', '%Batal%')
+                              ->where('order_status', 'not like', '%RJ%')
+                              ->where('order_status', 'not like', '%Retur%');
+                      });
+                })
+                ->whereNotNull('sku_utama')
+                ->where('sku_utama', '!=', '');
+
+            if (! empty($dateFrom)) {
+                $query->where('order_date', '>=', $dateFrom . ' 00:00:00');
+            }
+            if (! empty($dateTo)) {
+                $query->where('order_date', '<=', $dateTo . ' 23:59:59');
+            }
+
+            $rows = $query
+                ->select('sku_utama', DB::raw('COALESCE(SUM(qty), 0) as total_qty'))
+                ->groupBy('sku_utama')
+                ->get();
+
+            $bySkuLower = [];
+            $totalSold  = 0;
+            $distinctValid = [];
+
+            foreach ($rows as $row) {
+                $trimmed = trim((string) $row->sku_utama);
+                $lower   = strtolower($trimmed);
+                if (isset($invalidSkus[$lower])) {
+                    continue;
+                }
+
+                $qty = max(0, (int) $row->total_qty);
+                if ($qty <= 0) {
+                    continue;
+                }
+
+                $bySkuLower[$lower] = ($bySkuLower[$lower] ?? 0) + $qty;
+                $totalSold += $qty;
+                $distinctValid[$lower] = true;
+            }
+
+            return [
+                'by_sku_lower' => $bySkuLower,
+                'total_sold'   => $totalSold,
+                'total_skus'   => count($distinctValid),
+            ];
+        };
+
+        if (app()->runningUnitTests()) {
+            return $compute();
+        }
+
+        try {
+            return \Illuminate\Support\Facades\Cache::store('file')->remember($cacheKey, 60, $compute);
+        } catch (\Throwable) {
+            return $compute();
+        }
     }
 
     /**

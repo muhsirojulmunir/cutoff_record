@@ -296,13 +296,13 @@ class ShopeeOrder extends Model
         return function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('shopee_account_id')->index();
-            $table->string('order_sn', 64);
+            $table->string('order_sn', 64)->index();
             $table->string('package_number', 64)->nullable()->index();
             $table->string('order_status', 40)->default('READY_TO_SHIP')->index();
             $table->string('logistics_status', 64)->nullable();
             $table->string('shipping_carrier', 120)->nullable()->index();
             $table->string('tracking_number', 100)->nullable()->index();
-            $table->string('fulfillment_method', 30)->nullable();
+            $table->string('fulfillment_method', 30)->nullable()->index();
             $table->unsignedBigInteger('buyer_user_id')->nullable();
             $table->string('buyer_username', 120)->nullable()->index();
             $table->text('buyer_note')->nullable();

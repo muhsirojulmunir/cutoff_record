@@ -236,48 +236,60 @@ class CutOffOrder extends Model
             ->update(['deleted_at' => now()]);
 
         if (\Illuminate\Support\Facades\Schema::hasTable('shopee_orders')) {
-            $driver = \Illuminate\Support\Facades\DB::getDriverName();
-            if ($driver === 'mysql') {
-                \Illuminate\Support\Facades\DB::statement("
-                    UPDATE cut_off_orders co
-                    INNER JOIN shopee_orders so ON co.order_number = so.order_sn
-                    SET co.processed_at = so.shipping_arranged_at
-                    WHERE co.deleted_at IS NULL
-                      AND (co.channel = 'SH' OR co.channel LIKE 'SH%')
-                      AND co.processed_at IS NULL
-                      AND so.shipping_arranged_at IS NOT NULL
-                      AND (so.fulfillment_method IS NOT NULL OR so.order_status = 'PROCESSED')
-                ");
-            } else {
-                self::query()
+            $arrangedMap = \Illuminate\Support\Facades\DB::table('shopee_orders')
+                ->whereNotNull('shipping_arranged_at')
+                ->where(function ($sub) {
+                    $sub->whereNotNull('fulfillment_method')
+                        ->orWhere('order_status', 'PROCESSED');
+                })
+                ->pluck('shipping_arranged_at', 'order_sn')
+                ->all();
+
+            if (! empty($arrangedMap)) {
+                $candidates = self::query()
                     ->onlyProcessed()
                     ->whereNull('processed_at')
                     ->where(function ($q) {
                         $q->where('channel', 'SH')->orWhere('channel', 'like', 'SH%');
                     })
-                    ->whereExists(function ($q) {
-                        $q->select(\Illuminate\Support\Facades\DB::raw(1))
-                            ->from('shopee_orders')
-                            ->whereColumn('shopee_orders.order_sn', 'cut_off_orders.order_number')
-                            ->whereNotNull('shopee_orders.shipping_arranged_at')
-                            ->where(function ($sub) {
-                                $sub->whereNotNull('shopee_orders.fulfillment_method')
-                                    ->orWhere('shopee_orders.order_status', 'PROCESSED');
-                            });
-                    })
-                    ->update([
-                        'processed_at' => \Illuminate\Support\Facades\DB::raw("(SELECT shipping_arranged_at FROM shopee_orders WHERE shopee_orders.order_sn = cut_off_orders.order_number AND shipping_arranged_at IS NOT NULL AND (fulfillment_method IS NOT NULL OR order_status = 'PROCESSED') LIMIT 1)"),
-                    ]);
+                    ->select(['id', 'order_number'])
+                    ->get();
+
+                $groupedByTs = [];
+                foreach ($candidates as $row) {
+                    $sn = trim((string) $row->order_number);
+                    if ($sn !== '' && isset($arrangedMap[$sn])) {
+                        $ts = (string) $arrangedMap[$sn];
+                        $groupedByTs[$ts][] = (int) $row->id;
+                    }
+                }
+
+                foreach ($groupedByTs as $ts => $ids) {
+                    foreach (array_chunk($ids, 500) as $chunk) {
+                        self::query()
+                            ->whereIn('id', $chunk)
+                            ->update(['processed_at' => $ts]);
+                    }
+                }
             }
         }
 
-        self::query()
+        $remainingIds = self::query()
             ->onlyProcessed()
             ->whereNull('processed_at')
             ->whereNotNull('order_date')
-            ->update([
-                'processed_at' => \Illuminate\Support\Facades\DB::raw('order_date'),
-            ]);
+            ->pluck('id')
+            ->all();
+
+        foreach (array_chunk($remainingIds, 500) as $chunk) {
+            self::query()
+                ->whereIn('id', $chunk)
+                ->update([
+                    'processed_at' => \Illuminate\Support\Facades\DB::raw('order_date'),
+                ]);
+        }
+
+        self::bumpCacheVersion();
     }
 
     /**
@@ -292,6 +304,7 @@ class CutOffOrder extends Model
         }
 
         $hasShopeeOrders = \Illuminate\Support\Facades\Schema::hasTable('shopee_orders');
+        $arrangedSet = [];
 
         if ($hasShopeeOrders && \Illuminate\Support\Facades\Schema::hasColumn('shopee_orders', 'shipping_arranged_at')) {
             \Illuminate\Support\Facades\DB::table('shopee_orders')
@@ -301,9 +314,23 @@ class CutOffOrder extends Model
                 ->whereNotNull('order_created_at')
                 ->whereRaw('DATE(shipping_arranged_at) != DATE(order_created_at)')
                 ->update(['shipping_arranged_at' => null]);
+
+            $arrangedSns = \Illuminate\Support\Facades\DB::table('shopee_orders')
+                ->whereNotNull('fulfillment_method')
+                ->pluck('order_sn')
+                ->all();
+
+            foreach ($arrangedSns as $sn) {
+                $cleanSn = trim((string) $sn);
+                if ($cleanSn !== '') {
+                    $arrangedSet[$cleanSn] = true;
+                }
+            }
         }
 
-        $query = self::query()
+        // Hindari correlated NOT EXISTS saat UPDATE cut_off_orders yang mengunci seluruh tabel di MySQL;
+        // saring kandidat di PHP lalu eksekusi UPDATE per batch 500 ID.
+        $candidates = self::query()
             ->onlyProcessed()
             ->whereNotNull('processed_at')
             ->whereNotNull('order_date')
@@ -311,20 +338,200 @@ class CutOffOrder extends Model
             ->whereRaw("LOWER(COALESCE(order_status, '')) NOT LIKE '%diproses%'")
             ->whereRaw("UPPER(COALESCE(order_status, '')) != 'PROCESSED'")
             ->whereRaw("LOWER(COALESCE(order_status, '')) NOT LIKE '%menunggu pickup%'")
-            ->whereRaw("UPPER(COALESCE(order_status, '')) != 'AWAITING_COLLECTION'");
+            ->whereRaw("UPPER(COALESCE(order_status, '')) != 'AWAITING_COLLECTION'")
+            ->select(['id', 'order_number'])
+            ->get();
 
-        if ($hasShopeeOrders) {
-            $query->whereNotExists(function ($q) {
-                $q->select(\Illuminate\Support\Facades\DB::raw(1))
-                    ->from('shopee_orders')
-                    ->whereColumn('shopee_orders.order_sn', 'cut_off_orders.order_number')
-                    ->whereNotNull('shopee_orders.fulfillment_method');
-            });
+        $targetIds = [];
+        foreach ($candidates as $row) {
+            $sn = trim((string) $row->order_number);
+            if ($sn !== '' && isset($arrangedSet[$sn])) {
+                continue;
+            }
+            $targetIds[] = (int) $row->id;
         }
 
-        $query->update([
-            'processed_at' => \Illuminate\Support\Facades\DB::raw('order_date'),
-        ]);
+        foreach (array_chunk($targetIds, 500) as $chunk) {
+            self::query()
+                ->whereIn('id', $chunk)
+                ->update([
+                    'processed_at' => \Illuminate\Support\Facades\DB::raw('order_date'),
+                ]);
+        }
+
+        self::bumpCacheVersion();
+    }
+
+    /**
+     * Catat event model agar cache statistik Cut Off, Dashboard, dan Penjualan Shopee otomatis ter-refresh.
+     */
+    protected static function booted(): void
+    {
+        $invalidate = static fn () => self::bumpCacheVersion();
+        static::saved($invalidate);
+        static::deleted($invalidate);
+        static::restored($invalidate);
+    }
+
+    public static function getCacheVersion(): int
+    {
+        try {
+            $ver = \Illuminate\Support\Facades\Cache::store('file')->get('cut_off_orders_cache_v1');
+            return is_numeric($ver) ? (int) $ver : 1;
+        } catch (\Throwable) {
+            return 1;
+        }
+    }
+
+    public static function bumpCacheVersion(): int
+    {
+        $next = self::getCacheVersion() + 1;
+        try {
+            \Illuminate\Support\Facades\Cache::store('file')->forever('cut_off_orders_cache_v1', $next);
+        } catch (\Throwable) {
+            // Abaikan kegagalan I/O cache file
+        }
+
+        return $next;
+    }
+
+    private static bool $perfIndexesChecked = false;
+
+    /**
+     * Pastikan index performa sudah dibuat sekali (aman untuk deploy FTP cPanel tanpa shell).
+     */
+    public static function ensurePerformanceIndexesOnce(): void
+    {
+        if (self::$perfIndexesChecked) {
+            return;
+        }
+
+        if (! app()->runningUnitTests()) {
+            try {
+                $store = \Illuminate\Support\Facades\Cache::store('file');
+                if ($store->get('cut_off_perf_indexes_v1') === true) {
+                    self::$perfIndexesChecked = true;
+                    return;
+                }
+                if (! $store->add('cut_off_perf_indexes_lock_v1', true, 45)) {
+                    return;
+                }
+            } catch (\Throwable) {
+                // Lanjutkan pengecekan langsung bila file cache tidak tersedia
+            }
+        }
+
+        try {
+            self::ensurePerformanceIndexes();
+            self::$perfIndexesChecked = true;
+            if (! app()->runningUnitTests()) {
+                try {
+                    $store = \Illuminate\Support\Facades\Cache::store('file');
+                    $store->forever('cut_off_perf_indexes_v1', true);
+                    $store->forget('cut_off_perf_indexes_lock_v1');
+                } catch (\Throwable) {
+                    // Abaikan error tulis cache file
+                }
+            }
+        } catch (\Throwable) {
+            // Biarkan percobaan berikutnya mencoba ulang bila gagal sementara
+        }
+    }
+
+    /**
+     * Pastikan index komposit performa tersedia di cut_off_orders & shopee_orders (idempoten, non-blocking).
+     */
+    public static function ensurePerformanceIndexes(): void
+    {
+        $indexes = [
+            'cut_off_orders' => [
+                'cut_off_del_date_id_idx'       => ['deleted_at', 'order_date', 'id'],
+                'cut_off_del_channel_date_idx'  => ['deleted_at', 'channel', 'order_date'],
+                'cut_off_del_processed_idx'     => ['deleted_at', 'processed_at'],
+                'cut_off_del_sku_idx'           => ['deleted_at', 'sku_utama'],
+                'cut_off_del_order_num_idx'     => ['deleted_at', 'order_number'],
+            ],
+            'shopee_orders' => [
+                'shopee_orders_order_sn_idx'       => ['order_sn'],
+                'shopee_orders_fulfill_sn_idx'     => ['fulfillment_method', 'order_sn'],
+            ],
+        ];
+
+        $driver = \Illuminate\Support\Facades\DB::getDriverName();
+
+        foreach ($indexes as $table => $tableIndexes) {
+            if (! \Illuminate\Support\Facades\Schema::hasTable($table)) {
+                continue;
+            }
+
+            $existing = self::listTableIndexNames($table, $driver);
+
+            foreach ($tableIndexes as $indexName => $columns) {
+                if (isset($existing[$indexName])) {
+                    continue;
+                }
+
+                $allColsExist = true;
+                foreach ($columns as $col) {
+                    if (! \Illuminate\Support\Facades\Schema::hasColumn($table, $col)) {
+                        $allColsExist = false;
+                        break;
+                    }
+                }
+                if (! $allColsExist) {
+                    continue;
+                }
+
+                try {
+                    if ($driver === 'mysql') {
+                        $colSql = implode(', ', array_map(static fn (string $c): string => "`{$c}`", $columns));
+                        try {
+                            \Illuminate\Support\Facades\DB::statement(
+                                "ALTER TABLE `{$table}` ADD INDEX `{$indexName}` ({$colSql}), ALGORITHM=INPLACE, LOCK=NONE"
+                            );
+                        } catch (\Throwable) {
+                            \Illuminate\Support\Facades\Schema::table($table, function (\Illuminate\Database\Schema\Blueprint $blueprint) use ($columns, $indexName): void {
+                                $blueprint->index($columns, $indexName);
+                            });
+                        }
+                    } else {
+                        \Illuminate\Support\Facades\Schema::table($table, function (\Illuminate\Database\Schema\Blueprint $blueprint) use ($columns, $indexName): void {
+                            $blueprint->index($columns, $indexName);
+                        });
+                    }
+                } catch (\Throwable) {
+                    // Abaikan jika index sudah dibuat oleh proses/migrasi lain secara bersamaan
+                }
+            }
+        }
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    private static function listTableIndexNames(string $table, string $driver): array
+    {
+        $names = [];
+        try {
+            if ($driver === 'mysql') {
+                $rows = \Illuminate\Support\Facades\DB::select(
+                    'SELECT DISTINCT INDEX_NAME as idx_name FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+                    [$table]
+                );
+                foreach ($rows as $row) {
+                    $names[(string) $row->idx_name] = true;
+                }
+            } elseif ($driver === 'sqlite') {
+                $rows = \Illuminate\Support\Facades\DB::select("PRAGMA index_list('{$table}')");
+                foreach ($rows as $row) {
+                    $names[(string) $row->name] = true;
+                }
+            }
+        } catch (\Throwable) {
+            // Fallback: biarkan try/catch saat pembuatan index menangani duplikasi
+        }
+
+        return $names;
     }
 
     /**

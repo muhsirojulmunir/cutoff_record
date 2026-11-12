@@ -24,6 +24,10 @@ class ShopeeSyncService
 
     private static bool $zeroHistorySchemaChecked = false;
 
+    private static bool $cutOffSchemaChecked = false;
+
+    private static bool $productSchemaChecked = false;
+
     public function __construct()
     {
         $this->host = config('services.shopee.host', 'https://partner.shopeemobile.com');
@@ -1640,10 +1644,36 @@ class ShopeeSyncService
      */
     public function ensureSchema(): void
     {
+        if (self::$cutOffSchemaChecked) {
+            return;
+        }
+
+        $cacheKey = 'shopee_sync_schema_ready_v3';
+        if (! app()->runningUnitTests()) {
+            try {
+                if (\Illuminate\Support\Facades\Cache::store('file')->get($cacheKey) === true) {
+                    self::$cutOffSchemaChecked = true;
+                    $this->ensureProductSchema();
+                    return;
+                }
+            } catch (\Throwable) {
+                // Lanjutkan pengecekan langsung jika cache file gagal
+            }
+        }
+
         try {
-            \Illuminate\Support\Facades\DB::statement("ALTER TABLE cut_off_orders MODIFY order_date DATETIME NULL");
-        } catch (\Throwable $e) {
-            // Ignore if already datetime or not supported
+            if (Schema::hasTable('cut_off_orders') && \Illuminate\Support\Facades\DB::getDriverName() === 'mysql') {
+                try {
+                    $colType = Schema::getColumnType('cut_off_orders', 'order_date');
+                    if (strtolower((string) $colType) !== 'datetime') {
+                        \Illuminate\Support\Facades\DB::statement('ALTER TABLE cut_off_orders MODIFY order_date DATETIME NULL');
+                    }
+                } catch (\Throwable) {
+                    // Abaikan jika sudah datetime atau tidak didukung
+                }
+            }
+        } catch (\Throwable) {
+            // Abaikan error pengecekan tipe kolom
         }
 
         try {
@@ -1698,15 +1728,30 @@ class ShopeeSyncService
 
             $this->cutOffColumnCache = [];
 
-            // Koreksi otomatis pesanan Shopee 3 Nov yang jamnya sempat tersimpan dalam UTC (+7 jam ke WIB)
-            DB::table('cut_off_orders')
+            // Koreksi satu kali pesanan Shopee 3 Nov yang jamnya sempat tersimpan dalam UTC (+7 jam ke WIB)
+            $nov3FixedCount = \Illuminate\Support\Facades\DB::table('cut_off_orders')
                 ->where('channel', 'SH')
-                ->whereDate('order_date', '2026-11-03')
-                ->whereTime('order_date', '<', '10:00:00')
+                ->where('order_date', '>=', '2026-11-03 00:00:00')
+                ->where('order_date', '<', '2026-11-03 10:00:00')
                 ->where('order_number', 'like', '261103%')
                 ->update([
-                    'order_date' => DB::raw("DATE_ADD(order_date, INTERVAL 7 HOUR)")
+                    'order_date' => \Illuminate\Support\Facades\DB::raw('DATE_ADD(order_date, INTERVAL 7 HOUR)'),
                 ]);
+            if ($nov3FixedCount > 0) {
+                CutOffOrder::bumpCacheVersion();
+            }
+
+            CutOffOrder::ensurePerformanceIndexesOnce();
+            self::$cutOffSchemaChecked = true;
+
+            if (! app()->runningUnitTests()) {
+                try {
+                    \Illuminate\Support\Facades\Cache::store('file')->put($cacheKey, true, 86400);
+                } catch (\Throwable) {
+                    // Abaikan error tulis cache file
+                }
+            }
+
             // Panggil juga pembuatan tabel produk Shopee secara otomatis jika belum ada
             $this->ensureProductSchema();
         } catch (\Throwable $e) {
@@ -1720,6 +1765,22 @@ class ShopeeSyncService
      */
     public function ensureProductSchema(): void
     {
+        if (self::$productSchemaChecked) {
+            return;
+        }
+
+        $cacheKey = 'shopee_product_schema_ready_v3';
+        if (! app()->runningUnitTests()) {
+            try {
+                if (\Illuminate\Support\Facades\Cache::store('file')->get($cacheKey) === true) {
+                    self::$productSchemaChecked = true;
+                    return;
+                }
+            } catch (\Throwable) {
+                // Lanjutkan pengecekan langsung jika cache file gagal
+            }
+        }
+
         try {
             if (! Schema::hasTable('shopee_products')) {
                 Schema::create('shopee_products', function (Blueprint $table) {
@@ -1765,7 +1826,7 @@ class ShopeeSyncService
                     });
                 }
 
-                // Bersihkan SKU placeholder ('0', '-', '@', dll) dan reset sales-nya agar tidak salah agregasi penjualan
+                // Bersihkan SKU placeholder ('0', '-', '@', dll) satu kali saat inisialisasi skema
                 try {
                     \Illuminate\Support\Facades\DB::statement("
                         UPDATE shopee_products 
@@ -1773,7 +1834,7 @@ class ShopeeSyncService
                         WHERE sku IS NOT NULL 
                           AND (TRIM(sku) = '' OR TRIM(sku) = '0' OR TRIM(sku) = '-' OR TRIM(sku) = '--' OR TRIM(sku) = '---' OR TRIM(sku) = '@' OR TRIM(sku) = '.' OR LOWER(TRIM(sku)) IN ('null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku'))
                     ");
-                } catch (\Throwable $e) {}
+                } catch (\Throwable) {}
             }
 
             if (Schema::hasTable('cut_off_orders')) {
@@ -1784,7 +1845,16 @@ class ShopeeSyncService
                         WHERE sku_utama IS NOT NULL 
                           AND (TRIM(sku_utama) = '' OR TRIM(sku_utama) = '0' OR TRIM(sku_utama) = '-' OR TRIM(sku_utama) = '--' OR TRIM(sku_utama) = '---' OR TRIM(sku_utama) = '@' OR TRIM(sku_utama) = '.' OR LOWER(TRIM(sku_utama)) IN ('null', 'undefined', 'none', 'n/a', 'na', 'tanpa sku'))
                     ");
-                } catch (\Throwable $e) {}
+                } catch (\Throwable) {}
+            }
+
+            self::$productSchemaChecked = true;
+            if (! app()->runningUnitTests()) {
+                try {
+                    \Illuminate\Support\Facades\Cache::store('file')->put($cacheKey, true, 86400);
+                } catch (\Throwable) {
+                    // Abaikan error tulis cache file
+                }
             }
         } catch (\Throwable $e) {
             Log::warning('ShopeeSyncService ensureProductSchema notice: ' . $e->getMessage());

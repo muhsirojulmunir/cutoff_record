@@ -48,69 +48,90 @@ class CutOffOrderController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
-        // Metrik Ringkasan Utama (1 query agregasi efisien di DB, khusus pesanan Diproses ke atas)
+        // Metrik Ringkasan Utama + Dropdown Filter (di-cache 30 detik & auto-invalidate saat ada perubahan data)
         $todayWib = \Carbon\Carbon::now('Asia/Jakarta');
         $todayStart = $todayWib->toDateString();
         $tomorrowStart = $todayWib->copy()->addDay()->toDateString();
         $dailyDateLabel = $todayWib->copy()->locale('id')->translatedFormat('d M Y');
+        $cacheVer = CutOffOrder::getCacheVersion();
 
-        $rawSummary = CutOffOrder::query()
-            ->onlyProcessed()
-            ->selectRaw(
-                "COUNT(*) as total_orders,
-                COALESCE(SUM(CASE WHEN COALESCE(processed_at, order_date) >= ? AND COALESCE(processed_at, order_date) < ? THEN (CASE WHEN qty IS NULL OR qty < 1 THEN 1 ELSE qty END) ELSE 0 END), 0) as daily_products,
-                COUNT(CASE WHEN COALESCE(processed_at, order_date) >= ? AND COALESCE(processed_at, order_date) < ? THEN 1 END) as daily_orders,
-                COUNT(CASE WHEN order_status LIKE '%RJ%' OR order_status LIKE '%Retur%' THEN 1 END) as total_rj,
-                COUNT(CASE WHEN dpp_number IS NOT NULL AND dpp_number != '' THEN 1 END) as total_has_dpp,
-                COALESCE(SUM(est_net_income), 0) as total_est_income,
-                COALESCE(SUM(marketplace_net_payout), 0) as total_net_payout",
-                [$todayStart, $tomorrowStart, $todayStart, $tomorrowStart]
-            )
-            ->first();
+        $computeOverview = static function () use ($todayStart, $tomorrowStart, $dailyDateLabel): array {
+            $rawSummary = CutOffOrder::query()
+                ->onlyProcessed()
+                ->selectRaw(
+                    "COUNT(*) as total_orders,
+                    COALESCE(SUM(CASE WHEN COALESCE(processed_at, order_date) >= ? AND COALESCE(processed_at, order_date) < ? THEN (CASE WHEN qty IS NULL OR qty < 1 THEN 1 ELSE qty END) ELSE 0 END), 0) as daily_products,
+                    COUNT(CASE WHEN COALESCE(processed_at, order_date) >= ? AND COALESCE(processed_at, order_date) < ? THEN 1 END) as daily_orders,
+                    COUNT(CASE WHEN order_status LIKE '%RJ%' OR order_status LIKE '%Retur%' THEN 1 END) as total_rj,
+                    COUNT(CASE WHEN dpp_number IS NOT NULL AND dpp_number != '' THEN 1 END) as total_has_dpp,
+                    COALESCE(SUM(est_net_income), 0) as total_est_income,
+                    COALESCE(SUM(marketplace_net_payout), 0) as total_net_payout",
+                    [$todayStart, $tomorrowStart, $todayStart, $tomorrowStart]
+                )
+                ->first();
 
-        $summary = [
-            'total_orders'      => (int) ($rawSummary->total_orders ?? 0),
-            'daily_products'    => (int) ($rawSummary->daily_products ?? 0),
-            'daily_orders'      => (int) ($rawSummary->daily_orders ?? 0),
-            'daily_date_label'  => $dailyDateLabel,
-            'total_rj'          => (int) ($rawSummary->total_rj ?? 0),
-            'total_has_dpp'     => (int) ($rawSummary->total_has_dpp ?? 0),
-            'total_est_income'  => (float) ($rawSummary->total_est_income ?? 0),
-            'total_net_payout'  => (float) ($rawSummary->total_net_payout ?? 0),
-        ];
+            $summary = [
+                'total_orders'      => (int) ($rawSummary->total_orders ?? 0),
+                'daily_products'    => (int) ($rawSummary->daily_products ?? 0),
+                'daily_orders'      => (int) ($rawSummary->daily_orders ?? 0),
+                'daily_date_label'  => $dailyDateLabel,
+                'total_rj'          => (int) ($rawSummary->total_rj ?? 0),
+                'total_has_dpp'     => (int) ($rawSummary->total_has_dpp ?? 0),
+                'total_est_income'  => (float) ($rawSummary->total_est_income ?? 0),
+                'total_net_payout'  => (float) ($rawSummary->total_net_payout ?? 0),
+            ];
 
-        // Daftar Toko / Channel dengan jumlah pesanan masing-masing
-        $channels = CutOffOrder::query()
-            ->onlyProcessed()
-            ->select('channel', DB::raw('count(*) as count'))
-            ->groupBy('channel')
-            ->orderByDesc('count')
-            ->get()
-            ->map(fn ($item) => [
-                'name'  => $item->channel,
-                'count' => $item->count,
-            ]);
+            $channels = CutOffOrder::query()
+                ->onlyProcessed()
+                ->select('channel', DB::raw('count(*) as count'))
+                ->groupBy('channel')
+                ->orderByDesc('count')
+                ->get()
+                ->map(fn ($item) => [
+                    'name'  => $item->channel,
+                    'count' => $item->count,
+                ]);
 
-        // Daftar Jasa Pengiriman / Ekspedisi dengan jumlahnya
-        $couriers = CutOffOrder::query()
-            ->onlyProcessed()
-            ->whereNotNull('shipping_courier')
-            ->where('shipping_courier', '!=', '')
-            ->select('shipping_courier', DB::raw('count(*) as count'))
-            ->groupBy('shipping_courier')
-            ->orderByDesc('count')
-            ->get()
-            ->map(fn ($item) => [
-                'name'  => $item->shipping_courier,
-                'count' => $item->count,
-            ]);
+            $couriers = CutOffOrder::query()
+                ->onlyProcessed()
+                ->whereNotNull('shipping_courier')
+                ->where('shipping_courier', '!=', '')
+                ->select('shipping_courier', DB::raw('count(*) as count'))
+                ->groupBy('shipping_courier')
+                ->orderByDesc('count')
+                ->get()
+                ->map(fn ($item) => [
+                    'name'  => $item->shipping_courier,
+                    'count' => $item->count,
+                ]);
+
+            return [
+                'summary'  => $summary,
+                'channels' => $channels,
+                'couriers' => $couriers,
+            ];
+        };
+
+        if (app()->runningUnitTests()) {
+            $overview = $computeOverview();
+        } else {
+            try {
+                $overview = \Illuminate\Support\Facades\Cache::store('file')->remember(
+                    "cut_off_overview_v1_{$cacheVer}_{$todayStart}",
+                    30,
+                    $computeOverview
+                );
+            } catch (\Throwable) {
+                $overview = $computeOverview();
+            }
+        }
 
         return Inertia::render('CutOff/Index', [
             'orders'   => $orders,
             'filters'  => $filters,
-            'summary'  => $summary,
-            'channels' => $channels,
-            'couriers' => $couriers,
+            'summary'  => $overview['summary'],
+            'channels' => $overview['channels'],
+            'couriers' => $overview['couriers'],
         ]);
     }
 
@@ -583,10 +604,13 @@ class CutOffOrderController extends Controller
      */
     private function ensureProcessedAtColumnReady(): void
     {
-        $schemaCacheKey = 'cut_off_processed_at_schema_v1';
-        $cleanupCacheKey = 'cut_off_processed_at_cleanup_v2';
+        CutOffOrder::ensurePerformanceIndexesOnce();
+
+        $schemaCacheKey = 'cut_off_processed_at_schema_v2';
+        $cleanupCacheKey = 'cut_off_processed_at_cleanup_v3';
         $hasSchemaCache = false;
         $hasCleanupCache = false;
+        $store = null;
 
         if (! app()->runningUnitTests()) {
             try {
@@ -594,7 +618,7 @@ class CutOffOrderController extends Controller
                 $hasSchemaCache = $store->get($schemaCacheKey) === true;
                 $hasCleanupCache = $store->get($cleanupCacheKey) === true;
             } catch (\Throwable) {
-                // Abaikan error cache file dan cek langsung ke DB
+                $store = null;
             }
         }
 
@@ -602,29 +626,52 @@ class CutOffOrderController extends Controller
             return;
         }
 
-        if (! $hasSchemaCache && ! Schema::hasColumn('cut_off_orders', 'processed_at')) {
-            app(ShopeeSyncService::class)->ensureSchema();
-        }
-
-        $hasProcessedAt = Schema::hasColumn('cut_off_orders', 'processed_at');
-        if ($hasProcessedAt && ! $hasCleanupCache && ! app()->runningUnitTests()) {
-            $migrationAlreadyRan = Schema::hasTable('migrations')
-                && \Illuminate\Support\Facades\DB::table('migrations')
-                    ->where('migration', '2026_11_12_000004_fix_historical_processed_at_on_cut_off_orders')
-                    ->exists();
-
-            if (! $migrationAlreadyRan) {
-                CutOffOrder::cleanupHistoricalProcessedAt();
+        // Hindari penumpukan lock DB jika beberapa request masuk bersamaan setelah deploy
+        $acquiredLock = true;
+        if ($store !== null) {
+            try {
+                $acquiredLock = $store->add('cut_off_init_running_v3', true, 45);
+            } catch (\Throwable) {
+                $acquiredLock = true;
             }
         }
 
-        if (! app()->runningUnitTests() && $hasProcessedAt) {
-            try {
-                $store = \Illuminate\Support\Facades\Cache::store('file');
-                $store->put($schemaCacheKey, true, 86400);
-                $store->forever($cleanupCacheKey, true);
-            } catch (\Throwable) {
-                // Abaikan error tulis cache file
+        if (! $acquiredLock) {
+            return;
+        }
+
+        try {
+            if (! $hasSchemaCache && ! Schema::hasColumn('cut_off_orders', 'processed_at')) {
+                app(ShopeeSyncService::class)->ensureSchema();
+            }
+
+            $hasProcessedAt = Schema::hasColumn('cut_off_orders', 'processed_at');
+            if ($hasProcessedAt && ! $hasCleanupCache && ! app()->runningUnitTests()) {
+                $migrationAlreadyRan = Schema::hasTable('migrations')
+                    && \Illuminate\Support\Facades\DB::table('migrations')
+                        ->where('migration', '2026_11_12_000004_fix_historical_processed_at_on_cut_off_orders')
+                        ->exists();
+
+                if (! $migrationAlreadyRan) {
+                    CutOffOrder::cleanupHistoricalProcessedAt();
+                }
+            }
+
+            if (! app()->runningUnitTests() && $hasProcessedAt && $store !== null) {
+                try {
+                    $store->put($schemaCacheKey, true, 86400);
+                    $store->forever($cleanupCacheKey, true);
+                } catch (\Throwable) {
+                    // Abaikan error tulis cache file
+                }
+            }
+        } finally {
+            if ($store !== null) {
+                try {
+                    $store->forget('cut_off_init_running_v3');
+                } catch (\Throwable) {
+                    // Abaikan
+                }
             }
         }
     }
@@ -739,6 +786,7 @@ class CutOffOrderController extends Controller
         }
 
         DB::table('cut_off_orders')->truncate();
+        CutOffOrder::bumpCacheVersion();
 
         return redirect()->route('cut-off-orders.index')->with('success', 'Semua data Pesanan Cut Off berhasil dikosongkan. Tabel kini bersih dan siap diisi data murni dari API.');
     }
