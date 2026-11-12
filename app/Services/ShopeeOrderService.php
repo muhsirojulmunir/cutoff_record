@@ -4,8 +4,9 @@ namespace App\Services;
 
 use App\Models\ShopeeAccount;
 use App\Models\ShopeeOrder;
-use Carbon\Carbon;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -20,14 +21,18 @@ class ShopeeOrderService
 
     public const MAX_BATCH_SIZE = 50;
 
+    private const POOL_WAVE_SIZE = 6;
+
     private string $host;
 
-    private bool $schemaEnsured = false;
+    private readonly ShopeeOrderRecorder $recorder;
 
     public function __construct(
         private readonly ShopeeSyncService $syncService,
+        ?ShopeeOrderRecorder $recorder = null,
     ) {
         $this->host = rtrim((string) config('services.shopee.host', 'https://partner.shopeemobile.com'), '/');
+        $this->recorder = $recorder ?? app(ShopeeOrderRecorder::class);
     }
 
     /**
@@ -35,7 +40,7 @@ class ShopeeOrderService
      */
     public function resetSchemaCache(): void
     {
-        $this->schemaEnsured = false;
+        $this->recorder->resetSchemaCache();
     }
 
     /**
@@ -43,33 +48,22 @@ class ShopeeOrderService
      */
     public function ensureSchema(): void
     {
-        if ($this->schemaEnsured) {
-            return;
-        }
-
-        try {
-            if (! Schema::hasTable('shopee_orders')) {
-                Schema::create('shopee_orders', ShopeeOrder::buildSchemaCallback());
-            }
-            if (Schema::hasTable('shopee_orders')) {
-                $this->schemaEnsured = true;
-            }
-        } catch (\Throwable $e) {
-            Log::warning('ShopeeOrderService ensureSchema notice: ' . $e->getMessage());
-        }
+        $this->recorder->ensureSchema();
     }
 
     /**
      * Sinkronisasi pesanan dari Shopee API v2 ke shopee_orders dan (opsional) cut_off_orders.
+     * HANYA memanggil endpoint Shopee baca (read-only).
      *
-     * @return array{total_fetched: int, synced_orders: int, cutoff_created: int, cutoff_updated: int, message: string}
+     * @return array{total_fetched: int, synced_orders: int, changed_orders: int, cutoff_created: int, cutoff_updated: int, last_synced_at: ?string, message: string}
      */
     public function syncOrders(
         ShopeeAccount $account,
         int $timeFrom,
         int $timeTo,
         ?string $orderStatus = null,
-        bool $syncCutOff = true
+        bool $syncCutOff = true,
+        bool $includeUpdateWindow = false
     ): array {
         $this->ensureSchema();
         $account = $this->ensureConnectedAccount($account);
@@ -82,96 +76,15 @@ class ShopeeOrderService
         }
 
         try {
-            $maxWindow = 14 * 86400;
-            $allOrderSns = [];
-            $currentTo = $timeTo;
+            $orderSns = $this->collectOrderSnsInWindow($account, $timeFrom, $timeTo, $orderStatus, $includeUpdateWindow);
 
-            while ($currentTo > $timeFrom) {
-                $currentFrom = max($timeFrom, $currentTo - $maxWindow);
-                $chunkList = $this->syncService->fetchOrderListRaw($account, $currentFrom, $currentTo, 100, $orderStatus);
-
-                foreach ($chunkList as $ord) {
-                    if (! empty($ord['order_sn'])) {
-                        $allOrderSns[(string) $ord['order_sn']] = true;
-                    }
-                }
-
-                $currentTo = $currentFrom;
-            }
-
-            $orderSns = array_keys($allOrderSns);
-            if (empty($orderSns)) {
-                $account->update([
-                    'last_synced_at'   => now(),
-                    'last_sync_status' => 'success',
-                    'last_sync_error'  => null,
-                ]);
-
-                return [
-                    'total_fetched'  => 0,
-                    'synced_orders'  => 0,
-                    'cutoff_created' => 0,
-                    'cutoff_updated' => 0,
-                    'message'        => 'Tidak ada pesanan Shopee pada rentang waktu tersebut.',
-                ];
-            }
-
-            $detailedOrders = [];
-            $escrowMap = [];
-            foreach (array_chunk($orderSns, self::MAX_BATCH_SIZE) as $chunk) {
-                $details = $this->syncService->fetchOrderDetailRaw($account, $chunk, self::ORDER_DETAIL_FIELDS);
-                if (! empty($details)) {
-                    $detailedOrders = array_merge($detailedOrders, $details);
-                }
-                if ($syncCutOff) {
-                    $batchEscrow = $this->syncService->fetchEscrowDetailBatch($account, $chunk);
-                    if (! empty($batchEscrow)) {
-                        $escrowMap = array_replace($escrowMap, $batchEscrow);
-                    }
-                }
-            }
-
-            if (empty($detailedOrders)) {
-                $account->update([
-                    'last_synced_at'   => now(),
-                    'last_sync_status' => 'success',
-                    'last_sync_error'  => null,
-                ]);
-
-                return [
-                    'total_fetched'  => 0,
-                    'synced_orders'  => 0,
-                    'cutoff_created' => 0,
-                    'cutoff_updated' => 0,
-                    'message'        => 'Detail pesanan Shopee tidak ditemukan pada rentang waktu tersebut.',
-                ];
-            }
-
-            $syncedCount = $this->upsertShopeeOrdersFromDetails($account, $detailedOrders);
-
-            $cutOffResult = ['created' => 0, 'updated' => 0];
-            if ($syncCutOff) {
-                $cutOffResult = $this->syncService->ingestDetailedOrdersToCutOff($account, $detailedOrders, $escrowMap, true);
-            } else {
-                $account->update([
-                    'last_synced_at'   => now(),
-                    'last_sync_status' => 'success',
-                    'last_sync_error'  => null,
-                ]);
-            }
-
-            $created = (int) ($cutOffResult['created'] ?? 0);
-            $updated = (int) ($cutOffResult['updated'] ?? 0);
-
-            return [
-                'total_fetched'  => count($detailedOrders),
-                'synced_orders'  => $syncedCount,
-                'cutoff_created' => $created,
-                'cutoff_updated' => $updated,
-                'message'        => $syncCutOff
-                    ? "Sinkronisasi berhasil: {$syncedCount} pesanan diperbarui di Pesanan Saya ({$created} baru, {$updated} diperbarui di Cut Off)."
-                    : "Sinkronisasi berhasil: {$syncedCount} pesanan diperbarui di Pesanan Saya.",
-            ];
+            return $this->syncOrderSnListPipeline(
+                $account,
+                $orderSns,
+                $syncCutOff,
+                true,
+                'Tidak ada pesanan Shopee pada rentang waktu tersebut.'
+            );
         } catch (\Throwable $e) {
             $account->update([
                 'last_sync_status' => 'failed',
@@ -179,6 +92,151 @@ class ShopeeOrderService
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Sinkronisasi inkremental otomatis (locked + cooldown + create_time/update_time + order aktif lokal).
+     * HANYA memanggil endpoint Shopee baca (read-only).
+     *
+     * @return array{status: string, skipped: bool, reason: ?string, total_fetched: int, synced_orders: int, changed_orders: int, cutoff_created: int, cutoff_updated: int, last_synced_at: ?string, message: string}
+     */
+    public function runIncrementalAutoSync(
+        ShopeeAccount $account,
+        int $lookbackSeconds = 10800,
+        int $cooldownSeconds = 20
+    ): array {
+        $lookbackSeconds = max(900, min(172800, $lookbackSeconds));
+        $cooldownSeconds = max(0, $cooldownSeconds);
+        $this->ensureSchema();
+
+        $lock = Cache::lock('shopee_orders_auto_sync_' . $account->id, 45);
+        if (! $lock->get()) {
+            $freshAccount = ShopeeAccount::find($account->id) ?? $account;
+
+            return [
+                'status'         => 'skipped',
+                'skipped'        => true,
+                'reason'         => 'locked',
+                'total_fetched'  => 0,
+                'synced_orders'  => 0,
+                'changed_orders' => 0,
+                'cutoff_created' => 0,
+                'cutoff_updated' => 0,
+                'last_synced_at' => $this->formatLastSyncedAt($freshAccount),
+                'message'        => 'Sinkronisasi otomatis sedang berjalan di proses lain.',
+            ];
+        }
+
+        try {
+            $freshAccount = ShopeeAccount::find($account->id) ?? $account;
+
+            if (
+                $cooldownSeconds > 0
+                && $freshAccount->last_sync_status === 'success'
+                && $freshAccount->last_synced_at !== null
+                && $freshAccount->last_synced_at->gt(now()->subSeconds($cooldownSeconds))
+            ) {
+                return [
+                    'status'         => 'skipped',
+                    'skipped'        => true,
+                    'reason'         => 'cooldown',
+                    'total_fetched'  => 0,
+                    'synced_orders'  => 0,
+                    'changed_orders' => 0,
+                    'cutoff_created' => 0,
+                    'cutoff_updated' => 0,
+                    'last_synced_at' => $this->formatLastSyncedAt($freshAccount),
+                    'message'        => 'Data pesanan masih baru (cooldown sinkronisasi otomatis aktif).',
+                ];
+            }
+
+            try {
+                $freshAccount = $this->ensureConnectedAccount($freshAccount);
+
+                $nowTs = time();
+                $timeFrom = $nowTs - $lookbackSeconds;
+                $orderSns = $this->collectOrderSnsInWindow($freshAccount, $timeFrom, $nowTs, null, true);
+
+                $allOrderSns = array_fill_keys($orderSns, true);
+
+                if (Schema::hasTable('shopee_orders')) {
+                    $activeQuery = ShopeeOrder::where('shopee_account_id', $freshAccount->id)
+                        ->whereIn('order_status', ['UNPAID', 'READY_TO_SHIP', 'RETRY_SHIP', 'PROCESSED', 'IN_CANCEL'])
+                        ->orderByRaw('CASE WHEN last_synced_at IS NULL THEN 0 ELSE 1 END ASC, last_synced_at ASC');
+
+                    if (! empty($orderSns) && count($orderSns) <= 500) {
+                        $activeQuery->whereNotIn('order_sn', $orderSns);
+                    }
+
+                    $activeLocalSns = $activeQuery->limit(self::MAX_BATCH_SIZE)->pluck('order_sn');
+                    foreach ($activeLocalSns as $activeSn) {
+                        $snStr = trim((string) $activeSn);
+                        if ($snStr !== '') {
+                            $allOrderSns[$snStr] = true;
+                        }
+                    }
+                }
+
+                $result = $this->syncOrderSnListPipeline(
+                    $freshAccount,
+                    array_keys($allOrderSns),
+                    true,
+                    true,
+                    'Tidak ada pesanan baru atau pembaruan status saat ini.'
+                );
+
+                return array_merge([
+                    'status'  => 'success',
+                    'skipped' => false,
+                    'reason'  => null,
+                ], $result);
+            } catch (\Throwable $e) {
+                $freshAccount->update([
+                    'last_sync_status' => 'failed',
+                    'last_sync_error'  => $e->getMessage(),
+                ]);
+                throw $e;
+            }
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * Refresh daftar order_sn tertentu secara read-only (dipakai oleh webhook push Shopee).
+     * Maksimal memproses 50 order_sn per pemanggilan dan tidak pernah memanggil endpoint mutasi.
+     *
+     * @param  array<int, string>  $orderSns
+     * @return array{synced_orders: int, changed_orders: int, cutoff_created: int, cutoff_updated: int}
+     */
+    public function refreshOrderBySnList(ShopeeAccount $account, array $orderSns, bool $syncCutOff = true): array
+    {
+        $normalizedSns = array_values(array_unique(array_filter(
+            array_map(static fn ($sn): string => trim((string) $sn), $orderSns),
+            static fn (string $sn): bool => $sn !== ''
+        )));
+        $normalizedSns = array_slice($normalizedSns, 0, self::MAX_BATCH_SIZE);
+
+        if (empty($normalizedSns)) {
+            return [
+                'synced_orders'  => 0,
+                'changed_orders' => 0,
+                'cutoff_created' => 0,
+                'cutoff_updated' => 0,
+            ];
+        }
+
+        $this->ensureSchema();
+        $account = $this->ensureConnectedAccount($account);
+
+        $result = $this->syncOrderSnListPipeline($account, $normalizedSns, $syncCutOff, false);
+
+        return [
+            'synced_orders'  => $result['synced_orders'],
+            'changed_orders' => $result['changed_orders'],
+            'cutoff_created' => $result['cutoff_created'],
+            'cutoff_updated' => $result['cutoff_updated'],
+        ];
     }
 
     /**
@@ -194,7 +252,7 @@ class ShopeeOrderService
             throw new RuntimeException("Pesanan {$orderSn} tidak ditemukan di Shopee.");
         }
 
-        $this->upsertShopeeOrdersFromDetails($account, $detailedOrders);
+        $this->recorder->upsertFromDetails($account, $detailedOrders);
 
         $order = ShopeeOrder::where('shopee_account_id', $account->id)
             ->where('order_sn', $orderSn)
@@ -677,188 +735,536 @@ class ShopeeOrderService
     }
 
     /**
-     * Simpan atau perbarui daftar detail pesanan Shopee ke tabel shopee_orders.
+     * Kumpulkan daftar unik order_sn dari get_order_list dalam jendela maksimal 14 hari per panggilan.
      *
-     * @param  array<int, array<string, mixed>>  $detailedOrders
+     * @return array<int, string>
      */
-    private function upsertShopeeOrdersFromDetails(ShopeeAccount $account, array $detailedOrders): int
-    {
-        $orderSns = [];
-        foreach ($detailedOrders as $order) {
-            if (! empty($order['order_sn'])) {
-                $orderSns[] = (string) $order['order_sn'];
-            }
-        }
+    private function collectOrderSnsInWindow(
+        ShopeeAccount $account,
+        int $timeFrom,
+        int $timeTo,
+        ?string $orderStatus,
+        bool $includeUpdateWindow
+    ): array {
+        $maxWindow = 14 * 86400;
+        $allOrderSns = [];
+        $timeFields = $includeUpdateWindow ? ['create_time', 'update_time'] : ['create_time'];
 
-        if (empty($orderSns)) {
-            return 0;
-        }
-
-        $existingOrders = ShopeeOrder::where('shopee_account_id', $account->id)
-            ->whereIn('order_sn', $orderSns)
-            ->get()
-            ->keyBy('order_sn');
-
-        $syncedCount = 0;
-
-        DB::transaction(function () use ($account, $detailedOrders, $existingOrders, &$syncedCount): void {
-            $nowWib = now('Asia/Jakarta');
-
-            foreach ($detailedOrders as $order) {
-                $orderSn = trim((string) ($order['order_sn'] ?? ''));
-                if ($orderSn === '') {
-                    continue;
-                }
-
-                /** @var ShopeeOrder|null $existing */
-                $existing = $existingOrders->get($orderSn);
-
-                $packageList = is_array($order['package_list'] ?? null) ? array_values($order['package_list']) : [];
-                $firstPackage = is_array($packageList[0] ?? null) ? $packageList[0] : [];
-
-                $packageNumber = trim((string) ($firstPackage['package_number'] ?? $order['package_number'] ?? ''));
-                $packageNumber = $packageNumber !== '' ? $packageNumber : $existing?->package_number;
-
-                $logisticsStatus = trim((string) ($firstPackage['logistics_status'] ?? $order['logistics_status'] ?? ''));
-                $logisticsStatus = $logisticsStatus !== '' ? $logisticsStatus : $existing?->logistics_status;
-
-                $shippingCarrier = trim((string) ($order['shipping_carrier'] ?? ''));
-                if ($shippingCarrier === '') {
-                    $shippingCarrier = (string) ($this->extractFirstPackageString($packageList, 'shipping_carrier') ?? '');
-                }
-                $shippingCarrier = $shippingCarrier !== '' ? $shippingCarrier : $existing?->shipping_carrier;
-
-                $trackingNumber = trim((string) ($order['tracking_number'] ?? ''));
-                if ($trackingNumber === '') {
-                    $trackingNumber = (string) ($this->extractFirstPackageString($packageList, 'tracking_number') ?? '');
-                }
-                $trackingNumber = $trackingNumber !== '' ? $trackingNumber : $existing?->tracking_number;
-
-                $rawPayment = trim((string) ($order['payment_method'] ?? ''));
-                $isExplicitNonCod = stripos($rawPayment, 'non-cod') !== false || stripos($rawPayment, 'non cod') !== false;
-                $isCod = ! empty($order['cod'])
-                    || (! $isExplicitNonCod && (stripos($rawPayment, 'cash on delivery') !== false || stripos($rawPayment, 'cod') !== false));
-
-                $msgToSeller = isset($order['message_to_seller']) ? trim((string) $order['message_to_seller']) : '';
-                $note = isset($order['note']) ? trim((string) $order['note']) : '';
-                $buyerNote = $msgToSeller !== '' ? $msgToSeller : ($note !== '' ? $note : null);
-
-                $cancelBy = $this->formatCancelByLabel(isset($order['cancel_by']) ? (string) $order['cancel_by'] : null);
-                $cancelReason = isset($order['cancel_reason']) && trim((string) $order['cancel_reason']) !== ''
-                    ? trim((string) $order['cancel_reason'])
-                    : null;
-                $buyerCancelReason = isset($order['buyer_cancel_reason']) && trim((string) $order['buyer_cancel_reason']) !== ''
-                    ? trim((string) $order['buyer_cancel_reason'])
-                    : null;
-
-                $orderCreatedAt = ! empty($order['create_time'])
-                    ? Carbon::createFromTimestamp((int) $order['create_time'], 'Asia/Jakarta')->format('Y-m-d H:i:s')
-                    : ($existing?->order_created_at?->format('Y-m-d H:i:s') ?? $nowWib->format('Y-m-d H:i:s'));
-
-                $shipByDate = ! empty($order['ship_by_date'])
-                    ? Carbon::createFromTimestamp((int) $order['ship_by_date'], 'Asia/Jakarta')->format('Y-m-d H:i:s')
-                    : $existing?->ship_by_date?->format('Y-m-d H:i:s');
-
-                $attributes = [
-                    'package_number'         => $packageNumber,
-                    'order_status'           => strtoupper((string) ($order['order_status'] ?? 'READY_TO_SHIP')),
-                    'logistics_status'       => $logisticsStatus,
-                    'shipping_carrier'       => $shippingCarrier,
-                    'tracking_number'        => $trackingNumber,
-                    'buyer_user_id'          => ! empty($order['buyer_user_id']) ? (int) $order['buyer_user_id'] : null,
-                    'buyer_username'         => ! empty($order['buyer_username']) ? (string) $order['buyer_username'] : null,
-                    'buyer_note'             => $buyerNote,
-                    'recipient_data'         => is_array($order['recipient_address'] ?? null) ? $order['recipient_address'] : null,
-                    'items_json'             => $this->normalizeItemsList($order, $packageList),
-                    'package_list_json'      => ! empty($packageList) ? $packageList : null,
-                    'payment_method'         => $rawPayment !== '' ? $rawPayment : ($isCod ? 'Cash on Delivery' : null),
-                    'is_cod'                 => $isCod,
-                    'total_amount'           => (float) ($order['total_amount'] ?? 0),
-                    'estimated_shipping_fee' => (float) ($order['estimated_shipping_fee'] ?? 0),
-                    'cancel_by'              => $cancelBy ?? $existing?->cancel_by,
-                    'cancel_reason'          => $cancelReason ?? $existing?->cancel_reason,
-                    'buyer_cancel_reason'    => $buyerCancelReason ?? $existing?->buyer_cancel_reason,
-                    'order_created_at'       => $orderCreatedAt,
-                    'ship_by_date'           => $shipByDate,
-                    'label_document_status'  => $existing?->label_document_status ?? 'NONE',
-                    'label_print_count'      => $existing?->label_print_count ?? 0,
-                    'raw_payload'            => json_encode($order, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                    'last_synced_at'         => $nowWib,
-                ];
-
-                ShopeeOrder::updateOrCreate(
-                    [
-                        'shopee_account_id' => $account->id,
-                        'order_sn'          => $orderSn,
-                    ],
-                    $attributes
+        foreach ($timeFields as $timeField) {
+            $currentTo = $timeTo;
+            while ($currentTo > $timeFrom) {
+                $currentFrom = max($timeFrom, $currentTo - $maxWindow);
+                $chunkList = $this->syncService->fetchOrderListRaw(
+                    $account,
+                    $currentFrom,
+                    $currentTo,
+                    100,
+                    $orderStatus,
+                    $timeField
                 );
 
-                $syncedCount++;
-            }
-        });
+                foreach ($chunkList as $ord) {
+                    $sn = trim((string) ($ord['order_sn'] ?? ''));
+                    if ($sn !== '') {
+                        $allOrderSns[$sn] = true;
+                    }
+                }
 
-        return $syncedCount;
+                $currentTo = $currentFrom;
+            }
+        }
+
+        return array_keys($allOrderSns);
     }
 
     /**
-     * Ekstrak daftar item lengkap thumbnail gambar, SKU, variasi, qty, dan harga.
+     * Pipeline baca bersama untuk mengambil detail + escrow paralel, persist lokal & Cut Off,
+     * serta melengkapi tracking number yang masih kosong.
      *
-     * @param  array<string, mixed>  $order
-     * @param  array<int, array<string, mixed>>  $packageList
-     * @return array<int, array<string, mixed>>
+     * @param  array<int, string>  $orderSns
+     * @return array{total_fetched: int, synced_orders: int, changed_orders: int, cutoff_created: int, cutoff_updated: int, last_synced_at: ?string, message: string}
      */
-    private function normalizeItemsList(array $order, array $packageList): array
-    {
-        $rawItems = is_array($order['item_list'] ?? null) ? $order['item_list'] : [];
-        if (empty($rawItems) && ! empty($packageList)) {
-            foreach ($packageList as $pkg) {
-                if (! empty($pkg['item_list']) && is_array($pkg['item_list'])) {
-                    $rawItems = array_merge($rawItems, $pkg['item_list']);
-                }
+    private function syncOrderSnListPipeline(
+        ShopeeAccount &$account,
+        array $orderSns,
+        bool $syncCutOff = true,
+        bool $updateAccountTimestamps = true,
+        string $emptyMessage = 'Tidak ada pesanan Shopee pada rentang waktu tersebut.'
+    ): array {
+        $normalizedSns = array_values(array_unique(array_filter(
+            array_map(static fn ($sn): string => trim((string) $sn), $orderSns),
+            static fn (string $sn): bool => $sn !== ''
+        )));
+
+        if (empty($normalizedSns)) {
+            if ($updateAccountTimestamps) {
+                $this->markAccountSyncSuccess($account);
             }
-        }
 
-        $items = [];
-        foreach ($rawItems as $it) {
-            if (! is_array($it)) {
-                continue;
-            }
-
-            $imageUrl = $it['image_info']['image_url'] ?? $it['item_image'] ?? null;
-            $modelSku = ShopeeSyncService::normalizeSku(isset($it['model_sku']) ? (string) $it['model_sku'] : null);
-            $itemSku = ShopeeSyncService::normalizeSku(isset($it['item_sku']) ? (string) $it['item_sku'] : null);
-
-            $items[] = [
-                'item_id'                  => isset($it['item_id']) ? (int) $it['item_id'] : null,
-                'item_name'                => (string) ($it['item_name'] ?? 'Produk Shopee'),
-                'item_sku'                 => $itemSku,
-                'model_id'                 => isset($it['model_id']) ? (int) $it['model_id'] : null,
-                'model_name'               => ! empty($it['model_name']) ? trim((string) $it['model_name']) : null,
-                'model_sku'                => $modelSku,
-                'sku'                      => $modelSku ?? $itemSku,
-                'model_quantity_purchased' => max(1, (int) ($it['model_quantity_purchased'] ?? $it['quantity_purchased'] ?? $it['model_quantity'] ?? 1)),
-                'model_original_price'     => (float) ($it['model_original_price'] ?? $it['original_price'] ?? 0),
-                'model_discounted_price'   => (float) ($it['model_discounted_price'] ?? $it['discounted_price'] ?? 0),
-                'image_url'                => ! empty($imageUrl) ? (string) $imageUrl : null,
+            return [
+                'total_fetched'  => 0,
+                'synced_orders'  => 0,
+                'changed_orders' => 0,
+                'cutoff_created' => 0,
+                'cutoff_updated' => 0,
+                'last_synced_at' => $this->formatLastSyncedAt($account->fresh() ?? $account),
+                'message'        => $emptyMessage,
             ];
         }
 
-        return $items;
+        [
+            'detailed_orders' => $detailedOrders,
+            'escrow_map'      => $escrowMap,
+        ] = $this->fetchDetailsAndEscrowConcurrent($account, $normalizedSns, $syncCutOff);
+
+        if (empty($detailedOrders)) {
+            if ($updateAccountTimestamps) {
+                $this->markAccountSyncSuccess($account);
+            }
+
+            return [
+                'total_fetched'  => 0,
+                'synced_orders'  => 0,
+                'changed_orders' => 0,
+                'cutoff_created' => 0,
+                'cutoff_updated' => 0,
+                'last_synced_at' => $this->formatLastSyncedAt($account->fresh() ?? $account),
+                'message'        => 'Detail pesanan Shopee tidak ditemukan pada rentang waktu tersebut.',
+            ];
+        }
+
+        $preExistingEmptyTracking = $this->collectPreExistingSameStatusEmptyTracking($account, $detailedOrders);
+
+        if ($syncCutOff) {
+            $cutOffResult = $this->syncService->ingestDetailedOrdersToCutOff($account, $detailedOrders, $escrowMap, true);
+            $syncedOrders = (int) ($cutOffResult['shopee_synced'] ?? 0);
+            $changedOrders = (int) ($cutOffResult['shopee_changed'] ?? 0);
+            $created = (int) ($cutOffResult['created'] ?? 0);
+            $updated = (int) ($cutOffResult['updated'] ?? 0);
+        } else {
+            $upsertStats = $this->recorder->upsertFromDetails($account, $detailedOrders);
+            $syncedOrders = (int) ($upsertStats['synced'] ?? 0);
+            $changedOrders = (int) ($upsertStats['changed'] ?? 0);
+            $created = 0;
+            $updated = 0;
+
+            if ($updateAccountTimestamps) {
+                $this->markAccountSyncSuccess($account);
+            }
+        }
+
+        $trackingUpdated = 0;
+        $trackingMap = $this->fetchMissingTrackingNumbersPool($account, $detailedOrders, 20, $trackingUpdated);
+        if ($trackingUpdated > 0 && ! empty($preExistingEmptyTracking)) {
+            $newlyTrackedExistingCount = 0;
+            foreach (array_keys($trackingMap) as $trackedSn) {
+                if (isset($preExistingEmptyTracking[$trackedSn])) {
+                    $newlyTrackedExistingCount++;
+                }
+            }
+            if ($newlyTrackedExistingCount > 0) {
+                $changedOrders = $syncedOrders > 0
+                    ? min($syncedOrders, $changedOrders + $newlyTrackedExistingCount)
+                    : $newlyTrackedExistingCount;
+            }
+        }
+
+        return [
+            'total_fetched'  => count($detailedOrders),
+            'synced_orders'  => $syncedOrders,
+            'changed_orders' => $changedOrders,
+            'cutoff_created' => $created,
+            'cutoff_updated' => $updated,
+            'last_synced_at' => $this->formatLastSyncedAt($account->fresh() ?? $account),
+            'message'        => $syncCutOff
+                ? "Sinkronisasi berhasil: {$syncedOrders} pesanan diperbarui di Pesanan Saya ({$created} baru, {$updated} diperbarui di Cut Off)."
+                : "Sinkronisasi berhasil: {$syncedOrders} pesanan diperbarui di Pesanan Saya.",
+        ];
     }
 
-    private function extractFirstPackageString(array $packageList, string $key): ?string
+    /**
+     * Ekstrak kandidat order_sn PROCESSED/SHIPPED yang belum memiliki nomor resi di detail Shopee.
+     *
+     * @param  array<int, array<string, mixed>>  $detailedOrders
+     * @return array<string, array{status: string, package_number: string}>
+     */
+    private function extractMissingTrackingCandidates(array $detailedOrders): array
     {
-        foreach ($packageList as $pkg) {
-            if (is_array($pkg) && ! empty($pkg[$key])) {
-                $val = trim((string) $pkg[$key]);
-                if ($val !== '') {
-                    return $val;
+        $candidates = [];
+        foreach ($detailedOrders as $order) {
+            if (! is_array($order)) {
+                continue;
+            }
+            $sn = trim((string) ($order['order_sn'] ?? ''));
+            $status = strtoupper(trim((string) ($order['order_status'] ?? '')));
+            if ($sn === '' || ! in_array($status, ['PROCESSED', 'SHIPPED'], true)) {
+                continue;
+            }
+
+            $packageList = is_array($order['package_list'] ?? null) ? $order['package_list'] : [];
+            $trackingInDetail = trim((string) ($order['tracking_number'] ?? ''));
+            $packageNumber = trim((string) ($order['package_number'] ?? ''));
+
+            foreach ($packageList as $pkg) {
+                if (! is_array($pkg)) {
+                    continue;
+                }
+                if ($trackingInDetail === '' && ! empty($pkg['tracking_number'])) {
+                    $trackingInDetail = trim((string) $pkg['tracking_number']);
+                }
+                if ($packageNumber === '' && ! empty($pkg['package_number'])) {
+                    $packageNumber = trim((string) $pkg['package_number']);
+                }
+            }
+
+            if ($trackingInDetail !== '') {
+                continue;
+            }
+
+            $candidates[$sn] = [
+                'status'         => $status,
+                'package_number' => $packageNumber,
+            ];
+        }
+
+        return $candidates;
+    }
+
+    /**
+     * Identifikasi pesanan PROCESSED/SHIPPED tanpa resi yang sudah ada di shopee_orders
+     * dengan status sama agar tracking backfill tidak dihitung ganda dengan order baru.
+     *
+     * @param  array<int, array<string, mixed>>  $detailedOrders
+     * @return array<string, true>
+     */
+    private function collectPreExistingSameStatusEmptyTracking(ShopeeAccount $account, array $detailedOrders): array
+    {
+        if (! Schema::hasTable('shopee_orders')) {
+            return [];
+        }
+
+        $candidates = $this->extractMissingTrackingCandidates($detailedOrders);
+        if (empty($candidates)) {
+            return [];
+        }
+
+        $matched = [];
+        $existingRows = ShopeeOrder::where('shopee_account_id', $account->id)
+            ->whereIn('order_sn', array_keys($candidates))
+            ->get(['order_sn', 'order_status', 'tracking_number']);
+
+        foreach ($existingRows as $row) {
+            $sn = (string) $row->order_sn;
+            if (
+                isset($candidates[$sn])
+                && $row->order_status === $candidates[$sn]['status']
+                && trim((string) ($row->tracking_number ?? '')) === ''
+            ) {
+                $matched[$sn] = true;
+            }
+        }
+
+        return $matched;
+    }
+
+    /**
+     * Ambil detail pesanan dan escrow secara paralel dalam gelombang 6 chunk x 50 order,
+     * dengan fallback berurutan hanya untuk chunk yang gagal.
+     *
+     * @param  array<int, string>  $orderSns
+     * @return array{detailed_orders: array<int, array<string, mixed>>, escrow_map: array<string, array<string, mixed>>}
+     */
+    private function fetchDetailsAndEscrowConcurrent(
+        ShopeeAccount &$account,
+        array $orderSns,
+        bool $fetchEscrow = true
+    ): array {
+        $normalizedSns = array_values(array_unique(array_filter(
+            array_map(static fn ($sn): string => trim((string) $sn), $orderSns),
+            static fn (string $sn): bool => $sn !== ''
+        )));
+
+        if (empty($normalizedSns)) {
+            return [
+                'detailed_orders' => [],
+                'escrow_map'      => [],
+            ];
+        }
+
+        $chunks = array_chunk($normalizedSns, self::MAX_BATCH_SIZE);
+        $detailedOrders = [];
+        $escrowMap = [];
+        $failedOrderChunks = [];
+        $failedEscrowChunks = [];
+
+        foreach (array_chunk($chunks, self::POOL_WAVE_SIZE, true) as $batchGroup) {
+            try {
+                $escrowUrl = $fetchEscrow ? $this->syncService->buildEscrowUrl($account) : null;
+                $responses = Http::pool(function (Pool $pool) use ($account, $batchGroup, $fetchEscrow, $escrowUrl): array {
+                    $reqs = [];
+                    foreach ($batchGroup as $idx => $chunk) {
+                        $orderUrl = $this->syncService->buildOrderDetailUrl($account, $chunk, self::ORDER_DETAIL_FIELDS);
+                        $reqs["order_{$idx}"] = $pool->as("order_{$idx}")->timeout(20)->get($orderUrl);
+                        if ($fetchEscrow && $escrowUrl !== null) {
+                            $reqs["escrow_{$idx}"] = $pool->as("escrow_{$idx}")->timeout(20)->asJson()->post($escrowUrl, [
+                                'order_sn_list' => array_values($chunk),
+                            ]);
+                        }
+                    }
+
+                    return $reqs;
+                });
+            } catch (\Throwable $e) {
+                Log::warning('ShopeeOrderService Http::pool wave error: ' . $e->getMessage());
+                foreach ($batchGroup as $idx => $chunk) {
+                    $failedOrderChunks[$idx] = $chunk;
+                    if ($fetchEscrow) {
+                        $failedEscrowChunks[$idx] = $chunk;
+                    }
+                }
+                continue;
+            }
+
+            foreach ($batchGroup as $idx => $chunk) {
+                $orderRes = $responses["order_{$idx}"] ?? null;
+                if ($orderRes instanceof Response && $orderRes->successful()) {
+                    $data = $orderRes->json();
+                    if (is_array($data) && empty($data['error'])) {
+                        $orderList = $data['response']['order_list'] ?? [];
+                        if (is_array($orderList) && ! empty($orderList)) {
+                            $detailedOrders = array_merge($detailedOrders, $orderList);
+                        }
+                    } else {
+                        $err = is_array($data) ? ($data['message'] ?? $data['error'] ?? 'API error') : 'Respon JSON tidak valid';
+                        Log::warning("ShopeeOrderService pool order_{$idx} error: {$err}");
+                        $failedOrderChunks[$idx] = $chunk;
+                    }
+                } else {
+                    $statusInfo = $orderRes instanceof Response ? ('HTTP ' . $orderRes->status()) : 'non-response';
+                    Log::warning("ShopeeOrderService pool order_{$idx} failed ({$statusInfo})");
+                    $failedOrderChunks[$idx] = $chunk;
+                }
+
+                if (! $fetchEscrow) {
+                    continue;
+                }
+
+                $escrowRes = $responses["escrow_{$idx}"] ?? null;
+                if ($escrowRes instanceof Response && $escrowRes->successful()) {
+                    $data = $escrowRes->json();
+                    if (is_array($data) && empty($data['error'])) {
+                        $parsed = $this->parseEscrowBatchResponse($data);
+                        if (! empty($parsed)) {
+                            $escrowMap = array_replace($escrowMap, $parsed);
+                        }
+                    } else {
+                        $err = is_array($data) ? ($data['message'] ?? $data['error'] ?? 'API error') : 'Respon JSON tidak valid';
+                        Log::warning("ShopeeOrderService pool escrow_{$idx} error: {$err}");
+                        $failedEscrowChunks[$idx] = $chunk;
+                    }
+                } else {
+                    $statusInfo = $escrowRes instanceof Response ? ('HTTP ' . $escrowRes->status()) : 'non-response';
+                    Log::warning("ShopeeOrderService pool escrow_{$idx} failed ({$statusInfo})");
+                    $failedEscrowChunks[$idx] = $chunk;
                 }
             }
         }
 
-        return null;
+        foreach ($failedOrderChunks as $chunk) {
+            $details = $this->syncService->fetchOrderDetailRaw($account, $chunk, self::ORDER_DETAIL_FIELDS);
+            if (! empty($details)) {
+                $detailedOrders = array_merge($detailedOrders, $details);
+            }
+        }
+
+        if ($fetchEscrow) {
+            foreach ($failedEscrowChunks as $chunk) {
+                $batchEscrow = $this->syncService->fetchEscrowDetailBatch($account, $chunk);
+                if (! empty($batchEscrow)) {
+                    $escrowMap = array_replace($escrowMap, $batchEscrow);
+                }
+            }
+        }
+
+        return [
+            'detailed_orders' => $detailedOrders,
+            'escrow_map'      => $escrowMap,
+        ];
+    }
+
+    /**
+     * Lengkapi nomor resi secara paralel untuk pesanan PROCESSED/SHIPPED yang belum memiliki resi.
+     *
+     * @param  array<int, array<string, mixed>>  $detailedOrders
+     * @return array<string, string>
+     */
+    private function fetchMissingTrackingNumbersPool(
+        ShopeeAccount &$account,
+        array $detailedOrders,
+        int $limit = 20,
+        ?int &$updatedCount = null
+    ): array {
+        $updatedCount = 0;
+        if (empty($detailedOrders) || $limit <= 0) {
+            return [];
+        }
+
+        $candidates = $this->extractMissingTrackingCandidates($detailedOrders);
+        if (empty($candidates)) {
+            return [];
+        }
+
+        $existingBySn = collect();
+        if (Schema::hasTable('shopee_orders')) {
+            $existingBySn = ShopeeOrder::where('shopee_account_id', $account->id)
+                ->whereIn('order_sn', array_keys($candidates))
+                ->get(['order_sn', 'tracking_number', 'package_number'])
+                ->keyBy('order_sn');
+        }
+
+        $targets = [];
+        foreach ($candidates as $sn => $meta) {
+            /** @var ShopeeOrder|null $existing */
+            $existing = $existingBySn->get($sn);
+            if (trim((string) ($existing?->tracking_number ?? '')) !== '') {
+                continue;
+            }
+
+            $packageNumber = $meta['package_number'];
+            $targets[$sn] = $packageNumber !== ''
+                ? $packageNumber
+                : trim((string) ($existing?->package_number ?? ''));
+
+            if (count($targets) >= $limit) {
+                break;
+            }
+        }
+
+        if (empty($targets)) {
+            return [];
+        }
+
+        $trackingMap = [];
+        foreach (array_chunk($targets, 20, true) as $targetBatch) {
+            try {
+                $responses = Http::pool(function (Pool $pool) use ($account, $targetBatch): array {
+                    $reqs = [];
+                    foreach ($targetBatch as $sn => $packageNumber) {
+                        $query = $this->filterNonEmpty([
+                            'order_sn'       => $sn,
+                            'package_number' => $packageNumber,
+                        ]);
+                        $url = $this->buildSignedUrl($account, '/api/v2/logistics/get_tracking_number', $query);
+                        $reqs[$sn] = $pool->as((string) $sn)->timeout(15)->get($url);
+                    }
+
+                    return $reqs;
+                });
+            } catch (\Throwable $e) {
+                Log::warning('ShopeeOrderService fetchMissingTrackingNumbersPool warning: ' . $e->getMessage());
+                continue;
+            }
+
+            foreach ($responses as $sn => $response) {
+                if (! ($response instanceof Response) || ! $response->successful()) {
+                    continue;
+                }
+                $data = $response->json();
+                if (! is_array($data) || ! empty($data['error'])) {
+                    continue;
+                }
+                $resp = is_array($data['response'] ?? null) ? $data['response'] : [];
+                $trackingNumber = trim((string) (
+                    $resp['tracking_number']
+                    ?? $resp['last_mile_tracking_number']
+                    ?? ''
+                ));
+                if ($trackingNumber !== '') {
+                    $trackingMap[(string) $sn] = $trackingNumber;
+                }
+            }
+        }
+
+        if (! empty($trackingMap)) {
+            $updatedCount = $this->recorder->applyTrackingNumbers($account, $trackingMap);
+        }
+
+        return $trackingMap;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, array<string, mixed>>
+     */
+    private function parseEscrowBatchResponse(array $data): array
+    {
+        $resp = $data['response'] ?? [];
+        if (! is_array($resp)) {
+            return [];
+        }
+
+        $escrowList = [];
+        if (! empty($resp['escrow_detail_list']) && is_array($resp['escrow_detail_list'])) {
+            $escrowList = $resp['escrow_detail_list'];
+        } elseif (! empty($resp['escrow_list']) && is_array($resp['escrow_list'])) {
+            $escrowList = $resp['escrow_list'];
+        } elseif (array_is_list($resp)) {
+            $escrowList = $resp;
+        } elseif (! empty($resp['order_sn'])) {
+            $escrowList = [$resp];
+        }
+
+        $mapped = [];
+        foreach ($escrowList as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $sn = (string) ($entry['order_sn'] ?? '');
+            if ($sn === '') {
+                continue;
+            }
+
+            $income = is_array($entry['order_income'] ?? null) ? $entry['order_income'] : [];
+            if (empty($income['items'])) {
+                if (! empty($entry['items']) && is_array($entry['items'])) {
+                    $income['items'] = $entry['items'];
+                } elseif (! empty($entry['item_list']) && is_array($entry['item_list'])) {
+                    $income['items'] = $entry['item_list'];
+                }
+            }
+
+            foreach ([
+                'voucher_from_seller',
+                'seller_voucher_discount',
+                'seller_discount',
+                'seller_promo',
+                'original_cost_of_goods_sold',
+                'cost_of_goods_sold',
+                'escrow_amount',
+            ] as $key) {
+                if (! isset($income[$key]) && isset($entry[$key])) {
+                    $income[$key] = $entry[$key];
+                }
+            }
+
+            $mapped[$sn] = $income;
+        }
+
+        return $mapped;
+    }
+
+    private function markAccountSyncSuccess(ShopeeAccount $account): void
+    {
+        $account->update([
+            'last_synced_at'   => now(),
+            'last_sync_status' => 'success',
+            'last_sync_error'  => null,
+        ]);
+    }
+
+    private function formatLastSyncedAt(?ShopeeAccount $account): ?string
+    {
+        return $account?->last_synced_at?->copy()->setTimezone('Asia/Jakarta')->format('d M Y, H:i:s');
     }
 
     private function ensureConnectedAccount(ShopeeAccount &$account): ShopeeAccount
@@ -1167,24 +1573,6 @@ class ShopeeOrderService
         }
 
         return $normalized;
-    }
-
-    private function formatCancelByLabel(?string $rawCancelBy): ?string
-    {
-        if ($rawCancelBy === null) {
-            return null;
-        }
-        $trimmed = trim($rawCancelBy);
-        if ($trimmed === '') {
-            return null;
-        }
-
-        return match (strtolower($trimmed)) {
-            'buyer', 'pembeli'               => 'Pembeli',
-            'seller', 'penjual'              => 'Penjual',
-            'shopee', 'system', 'sistem shopee' => 'Sistem Shopee',
-            default                          => ucfirst($trimmed),
-        };
     }
 
     private function resolvePackageNumber(ShopeeAccount $account, string $orderSn, ?string $packageNumber): ?string
