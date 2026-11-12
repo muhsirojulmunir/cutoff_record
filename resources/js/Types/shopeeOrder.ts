@@ -153,6 +153,21 @@ export type ShopeeSubTab = 'all' | 'unprocessed' | 'processed';
 export type ShopeePrintStatusFilter = 'all' | 'unprinted' | 'printed';
 
 /**
+ * Filter tipe layanan pengiriman (Tipe Pesanan) pada Pesanan Saya Shopee.
+ */
+export type ShopeeOrderType = 'all' | 'regular' | 'instant' | 'kilat';
+
+/**
+ * Counter rincian per Tipe Pesanan sesuai tab/status aktif.
+ */
+export interface ShopeeOrderTypeCounts {
+  all: number;
+  regular: number;
+  instant: number;
+  kilat: number;
+}
+
+/**
  * Urutan pengurutan daftar pesanan Shopee.
  */
 export type ShopeeOrderSort = 'ship_by_asc' | 'newest' | 'oldest';
@@ -163,6 +178,7 @@ export type ShopeeOrderSort = 'ship_by_asc' | 'newest' | 'oldest';
 export interface ShopeeOrderFilters {
   tab: ShopeeMainTab;
   sub_tab: ShopeeSubTab;
+  order_type: ShopeeOrderType;
   print_status: ShopeePrintStatusFilter;
   search: string;
   courier: string;
@@ -341,8 +357,39 @@ export interface ShopeeOrdersPageProps extends PageProps {
   account: ShopeeAccountSummary | null;
   orders: PaginatedShopeeOrders;
   tabCounts: ShopeeTabCounts;
+  orderTypeCounts: ShopeeOrderTypeCounts;
   carriers: string[];
   filters: ShopeeOrderFilters;
+}
+
+/**
+ * Hasil sinkronisasi inkremental otomatis (POST /shopee-orders/auto-sync).
+ */
+export interface ShopeeAutoSyncResponse {
+  status: 'success' | 'skipped' | 'error';
+  skipped?: boolean;
+  reason?: string | null;
+  total_fetched?: number;
+  synced_orders: number;
+  changed_orders: number;
+  cutoff_created?: number;
+  cutoff_updated?: number;
+  last_synced_at?: string | null;
+  message: string;
+}
+
+/**
+ * Hasil sinkronisasi 1 chunk tanggal anti-503 (POST /shopee-orders/sync-chunk).
+ */
+export interface ShopeeSyncChunkResponse {
+  status: 'success' | 'error';
+  total_fetched: number;
+  synced_orders: number;
+  changed_orders: number;
+  cutoff_created: number;
+  cutoff_updated: number;
+  last_synced_at?: string | null;
+  message: string;
 }
 
 /**

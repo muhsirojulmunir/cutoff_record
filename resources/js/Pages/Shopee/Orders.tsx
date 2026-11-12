@@ -21,6 +21,7 @@ import {
   useOverlayScrollLockAndEscape,
 } from '../../Components/Shopee/overlayHelpers';
 import {
+  ShopeeAutoSyncResponse,
   ShopeeBuyerCancellationResult,
   ShopeeMainTab,
   ShopeeMassShipResult,
@@ -28,20 +29,39 @@ import {
   ShopeeOrderItem,
   ShopeeOrderRecord,
   ShopeeOrderSort,
+  ShopeeOrderType,
   ShopeeOrdersPageProps,
   ShopeePrintStatusFilter,
   ShopeeRefreshDetailResponse,
   ShopeeShipResult,
   ShopeeSubTab,
+  ShopeeSyncChunkResponse,
 } from '../../Types/shopeeOrder';
 
 const MAX_SHOPEE_BATCH = 50;
 const URGENT_DEADLINE_MS = 6 * 60 * 60 * 1000;
+const LIVE_AUTO_SYNC_INTERVAL_SEC = 30;
+const INITIAL_AUTO_SYNC_STALE_MS = 20_000;
 
 interface ToastMessage {
   id: number;
   type: 'success' | 'error' | 'info';
   message: string;
+}
+
+interface ChunkProgressState {
+  current: number;
+  total: number;
+  date: string;
+}
+
+interface SafeJsonResult<T> {
+  ok: boolean;
+  authOrSessionExpired: boolean;
+  nonJsonOrServerHtml: boolean;
+  status: number;
+  data: T | null;
+  errorMessage: string;
 }
 
 interface ShipModalState {
@@ -153,13 +173,149 @@ function getDeadlineState(
   };
 }
 
+function getTodayWibYmd(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+function getWibDateDaysAgo(todayYmd: string, daysAgo: number): string {
+  const [y, m, d] = todayYmd.split('-').map(Number);
+  const utcDate = new Date(Date.UTC(y, m - 1, d - daysAgo));
+  const yy = utcDate.getUTCFullYear();
+  const mm = String(utcDate.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(utcDate.getUTCDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
+function buildWibDateRangeAscending(days: number): string[] {
+  const todayYmd = getTodayWibYmd();
+  const safeDays = Math.max(1, Math.trunc(days));
+  const result: string[] = [];
+  for (let offset = safeDays - 1; offset >= 0; offset -= 1) {
+    result.push(getWibDateDaysAgo(todayYmd, offset));
+  }
+  return result;
+}
+
+function readXsrfCookieToken(): string {
+  if (typeof document === 'undefined' || !document.cookie) return '';
+  const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
+  if (!match?.[1]) return '';
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
+function buildJsonPostHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
+  };
+  const metaToken = getCsrfToken().trim();
+  const xsrfToken = readXsrfCookieToken().trim();
+  if (metaToken) {
+    headers['X-CSRF-TOKEN'] = metaToken;
+  }
+  if (xsrfToken) {
+    headers['X-XSRF-TOKEN'] = xsrfToken;
+  }
+  return headers;
+}
+
+function formatLastSyncedDisplay(
+  localFormatted: string | null,
+  accountLastSyncedAt: string | null | undefined
+): string {
+  if (localFormatted && localFormatted.trim() !== '') {
+    const trimmed = localFormatted.trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+      return formatOrderTimestampWIB(trimmed);
+    }
+    return /WIB$/i.test(trimmed) ? trimmed : `${trimmed} WIB`;
+  }
+  return formatOrderTimestampWIB(accountLastSyncedAt);
+}
+
+async function safeJsonFetch<T>(url: string, init: RequestInit): Promise<SafeJsonResult<T>> {
+  const response = await fetch(url, init);
+  const contentType = (response.headers.get('content-type') ?? '').toLowerCase();
+  const isJson = contentType.includes('application/json');
+
+  if (response.redirected || response.status === 401 || response.status === 419) {
+    return {
+      ok: false,
+      authOrSessionExpired: true,
+      nonJsonOrServerHtml: !isJson,
+      status: response.status,
+      data: null,
+      errorMessage:
+        response.status === 419
+          ? 'Sesi atau token keamanan kedaluwarsa. Muat ulang halaman untuk melanjutkan sinkronisasi.'
+          : 'Sesi login telah berakhir atau dialihkan. Silakan masuk kembali untuk melanjutkan sinkronisasi.',
+    };
+  }
+
+  if (response.ok && !response.redirected && isJson) {
+    const data = (await response.json()) as T;
+    return {
+      ok: true,
+      authOrSessionExpired: false,
+      nonJsonOrServerHtml: false,
+      status: response.status,
+      data,
+      errorMessage: '',
+    };
+  }
+
+  if (!isJson) {
+    return {
+      ok: false,
+      authOrSessionExpired: response.status === 403,
+      nonJsonOrServerHtml: true,
+      status: response.status,
+      data: null,
+      errorMessage: `Server mengembalikan respons non-JSON (HTTP ${response.status}).`,
+    };
+  }
+
+  let parsedError: (T & { message?: string }) | null = null;
+  try {
+    const rawText = await response.text();
+    if (rawText.trim() !== '') {
+      parsedError = JSON.parse(rawText) as T & { message?: string };
+    }
+  } catch {
+    parsedError = null;
+  }
+
+  return {
+    ok: false,
+    authOrSessionExpired: false,
+    nonJsonOrServerHtml: false,
+    status: response.status,
+    data: parsedError,
+    errorMessage:
+      parsedError?.message || `Permintaan sinkronisasi gagal (HTTP ${response.status}).`,
+  };
+}
+
 function buildFilterParams(next: ShopeeOrderFilters): Record<string, string> {
   const params: Record<string, string> = {
     tab: next.tab,
     sort: next.sort,
   };
-  if (next.tab === 'to_ship' && next.sub_tab !== 'all') {
+  if (next.tab === 'to_ship') {
     params.sub_tab = next.sub_tab;
+  }
+  if (next.order_type !== 'all') {
+    params.order_type = next.order_type;
   }
   if (next.print_status !== 'all') {
     params.print_status = next.print_status;
@@ -183,6 +339,7 @@ export default function ShopeeOrdersPage({
   account,
   orders,
   tabCounts,
+  orderTypeCounts,
   carriers,
   filters,
 }: ShopeeOrdersPageProps) {
@@ -197,12 +354,25 @@ export default function ShopeeOrdersPage({
   const toastTimerRef = useRef<number | null>(null);
   const activeBlobUrlRef = useRef<string | null>(null);
   const waybillAbortRef = useRef<AbortController | null>(null);
-  const syncInFlightRef = useRef(false);
+  const autoSyncAbortRef = useRef<AbortController | null>(null);
+  const chunkAbortRef = useRef<AbortController | null>(null);
+  const autoSyncInFlightRef = useRef(false);
+  const chunkSyncInFlightRef = useRef(false);
+  const countdownRef = useRef<number>(LIVE_AUTO_SYNC_INTERVAL_SEC);
+  const initialAutoSyncAttemptedRef = useRef(false);
+  const syncMenuRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const masterCheckboxRef = useRef<HTMLInputElement | null>(null);
 
   // Sync & UI state
-  const [syncDays, setSyncDays] = useState<number>(7);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [isLiveAutoSync, setIsLiveAutoSync] = useState(true);
+  const [liveCountdown, setLiveCountdown] = useState(LIVE_AUTO_SYNC_INTERVAL_SEC);
+  const [isAutoSyncing, setIsAutoSyncing] = useState(false);
+  const [isChunkSyncing, setIsChunkSyncing] = useState(false);
+  const [chunkProgress, setChunkProgress] = useState<ChunkProgressState | null>(null);
+  const [isSyncMenuOpen, setIsSyncMenuOpen] = useState(false);
+  const [localLastSyncedAt, setLocalLastSyncedAt] = useState<string | null>(null);
+  const [syncAlert, setSyncAlert] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState(filters.search ?? '');
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
 
@@ -248,7 +418,8 @@ export default function ShopeeOrdersPage({
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      syncInFlightRef.current = false;
+      autoSyncInFlightRef.current = false;
+      chunkSyncInFlightRef.current = false;
       if (searchTimerRef.current !== null) {
         window.clearTimeout(searchTimerRef.current);
         searchTimerRef.current = null;
@@ -263,6 +434,10 @@ export default function ShopeeOrdersPage({
       }
       waybillAbortRef.current?.abort();
       waybillAbortRef.current = null;
+      autoSyncAbortRef.current?.abort();
+      autoSyncAbortRef.current = null;
+      chunkAbortRef.current?.abort();
+      chunkAbortRef.current = null;
       revokeActiveBlobUrl();
     };
   }, [revokeActiveBlobUrl]);
@@ -286,6 +461,11 @@ export default function ShopeeOrdersPage({
     setSearchInput(filters.search ?? '');
   }, [filters.search]);
 
+  // Reset local formatted timestamp whenever Inertia account prop refreshes
+  useEffect(() => {
+    setLocalLastSyncedAt(null);
+  }, [account?.last_synced_at]);
+
   // Reset flash dismissal whenever a new flash arrives
   const flashSignature = `${flash?.success ?? ''}::${flash?.error ?? ''}`;
   useEffect(() => {
@@ -296,6 +476,7 @@ export default function ShopeeOrdersPage({
   const filterScopeKey = JSON.stringify({
     tab: filters.tab,
     sub_tab: filters.sub_tab,
+    order_type: filters.order_type ?? 'all',
     print_status: filters.print_status,
     search: filters.search,
     courier: filters.courier,
@@ -336,6 +517,27 @@ export default function ShopeeOrdersPage({
     canClose: () => !cancellingOrderSn,
   });
 
+  // Close Sinkron Ulang dropdown on outside click or Escape
+  useEffect(() => {
+    if (!isSyncMenuOpen) return;
+    const handleMouseDown = (e: MouseEvent) => {
+      if (syncMenuRef.current && !syncMenuRef.current.contains(e.target as Node)) {
+        setIsSyncMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsSyncMenuOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isSyncMenuOpen]);
+
   const isShopeeConnected = Boolean(
     account &&
       account.has_credentials &&
@@ -344,12 +546,307 @@ export default function ShopeeOrdersPage({
       account.connection_status !== 'disconnected'
   );
 
+  const isAnyOverlayOpen = Boolean(
+    drawerOrder ||
+      shipModal.show ||
+      waybillModal.show ||
+      cancelTarget ||
+      isDatePickerOpen ||
+      isSyncMenuOpen
+  );
+
+  const isShopeeConnectedRef = useRef(isShopeeConnected);
+  isShopeeConnectedRef.current = isShopeeConnected;
+  const isLiveAutoSyncRef = useRef(isLiveAutoSync);
+  isLiveAutoSyncRef.current = isLiveAutoSync;
+  const isAnyOverlayOpenRef = useRef(isAnyOverlayOpen);
+  isAnyOverlayOpenRef.current = isAnyOverlayOpen;
+  const selectedCountRef = useRef(selectedOrderSns.length);
+  selectedCountRef.current = selectedOrderSns.length;
+
+  const resetLiveCountdown = useCallback(() => {
+    countdownRef.current = LIVE_AUTO_SYNC_INTERVAL_SEC;
+    if (isMountedRef.current) {
+      setLiveCountdown(LIVE_AUTO_SYNC_INTERVAL_SEC);
+    }
+  }, []);
+
+  const reloadAfterSync = useCallback(() => {
+    router.reload({
+      only: ['orders', 'tabCounts', 'orderTypeCounts', 'account', 'carriers'],
+    });
+  }, []);
+
+  const runAutoSync = useCallback(
+    async (options?: { silentError?: boolean }) => {
+      if (
+        !isShopeeConnectedRef.current ||
+        autoSyncInFlightRef.current ||
+        chunkSyncInFlightRef.current
+      ) {
+        return;
+      }
+
+      autoSyncAbortRef.current?.abort();
+      const controller = new AbortController();
+      autoSyncAbortRef.current = controller;
+      autoSyncInFlightRef.current = true;
+      if (isMountedRef.current) {
+        setIsAutoSyncing(true);
+      }
+
+      try {
+        const result = await safeJsonFetch<ShopeeAutoSyncResponse>(
+          '/shopee-orders/auto-sync',
+          {
+            method: 'POST',
+            credentials: 'same-origin',
+            signal: controller.signal,
+            headers: buildJsonPostHeaders(),
+            body: JSON.stringify({}),
+          }
+        );
+
+        if (controller.signal.aborted || !isMountedRef.current) return;
+
+        if (!result.ok || !result.data) {
+          if (result.authOrSessionExpired || result.nonJsonOrServerHtml) {
+            setIsLiveAutoSync(false);
+            setSyncAlert(result.errorMessage);
+            showToast('error', result.errorMessage);
+          } else if (!options?.silentError) {
+            setSyncAlert(result.errorMessage);
+          }
+          return;
+        }
+
+        const payload = result.data;
+        if (payload.status === 'error') {
+          if (!options?.silentError) {
+            setSyncAlert(payload.message || 'Gagal menyegarkan pesanan Shopee secara otomatis.');
+          }
+          return;
+        }
+
+        setSyncAlert(null);
+        if (payload.last_synced_at) {
+          setLocalLastSyncedAt(payload.last_synced_at);
+        }
+
+        if (payload.status === 'success' && (payload.changed_orders ?? 0) > 0) {
+          reloadAfterSync();
+          showToast(
+            'success',
+            `Live Auto-Sync: ${payload.changed_orders} pesanan diperbarui.`
+          );
+        }
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (!isMountedRef.current) return;
+        if (!options?.silentError) {
+          setSyncAlert('Koneksi ke server terputus saat menyegarkan pesanan otomatis.');
+        }
+      } finally {
+        if (autoSyncAbortRef.current === controller) {
+          autoSyncAbortRef.current = null;
+        }
+        autoSyncInFlightRef.current = false;
+        if (isMountedRef.current) {
+          setIsAutoSyncing(false);
+          resetLiveCountdown();
+        }
+      }
+    },
+    [reloadAfterSync, resetLiveCountdown, showToast]
+  );
+
+  // Silent initial auto-sync on page mount if last sync is empty or >= 20s old
+  useEffect(() => {
+    if (!isShopeeConnected || initialAutoSyncAttemptedRef.current) return;
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+
+    const lastSyncedMs = parseWibDate(account?.last_synced_at)?.getTime() ?? 0;
+    if (lastSyncedMs > 0 && Date.now() - lastSyncedMs < INITIAL_AUTO_SYNC_STALE_MS) {
+      initialAutoSyncAttemptedRef.current = true;
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      initialAutoSyncAttemptedRef.current = true;
+      if (
+        isMountedRef.current &&
+        isLiveAutoSyncRef.current &&
+        !isAnyOverlayOpenRef.current &&
+        selectedCountRef.current === 0
+      ) {
+        void runAutoSync({ silentError: true });
+      }
+    }, 150);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [isShopeeConnected, account?.last_synced_at, runAutoSync]);
+
+  // 30-second Live Auto-Sync countdown loop with interaction & visibility guards
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (!isShopeeConnectedRef.current || !isLiveAutoSyncRef.current) return;
+      if (autoSyncInFlightRef.current || chunkSyncInFlightRef.current) return;
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (isAnyOverlayOpenRef.current) return;
+      if (selectedCountRef.current > 0) return;
+
+      const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
+      const activeTag = activeEl?.tagName ?? '';
+      const isFocusedFormField =
+        activeTag === 'TEXTAREA' ||
+        activeTag === 'SELECT' ||
+        (activeTag === 'INPUT' && (activeEl as HTMLInputElement).type !== 'checkbox');
+      if (isFocusedFormField) return;
+
+      if (countdownRef.current <= 1) {
+        countdownRef.current = LIVE_AUTO_SYNC_INTERVAL_SEC;
+        setLiveCountdown(LIVE_AUTO_SYNC_INTERVAL_SEC);
+        void runAutoSync({ silentError: false });
+      } else {
+        countdownRef.current -= 1;
+        setLiveCountdown(countdownRef.current);
+      }
+    }, 1000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [runAutoSync]);
+
+  const cancelChunkSync = useCallback(() => {
+    chunkAbortRef.current?.abort();
+  }, []);
+
+  const runChunkedSync = useCallback(
+    async (days: number) => {
+      if (!isShopeeConnectedRef.current || chunkSyncInFlightRef.current) return;
+
+      setIsSyncMenuOpen(false);
+      autoSyncAbortRef.current?.abort();
+
+      chunkAbortRef.current?.abort();
+      const controller = new AbortController();
+      chunkAbortRef.current = controller;
+      chunkSyncInFlightRef.current = true;
+
+      const dateList = buildWibDateRangeAscending(days);
+      let totalSynced = 0;
+      let totalChanged = 0;
+      let latestSyncedAt: string | null = null;
+
+      if (isMountedRef.current) {
+        setIsChunkSyncing(true);
+        setSyncAlert(null);
+        setChunkProgress({ current: 1, total: dateList.length, date: dateList[0] });
+      }
+
+      try {
+        for (let i = 0; i < dateList.length; i += 1) {
+          if (controller.signal.aborted || !isMountedRef.current) return;
+
+          const dayStr = dateList[i];
+          setChunkProgress({ current: i + 1, total: dateList.length, date: dayStr });
+
+          const result = await safeJsonFetch<ShopeeSyncChunkResponse>(
+            '/shopee-orders/sync-chunk',
+            {
+              method: 'POST',
+              credentials: 'same-origin',
+              signal: controller.signal,
+              headers: buildJsonPostHeaders(),
+              body: JSON.stringify({
+                start_date: dayStr,
+                end_date: dayStr,
+              }),
+            }
+          );
+
+          if (controller.signal.aborted || !isMountedRef.current) return;
+
+          if (!result.ok || !result.data || result.data.status === 'error') {
+            const errMsg =
+              result.data?.message ||
+              result.errorMessage ||
+              `Gagal sinkronisasi tanggal ${dayStr}.`;
+            if (result.authOrSessionExpired || result.nonJsonOrServerHtml) {
+              setIsLiveAutoSync(false);
+            }
+            const progressPrefix =
+              i > 0 ? `Berhenti pada hari ${i + 1}/${dateList.length} (${dayStr}): ` : '';
+            const fullError = `${progressPrefix}${errMsg}`;
+            setSyncAlert(fullError);
+            showToast('error', fullError);
+            if (totalSynced > 0 || totalChanged > 0) {
+              reloadAfterSync();
+            }
+            return;
+          }
+
+          totalSynced += result.data.synced_orders ?? 0;
+          totalChanged += result.data.changed_orders ?? 0;
+          if (result.data.last_synced_at) {
+            latestSyncedAt = result.data.last_synced_at;
+            setLocalLastSyncedAt(result.data.last_synced_at);
+          }
+        }
+
+        if (!isMountedRef.current) return;
+        if (latestSyncedAt) {
+          setLocalLastSyncedAt(latestSyncedAt);
+        }
+        resetLiveCountdown();
+        reloadAfterSync();
+        showToast(
+          'success',
+          `Sinkron ulang ${dateList.length} hari selesai: ${totalSynced} pesanan diperiksa, ${totalChanged} pembaruan.`
+        );
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          if (isMountedRef.current) {
+            showToast('info', 'Sinkron ulang dibatalkan.');
+            if (totalSynced > 0 || totalChanged > 0) {
+              reloadAfterSync();
+            }
+          }
+          return;
+        }
+        if (isMountedRef.current) {
+          const msg =
+            err instanceof Error
+              ? err.message
+              : 'Kendala jaringan saat sinkron ulang pesanan Shopee.';
+          setSyncAlert(msg);
+          showToast('error', msg);
+        }
+      } finally {
+        if (chunkAbortRef.current === controller) {
+          chunkAbortRef.current = null;
+        }
+        chunkSyncInFlightRef.current = false;
+        if (isMountedRef.current) {
+          setIsChunkSyncing(false);
+          setChunkProgress(null);
+          resetLiveCountdown();
+        }
+      }
+    },
+    [reloadAfterSync, resetLiveCountdown, showToast]
+  );
+
   const navigateWithFilters = useCallback(
     (patch: Partial<ShopeeOrderFilters>) => {
       const base = filtersRef.current;
       const next: ShopeeOrderFilters = {
         tab: patch.tab ?? base.tab,
         sub_tab: patch.sub_tab ?? base.sub_tab,
+        order_type: patch.order_type ?? base.order_type ?? 'all',
         print_status: patch.print_status ?? base.print_status,
         search: patch.search ?? base.search,
         courier: patch.courier ?? base.courier,
@@ -412,7 +909,8 @@ export default function ShopeeOrdersPage({
     setSearchInput('');
     setIsDatePickerOpen(false);
     navigateWithFilters({
-      sub_tab: 'all',
+      sub_tab: filtersRef.current.tab === 'to_ship' ? 'unprocessed' : 'all',
+      order_type: 'all',
       print_status: 'all',
       search: '',
       courier: '',
@@ -420,26 +918,6 @@ export default function ShopeeOrdersPage({
       date_to: '',
       sort: 'ship_by_asc',
     });
-  };
-
-  const handleSyncOrders = () => {
-    if (!isShopeeConnected || syncInFlightRef.current || isSyncing) return;
-    syncInFlightRef.current = true;
-    router.post(
-      '/shopee-orders/sync',
-      { days: syncDays },
-      {
-        preserveScroll: true,
-        onStart: () => {
-          syncInFlightRef.current = true;
-          if (isMountedRef.current) setIsSyncing(true);
-        },
-        onFinish: () => {
-          syncInFlightRef.current = false;
-          if (isMountedRef.current) setIsSyncing(false);
-        },
-      }
-    );
   };
 
   const handleCopyText = async (key: string, value: string, label: string) => {
@@ -686,7 +1164,7 @@ export default function ShopeeOrdersPage({
           setDrawerOrder((cur) => (cur?.order_sn === payload.order.order_sn ? payload.order : cur));
         }
         showToast('success', payload.message || `Detail ${order.order_sn} diperbarui.`);
-        router.reload({ only: ['orders', 'tabCounts', 'carriers'] });
+        router.reload({ only: ['orders', 'tabCounts', 'orderTypeCounts', 'carriers'] });
       } catch (err: unknown) {
         if (isMountedRef.current) {
           showToast(
@@ -741,7 +1219,7 @@ export default function ShopeeOrdersPage({
       }
       setCancelTarget(null);
       showToast('success', payload.message);
-      router.reload({ only: ['orders', 'tabCounts', 'carriers'] });
+      router.reload({ only: ['orders', 'tabCounts', 'orderTypeCounts', 'carriers'] });
     } catch (err: unknown) {
       if (isMountedRef.current) {
         showToast(
@@ -781,7 +1259,7 @@ export default function ShopeeOrdersPage({
       setDrawerOrder((cur) => (cur?.order_sn === result.order_sn ? result.order : cur));
     }
     showToast('success', result.message || `Pengiriman ${result.order_sn} berhasil diatur.`);
-    router.reload({ only: ['orders', 'tabCounts', 'carriers'] });
+    router.reload({ only: ['orders', 'tabCounts', 'orderTypeCounts', 'carriers'] });
   };
 
   const handleMassShipped = (result: ShopeeMassShipResult) => {
@@ -795,8 +1273,13 @@ export default function ShopeeOrdersPage({
       const succeededSet = new Set(result.succeeded.map((s) => s.order_sn));
       setSelectedOrderSns((prev) => prev.filter((sn) => !succeededSet.has(sn)));
     }
-    router.reload({ only: ['orders', 'tabCounts', 'carriers'] });
+    router.reload({ only: ['orders', 'tabCounts', 'orderTypeCounts', 'carriers'] });
   };
+
+  const activeOrderType: ShopeeOrderType = filters.order_type ?? 'all';
+  const todayWib = getTodayWibYmd();
+  const isTodayFilterActive = filters.date_from === todayWib && filters.date_to === todayWib;
+  const lastSyncedLabel = formatLastSyncedDisplay(localLastSyncedAt, account?.last_synced_at);
 
   const mainTabs: Array<{ key: ShopeeMainTab; label: string; count: number }> = [
     { key: 'all', label: 'Semua', count: tabCounts?.all ?? 0 },
@@ -804,13 +1287,32 @@ export default function ShopeeOrdersPage({
     { key: 'to_ship', label: 'Perlu Dikirim', count: tabCounts?.to_ship ?? 0 },
     { key: 'shipped', label: 'Dikirim', count: tabCounts?.shipped ?? 0 },
     { key: 'completed', label: 'Selesai', count: tabCounts?.completed ?? 0 },
-    { key: 'cancelled', label: 'Pembatalan', count: tabCounts?.cancelled ?? 0 },
+    { key: 'cancelled', label: 'Pengembalian/Pembatalan', count: tabCounts?.cancelled ?? 0 },
   ];
 
-  const subTabs: Array<{ key: ShopeeSubTab; label: string; count: number }> = [
-    { key: 'all', label: 'Semua', count: tabCounts?.to_ship ?? 0 },
-    { key: 'unprocessed', label: 'Belum Diproses', count: tabCounts?.to_ship_unprocessed ?? 0 },
-    { key: 'processed', label: 'Telah Diproses', count: tabCounts?.to_ship_processed ?? 0 },
+  const orderTypeOptions: Array<{ key: ShopeeOrderType; label: string }> = [
+    { key: 'all', label: 'Semua' },
+    {
+      key: 'regular',
+      label: `Pesanan Reguler (${(orderTypeCounts?.regular ?? 0).toLocaleString('id-ID')})`,
+    },
+    {
+      key: 'instant',
+      label: `Instant (${(orderTypeCounts?.instant ?? 0).toLocaleString('id-ID')})`,
+    },
+    {
+      key: 'kilat',
+      label: `Pengiriman Kilat (${(orderTypeCounts?.kilat ?? 0).toLocaleString('id-ID')})`,
+    },
+  ];
+
+  const subTabs: Array<{ key: ShopeeSubTab; label: string }> = [
+    { key: 'all', label: 'Semua' },
+    { key: 'unprocessed', label: 'Perlu diproses' },
+    {
+      key: 'processed',
+      label: `Telah diproses (${(tabCounts?.to_ship_processed ?? 0).toLocaleString('id-ID')})`,
+    },
   ];
 
   const printStatusOptions: Array<{ key: ShopeePrintStatusFilter; label: string; count: number | null }> = [
@@ -819,8 +1321,10 @@ export default function ShopeeOrdersPage({
     { key: 'printed', label: 'Sudah Dicetak', count: tabCounts?.printed ?? 0 },
   ];
 
+  const defaultSubTab: ShopeeSubTab = filters.tab === 'to_ship' ? 'unprocessed' : 'all';
   const hasActiveFilters =
-    filters.sub_tab !== 'all' ||
+    filters.sub_tab !== defaultSubTab ||
+    activeOrderType !== 'all' ||
     filters.print_status !== 'all' ||
     filters.search !== '' ||
     filters.courier !== '' ||
@@ -998,7 +1502,7 @@ export default function ShopeeOrdersPage({
                     <span className="tabular-nums">
                       Sinkron terakhir:{' '}
                       <span className="font-medium text-slate-700">
-                        {formatOrderTimestampWIB(account.last_synced_at)}
+                        {lastSyncedLabel}
                       </span>
                     </span>
                   </>
@@ -1009,44 +1513,91 @@ export default function ShopeeOrdersPage({
             </div>
           </div>
 
-          {/* Sync Controls */}
+          {/* Live Auto-Sync Pill + Chunked Sinkron Ulang Menu */}
           <div className="flex flex-wrap items-center gap-2.5 lg:shrink-0">
-            <div className="flex items-center gap-1.5">
-              <label htmlFor="shopee-sync-days" className="sr-only">
-                Periode sinkronisasi pesanan
-              </label>
-              <select
-                id="shopee-sync-days"
-                value={syncDays}
-                onChange={(e) => setSyncDays(Number(e.target.value))}
-                disabled={isSyncing}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-700 focus:border-[#EE4D2D] focus:bg-white focus:outline-none disabled:opacity-60"
-              >
-                <option value={1}>1 Hari Terakhir</option>
-                <option value={3}>3 Hari Terakhir</option>
-                <option value={7}>7 Hari Terakhir</option>
-                <option value={14}>14 Hari Terakhir</option>
-              </select>
-            </div>
-
             <button
               type="button"
-              onClick={handleSyncOrders}
-              disabled={!isShopeeConnected || isSyncing}
+              disabled={!isShopeeConnected}
+              onClick={() => {
+                if (!isShopeeConnected) return;
+                setIsLiveAutoSync((prev) => !prev);
+                resetLiveCountdown();
+              }}
               title={
-                isShopeeConnected
-                  ? `Tarik pesanan Shopee ${syncDays} hari terakhir`
-                  : 'Hubungkan akun Shopee terlebih dahulu di Integrasi Shopee'
+                !isShopeeConnected
+                  ? 'Hubungkan akun Shopee terlebih dahulu di Integrasi Shopee'
+                  : isLiveAutoSync
+                    ? `Live Auto-Sync aktif: menyegarkan otomatis tiap ${LIVE_AUTO_SYNC_INTERVAL_SEC} detik. Klik untuk menjeda.`
+                    : 'Live Auto-Sync dijeda. Klik untuk mengaktifkan kembali.'
               }
-              className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#0B132B] px-4 py-2.5 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+              className={`inline-flex cursor-pointer items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50 ${
+                !isShopeeConnected
+                  ? 'border-slate-200 bg-slate-100 text-slate-500'
+                  : isLiveAutoSync
+                    ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                    : 'border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
             >
-              {isSyncing ? (
+              {isAutoSyncing ? (
                 <>
-                  <SpinnerIcon className="h-4 w-4 text-white" />
-                  <span>Menyinkronkan...</span>
+                  <SpinnerIcon className="h-3.5 w-3.5 text-emerald-600" />
+                  <span>Menyegarkan otomatis...</span>
                 </>
               ) : (
                 <>
+                  <span className="relative flex h-2 w-2">
+                    {isShopeeConnected && isLiveAutoSync && (
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                    )}
+                    <span
+                      className={`relative inline-flex h-2 w-2 rounded-full ${
+                        isShopeeConnected && isLiveAutoSync ? 'bg-emerald-500' : 'bg-slate-400'
+                      }`}
+                    />
+                  </span>
+                  {!isShopeeConnected ? (
+                    <span>Live Auto-Sync: Nonaktif</span>
+                  ) : isLiveAutoSync ? (
+                    <span className="tabular-nums">
+                      Live Auto-Sync:{' '}
+                      <strong className="font-mono font-bold">{liveCountdown}s</strong>
+                    </span>
+                  ) : (
+                    <span>Live Auto-Sync: Jeda</span>
+                  )}
+                </>
+              )}
+            </button>
+
+            {isChunkSyncing && chunkProgress ? (
+              <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-[#0B132B] px-3.5 py-2 text-xs font-semibold text-white shadow-xs">
+                <SpinnerIcon className="h-4 w-4 text-white" />
+                <span className="tabular-nums">
+                  Sinkron hari {chunkProgress.current}/{chunkProgress.total}...
+                </span>
+                <button
+                  type="button"
+                  onClick={cancelChunkSync}
+                  className="ml-1 cursor-pointer rounded-lg bg-white/15 px-2 py-0.5 text-[11px] font-semibold text-white transition-colors hover:bg-white/25"
+                >
+                  Batal
+                </button>
+              </div>
+            ) : (
+              <div className="relative" ref={syncMenuRef}>
+                <button
+                  type="button"
+                  disabled={!isShopeeConnected}
+                  onClick={() => setIsSyncMenuOpen((prev) => !prev)}
+                  aria-expanded={isSyncMenuOpen}
+                  aria-haspopup="menu"
+                  title={
+                    isShopeeConnected
+                      ? 'Pilih rentang hari untuk sinkron ulang bertahap (anti-timeout)'
+                      : 'Hubungkan akun Shopee terlebih dahulu di Integrasi Shopee'
+                  }
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#0B132B] px-4 py-2.5 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+                >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
@@ -1061,12 +1612,129 @@ export default function ShopeeOrdersPage({
                       d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
                     />
                   </svg>
-                  <span>Sinkron Pesanan Shopee</span>
-                </>
-              )}
-            </button>
+                  <span>Sinkron Ulang</span>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    stroke="currentColor"
+                    className={`h-3.5 w-3.5 transition-transform ${isSyncMenuOpen ? 'rotate-180' : ''}`}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                  </svg>
+                </button>
+
+                {isSyncMenuOpen && (
+                  <div
+                    role="menu"
+                    aria-label="Preset rentang Sinkron Ulang"
+                    className="absolute right-0 z-40 mt-2 w-64 rounded-2xl border border-slate-200 bg-white py-2 shadow-lg"
+                  >
+                    <div className="px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                      Sinkron Bertahap (Anti-503)
+                    </div>
+                    {[
+                      {
+                        days: 1,
+                        label: 'Hari Ini (1 Hari)',
+                        desc: 'Tarik pesanan hari ini (WIB)',
+                      },
+                      {
+                        days: 3,
+                        label: '3 Hari Terakhir',
+                        desc: 'Proses bertahap 1 hari per request',
+                      },
+                      {
+                        days: 7,
+                        label: '7 Hari Terakhir',
+                        desc: 'Sinkron penuh 7 hari tanpa timeout',
+                      },
+                    ].map((preset) => (
+                      <button
+                        key={preset.days}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void runChunkedSync(preset.days)}
+                        className="flex w-full cursor-pointer items-start gap-2.5 px-3.5 py-2 text-left transition-colors hover:bg-slate-50"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          strokeWidth={1.8}
+                          stroke="currentColor"
+                          className="mt-0.5 h-4 w-4 shrink-0 text-[#EE4D2D]"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
+                          />
+                        </svg>
+                        <div>
+                          <p className="text-xs font-semibold text-slate-800">{preset.label}</p>
+                          <p className="text-[11px] text-slate-500">{preset.desc}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </section>
+
+        {/* Non-blocking Sync Alert Banner (e.g. session expired / non-JSON response) */}
+        {syncAlert && (
+          <section
+            role="alert"
+            className="flex flex-col justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3.5 text-xs text-amber-900 sm:flex-row sm:items-center"
+          >
+            <div className="flex items-start gap-2.5">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.8}
+                stroke="currentColor"
+                className="mt-0.5 h-4 w-4 shrink-0 text-amber-700"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+                />
+              </svg>
+              <span className="font-semibold leading-relaxed">{syncAlert}</span>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {isShopeeConnected && !isLiveAutoSync && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSyncAlert(null);
+                    setIsLiveAutoSync(true);
+                    resetLiveCountdown();
+                  }}
+                  className="cursor-pointer rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-amber-900 transition-colors hover:bg-amber-100"
+                >
+                  Aktifkan Live
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setSyncAlert(null)}
+                aria-label="Tutup peringatan sinkronisasi"
+                className="cursor-pointer rounded-lg p-1 text-amber-700 hover:bg-amber-100"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </section>
+        )}
 
         {/* Disconnected Alert CTA */}
         {!isShopeeConnected && (
@@ -1119,13 +1787,14 @@ export default function ShopeeOrdersPage({
                     onClick={() =>
                       navigateWithFilters({
                         tab: t.key,
-                        sub_tab: 'all',
+                        sub_tab: t.key === 'to_ship' ? 'unprocessed' : 'all',
+                        order_type: 'all',
                         print_status: 'all',
                       })
                     }
                     className={`relative inline-flex cursor-pointer items-center gap-2 border-b-2 px-3.5 py-3.5 text-xs transition-colors whitespace-nowrap ${
                       isActive
-                        ? 'border-[#EE4D2D] font-bold text-slate-900'
+                        ? 'border-[#EE4D2D] font-bold text-[#EE4D2D]'
                         : 'border-transparent font-medium text-slate-500 hover:border-slate-300 hover:text-slate-800'
                     }`}
                   >
@@ -1133,7 +1802,7 @@ export default function ShopeeOrdersPage({
                     <span
                       className={`inline-flex min-w-[1.5rem] items-center justify-center rounded-full border px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${
                         isActive
-                          ? 'border-orange-200 bg-orange-50 text-[#EE4D2D]'
+                          ? 'border-orange-200 bg-[#FFF5F2] text-[#EE4D2D]'
                           : 'border-slate-200 bg-slate-100 text-slate-600'
                       }`}
                     >
@@ -1145,13 +1814,37 @@ export default function ShopeeOrdersPage({
             </nav>
           </div>
 
-          {/* Sub-Tabs & Print Status Pills */}
-          {showPrintPills && (
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/70 px-4 py-3 sm:px-5">
+          {/* Row 1: Tipe Pesanan (Shopee Seller Center Gambar 2) */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50/70 px-4 py-3 sm:px-5">
+            <span className="mr-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              Tipe Pesanan
+            </span>
+            {orderTypeOptions.map((opt) => {
+              const active = activeOrderType === opt.key;
+              return (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => navigateWithFilters({ order_type: opt.key })}
+                  className={`inline-flex cursor-pointer items-center rounded-full border px-3 py-1 text-xs transition-colors tabular-nums ${
+                    active
+                      ? 'border-[#EE4D2D] bg-[#FFF5F2] font-semibold text-[#EE4D2D]'
+                      : 'border-slate-200 bg-white font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Row 2: Status Pesanan (tab to_ship) & Status Cetak */}
+          {(filters.tab === 'to_ship' || showPrintPills) && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/40 px-4 py-2.5 sm:px-5">
               {filters.tab === 'to_ship' && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                    Proses:
+                  <span className="mr-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Status Pesanan
                   </span>
                   {subTabs.map((st) => {
                     const active = filters.sub_tab === st.key;
@@ -1160,57 +1853,52 @@ export default function ShopeeOrdersPage({
                         key={st.key}
                         type="button"
                         onClick={() => navigateWithFilters({ sub_tab: st.key })}
-                        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+                        className={`inline-flex cursor-pointer items-center rounded-full border px-3 py-1 text-xs transition-colors tabular-nums ${
                           active
-                            ? 'border-[#0B132B] bg-[#0B132B] text-white'
-                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                            ? 'border-[#EE4D2D] bg-[#FFF5F2] font-semibold text-[#EE4D2D]'
+                            : 'border-slate-200 bg-white font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50'
                         }`}
                       >
-                        <span>{st.label}</span>
-                        <span
-                          className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
-                            active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
-                          }`}
-                        >
-                          {st.count.toLocaleString('id-ID')}
-                        </span>
+                        {st.label}
                       </button>
                     );
                   })}
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  Status Cetak:
-                </span>
-                {printStatusOptions.map((opt) => {
-                  const active = filters.print_status === opt.key;
-                  return (
-                    <button
-                      key={opt.key}
-                      type="button"
-                      onClick={() => navigateWithFilters({ print_status: opt.key })}
-                      className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
-                        active
-                          ? 'border-orange-300 bg-orange-50 text-[#EE4D2D]'
-                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      <span>{opt.label}</span>
-                      {opt.count !== null && (
-                        <span
-                          className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${
-                            active ? 'bg-orange-100 text-[#EE4D2D]' : 'bg-slate-100 text-slate-600'
-                          }`}
-                        >
-                          {opt.count.toLocaleString('id-ID')}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+              {showPrintPills && (
+                <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+                  <span className="mr-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Status Cetak
+                  </span>
+                  {printStatusOptions.map((opt) => {
+                    const active = filters.print_status === opt.key;
+                    return (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => navigateWithFilters({ print_status: opt.key })}
+                        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
+                          active
+                            ? 'border-[#EE4D2D] bg-[#FFF5F2] font-semibold text-[#EE4D2D]'
+                            : 'border-slate-200 bg-white font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span>{opt.label}</span>
+                        {opt.count !== null && (
+                          <span
+                            className={`rounded-full px-1.5 text-[10px] font-bold tabular-nums ${
+                              active ? 'bg-orange-100 text-[#EE4D2D]' : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
+                            {opt.count.toLocaleString('id-ID')}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -1218,7 +1906,7 @@ export default function ShopeeOrdersPage({
           <div className="space-y-3.5 p-4 sm:px-5">
             <form onSubmit={handleSearchSubmit} className="grid grid-cols-1 gap-2.5 md:grid-cols-12">
               {/* Search Box */}
-              <div className="relative md:col-span-5">
+              <div className="relative md:col-span-4">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
@@ -1234,6 +1922,7 @@ export default function ShopeeOrdersPage({
                   />
                 </svg>
                 <input
+                  ref={searchInputRef}
                   type="text"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
@@ -1274,14 +1963,14 @@ export default function ShopeeOrdersPage({
                 </select>
               </div>
 
-              {/* Dual Calendar Range Picker Trigger */}
-              <div className="relative md:col-span-3">
+              {/* Dual Calendar Range Picker + Quick Hari Ini Toggle */}
+              <div className="relative md:col-span-4">
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={() => setIsDatePickerOpen((o) => !o)}
-                    className={`flex w-full cursor-pointer items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-xs font-medium transition-colors ${
+                    className={`flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-xs font-medium transition-colors ${
                       filters.date_from || filters.date_to
                         ? 'border-orange-300 bg-orange-50/60 text-slate-900'
                         : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
@@ -1337,6 +2026,27 @@ export default function ShopeeOrdersPage({
                       </svg>
                     </button>
                   )}
+
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={() => {
+                      setIsDatePickerOpen(false);
+                      if (isTodayFilterActive) {
+                        navigateWithFilters({ date_from: '', date_to: '' });
+                      } else {
+                        navigateWithFilters({ date_from: todayWib, date_to: todayWib });
+                      }
+                    }}
+                    title="Filter cepat pesanan hari ini (WIB)"
+                    className={`shrink-0 cursor-pointer rounded-xl border px-3 py-2.5 text-xs transition-colors whitespace-nowrap ${
+                      isTodayFilterActive
+                        ? 'border-[#EE4D2D] bg-[#FFF5F2] font-semibold text-[#EE4D2D]'
+                        : 'border-slate-200 bg-slate-50 font-medium text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    Hari Ini
+                  </button>
                 </div>
 
                 <DualCalendarRangePicker
@@ -1501,7 +2211,7 @@ export default function ShopeeOrdersPage({
             <p className="mt-1 max-w-md text-xs text-slate-500">
               {hasActiveFilters
                 ? 'Coba ubah kata kunci pencarian, kurir, atau rentang tanggal pesanan untuk melihat data lainnya.'
-                : 'Klik tombol Sinkron Pesanan Shopee di atas untuk menarik pesanan terbaru langsung dari toko Shopee Anda.'}
+                : 'Gunakan tombol Sinkron Ulang di atas untuk menarik pesanan terbaru langsung dari toko Shopee Anda.'}
             </p>
             <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
               {hasActiveFilters && (
@@ -1516,11 +2226,16 @@ export default function ShopeeOrdersPage({
               {isShopeeConnected && (
                 <button
                   type="button"
-                  disabled={isSyncing}
-                  onClick={handleSyncOrders}
-                  className="cursor-pointer rounded-xl bg-[#0B132B] px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                  disabled={isChunkSyncing}
+                  onClick={() => void runChunkedSync(3)}
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#0B132B] px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {isSyncing ? 'Menyinkronkan...' : 'Sinkron Pesanan Shopee'}
+                  {isChunkSyncing && <SpinnerIcon className="h-3.5 w-3.5 text-white" />}
+                  <span>
+                    {isChunkSyncing && chunkProgress
+                      ? `Sinkron hari ${chunkProgress.current}/${chunkProgress.total}...`
+                      : 'Sinkron Ulang (3 Hari Terakhir)'}
+                  </span>
                 </button>
               )}
             </div>
