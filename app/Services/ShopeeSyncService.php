@@ -697,14 +697,20 @@ class ShopeeSyncService
                         $processedAt = $existing->processed_at->format('Y-m-d H:i:s');
                     } else {
                         $arranged = $shopeeArrangedAtMap->get($orderSn);
+                        $isProcessedStatus = strtoupper($rawStatus) === 'PROCESSED'
+                            || stripos($statusText, 'diproses') !== false;
                         if ($arranged instanceof \Carbon\CarbonInterface) {
                             $processedAt = $arranged->copy()->timezone('Asia/Jakarta')->format('Y-m-d H:i:s');
                         } elseif (! empty($arranged)) {
                             $processedAt = (string) $arranged;
-                        } elseif (! empty($order['update_time'])) {
-                            $processedAt = \Carbon\Carbon::createFromTimestamp((int) $order['update_time'], 'Asia/Jakarta')->format('Y-m-d H:i:s');
+                        } elseif ($isProcessedStatus) {
+                            $processedAt = ! empty($order['update_time'])
+                                ? \Carbon\Carbon::createFromTimestamp((int) $order['update_time'], 'Asia/Jakarta')->format('Y-m-d H:i:s')
+                                : now('Asia/Jakarta')->format('Y-m-d H:i:s');
                         } else {
-                            $processedAt = now('Asia/Jakarta')->format('Y-m-d H:i:s');
+                            // Pesanan yang langsung tersinkron saat sudah Dikirim/Selesai tidak boleh
+                            // memakai update_time penyelesaian sebagai tanggal diproses.
+                            $processedAt = $orderDate;
                         }
                     }
                 }
@@ -900,9 +906,16 @@ class ShopeeSyncService
             $arrangedAt = Schema::hasTable('shopee_orders')
                 ? ShopeeOrder::where('order_sn', $orderSn)->whereNotNull('shipping_arranged_at')->value('shipping_arranged_at')
                 : null;
-            $updates['processed_at'] = $arrangedAt
-                ? \Carbon\Carbon::parse($arrangedAt, 'Asia/Jakarta')->format('Y-m-d H:i:s')
-                : now('Asia/Jakarta')->format('Y-m-d H:i:s');
+            $isProcessedStatus = strtoupper($rawStatus) === 'PROCESSED'
+                || stripos($statusText, 'diproses') !== false;
+            if ($arrangedAt) {
+                $updates['processed_at'] = \Carbon\Carbon::parse($arrangedAt, 'Asia/Jakarta')->format('Y-m-d H:i:s');
+            } elseif ($isProcessedStatus) {
+                $updates['processed_at'] = now('Asia/Jakarta')->format('Y-m-d H:i:s');
+            } else {
+                $updates['processed_at'] = $existing->order_date?->format('Y-m-d H:i:s')
+                    ?? now('Asia/Jakarta')->format('Y-m-d H:i:s');
+            }
         }
 
         $existing->update($updates);

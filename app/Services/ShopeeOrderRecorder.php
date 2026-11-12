@@ -164,7 +164,7 @@ class ShopeeOrderRecorder
                     : $existing?->ship_by_date?->format('Y-m-d H:i:s');
 
                 $shippingArrangedAt = $existing?->shipping_arranged_at?->format('Y-m-d H:i:s');
-                if ($shippingArrangedAt === null && in_array($orderStatus, ['PROCESSED', 'SHIPPED', 'TO_CONFIRM_RECEIVE', 'COMPLETED'], true)) {
+                if ($shippingArrangedAt === null && $orderStatus === 'PROCESSED') {
                     $shippingArrangedAt = ! empty($order['update_time'])
                         ? Carbon::createFromTimestamp((int) $order['update_time'], 'Asia/Jakarta')->format('Y-m-d H:i:s')
                         : $nowWib->format('Y-m-d H:i:s');

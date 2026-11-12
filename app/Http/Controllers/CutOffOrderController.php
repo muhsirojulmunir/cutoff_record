@@ -579,28 +579,50 @@ class CutOffOrderController extends Controller
     }
 
     /**
-     * Pastikan kolom processed_at sudah ada dan ter-backfill (khusus deploy FTP tanpa shell).
+     * Pastikan kolom processed_at sudah ada, ter-backfill, dan bebas timestamp penyelesaian pesanan lama (deploy FTP tanpa shell).
      */
     private function ensureProcessedAtColumnReady(): void
     {
-        $cacheKey = 'cut_off_processed_at_schema_v1';
+        $schemaCacheKey = 'cut_off_processed_at_schema_v1';
+        $cleanupCacheKey = 'cut_off_processed_at_cleanup_v2';
+        $hasSchemaCache = false;
+        $hasCleanupCache = false;
+
         if (! app()->runningUnitTests()) {
             try {
-                if (\Illuminate\Support\Facades\Cache::store('file')->get($cacheKey) === true) {
-                    return;
-                }
+                $store = \Illuminate\Support\Facades\Cache::store('file');
+                $hasSchemaCache = $store->get($schemaCacheKey) === true;
+                $hasCleanupCache = $store->get($cleanupCacheKey) === true;
             } catch (\Throwable) {
                 // Abaikan error cache file dan cek langsung ke DB
             }
         }
 
-        if (! Schema::hasColumn('cut_off_orders', 'processed_at')) {
+        if ($hasSchemaCache && $hasCleanupCache) {
+            return;
+        }
+
+        if (! $hasSchemaCache && ! Schema::hasColumn('cut_off_orders', 'processed_at')) {
             app(ShopeeSyncService::class)->ensureSchema();
         }
 
-        if (! app()->runningUnitTests() && Schema::hasColumn('cut_off_orders', 'processed_at')) {
+        $hasProcessedAt = Schema::hasColumn('cut_off_orders', 'processed_at');
+        if ($hasProcessedAt && ! $hasCleanupCache && ! app()->runningUnitTests()) {
+            $migrationAlreadyRan = Schema::hasTable('migrations')
+                && \Illuminate\Support\Facades\DB::table('migrations')
+                    ->where('migration', '2026_11_12_000004_fix_historical_processed_at_on_cut_off_orders')
+                    ->exists();
+
+            if (! $migrationAlreadyRan) {
+                CutOffOrder::cleanupHistoricalProcessedAt();
+            }
+        }
+
+        if (! app()->runningUnitTests() && $hasProcessedAt) {
             try {
-                \Illuminate\Support\Facades\Cache::store('file')->put($cacheKey, true, 86400);
+                $store = \Illuminate\Support\Facades\Cache::store('file');
+                $store->put($schemaCacheKey, true, 86400);
+                $store->forever($cleanupCacheKey, true);
             } catch (\Throwable) {
                 // Abaikan error tulis cache file
             }

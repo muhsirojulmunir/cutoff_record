@@ -246,6 +246,7 @@ class CutOffOrder extends Model
                       AND (co.channel = 'SH' OR co.channel LIKE 'SH%')
                       AND co.processed_at IS NULL
                       AND so.shipping_arranged_at IS NOT NULL
+                      AND (so.fulfillment_method IS NOT NULL OR so.order_status = 'PROCESSED')
                 ");
             } else {
                 self::query()
@@ -258,10 +259,14 @@ class CutOffOrder extends Model
                         $q->select(\Illuminate\Support\Facades\DB::raw(1))
                             ->from('shopee_orders')
                             ->whereColumn('shopee_orders.order_sn', 'cut_off_orders.order_number')
-                            ->whereNotNull('shopee_orders.shipping_arranged_at');
+                            ->whereNotNull('shopee_orders.shipping_arranged_at')
+                            ->where(function ($sub) {
+                                $sub->whereNotNull('shopee_orders.fulfillment_method')
+                                    ->orWhere('shopee_orders.order_status', 'PROCESSED');
+                            });
                     })
                     ->update([
-                        'processed_at' => \Illuminate\Support\Facades\DB::raw('(SELECT shipping_arranged_at FROM shopee_orders WHERE shopee_orders.order_sn = cut_off_orders.order_number AND shipping_arranged_at IS NOT NULL LIMIT 1)'),
+                        'processed_at' => \Illuminate\Support\Facades\DB::raw("(SELECT shipping_arranged_at FROM shopee_orders WHERE shopee_orders.order_sn = cut_off_orders.order_number AND shipping_arranged_at IS NOT NULL AND (fulfillment_method IS NOT NULL OR order_status = 'PROCESSED') LIMIT 1)"),
                     ]);
             }
         }
@@ -273,6 +278,53 @@ class CutOffOrder extends Model
             ->update([
                 'processed_at' => \Illuminate\Support\Facades\DB::raw('order_date'),
             ]);
+    }
+
+    /**
+     * Bersihkan data historis shipping_arranged_at / processed_at pada pesanan lama yang sudah
+     * berstatus Dikirim/Tiba/Selesai tanpa riwayat Atur Pengiriman di ERP (terisi update_time penyelesaian).
+     */
+    public static function cleanupHistoricalProcessedAt(): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('cut_off_orders')
+            || ! \Illuminate\Support\Facades\Schema::hasColumn('cut_off_orders', 'processed_at')) {
+            return;
+        }
+
+        $hasShopeeOrders = \Illuminate\Support\Facades\Schema::hasTable('shopee_orders');
+
+        if ($hasShopeeOrders && \Illuminate\Support\Facades\Schema::hasColumn('shopee_orders', 'shipping_arranged_at')) {
+            \Illuminate\Support\Facades\DB::table('shopee_orders')
+                ->whereNotNull('shipping_arranged_at')
+                ->whereNull('fulfillment_method')
+                ->whereIn('order_status', ['SHIPPED', 'TO_CONFIRM_RECEIVE', 'COMPLETED'])
+                ->whereNotNull('order_created_at')
+                ->whereRaw('DATE(shipping_arranged_at) != DATE(order_created_at)')
+                ->update(['shipping_arranged_at' => null]);
+        }
+
+        $query = self::query()
+            ->onlyProcessed()
+            ->whereNotNull('processed_at')
+            ->whereNotNull('order_date')
+            ->whereRaw('DATE(processed_at) != DATE(order_date)')
+            ->whereRaw("LOWER(COALESCE(order_status, '')) NOT LIKE '%diproses%'")
+            ->whereRaw("UPPER(COALESCE(order_status, '')) != 'PROCESSED'")
+            ->whereRaw("LOWER(COALESCE(order_status, '')) NOT LIKE '%menunggu pickup%'")
+            ->whereRaw("UPPER(COALESCE(order_status, '')) != 'AWAITING_COLLECTION'");
+
+        if ($hasShopeeOrders) {
+            $query->whereNotExists(function ($q) {
+                $q->select(\Illuminate\Support\Facades\DB::raw(1))
+                    ->from('shopee_orders')
+                    ->whereColumn('shopee_orders.order_sn', 'cut_off_orders.order_number')
+                    ->whereNotNull('shopee_orders.fulfillment_method');
+            });
+        }
+
+        $query->update([
+            'processed_at' => \Illuminate\Support\Facades\DB::raw('order_date'),
+        ]);
     }
 
     /**

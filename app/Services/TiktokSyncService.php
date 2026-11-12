@@ -486,10 +486,19 @@ class TiktokSyncService
                 if ($shouldKeepProcessedAt) {
                     $processedAt = $existing->processed_at->format('Y-m-d H:i:s');
                 } else {
-                    $procTs = $order['rts_time'] ?? $order['update_time'] ?? null;
-                    $processedAt = ! empty($procTs)
-                        ? Carbon::createFromTimestamp((int) $procTs, 'Asia/Jakarta')->format('Y-m-d H:i:s')
-                        : now('Asia/Jakarta')->format('Y-m-d H:i:s');
+                    $isProcessedStatus = strtoupper($statusRaw) === 'AWAITING_COLLECTION'
+                        || stripos($statusText, 'menunggu pickup') !== false
+                        || stripos($statusText, 'diproses') !== false;
+                    if (! empty($order['rts_time'])) {
+                        $processedAt = Carbon::createFromTimestamp((int) $order['rts_time'], 'Asia/Jakarta')->format('Y-m-d H:i:s');
+                    } elseif ($isProcessedStatus) {
+                        $procTs = $order['update_time'] ?? null;
+                        $processedAt = ! empty($procTs)
+                            ? Carbon::createFromTimestamp((int) $procTs, 'Asia/Jakarta')->format('Y-m-d H:i:s')
+                            : now('Asia/Jakarta')->format('Y-m-d H:i:s');
+                    } else {
+                        $processedAt = $orderDate;
+                    }
                 }
             }
 
