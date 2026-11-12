@@ -54,13 +54,13 @@ const navSections: NavSection[] = [
             matchPrefix: true,
             icon: 'M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z',
           },
+          {
+            label: 'Retur Online',
+            href: '/cut-off-returns',
+            matchPrefix: true,
+            icon: 'M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3',
+          },
         ],
-      },
-      {
-        label: 'Retur Online',
-        href: '/cut-off-returns',
-        matchPrefix: true,
-        icon: 'M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3',
       },
       {
         key: 'stok',
