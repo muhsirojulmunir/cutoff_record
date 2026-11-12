@@ -153,6 +153,11 @@ class ShopeeOrderControllerTest extends TestCase
 
         $this->actingAs($this->staffUser)->get('/shopee-orders')->assertStatus(403);
         $this->actingAs($this->staffUser)->post('/shopee-orders/sync')->assertStatus(403);
+        $this->actingAs($this->staffUser)->post('/shopee-orders/auto-sync')->assertStatus(403);
+        $this->actingAs($this->staffUser)->post('/shopee-orders/sync-chunk', [
+            'start_date' => '2026-11-10',
+            'end_date'   => '2026-11-11',
+        ])->assertStatus(403);
         $this->actingAs($this->staffUser)->post('/shopee-orders/261111TEST01/ship', ['method' => 'pickup'])->assertStatus(403);
         $this->actingAs($this->staffUser)->get('/shopee-orders/261111TEST01/waybill-a4')->assertStatus(403);
         $this->actingAs($this->staffUser)->post('/shopee-orders/mass-ship', ['order_sns' => ['261111TEST01']])->assertStatus(403);
@@ -234,6 +239,54 @@ class ShopeeOrderControllerTest extends TestCase
             ]],
         ]);
 
+        // Default membuka /shopee-orders tanpa query param -> tab=to_ship, sub_tab=unprocessed, order_type=all
+        $this->actingAs($this->superAdmin)
+            ->get('/shopee-orders')
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Shopee/Orders', false)
+                ->where('filters.tab', 'to_ship')
+                ->where('filters.sub_tab', 'unprocessed')
+                ->where('filters.order_type', 'all')
+                ->where('orderTypeCounts.all', 2)
+                ->where('orderTypeCounts.regular', 2)
+                ->where('orderTypeCounts.instant', 0)
+                ->where('orderTypeCounts.kilat', 0)
+                ->has('orders.data', 2)
+                ->where('orders.data.0.order_sn', '261111UNPROC01')
+                ->where('orders.data.1.order_sn', '261111RETRY02')
+                ->missing('orders.data.0.raw_payload')
+            );
+
+        // Eksplisit tab=to_ship tanpa sub_tab tetap default ke sub_tab=unprocessed
+        $this->actingAs($this->superAdmin)
+            ->get('/shopee-orders?tab=to_ship')
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Shopee/Orders', false)
+                ->where('filters.tab', 'to_ship')
+                ->where('filters.sub_tab', 'unprocessed')
+                ->has('orders.data', 2)
+                ->where('orders.data.0.order_sn', '261111UNPROC01')
+                ->where('orders.data.1.order_sn', '261111RETRY02')
+            );
+
+        // Eksplisit tab=to_ship&sub_tab=all menampilkan seluruh READY_TO_SHIP, RETRY_SHIP, dan PROCESSED
+        $this->actingAs($this->superAdmin)
+            ->get('/shopee-orders?tab=to_ship&sub_tab=all')
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('Shopee/Orders', false)
+                ->where('filters.tab', 'to_ship')
+                ->where('filters.sub_tab', 'all')
+                ->where('orderTypeCounts.all', 4)
+                ->has('orders.data', 4)
+                ->where('orders.data.0.order_sn', '261111UNPROC01')
+                ->where('orders.data.1.order_sn', '261111RETRY02')
+                ->where('orders.data.2.order_sn', '261111PROCUNP03')
+                ->where('orders.data.3.order_sn', '261111PROCPRT04')
+            );
+
         // Tab Perlu Dikirim -> sub-tab Belum Diproses (READY_TO_SHIP + RETRY_SHIP)
         $this->actingAs($this->superAdmin)
             ->get('/shopee-orders?tab=to_ship&sub_tab=unprocessed')
@@ -242,6 +295,7 @@ class ShopeeOrderControllerTest extends TestCase
                 ->component('Shopee/Orders', false)
                 ->where('filters.tab', 'to_ship')
                 ->where('filters.sub_tab', 'unprocessed')
+                ->where('filters.order_type', 'all')
                 ->where('tabCounts.all', 5)
                 ->where('tabCounts.to_ship', 4)
                 ->where('tabCounts.to_ship_unprocessed', 2)
@@ -249,6 +303,7 @@ class ShopeeOrderControllerTest extends TestCase
                 ->where('tabCounts.shipped', 1)
                 ->where('tabCounts.unprinted', 3)
                 ->where('tabCounts.printed', 2)
+                ->where('orderTypeCounts.all', 2)
                 ->has('orders.data', 2)
                 ->where('orders.data.0.order_sn', '261111UNPROC01')
                 ->where('orders.data.1.order_sn', '261111RETRY02')
@@ -261,6 +316,7 @@ class ShopeeOrderControllerTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (AssertableInertia $page) => $page
                 ->component('Shopee/Orders', false)
+                ->where('filters.sub_tab', 'processed')
                 ->has('orders.data', 2)
                 ->where('orders.data.0.order_sn', '261111PROCUNP03')
                 ->where('orders.data.1.order_sn', '261111PROCPRT04')
@@ -277,12 +333,13 @@ class ShopeeOrderControllerTest extends TestCase
                 ->where('orders.data.0.order_sn', '261111PROCUNP03')
             );
 
-        // Filter print_status=printed pada tab=to_ship
+        // Filter print_status=printed pada tab=to_ship&sub_tab=all
         $this->actingAs($this->superAdmin)
-            ->get('/shopee-orders?tab=to_ship&print_status=printed')
+            ->get('/shopee-orders?tab=to_ship&sub_tab=all&print_status=printed')
             ->assertOk()
             ->assertInertia(fn (AssertableInertia $page) => $page
                 ->component('Shopee/Orders', false)
+                ->where('filters.sub_tab', 'all')
                 ->where('filters.print_status', 'printed')
                 ->has('orders.data', 1)
                 ->where('orders.data.0.order_sn', '261111PROCPRT04')
