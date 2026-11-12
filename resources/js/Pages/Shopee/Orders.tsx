@@ -358,6 +358,7 @@ export default function ShopeeOrdersPage({
   const chunkAbortRef = useRef<AbortController | null>(null);
   const autoSyncInFlightRef = useRef(false);
   const chunkSyncInFlightRef = useRef(false);
+  const navSequenceRef = useRef(0);
   const countdownRef = useRef<number>(LIVE_AUTO_SYNC_INTERVAL_SEC);
   const initialAutoSyncAttemptedRef = useRef(false);
   const syncMenuRef = useRef<HTMLDivElement | null>(null);
@@ -577,6 +578,11 @@ export default function ShopeeOrdersPage({
     });
   }, []);
 
+  const invalidateAutoSyncForNavigation = useCallback(() => {
+    navSequenceRef.current += 1;
+    autoSyncAbortRef.current?.abort();
+  }, []);
+
   const runAutoSync = useCallback(
     async (options?: { silentError?: boolean }) => {
       if (
@@ -587,6 +593,7 @@ export default function ShopeeOrdersPage({
         return;
       }
 
+      const startNavSeq = navSequenceRef.current;
       autoSyncAbortRef.current?.abort();
       const controller = new AbortController();
       autoSyncAbortRef.current = controller;
@@ -607,10 +614,17 @@ export default function ShopeeOrdersPage({
           }
         );
 
-        if (controller.signal.aborted || !isMountedRef.current) return;
+        if (
+          controller.signal.aborted ||
+          !isMountedRef.current ||
+          navSequenceRef.current !== startNavSeq
+        ) {
+          return;
+        }
 
         if (!result.ok || !result.data) {
           if (result.authOrSessionExpired || result.nonJsonOrServerHtml) {
+            isLiveAutoSyncRef.current = false;
             setIsLiveAutoSync(false);
             setSyncAlert(result.errorMessage);
             showToast('error', result.errorMessage);
@@ -633,7 +647,14 @@ export default function ShopeeOrdersPage({
           setLocalLastSyncedAt(payload.last_synced_at);
         }
 
-        if (payload.status === 'success' && (payload.changed_orders ?? 0) > 0) {
+        if (
+          payload.status === 'success' &&
+          (payload.changed_orders ?? 0) > 0 &&
+          navSequenceRef.current === startNavSeq &&
+          isLiveAutoSyncRef.current &&
+          !isAnyOverlayOpenRef.current &&
+          selectedCountRef.current === 0
+        ) {
           reloadAfterSync();
           showToast(
             'success',
@@ -641,7 +662,13 @@ export default function ShopeeOrdersPage({
           );
         }
       } catch (err: unknown) {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (
+          controller.signal.aborted ||
+          (err instanceof DOMException && err.name === 'AbortError') ||
+          navSequenceRef.current !== startNavSeq
+        ) {
+          return;
+        }
         if (!isMountedRef.current) return;
         if (!options?.silentError) {
           setSyncAlert('Koneksi ke server terputus saat menyegarkan pesanan otomatis.');
@@ -671,10 +698,12 @@ export default function ShopeeOrdersPage({
       return;
     }
 
+    const startNavSeq = navSequenceRef.current;
     const timer = window.setTimeout(() => {
       initialAutoSyncAttemptedRef.current = true;
       if (
         isMountedRef.current &&
+        navSequenceRef.current === startNavSeq &&
         isLiveAutoSyncRef.current &&
         !isAnyOverlayOpenRef.current &&
         selectedCountRef.current === 0
@@ -858,13 +887,15 @@ export default function ShopeeOrdersPage({
         next.sub_tab = 'all';
       }
 
+      invalidateAutoSyncForNavigation();
+
       router.get('/shopee-orders', buildFilterParams(next), {
         preserveState: true,
         preserveScroll: true,
         replace: true,
       });
     },
-    []
+    [invalidateAutoSyncForNavigation]
   );
 
   // Debounced search submission
@@ -1520,7 +1551,12 @@ export default function ShopeeOrdersPage({
               disabled={!isShopeeConnected}
               onClick={() => {
                 if (!isShopeeConnected) return;
-                setIsLiveAutoSync((prev) => !prev);
+                const nextActive = !isLiveAutoSync;
+                isLiveAutoSyncRef.current = nextActive;
+                setIsLiveAutoSync(nextActive);
+                if (!nextActive) {
+                  autoSyncAbortRef.current?.abort();
+                }
                 resetLiveCountdown();
               }}
               title={
@@ -2684,9 +2720,10 @@ export default function ShopeeOrdersPage({
                   <button
                     key={i}
                     type="button"
-                    onClick={() =>
-                      router.get(link.url!, {}, { preserveScroll: true, preserveState: true })
-                    }
+                    onClick={() => {
+                      invalidateAutoSyncForNavigation();
+                      router.get(link.url!, {}, { preserveScroll: true, preserveState: true });
+                    }}
                     className={`cursor-pointer rounded-lg border px-3 py-1.5 font-medium transition-colors tabular-nums ${
                       link.active
                         ? 'border-[#0B132B] bg-[#0B132B] font-bold text-white'
