@@ -26,6 +26,19 @@ class ShopeeOrder extends Model
     public const SUBTAB_UNPROCESSED = 'unprocessed';
     public const SUBTAB_PROCESSED = 'processed';
 
+    public const ORDERTYPE_ALL = 'all';
+    public const ORDERTYPE_REGULAR = 'regular';
+    public const ORDERTYPE_INSTANT = 'instant';
+    public const ORDERTYPE_KILAT = 'kilat';
+
+    /** @var array<int, string> */
+    public const VALID_ORDER_TYPES = [
+        self::ORDERTYPE_ALL,
+        self::ORDERTYPE_REGULAR,
+        self::ORDERTYPE_INSTANT,
+        self::ORDERTYPE_KILAT,
+    ];
+
     /** @var array<string, array<int, string>> */
     public const TAB_STATUS_GROUPS = [
         self::TAB_UNPAID    => ['UNPAID'],
@@ -126,6 +139,71 @@ class ShopeeOrder extends Model
             return $query->where('label_print_count', '>', 0);
         }
         return $query;
+    }
+
+    public static function instantCarrierPredicateSql(string $column = 'shipping_carrier'): string
+    {
+        $col = "LOWER(COALESCE({$column}, ''))";
+
+        return "({$col} LIKE '%instan%' OR {$col} LIKE '%sameday%' OR {$col} LIKE '%same day%')";
+    }
+
+    public static function kilatCarrierPredicateSql(string $column = 'shipping_carrier'): string
+    {
+        $col = "LOWER(COALESCE({$column}, ''))";
+        $instant = self::instantCarrierPredicateSql($column);
+
+        return "(NOT {$instant} AND ({$col} LIKE '%kilat%' OR {$col} LIKE '%next day%' OR {$col} LIKE '%nextday%' OR {$col} LIKE '%sicepat best%' OR {$col} LIKE '%jne yes%' OR {$col} LIKE '%prioritas%'))";
+    }
+
+    public function scopeForOrderType(Builder $query, ?string $orderType): Builder
+    {
+        $normalized = strtolower(trim((string) $orderType));
+        if ($normalized === self::ORDERTYPE_INSTANT) {
+            return $query->whereRaw(self::instantCarrierPredicateSql());
+        }
+        if ($normalized === self::ORDERTYPE_KILAT) {
+            return $query->whereRaw(self::kilatCarrierPredicateSql());
+        }
+        if ($normalized === self::ORDERTYPE_REGULAR) {
+            $instant = self::instantCarrierPredicateSql();
+            $kilat = self::kilatCarrierPredicateSql();
+
+            return $query->whereRaw("(NOT {$instant} AND NOT {$kilat})");
+        }
+
+        return $query;
+    }
+
+    /**
+     * Hitung rincian jumlah per Tipe Pesanan pada query yang sudah di-scope tab/status.
+     *
+     * @return array{all: int, regular: int, instant: int, kilat: int}
+     */
+    public static function computeOrderTypeCounts(Builder $baseQuery): array
+    {
+        $instant = self::instantCarrierPredicateSql();
+        $kilat = self::kilatCarrierPredicateSql();
+
+        $row = (clone $baseQuery)
+            ->selectRaw("
+                COUNT(*) as total_all,
+                COALESCE(SUM(CASE WHEN {$instant} THEN 1 ELSE 0 END), 0) as total_instant,
+                COALESCE(SUM(CASE WHEN {$kilat} THEN 1 ELSE 0 END), 0) as total_kilat
+            ")
+            ->first();
+
+        $all = (int) ($row?->total_all ?? 0);
+        $instantCount = (int) ($row?->total_instant ?? 0);
+        $kilatCount = (int) ($row?->total_kilat ?? 0);
+        $regularCount = max(0, $all - $instantCount - $kilatCount);
+
+        return [
+            'all'     => $all,
+            'regular' => $regularCount,
+            'instant' => $instantCount,
+            'kilat'   => $kilatCount,
+        ];
     }
 
     public static function statusLabel(string $rawStatus): string
