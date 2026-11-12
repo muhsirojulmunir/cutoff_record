@@ -42,7 +42,7 @@ class CutOffSyncOrdersCommand extends Command
             if ($shopeeAccount) {
                 $this->info("Menarik data pesanan Shopee: {$shopeeAccount->account_name}...");
                 try {
-                    $orderRes = $this->shopeeService->syncOrdersToCutOff($shopeeAccount, $timeFrom, $timeTo);
+                    $orderRes = $this->shopeeService->syncOrdersToCutOff($shopeeAccount, $timeFrom, $timeTo, true);
                     $this->info("  Shopee Orders: {$orderRes['message']}");
                 } catch (\Throwable $e) {
                     $this->error("  Gagal sync Shopee orders: {$e->getMessage()}");

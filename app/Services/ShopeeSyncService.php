@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\CutOffOrder;
 use App\Models\CutOffReturn;
 use App\Models\ShopeeAccount;
+use App\Models\ShopeeOrder;
 use App\Models\ShopeeProduct;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Client\Pool;
@@ -259,12 +260,19 @@ class ShopeeSyncService
     }
 
     /**
-     * Synchronize Shopee orders directly into CutOffOrder table.
+     * Synchronize Shopee orders directly into CutOffOrder and shopee_orders tables.
      */
-    public function syncOrdersToCutOff(ShopeeAccount $account, ?int $timeFrom = null, ?int $timeTo = null): array
-    {
+    public function syncOrdersToCutOff(
+        ShopeeAccount $account,
+        ?int $timeFrom = null,
+        ?int $timeTo = null,
+        bool $includeUpdateWindow = false
+    ): array {
         $timeTo = $timeTo ?: time();
         $timeFrom = $timeFrom ?: ($timeTo - (14 * 86400)); // Default last 14 days
+        if ($timeTo < $timeFrom) {
+            [$timeFrom, $timeTo] = [$timeTo, $timeFrom];
+        }
 
         $account = $this->ensureValidToken($account);
 
@@ -275,15 +283,48 @@ class ShopeeSyncService
 
         while ($currentTo > $timeFrom) {
             $currentFrom = max($timeFrom, $currentTo - $maxWindow);
-            $chunkList   = $this->fetchOrderListRaw($account, $currentFrom, $currentTo, 100);
+            $chunkList   = $this->fetchOrderListRaw($account, $currentFrom, $currentTo, 100, null, 'create_time');
 
             foreach ($chunkList as $ord) {
                 if (! empty($ord['order_sn'])) {
-                    $allOrderSns[$ord['order_sn']] = true;
+                    $allOrderSns[(string) $ord['order_sn']] = true;
                 }
             }
 
             $currentTo = $currentFrom;
+        }
+
+        if ($includeUpdateWindow) {
+            // 1b. Fetch Order List by update_time to capture status changes on older orders
+            $updateTo = $timeTo;
+            while ($updateTo > $timeFrom) {
+                $updateFrom      = max($timeFrom, $updateTo - $maxWindow);
+                $updateChunkList = $this->fetchOrderListRaw($account, $updateFrom, $updateTo, 100, null, 'update_time');
+
+                foreach ($updateChunkList as $ord) {
+                    if (! empty($ord['order_sn'])) {
+                        $allOrderSns[(string) $ord['order_sn']] = true;
+                    }
+                }
+
+                $updateTo = $updateFrom;
+            }
+
+            // 1c. Monitor active local orders (max 50 oldest-synced)
+            if (Schema::hasTable('shopee_orders')) {
+                $activeLocalSns = ShopeeOrder::where('shopee_account_id', $account->id)
+                    ->whereIn('order_status', ['UNPAID', 'READY_TO_SHIP', 'RETRY_SHIP', 'PROCESSED', 'IN_CANCEL'])
+                    ->orderByRaw('CASE WHEN last_synced_at IS NULL THEN 0 ELSE 1 END ASC, last_synced_at ASC')
+                    ->limit(50)
+                    ->pluck('order_sn');
+
+                foreach ($activeLocalSns as $activeSn) {
+                    $snStr = trim((string) $activeSn);
+                    if ($snStr !== '') {
+                        $allOrderSns[$snStr] = true;
+                    }
+                }
+            }
         }
 
         $orderSns = array_keys($allOrderSns);
@@ -296,10 +337,12 @@ class ShopeeSyncService
             ]);
 
             return [
-                'total_fetched' => 0,
-                'created'       => 0,
-                'updated'       => 0,
-                'message'       => 'Tidak ada pesanan Shopee pada rentang waktu tersebut.',
+                'total_fetched'  => 0,
+                'created'        => 0,
+                'updated'        => 0,
+                'shopee_synced'  => 0,
+                'shopee_changed' => 0,
+                'message'        => 'Tidak ada pesanan Shopee pada rentang waktu tersebut.',
             ];
         }
 
@@ -369,10 +412,12 @@ class ShopeeSyncService
             ]);
 
             return [
-                'total_fetched' => 0,
-                'created'       => 0,
-                'updated'       => 0,
-                'message'       => 'Tidak ada pesanan Shopee pada rentang waktu tersebut.',
+                'total_fetched'  => 0,
+                'created'        => 0,
+                'updated'        => 0,
+                'shopee_synced'  => 0,
+                'shopee_changed' => 0,
+                'message'        => 'Tidak ada pesanan Shopee pada rentang waktu tersebut.',
             ];
         }
 
@@ -380,12 +425,12 @@ class ShopeeSyncService
     }
 
     /**
-     * Simpan/perbarui daftar detailed order Shopee ke tabel cut_off_orders
+     * Simpan/perbarui daftar detailed order Shopee ke tabel cut_off_orders dan shopee_orders
      * dengan tetap menerapkan rumus Est. Bersih (Subtotal - Voucher Penjual) * 79%.
      *
      * @param  array<int, array<string, mixed>>  $detailedOrders
      * @param  array<string, array<string, mixed>>  $escrowMap
-     * @return array{total_fetched: int, created: int, updated: int, message: string}
+     * @return array{total_fetched: int, created: int, updated: int, shopee_synced: int, shopee_changed: int, message: string}
      */
     public function ingestDetailedOrdersToCutOff(
         ShopeeAccount $account,
@@ -408,10 +453,12 @@ class ShopeeSyncService
             ]);
 
             return [
-                'total_fetched' => count($detailedOrders),
-                'created'       => 0,
-                'updated'       => 0,
-                'message'       => 'Tidak ada pesanan Shopee untuk disinkronkan.',
+                'total_fetched'  => count($detailedOrders),
+                'created'        => 0,
+                'updated'        => 0,
+                'shopee_synced'  => 0,
+                'shopee_changed' => 0,
+                'message'        => 'Tidak ada pesanan Shopee untuk disinkronkan.',
             ];
         }
 
@@ -467,10 +514,11 @@ class ShopeeSyncService
 
         $createdCount = 0;
         $updatedCount = 0;
+        $orderRecorder = app(ShopeeOrderRecorder::class);
 
         \Illuminate\Support\Facades\DB::transaction(function () use (
             $account, $detailedOrders, $existingOrders, &$escrowMap, $fetchMissingEscrow,
-            $hasCancelBy, $hasCancelReason, $hasFinancialBreakdown,
+            $hasCancelBy, $hasCancelReason, $hasFinancialBreakdown, $orderRecorder,
             &$createdCount, &$updatedCount
         ) {
             foreach ($detailedOrders as $order) {
@@ -546,13 +594,7 @@ class ShopeeSyncService
                     $paymentMethod = $rawPayment ?: 'Non-COD (Lunas Online)';
                 }
 
-                $rawCancelBy = (string) ($order['cancel_by'] ?? '');
-                $cancelByLabel = match (strtolower($rawCancelBy)) {
-                    'buyer'            => 'Pembeli',
-                    'seller'           => 'Penjual',
-                    'shopee', 'system' => 'Sistem Shopee',
-                    default            => $rawCancelBy ? ucfirst($rawCancelBy) : null,
-                };
+                $cancelByLabel = $orderRecorder->formatCancelByLabel(isset($order['cancel_by']) ? (string) $order['cancel_by'] : null);
                 $cancelReason = ! empty($order['cancel_reason']) ? trim((string) $order['cancel_reason']) : null;
 
                 // Status mapping: JANGAN ubah jika status resmi Shopee sudah 'CANCELLED' (Batal)
@@ -604,7 +646,8 @@ class ShopeeSyncService
                     'buyer_username'         => $order['buyer_username'] ?? $order['buyer_user_id'] ?? null,
                     'shipping_courier'       => $shippingCourier,
                     'payment_method'         => $paymentMethod,
-                    'sku_utama'              => self::normalizeSku($firstItem['model_sku'] ?? $firstItem['item_sku'] ?? null),
+                    'sku_utama'              => self::normalizeSku(isset($firstItem['model_sku']) ? (string) $firstItem['model_sku'] : null)
+                        ?? self::normalizeSku(isset($firstItem['item_sku']) ? (string) $firstItem['item_sku'] : null),
                     'product_name'           => $firstItem['item_name'] ?? 'Produk Shopee',
                     'variation_name'         => $variationName,
                     'qty'                    => $totalQty,
@@ -665,6 +708,8 @@ class ShopeeSyncService
             }
         });
 
+        $shopeeStats = $orderRecorder->upsertFromDetails($account, $detailedOrders);
+
         $account->update([
             'last_synced_at'   => now(),
             'last_sync_status' => 'success',
@@ -672,10 +717,12 @@ class ShopeeSyncService
         ]);
 
         return [
-            'total_fetched' => count($detailedOrders),
-            'created'       => $createdCount,
-            'updated'       => $updatedCount,
-            'message'       => "Sinkronisasi berhasil! {$createdCount} pesanan baru ditambahkan, {$updatedCount} diperbarui.",
+            'total_fetched'  => count($detailedOrders),
+            'created'        => $createdCount,
+            'updated'        => $updatedCount,
+            'shopee_synced'  => $shopeeStats['synced'],
+            'shopee_changed' => $shopeeStats['changed'],
+            'message'        => "Sinkronisasi berhasil! {$createdCount} pesanan baru ditambahkan, {$updatedCount} diperbarui.",
         ];
     }
 
@@ -724,6 +771,8 @@ class ShopeeSyncService
         }
 
         if ($statusText === 'Batal') {
+            $cancelBy = app(ShopeeOrderRecorder::class)->formatCancelByLabel($cancelBy);
+            $cancelReason = $cancelReason !== null && trim($cancelReason) !== '' ? trim($cancelReason) : null;
             $updates['marketplace_net_payout'] = 0;
             if (! empty($cancelReason)) {
                 $updates['keterangan_solutif'] = $cancelBy ? "[{$cancelBy}] {$cancelReason}" : $cancelReason;
@@ -791,13 +840,20 @@ class ShopeeSyncService
     /**
      * Fetch raw order list from Shopee API v2 (supports cursor pagination).
      */
-    public function fetchOrderListRaw(ShopeeAccount $account, int $timeFrom, int $timeTo, int $pageSize = 100, ?string $orderStatus = null): array
-    {
-        $path        = '/api/v2/order/get_order_list';
-        $accessToken = (string) ($account->access_token ?? '');
-        $shopId      = (int) $account->shop_id;
-        $partnerId   = (int) $account->partner_id;
-        $partnerKey  = (string) $account->partner_key;
+    public function fetchOrderListRaw(
+        ShopeeAccount $account,
+        int $timeFrom,
+        int $timeTo,
+        int $pageSize = 100,
+        ?string $orderStatus = null,
+        string $timeRangeField = 'create_time'
+    ): array {
+        $path              = '/api/v2/order/get_order_list';
+        $accessToken       = (string) ($account->access_token ?? '');
+        $shopId            = (int) $account->shop_id;
+        $partnerId         = (int) $account->partner_id;
+        $partnerKey        = (string) $account->partner_key;
+        $resolvedTimeField = in_array($timeRangeField, ['create_time', 'update_time'], true) ? $timeRangeField : 'create_time';
 
         $allOrders = [];
         $cursor    = '';
@@ -813,7 +869,7 @@ class ShopeeSyncService
                 'sign'             => $sign,
                 'access_token'     => $accessToken,
                 'shop_id'          => $shopId,
-                'time_range_field' => 'create_time',
+                'time_range_field' => $resolvedTimeField,
                 'time_from'        => $timeFrom,
                 'time_to'          => $timeTo,
                 'page_size'        => $pageSize,
@@ -863,7 +919,7 @@ class ShopeeSyncService
         $baseStr = sprintf('%s%s%s%s%s', $partnerId, $path, $timestamp, $accessToken, $shopId);
         $sign    = hash_hmac('sha256', $baseStr, $partnerKey);
 
-        $defaultOptionalFields = 'buyer_user_id,buyer_username,item_list,package_list,shipping_carrier,total_amount,cancel_by,cancel_reason,payment_info,payment_method,ship_by_date';
+        $defaultOptionalFields = 'buyer_user_id,buyer_username,recipient_address,item_list,package_list,shipping_carrier,total_amount,cancel_by,cancel_reason,buyer_cancel_reason,payment_info,payment_method,ship_by_date,message_to_seller,note,estimated_shipping_fee,cod';
 
         $queryParams = [
             'partner_id'               => $partnerId,
