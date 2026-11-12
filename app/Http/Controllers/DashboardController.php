@@ -27,6 +27,7 @@ class DashboardController extends Controller
 
         // Daftar Channel untuk Dropdown
         $availableChannels = CutOffOrder::query()
+            ->onlyProcessed()
             ->select('channel', DB::raw('count(*) as count'))
             ->whereNotNull('channel')
             ->where('channel', '!=', '')
@@ -41,8 +42,8 @@ class DashboardController extends Controller
             ->toArray();
 
         // 1. Query Periode Terpilih (pakai rentang tanggal [start, nextDay) agar index order_date terpakai)
-        $query = CutOffOrder::query();
-        $prevQuery = CutOffOrder::query();
+        $query = CutOffOrder::query()->onlyProcessed();
+        $prevQuery = CutOffOrder::query()->onlyProcessed();
 
         if ($channel && $channel !== 'all') {
             $query->where('channel', $channel);
@@ -162,7 +163,7 @@ class DashboardController extends Controller
         ];
 
         // 3. Tren Volume & Penjualan Harian (14 Hari Transaksi Terakhir)
-        $dailyTrendQuery = CutOffOrder::query();
+        $dailyTrendQuery = CutOffOrder::query()->onlyProcessed();
         if ($channel && $channel !== 'all') {
             $dailyTrendQuery->where('channel', $channel);
         }

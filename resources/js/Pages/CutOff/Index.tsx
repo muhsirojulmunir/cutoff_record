@@ -121,7 +121,9 @@ interface Props {
   };
   summary: {
     total_orders: number;
-    total_oos: number;
+    daily_products: number;
+    daily_orders: number;
+    daily_date_label: string;
     total_rj: number;
     total_has_dpp: number;
     total_est_income: number;
@@ -1375,18 +1377,23 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
             <p className="text-xs text-slate-500 mt-1">Data sheet Cut Off 2026</p>
           </div>
 
-          {/* Card 2 */}
+          {/* Card 2: Pesanan Harian (per unit produk terjual hari ini, WIB) */}
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">OOS / Stok Habis</span>
-              <span className="p-2 bg-rose-50 text-rose-600 rounded-xl">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Pesanan Harian</span>
+              <span className="p-2 bg-violet-50 text-violet-600 rounded-xl">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
                 </svg>
               </span>
             </div>
-            <p className="text-2xl font-extrabold text-rose-600 mt-3">{summary.total_oos.toLocaleString('id-ID')}</p>
-            <p className="text-xs text-slate-500 mt-1">Butuh SKU Pengganti</p>
+            <div className="mt-3 flex items-baseline gap-1.5">
+              <p className="text-2xl font-extrabold text-violet-700">{summary.daily_products.toLocaleString('id-ID')}</p>
+              <span className="text-xs font-semibold text-slate-500">produk</span>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              Hari ini ({summary.daily_date_label}) · {summary.daily_orders.toLocaleString('id-ID')} pesanan
+            </p>
           </div>
 
           {/* Card 3 */}
@@ -1564,9 +1571,10 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                 className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs focus:outline-none focus:border-[#0B132B]"
               >
                 <option value="all">Semua Status Pesanan</option>
+                <option value="diproses">Diproses</option>
+                <option value="dikirim">Dikirim / Dalam Pengiriman</option>
                 <option value="selesai">Transaksi Selesai</option>
                 <option value="rj">Retur Jual (RJ)</option>
-                <option value="batal">Dibatalkan</option>
               </select>
             </div>
 

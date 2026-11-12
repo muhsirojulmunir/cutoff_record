@@ -406,6 +406,19 @@ class TiktokSyncService
             $statusRaw  = (string) ($order['status'] ?? '');
             $statusText = $this->mapOrderStatus($statusRaw);
 
+            // Pesanan Cut Off hanya menampung pesanan yang telah diproses ("Diproses" dan seterusnya).
+            if (CutOffOrder::isExcludedStatus($statusText, $statusRaw)) {
+                $existing = CutOffOrder::withTrashed()
+                    ->where('order_number', $orderId)
+                    ->orderByRaw('CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END ASC')
+                    ->orderBy('id', 'asc')
+                    ->first();
+                if ($existing && ! $existing->trashed()) {
+                    $existing->delete();
+                }
+                continue;
+            }
+
             // Rumus ERP: (Harga Produk - Voucher/Diskon Toko) * 79%
             $payment        = $order['payment'] ?? [];
             $productPrice   = (float) ($payment['original_total_product_price'] ?? $payment['total_amount'] ?? 0);
@@ -455,7 +468,11 @@ class TiktokSyncService
             $cancelReason = $order['cancel_reason'] ?? $order['cancellation']['cancel_reason'] ?? null;
             $cancelBy     = ! empty($order['cancel_user']) ? ucfirst(strtolower($order['cancel_user'])) : null;
 
-            $existing = CutOffOrder::where('order_number', $orderId)->first();
+            $existing = CutOffOrder::withTrashed()
+                ->where('order_number', $orderId)
+                ->orderByRaw('CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END ASC')
+                ->orderBy('id', 'asc')
+                ->first();
 
             $payload = [
                 'order_date'             => $orderDate,
@@ -515,6 +532,9 @@ class TiktokSyncService
                     $updateFields['financial_breakdown'] = $breakdown;
                 }
 
+                if ($existing->trashed()) {
+                    $existing->restore();
+                }
                 $existing->update($updateFields);
                 $updatedCount++;
             } else {

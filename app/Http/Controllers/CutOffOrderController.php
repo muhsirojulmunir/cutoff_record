@@ -39,28 +39,38 @@ class CutOffOrderController extends Controller
         }
 
         $orders = CutOffOrder::query()
+            ->onlyProcessed()
             ->filter($filters)
             ->orderBy('order_date', 'desc')
             ->orderBy('id', 'desc')
             ->paginate($perPage)
             ->withQueryString();
 
-        // Metrik Ringkasan Utama (1 query agregasi efisien di DB)
-        $rawSummary = DB::table('cut_off_orders')
-            ->whereNull('deleted_at')
-            ->selectRaw("
-                COUNT(*) as total_orders,
-                COUNT(CASE WHEN info_gudang LIKE '%OOS%' THEN 1 END) as total_oos,
+        // Metrik Ringkasan Utama (1 query agregasi efisien di DB, khusus pesanan Diproses ke atas)
+        $todayWib = \Carbon\Carbon::now('Asia/Jakarta');
+        $todayStart = $todayWib->toDateString();
+        $tomorrowStart = $todayWib->copy()->addDay()->toDateString();
+        $dailyDateLabel = $todayWib->copy()->locale('id')->translatedFormat('d M Y');
+
+        $rawSummary = CutOffOrder::query()
+            ->onlyProcessed()
+            ->selectRaw(
+                "COUNT(*) as total_orders,
+                COALESCE(SUM(CASE WHEN order_date >= ? AND order_date < ? THEN (CASE WHEN qty IS NULL OR qty < 1 THEN 1 ELSE qty END) ELSE 0 END), 0) as daily_products,
+                COUNT(CASE WHEN order_date >= ? AND order_date < ? THEN 1 END) as daily_orders,
                 COUNT(CASE WHEN order_status LIKE '%RJ%' OR order_status LIKE '%Retur%' THEN 1 END) as total_rj,
                 COUNT(CASE WHEN dpp_number IS NOT NULL AND dpp_number != '' THEN 1 END) as total_has_dpp,
                 COALESCE(SUM(est_net_income), 0) as total_est_income,
-                COALESCE(SUM(marketplace_net_payout), 0) as total_net_payout
-            ")
+                COALESCE(SUM(marketplace_net_payout), 0) as total_net_payout",
+                [$todayStart, $tomorrowStart, $todayStart, $tomorrowStart]
+            )
             ->first();
 
         $summary = [
             'total_orders'      => (int) ($rawSummary->total_orders ?? 0),
-            'total_oos'         => (int) ($rawSummary->total_oos ?? 0),
+            'daily_products'    => (int) ($rawSummary->daily_products ?? 0),
+            'daily_orders'      => (int) ($rawSummary->daily_orders ?? 0),
+            'daily_date_label'  => $dailyDateLabel,
             'total_rj'          => (int) ($rawSummary->total_rj ?? 0),
             'total_has_dpp'     => (int) ($rawSummary->total_has_dpp ?? 0),
             'total_est_income'  => (float) ($rawSummary->total_est_income ?? 0),
@@ -69,6 +79,7 @@ class CutOffOrderController extends Controller
 
         // Daftar Toko / Channel dengan jumlah pesanan masing-masing
         $channels = CutOffOrder::query()
+            ->onlyProcessed()
             ->select('channel', DB::raw('count(*) as count'))
             ->groupBy('channel')
             ->orderByDesc('count')
@@ -80,6 +91,7 @@ class CutOffOrderController extends Controller
 
         // Daftar Jasa Pengiriman / Ekspedisi dengan jumlahnya
         $couriers = CutOffOrder::query()
+            ->onlyProcessed()
             ->whereNotNull('shipping_courier')
             ->where('shipping_courier', '!=', '')
             ->select('shipping_courier', DB::raw('count(*) as count'))
@@ -447,6 +459,7 @@ class CutOffOrderController extends Controller
 
         // Ambil semua pesanan pada tanggal tersebut
         $orders = CutOffOrder::query()
+            ->onlyProcessed()
             ->whereDate('order_date', $dateInput)
             ->whereNull('deleted_at')
             ->orderBy('order_date', $sortOrder)

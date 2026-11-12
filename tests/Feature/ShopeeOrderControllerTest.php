@@ -390,7 +390,7 @@ class ShopeeOrderControllerTest extends TestCase
                     'order_list' => [
                         [
                             'order_sn'               => '261111SYNC01',
-                            'order_status'           => 'READY_TO_SHIP',
+                            'order_status'           => 'PROCESSED',
                             'create_time'            => $nowTs - 3600,
                             'ship_by_date'           => $nowTs + 86400,
                             'shipping_carrier'       => 'SPX Standard',
@@ -435,7 +435,7 @@ class ShopeeOrderControllerTest extends TestCase
                         ],
                         [
                             'order_sn'               => '261111SYNC02',
-                            'order_status'           => 'READY_TO_SHIP',
+                            'order_status'           => 'PROCESSED',
                             'create_time'            => $nowTs - 1800,
                             'ship_by_date'           => $nowTs + 86400,
                             'shipping_carrier'       => 'J&T Express',
@@ -515,7 +515,7 @@ class ShopeeOrderControllerTest extends TestCase
         $response->assertSessionMissing('error');
 
         $order1 = ShopeeOrder::where('order_sn', '261111SYNC01')->firstOrFail();
-        $this->assertSame('READY_TO_SHIP', $order1->order_status);
+        $this->assertSame('PROCESSED', $order1->order_status);
         $this->assertSame('OFG-SYNC-01', $order1->package_number);
         $this->assertSame('Tolong pakai bubble wrap ekstra', $order1->buyer_note);
         $this->assertSame('Andi Wijaya', $order1->recipient_data['name'] ?? null);
@@ -549,9 +549,6 @@ class ShopeeOrderControllerTest extends TestCase
             'order_sn'       => $orderSn,
             'package_number' => 'OFG-SHIP-001',
             'order_status'   => 'READY_TO_SHIP',
-        ]);
-        $this->makeCutOffOrder($orderSn, [
-            'order_status' => 'Perlu Dikirim',
         ]);
 
         Http::fake([
@@ -904,10 +901,16 @@ class ShopeeOrderControllerTest extends TestCase
         $this->assertSame('Pembeli', $freshOrder->cancel_by);
         $this->assertSame('Buyer requested cancellation', $freshOrder->cancel_reason);
 
-        $freshCutOff = CutOffOrder::where('channel', 'SH')->where('order_number', $orderSn)->firstOrFail();
-        $this->assertSame('Batal', $freshCutOff->order_status);
-        $this->assertEquals(0.0, (float) $freshCutOff->marketplace_net_payout);
-        $this->assertStringContainsString('Pembeli', (string) $freshCutOff->keterangan_solutif);
+        // Pesanan yang dibatalkan tetap tercatat di Pesanan Saya (shopee_orders),
+        // tetapi otomatis dikeluarkan (soft-delete) dari Pesanan Cut Off.
+        $this->assertNull(
+            CutOffOrder::where('channel', 'SH')->where('order_number', $orderSn)->first()
+        );
+        $trashedCutOff = CutOffOrder::withTrashed()->where('channel', 'SH')->where('order_number', $orderSn)->firstOrFail();
+        $this->assertNotNull($trashedCutOff->deleted_at);
+        $this->assertSame('Batal', $trashedCutOff->order_status);
+        $this->assertEquals(0.0, (float) $trashedCutOff->marketplace_net_payout);
+        $this->assertStringContainsString('Pembeli', (string) $trashedCutOff->keterangan_solutif);
 
         Http::assertSent(function (HttpClientRequest $req) use ($orderSn): bool {
             if (! str_contains($req->url(), '/api/v2/order/handle_buyer_cancellation')) {

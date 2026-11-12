@@ -133,6 +133,77 @@ class CutOffOrder extends Model
     }
 
     /**
+     * Tentukan apakah status pesanan belum diproses / dibatalkan sehingga
+     * tidak boleh masuk ke daftar Pesanan Cut Off.
+     * Pesanan Cut Off hanya menampung status "Diproses" dan seterusnya.
+     */
+    public static function isExcludedStatus(?string $statusText, ?string $rawStatus = null): bool
+    {
+        $raw = strtoupper(trim((string) $rawStatus));
+        if ($raw !== '' && in_array($raw, [
+            'UNPAID',
+            'READY_TO_SHIP',
+            'IN_CANCEL',
+            'CANCELLED',
+            'ON_HOLD',
+            'AWAITING_SHIPMENT',
+        ], true)) {
+            return true;
+        }
+
+        $text = mb_strtolower(trim((string) $statusText));
+        if ($text === '') {
+            return false;
+        }
+
+        foreach ([
+            'batal',
+            'cancel',
+            'belum bayar',
+            'perlu dikirim',
+            'tertahan',
+            'unpaid',
+            'awaiting shipment',
+            'awaiting_shipment',
+            'ready_to_ship',
+            'on_hold',
+        ] as $needle) {
+            if (str_contains($text, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Batasi query agar hanya menyertakan pesanan Cut Off yang sudah diproses dan seterusnya.
+     */
+    public static function applyProcessedOnlyConstraint($query): void
+    {
+        $query->where(function ($sub) {
+            $sub->whereNull('order_status')
+                ->orWhere(function ($s) {
+                    $s->where('order_status', 'not like', '%Batal%')
+                        ->where('order_status', 'not like', '%Cancel%')
+                        ->where('order_status', 'not like', '%Belum Bayar%')
+                        ->where('order_status', 'not like', '%Perlu Dikirim%')
+                        ->where('order_status', 'not like', '%Tertahan%');
+                });
+        });
+    }
+
+    /**
+     * Scope query untuk hanya menampilkan pesanan yang telah diproses dan seterusnya.
+     */
+    public function scopeOnlyProcessed(Builder $query): Builder
+    {
+        self::applyProcessedOnlyConstraint($query);
+
+        return $query;
+    }
+
+    /**
      * Scope query untuk filter pencarian, toko, status gudang, dan status pesanan.
      */
     public function scopeFilter(Builder $query, array $filters): void
@@ -172,8 +243,24 @@ class CutOffOrder extends Model
                     $sub->where('order_status', 'like', '%RJ%')
                         ->orWhere('order_status', 'like', '%Retur%');
                 });
+            } elseif ($status === 'diproses') {
+                $q->where(function ($sub) {
+                    $sub->where('order_status', 'like', '%Diproses%')
+                        ->orWhere('order_status', 'like', '%Kirim Ulang%')
+                        ->orWhere('order_status', 'like', '%Menunggu Pickup%');
+                });
+            } elseif ($status === 'dikirim') {
+                $q->where(function ($sub) {
+                    $sub->where('order_status', 'like', '%Dikirim%')
+                        ->orWhere('order_status', 'like', '%Pengiriman%')
+                        ->orWhere('order_status', 'like', '%Menunggu Konfirmasi%')
+                        ->orWhere('order_status', 'like', '%Tiba di Tujuan%');
+                })->where('order_status', 'not like', '%Perlu Dikirim%');
             } elseif ($status === 'batal') {
-                $q->where('order_status', 'like', '%cancel%');
+                $q->where(function ($sub) {
+                    $sub->where('order_status', 'like', '%Batal%')
+                        ->orWhere('order_status', 'like', '%Cancel%');
+                });
             } elseif ($status === 'selesai') {
                 $q->where('order_status', 'like', '%Selesai%');
             } elseif ($status !== 'all' && $status !== '') {

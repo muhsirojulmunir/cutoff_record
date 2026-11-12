@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\CutOffOrder;
 use App\Models\ShopeeAccount;
 use App\Models\ShopeeOrder;
 use Illuminate\Http\Client\Pool;
@@ -266,6 +267,15 @@ class ShopeeOrderService
             $order->cancel_by,
             $order->cancel_reason
         );
+
+        // Jika pesanan baru saja berubah dari Perlu Dikirim -> Diproses (misal via Atur Pengiriman),
+        // masukkan langsung ke Pesanan Cut Off apabila belum ada record aktif.
+        if (
+            ! CutOffOrder::isExcludedStatus(null, $order->order_status)
+            && ! CutOffOrder::where('channel', 'SH')->where('order_number', $orderSn)->exists()
+        ) {
+            $this->syncService->ingestDetailedOrdersToCutOff($account, $detailedOrders, [], false, false);
+        }
 
         return $order;
     }
@@ -1059,7 +1069,7 @@ class ShopeeOrderService
                 if ($escrowRes instanceof Response && $escrowRes->successful()) {
                     $data = $escrowRes->json();
                     if (is_array($data) && empty($data['error'])) {
-                        $parsed = $this->parseEscrowBatchResponse($data);
+                        $parsed = $this->syncService->parseEscrowBatchResponse($data);
                         if (! empty($parsed)) {
                             $escrowMap = array_replace($escrowMap, $parsed);
                         }
@@ -1196,67 +1206,6 @@ class ShopeeOrderService
         }
 
         return $trackingMap;
-    }
-
-    /**
-     * @param  array<string, mixed>  $data
-     * @return array<string, array<string, mixed>>
-     */
-    private function parseEscrowBatchResponse(array $data): array
-    {
-        $resp = $data['response'] ?? [];
-        if (! is_array($resp)) {
-            return [];
-        }
-
-        $escrowList = [];
-        if (! empty($resp['escrow_detail_list']) && is_array($resp['escrow_detail_list'])) {
-            $escrowList = $resp['escrow_detail_list'];
-        } elseif (! empty($resp['escrow_list']) && is_array($resp['escrow_list'])) {
-            $escrowList = $resp['escrow_list'];
-        } elseif (array_is_list($resp)) {
-            $escrowList = $resp;
-        } elseif (! empty($resp['order_sn'])) {
-            $escrowList = [$resp];
-        }
-
-        $mapped = [];
-        foreach ($escrowList as $entry) {
-            if (! is_array($entry)) {
-                continue;
-            }
-            $sn = (string) ($entry['order_sn'] ?? '');
-            if ($sn === '') {
-                continue;
-            }
-
-            $income = is_array($entry['order_income'] ?? null) ? $entry['order_income'] : [];
-            if (empty($income['items'])) {
-                if (! empty($entry['items']) && is_array($entry['items'])) {
-                    $income['items'] = $entry['items'];
-                } elseif (! empty($entry['item_list']) && is_array($entry['item_list'])) {
-                    $income['items'] = $entry['item_list'];
-                }
-            }
-
-            foreach ([
-                'voucher_from_seller',
-                'seller_voucher_discount',
-                'seller_discount',
-                'seller_promo',
-                'original_cost_of_goods_sold',
-                'cost_of_goods_sold',
-                'escrow_amount',
-            ] as $key) {
-                if (! isset($income[$key]) && isset($entry[$key])) {
-                    $income[$key] = $entry[$key];
-                }
-            }
-
-            $mapped[$sn] = $income;
-        }
-
-        return $mapped;
     }
 
     private function markAccountSyncSuccess(ShopeeAccount $account): void

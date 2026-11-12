@@ -459,12 +459,11 @@ class ShopeeSyncAutoAndWebhookTest extends TestCase
         $this->assertSame('JL-2026-0099', $oldCutOff->jl_number);
         $this->assertSame(3, $oldCutOff->recheck_qty);
 
-        // Rumus Est. Bersih = (156.380 - 20.000) * 79% = 107.740,2 -> 107.740
-        $newCutOff = CutOffOrder::where('channel', 'SH')->where('order_number', $newOrderSn)->firstOrFail();
-        $this->assertSame('Perlu Dikirim', $newCutOff->order_status);
-        $this->assertEquals(107740.0, (float) $newCutOff->est_net_income);
-        $this->assertEquals(156380.0, (float) ($newCutOff->financial_breakdown['subtotal_order'] ?? 0));
-        $this->assertEquals(20000.0, (float) ($newCutOff->financial_breakdown['seller_voucher'] ?? 0));
+        // Pesanan READY_TO_SHIP tetap tersimpan di shopee_orders ("Pesanan Saya"),
+        // namun BELUM masuk ke cut_off_orders ("Pesanan Cut Off") sebelum status Diproses.
+        $this->assertNull(
+            CutOffOrder::where('channel', 'SH')->where('order_number', $newOrderSn)->first()
+        );
 
         Http::assertSent(static fn (HttpClientRequest $req): bool => str_contains($req->url(), 'time_range_field=create_time'));
         Http::assertSent(static fn (HttpClientRequest $req): bool => str_contains($req->url(), 'time_range_field=update_time'));
@@ -577,7 +576,7 @@ class ShopeeSyncAutoAndWebhookTest extends TestCase
         for ($i = 1; $i <= 52; $i++) {
             $sn = sprintf('261110CHK%03d', $i);
             $detailsBySn[$sn] = $this->buildShopeeDetailPayload($sn, [
-                'order_status' => 'READY_TO_SHIP',
+                'order_status' => 'PROCESSED',
                 'create_time'  => $baseCreateTs + $i,
                 'update_time'  => $baseCreateTs + $i,
                 'unit_price'   => 100000,
