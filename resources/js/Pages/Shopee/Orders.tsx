@@ -142,6 +142,24 @@ interface DeadlineStateResult {
   courierStatusText: string | null;
 }
 
+/**
+ * Format durasi hitung mundur ringkas ala Shopee Seller Centre (contoh: "5m 44d", "28m 10d", "1j 15m").
+ */
+function formatShopeeInstantDuration(diffSec: number): string {
+  if (diffSec <= 0) return '0d';
+  const hours = Math.floor(diffSec / 3600);
+  const minutes = Math.floor((diffSec % 3600) / 60);
+  const seconds = diffSec % 60;
+
+  if (hours > 0) {
+    return `${hours}j ${minutes}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}d`;
+  }
+  return `${seconds}d`;
+}
+
 function getDeadlineState(
   shipByDate: string | null,
   orderCreatedAt: string | null,
@@ -155,6 +173,7 @@ function getDeadlineState(
 
   // Jika pesanan Instant:
   if (isInstant) {
+    // 1. Jika pesanan sudah diatur pickup / diproses:
     if (normalizedStatus === 'PROCESSED') {
       return {
         label: formatted,
@@ -166,42 +185,45 @@ function getDeadlineState(
       };
     }
 
+    // 2. Jika pesanan belum diatur pickup (READY_TO_SHIP / RETRY_SHIP):
     if (normalizedStatus === 'READY_TO_SHIP' || normalizedStatus === 'RETRY_SHIP') {
-      let deadlineMs: number | null = parsedShipBy ? parsedShipBy.getTime() : null;
-      if (!deadlineMs && parsedCreated) {
-        // Batas waktu SLA Instant Shopee adalah 1 jam sejak pesanan dibuat
-        deadlineMs = parsedCreated.getTime() + 60 * 60 * 1000;
-      }
+      // Shopee Instant memiliki jeda persiapan / batas Cari Kurir Otomatis 30 menit (1.800 detik) sejak pesanan dibuat
+      const autoSearchCourierMs = parsedCreated ? parsedCreated.getTime() + 30 * 60 * 1000 : null;
+      const systemSlaDeadlineMs = parsedShipBy ? parsedShipBy.getTime() : null;
 
-      if (deadlineMs) {
-        const diffSec = Math.floor((deadlineMs - nowMs) / 1000);
+      if (autoSearchCourierMs) {
+        const diffSec = Math.floor((autoSearchCourierMs - nowMs) / 1000);
         if (diffSec > 0) {
-          const hours = Math.floor(diffSec / 3600);
-          const minutes = Math.floor((diffSec % 3600) / 60);
-          const seconds = diffSec % 60;
-          const countdownText =
-            hours > 0
-              ? `Atur pickup dalam ${hours} jam ${minutes} menit`
-              : minutes > 0
-              ? `Atur pickup dalam ${minutes} menit ${seconds} detik`
-              : `Atur pickup dalam ${seconds} detik`;
+          const durationStr = formatShopeeInstantDuration(diffSec);
+          return {
+            label: formatted,
+            badgeText: 'Instant',
+            badgeClass: 'border-orange-200 bg-orange-50 text-[#EE4D2D]',
+            textClass: 'text-[#EE4D2D] font-semibold',
+            countdownText: `Mencari Kurir dalam ${durationStr}`,
+            courierStatusText: null,
+          };
+        } else {
+          // Setelah 30 menit jeda persiapan lewat, sistem Shopee otomatis masuk status "Mencari Kurir"
+          const slaDiffSec = systemSlaDeadlineMs ? Math.floor((systemSlaDeadlineMs - nowMs) / 1000) : null;
+          if (slaDiffSec !== null && slaDiffSec <= 0) {
+            return {
+              label: formatted,
+              badgeText: 'Lewat Tenggat',
+              badgeClass: 'border-rose-200 bg-rose-50 text-rose-700',
+              textClass: 'text-rose-700 font-bold',
+              countdownText: null,
+              courierStatusText: 'Batas kirim terlewati',
+            };
+          }
 
           return {
             label: formatted,
             badgeText: 'Instant',
             badgeClass: 'border-orange-200 bg-orange-50 text-[#EE4D2D]',
-            textClass: 'text-rose-600 font-semibold',
-            countdownText,
-            courierStatusText: null,
-          };
-        } else {
-          return {
-            label: formatted,
-            badgeText: 'Lewat Tenggat',
-            badgeClass: 'border-rose-200 bg-rose-50 text-rose-700',
-            textClass: 'text-rose-700 font-bold',
-            countdownText: 'Batas pickup terlewati',
-            courierStatusText: null,
+            textClass: 'text-slate-700',
+            countdownText: null,
+            courierStatusText: 'Mencari Kurir',
           };
         }
       }
@@ -2546,7 +2568,13 @@ export default function ShopeeOrdersPage({
                       >
                         {statusMeta.label}
                       </span>
-                      {isInstant && isProcessed && (
+                      {isInstant && deadline.countdownText && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#EE4D2D]">
+                          <span className="h-1.5 w-1.5 rounded-full bg-[#EE4D2D] animate-pulse" />
+                          {deadline.countdownText}
+                        </span>
+                      )}
+                      {isInstant && !deadline.countdownText && (isProcessed || deadline.courierStatusText === 'Mencari Kurir') && (
                         <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-800">
                           <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
                           Mencari Kurir
