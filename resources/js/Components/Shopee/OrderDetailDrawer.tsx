@@ -24,6 +24,7 @@ import {
 
 export interface OrderDetailDrawerProps {
   order: ShopeeOrderRecord | null;
+  baseRoute?: string;
   onClose: () => void;
   onOpenShip: (order: ShopeeOrderRecord) => void;
   onPrintWaybill: (order: ShopeeOrderRecord) => void;
@@ -81,6 +82,7 @@ function formatPlainNumber(value: number | string | null | undefined): string {
 
 export default function OrderDetailDrawer({
   order,
+  baseRoute = '/shopee-orders',
   onClose,
   onOpenShip,
   onPrintWaybill,
@@ -125,7 +127,7 @@ export default function OrderDetailDrawer({
     setIsLoadingEscrow(true);
 
     try {
-      const res = await fetch(`/shopee-orders/${encodeURIComponent(targetSn)}/escrow-detail`, {
+      const res = await fetch(`${baseRoute}/${encodeURIComponent(targetSn)}/escrow-detail`, {
         method: 'GET',
         credentials: 'same-origin',
         headers: {
@@ -149,7 +151,7 @@ export default function OrderDetailDrawer({
     setTrackingError(null);
 
     try {
-      const res = await fetch(`/shopee-orders/${encodeURIComponent(targetSn)}/tracking-info`, {
+      const res = await fetch(`${baseRoute}/${encodeURIComponent(targetSn)}/tracking-info`, {
         method: 'GET',
         credentials: 'same-origin',
         headers: {

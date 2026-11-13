@@ -106,6 +106,21 @@ Route::middleware('auth')->group(function () {
     Route::get('/shopee-orders/{orderSn}/waybill-a4', [\App\Http\Controllers\ShopeeOrderController::class, 'printWaybill'])->name('shopee-orders.waybill');
     Route::post('/shopee-orders/{orderSn}/handle-cancel', [\App\Http\Controllers\ShopeeOrderController::class, 'handleCancellation'])->name('shopee-orders.handle-cancel');
 
+    // Pesanan Saya TikTok (Eksklusif Super Admin - Fulfillment & Cetak Resi TikTok)
+    Route::get('/tiktok-orders', [\App\Http\Controllers\TiktokOrderController::class, 'index'])->name('tiktok-orders.index');
+    Route::post('/tiktok-orders/sync', [\App\Http\Controllers\TiktokOrderController::class, 'sync'])->name('tiktok-orders.sync');
+    Route::post('/tiktok-orders/auto-sync', [\App\Http\Controllers\TiktokOrderController::class, 'autoSync'])->name('tiktok-orders.auto-sync');
+    Route::post('/tiktok-orders/sync-chunk', [\App\Http\Controllers\TiktokOrderController::class, 'syncChunk'])->name('tiktok-orders.sync-chunk');
+    Route::post('/tiktok-orders/mass-ship', [\App\Http\Controllers\TiktokOrderController::class, 'massShip'])->name('tiktok-orders.mass-ship');
+    Route::post('/tiktok-orders/mass-waybill-a4', [\App\Http\Controllers\TiktokOrderController::class, 'massPrintWaybill'])->name('tiktok-orders.mass-waybill');
+    Route::post('/tiktok-orders/{orderSn}/refresh', [\App\Http\Controllers\TiktokOrderController::class, 'refreshDetail'])->name('tiktok-orders.refresh');
+    Route::get('/tiktok-orders/{orderSn}/escrow-detail', [\App\Http\Controllers\TiktokOrderController::class, 'escrowDetail'])->name('tiktok-orders.escrow-detail');
+    Route::get('/tiktok-orders/{orderSn}/tracking-info', [\App\Http\Controllers\TiktokOrderController::class, 'trackingInfo'])->name('tiktok-orders.tracking-info');
+    Route::get('/tiktok-orders/{orderSn}/shipping-parameters', [\App\Http\Controllers\TiktokOrderController::class, 'shippingParameters'])->name('tiktok-orders.shipping-params');
+    Route::post('/tiktok-orders/{orderSn}/ship', [\App\Http\Controllers\TiktokOrderController::class, 'ship'])->name('tiktok-orders.ship');
+    Route::get('/tiktok-orders/{orderSn}/waybill-a4', [\App\Http\Controllers\TiktokOrderController::class, 'printWaybill'])->name('tiktok-orders.waybill');
+    Route::post('/tiktok-orders/{orderSn}/handle-cancel', [\App\Http\Controllers\TiktokOrderController::class, 'handleCancellation'])->name('tiktok-orders.handle-cancel');
+
     // Integrasi TikTok Shop Open API
     Route::get('/marketplace/tiktok', [\App\Http\Controllers\TiktokIntegrationController::class, 'index'])->name('tiktok.index');
     Route::post('/marketplace/tiktok/credentials', [\App\Http\Controllers\TiktokIntegrationController::class, 'saveCredentials'])->name('tiktok.credentials');

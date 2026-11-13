@@ -23,6 +23,7 @@ import {
 export interface ShipOrderModalProps {
   show: boolean;
   mode: 'single' | 'mass';
+  baseRoute?: string;
   order?: ShopeeOrderRecord | null;
   orders?: ShopeeOrderRecord[];
   onClose: () => void;
@@ -125,6 +126,7 @@ function pickDefaultAddress(addresses: ShopeePickupAddress[]): ShopeePickupAddre
 export default function ShipOrderModal({
   show,
   mode,
+  baseRoute = '/shopee-orders',
   order = null,
   orders = [],
   onClose,
@@ -235,7 +237,7 @@ export default function ShipOrderModal({
     setParamsError(null);
     setShippingParams(null);
 
-    fetch(`/shopee-orders/${encodeURIComponent(orderSn)}/shipping-parameters${pkgQuery}`, {
+    fetch(`${baseRoute}/${encodeURIComponent(orderSn)}/shipping-parameters${pkgQuery}`, {
       method: 'GET',
       credentials: 'same-origin',
       signal: controller.signal,
@@ -555,7 +557,7 @@ export default function ShipOrderModal({
     }
 
     const result = await submitJsonPost<ShopeeShipResult>(
-      `/shopee-orders/${encodeURIComponent(order.order_sn)}/ship`,
+      `${baseRoute}/${encodeURIComponent(order.order_sn)}/ship`,
       payload,
       'Gagal mengatur pengiriman pesanan',
       'Gagal menghubungi server saat mengatur pengiriman.'
@@ -583,7 +585,7 @@ export default function ShipOrderModal({
     }
 
     const result = await submitJsonPost<ShopeeMassShipResult>(
-      '/shopee-orders/mass-ship',
+      `${baseRoute}/mass-ship`,
       payload,
       'Gagal menjalankan atur pengiriman massal',
       'Gagal menghubungi server saat proses pengiriman massal.'
