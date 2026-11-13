@@ -1300,7 +1300,12 @@ export default function ShopeeProductsIndex({
             {isSuperAdmin && (
               <button
                 type="button"
-                onClick={() => openRestoreModal(null, 'all')}
+                onClick={() =>
+                  openRestoreModal(
+                    zeroRestoreSummary?.latest_restorable_batch?.id ?? null,
+                    (zeroRestoreSummary?.restorable_items_count ?? 0) > 0 ? 'restorable' : 'all'
+                  )
+                }
                 className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border text-xs font-semibold shadow-2xs transition-colors cursor-pointer whitespace-nowrap active:scale-98 ${
                   (zeroRestoreSummary?.restorable_items_count ?? 0) > 0
                     ? 'border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-800'
@@ -1377,56 +1382,6 @@ export default function ShopeeProductsIndex({
             </button>
           </div>
         </div>
-
-        {/* Banner Cepat Pulihkan (Khusus Super Admin saat ada batch terbaru belum dipulihkan) */}
-        {isSuperAdmin && zeroRestoreSummary?.latest_restorable_batch && (
-          <div className="p-4 rounded-2xl bg-indigo-50/80 border border-indigo-200 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs">
-            <div className="flex items-start gap-3 min-w-0">
-              <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
-                </svg>
-              </div>
-              <div className="text-xs min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-bold text-slate-900">
-                    {zeroRestoreSummary.latest_restorable_batch.restorable_count} SKU siap dipulihkan ke stok Shopee sebelumnya
-                  </span>
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white text-indigo-700 border border-indigo-200 font-mono">
-                    {zeroRestoreSummary.latest_restorable_batch.batch_code}
-                  </span>
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-100 text-indigo-800">
-                    {zeroRestoreSummary.latest_restorable_batch.source_label}
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-600 mt-1">
-                  Dikosongkan pada <strong>{zeroRestoreSummary.latest_restorable_batch.zeroed_at_label || '-'}</strong>
-                  {zeroRestoreSummary.latest_restorable_batch.zeroed_by_name ? ` oleh ${zeroRestoreSummary.latest_restorable_batch.zeroed_by_name}` : ''}.
-                  Klik <strong>Pulihkan</strong> untuk mengembalikan stok atau melihat riwayat tanggal pemulihan.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              <button
-                type="button"
-                onClick={() => openRestoreModal(zeroRestoreSummary.latest_restorable_batch!.id, 'restorable')}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
-                </svg>
-                <span>Pulihkan ({zeroRestoreSummary.latest_restorable_batch.restorable_count} SKU)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => openRestoreModal(null, 'all')}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-indigo-200 bg-white hover:bg-indigo-100/60 text-indigo-800 text-xs font-semibold transition-colors cursor-pointer"
-              >
-                <span>Riwayat Pemulihan</span>
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* 4 Metric Summary Cards - High-End Anti AI-Slop */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
