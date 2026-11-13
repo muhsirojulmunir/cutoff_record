@@ -61,7 +61,7 @@ function formatPickupAddressLabel(addr: ShopeePickupAddress): string {
   const parts = [addr.address, addr.district, addr.city, addr.state, addr.zipcode]
     .map((p) => (typeof p === 'string' ? p.trim() : ''))
     .filter(Boolean);
-  return parts.length > 0 ? parts.join(', ') : `Alamat ID #${addr.address_id}`;
+  return parts.length > 0 ? parts.join(', ') : 'Alamat Penjemputan Toko';
 }
 
 function formatPickupSlotLabel(slot: ShopeePickupTimeSlot): string {
@@ -159,6 +159,7 @@ export default function ShipOrderModal({
   const [shippingParams, setShippingParams] = useState<ShopeeShippingParameterResponse | null>(null);
   const [selectedMethod, setSelectedMethod] = useState<ShopeeFulfillmentMethod>('pickup');
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
+  const [showOtherAddresses, setShowOtherAddresses] = useState(false);
   const [selectedPickupTimeId, setSelectedPickupTimeId] = useState<string>('');
   const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
   const [manualBranchId, setManualBranchId] = useState<string>('');
@@ -208,6 +209,7 @@ export default function ShipOrderModal({
     setManualBranchId('');
     setMassMethod('auto');
     setMassSenderName('');
+    setShowOtherAddresses(false);
   }, [show, mode, order?.order_sn]);
 
   // Fetch single-order shipping parameters with AbortController stale guard
@@ -294,9 +296,14 @@ export default function ShipOrderModal({
   }, [show, mode, order?.order_sn, order?.package_number, retryCounter]);
 
   const pickupAddresses = shippingParams?.pickup?.address_list ?? [];
+  const defaultAddress = useMemo(() => pickDefaultAddress(pickupAddresses), [pickupAddresses]);
+  const otherAddresses = useMemo(
+    () => pickupAddresses.filter((a) => a.address_id !== defaultAddress?.address_id),
+    [pickupAddresses, defaultAddress]
+  );
   const selectedAddress = useMemo(
-    () => pickupAddresses.find((a) => a.address_id === selectedAddressId) ?? null,
-    [pickupAddresses, selectedAddressId]
+    () => pickupAddresses.find((a) => a.address_id === selectedAddressId) ?? defaultAddress ?? null,
+    [pickupAddresses, selectedAddressId, defaultAddress]
   );
   const pickupTimeSlots = selectedAddress?.time_slot_list ?? [];
 
@@ -462,9 +469,10 @@ export default function ShipOrderModal({
     const payload: Record<string, unknown> = {
       method: selectedMethod,
     };
-    const resolvedPackage = shippingParams.package_number || order.package_number;
-    if (resolvedPackage) {
-      payload.package_number = resolvedPackage;
+    const packageList = Array.isArray(order.package_list_json) ? order.package_list_json : [];
+    const isSplitOrder = packageList.length > 1;
+    if (isSplitOrder && (shippingParams.package_number || order.package_number)) {
+      payload.package_number = shippingParams.package_number || order.package_number;
     }
 
     if (selectedMethod === 'pickup') {
@@ -827,48 +835,82 @@ export default function ShipOrderModal({
                         ) : (
                           <>
                             <div className="space-y-1.5">
-                              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                                Alamat Penjemputan
-                              </label>
-                              <div className="max-h-40 space-y-2 overflow-y-auto pr-1">
-                                {pickupAddresses.map((addr) => {
-                                  const isSelected = addr.address_id === selectedAddressId;
-                                  const flags = Array.isArray(addr.address_flag) ? addr.address_flag : [];
-                                  const isDefault =
-                                    flags.includes('default_address') || Boolean(addr.default) || Boolean(addr.is_default);
-                                  return (
-                                    <label
-                                      key={addr.address_id}
-                                      className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-2.5 text-xs transition-colors ${
-                                        isSelected
-                                          ? 'border-[#EE4D2D] bg-orange-50/40'
-                                          : 'border-slate-200 hover:border-slate-300'
-                                      }`}
-                                    >
-                                      <input
-                                        type="radio"
-                                        name="shopee_pickup_address"
-                                        checked={isSelected}
-                                        onChange={() => handleAddressChange(addr.address_id)}
-                                        className="mt-0.5 accent-[#EE4D2D]"
-                                      />
-                                      <div className="min-w-0 flex-1">
-                                        <div className="flex flex-wrap items-center gap-1.5">
-                                          <span className="font-mono text-[11px] font-semibold text-slate-600">
-                                            #{addr.address_id}
-                                          </span>
-                                          {isDefault && (
-                                            <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
-                                              Utama
-                                            </span>
-                                          )}
-                                        </div>
-                                        <p className="mt-0.5 text-slate-800">{formatPickupAddressLabel(addr)}</p>
-                                      </div>
-                                    </label>
-                                  );
-                                })}
+                              <div className="flex items-center justify-between">
+                                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                  Alamat Penjemputan
+                                </label>
+                                {otherAddresses.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowOtherAddresses((v) => !v)}
+                                    className="cursor-pointer text-[11px] font-semibold text-[#EE4D2D] hover:underline"
+                                  >
+                                    {showOtherAddresses
+                                      ? 'Tampilkan Alamat Utama Saja'
+                                      : `Pilih alamat lain (${otherAddresses.length})`}
+                                  </button>
+                                )}
                               </div>
+
+                              {!showOtherAddresses && selectedAddress ? (
+                                <div className="rounded-xl border border-emerald-300 bg-emerald-50/40 p-3 text-xs">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3">
+                                        <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                                      </svg>
+                                      Alamat Utama
+                                    </span>
+                                    {selectedAddress.address_id !== defaultAddress?.address_id && (
+                                      <span className="text-[10px] font-semibold text-slate-500">(Alamat Pilihan)</span>
+                                    )}
+                                  </div>
+                                  <p className="mt-1 font-medium leading-relaxed text-slate-800">
+                                    {formatPickupAddressLabel(selectedAddress)}
+                                  </p>
+                                </div>
+                              ) : (
+                                <div className="max-h-40 space-y-2 overflow-y-auto pr-1">
+                                  {pickupAddresses.map((addr) => {
+                                    const isSelected = addr.address_id === selectedAddressId;
+                                    const flags = Array.isArray(addr.address_flag) ? addr.address_flag : [];
+                                    const isDefault =
+                                      flags.includes('default_address') || Boolean(addr.default) || Boolean(addr.is_default);
+                                    return (
+                                      <label
+                                        key={addr.address_id}
+                                        className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-2.5 text-xs transition-colors ${
+                                          isSelected
+                                            ? 'border-[#EE4D2D] bg-orange-50/40'
+                                            : 'border-slate-200 hover:border-slate-300'
+                                        }`}
+                                      >
+                                        <input
+                                          type="radio"
+                                          name="shopee_pickup_address"
+                                          checked={isSelected}
+                                          onChange={() => handleAddressChange(addr.address_id)}
+                                          className="mt-0.5 accent-[#EE4D2D]"
+                                        />
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex flex-wrap items-center gap-1.5">
+                                            {isDefault ? (
+                                              <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                                                Alamat Utama
+                                              </span>
+                                            ) : (
+                                              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                                                Alamat Alternatif
+                                              </span>
+                                            )}
+                                          </div>
+                                          <p className="mt-0.5 text-slate-800">{formatPickupAddressLabel(addr)}</p>
+                                        </div>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
 
                             <div className="space-y-1.5">

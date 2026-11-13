@@ -1371,7 +1371,10 @@ export default function ShopeeOrdersPage({
 
   const subTabs: Array<{ key: ShopeeSubTab; label: string }> = [
     { key: 'all', label: 'Semua' },
-    { key: 'unprocessed', label: 'Perlu diproses' },
+    {
+      key: 'unprocessed',
+      label: `Perlu diproses (${(tabCounts?.to_ship_unprocessed ?? 0).toLocaleString('id-ID')})`,
+    },
     {
       key: 'processed',
       label: `Telah diproses (${(tabCounts?.to_ship_processed ?? 0).toLocaleString('id-ID')})`,
@@ -1919,7 +1922,7 @@ export default function ShopeeOrdersPage({
                 <button
                   key={opt.key}
                   type="button"
-                  onClick={() => navigateWithFilters({ order_type: opt.key })}
+                  onClick={() => navigateWithFilters({ order_type: opt.key, sub_tab: 'all' })}
                   className={`inline-flex cursor-pointer items-center rounded-full border px-3 py-1 text-xs transition-colors tabular-nums ${
                     active
                       ? 'border-[#EE4D2D] bg-[#FFF5F2] font-semibold text-[#EE4D2D]'

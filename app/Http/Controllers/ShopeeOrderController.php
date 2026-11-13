@@ -112,7 +112,7 @@ class ShopeeOrderController extends Controller
             $orderTypeCounts = ShopeeOrder::computeOrderTypeCounts(
                 ShopeeOrder::query()
                     ->where('shopee_account_id', $account->id)
-                    ->forTab($tab, $subTab)
+                    ->forTab($tab, 'all')
             );
 
             $carriers = ShopeeOrder::query()

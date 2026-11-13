@@ -220,7 +220,7 @@ class ShopeeOrder extends Model
     {
         $col = "LOWER(COALESCE({$column}, ''))";
 
-        return "({$col} LIKE '%instan%' OR {$col} LIKE '%sameday%' OR {$col} LIKE '%same day%')";
+        return "({$col} LIKE '%instan%' OR {$col} LIKE '%sameday%' OR {$col} LIKE '%same day%' OR {$col} LIKE '%gosend%' OR {$col} LIKE '%grab%')";
     }
 
     public static function kilatCarrierPredicateSql(string $column = 'shipping_carrier'): string

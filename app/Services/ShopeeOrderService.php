@@ -306,7 +306,18 @@ class ShopeeOrderService
             'package_number' => $resolvedPackageNumber,
         ]);
 
-        $data = $this->getApi($account, '/api/v2/logistics/get_tracking_number', $query);
+        try {
+            $data = $this->getApi($account, '/api/v2/logistics/get_tracking_number', $query);
+        } catch (\Throwable $e) {
+            $msg = strtolower($e->getMessage());
+            $isPkgErr = str_contains($msg, 'package_number') || str_contains($msg, 'pacakge') || str_contains($msg, 'package number') || str_contains($msg, 'split') || str_contains($msg, 'unsplit');
+            if (isset($query['package_number']) && $isPkgErr) {
+                unset($query['package_number']);
+                $data = $this->getApi($account, '/api/v2/logistics/get_tracking_number', $query);
+            } else {
+                throw $e;
+            }
+        }
         $resp = is_array($data['response'] ?? null) ? $data['response'] : [];
 
         $trackingNumber = trim((string) (
@@ -351,7 +362,19 @@ class ShopeeOrderService
             'package_number' => $resolvedPackageNumber,
         ]);
 
-        $data = $this->getApi($account, '/api/v2/logistics/get_tracking_info', $query);
+        try {
+            $data = $this->getApi($account, '/api/v2/logistics/get_tracking_info', $query);
+        } catch (\Throwable $e) {
+            $msg = strtolower($e->getMessage());
+            $isPkgErr = str_contains($msg, 'package_number') || str_contains($msg, 'pacakge') || str_contains($msg, 'package number') || str_contains($msg, 'split') || str_contains($msg, 'unsplit');
+            if (isset($query['package_number']) && $isPkgErr) {
+                unset($query['package_number']);
+                $data = $this->getApi($account, '/api/v2/logistics/get_tracking_info', $query);
+                $resolvedPackageNumber = null;
+            } else {
+                throw $e;
+            }
+        }
         $resp = is_array($data['response'] ?? null) ? $data['response'] : [];
 
         $logisticsStatus = strtoupper(trim((string) ($resp['logistics_status'] ?? '')));
@@ -430,7 +453,19 @@ class ShopeeOrderService
             'package_number' => $resolvedPackageNumber,
         ]);
 
-        $data = $this->getApi($account, '/api/v2/logistics/get_shipping_parameter', $query);
+        try {
+            $data = $this->getApi($account, '/api/v2/logistics/get_shipping_parameter', $query);
+        } catch (\Throwable $e) {
+            $msg = strtolower($e->getMessage());
+            $isPkgErr = str_contains($msg, 'package_number') || str_contains($msg, 'pacakge') || str_contains($msg, 'package number') || str_contains($msg, 'split') || str_contains($msg, 'unsplit');
+            if (isset($query['package_number']) && $isPkgErr) {
+                unset($query['package_number']);
+                $data = $this->getApi($account, '/api/v2/logistics/get_shipping_parameter', $query);
+                $resolvedPackageNumber = null;
+            } else {
+                throw $e;
+            }
+        }
         $resp = is_array($data['response'] ?? null) ? $data['response'] : [];
         $infoNeeded = is_array($resp['info_needed'] ?? null) ? $resp['info_needed'] : [];
 
@@ -459,7 +494,13 @@ class ShopeeOrderService
             ->where('order_sn', $orderSn)
             ->first();
 
-        $packageNumber = trim((string) ($shipPayload['package_number'] ?? $existingOrder?->package_number ?? ''));
+        $packageList = is_array($existingOrder?->package_list_json) ? $existingOrder->package_list_json : [];
+        $isSplitOrder = count($packageList) > 1;
+
+        // Shopee API v2 ship_order: parameter package_number HANYA boleh dikirim untuk split order.
+        // Jika dikirim untuk unsplit order, Shopee error: logistics.ship_order_not_need_pacakge_number
+        $candidatePackageNumber = trim((string) ($shipPayload['package_number'] ?? $existingOrder?->package_number ?? ''));
+        $packageNumber = $isSplitOrder ? $candidatePackageNumber : '';
         $method = $this->resolveShipMethod($shipPayload);
 
         $body = $this->filterNonEmpty([
@@ -469,7 +510,30 @@ class ShopeeOrderService
 
         $body[$method] = $this->buildMethodPayload($method, $shipPayload);
 
-        $this->postApi($account, '/api/v2/logistics/ship_order', $body);
+        try {
+            $this->postApi($account, '/api/v2/logistics/ship_order', $body);
+        } catch (\Throwable $e) {
+            $msg = strtolower($e->getMessage());
+            $isPackageError = str_contains($msg, 'package_number')
+                || str_contains($msg, 'pacakge')
+                || str_contains($msg, 'package number')
+                || str_contains($msg, 'split')
+                || str_contains($msg, 'unsplit');
+
+            if (isset($body['package_number']) && $isPackageError) {
+                Log::info("Shopee ship_order auto-retry without package_number for {$orderSn}: {$e->getMessage()}");
+                unset($body['package_number']);
+                $this->postApi($account, '/api/v2/logistics/ship_order', $body);
+                $packageNumber = '';
+            } elseif (! isset($body['package_number']) && $candidatePackageNumber !== '' && $isPackageError) {
+                Log::info("Shopee ship_order auto-retry with package_number for {$orderSn}: {$e->getMessage()}");
+                $body['package_number'] = $candidatePackageNumber;
+                $this->postApi($account, '/api/v2/logistics/ship_order', $body);
+                $packageNumber = $candidatePackageNumber;
+            } else {
+                throw $e;
+            }
+        }
 
         $trackingNumber = null;
         for ($attempt = 1; $attempt <= 2; $attempt++) {
@@ -1645,7 +1709,12 @@ class ShopeeOrderService
 
         $existing = ShopeeOrder::where('shopee_account_id', $account->id)
             ->where('order_sn', $orderSn)
-            ->first(['package_number']);
+            ->first(['package_number', 'package_list_json']);
+
+        $pkgList = is_array($existing?->package_list_json) ? $existing->package_list_json : [];
+        if (count($pkgList) <= 1) {
+            return null;
+        }
 
         $fromDb = trim((string) ($existing?->package_number ?? ''));
 
