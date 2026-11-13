@@ -330,6 +330,7 @@ class TiktokSyncService
             $bodyPayload = [
                 'create_time_ge' => $timeFrom,
                 'create_time_lt' => $timeTo,
+                'page_size'      => 50,
             ];
             if (! empty($pageToken)) {
                 $bodyPayload['page_token'] = $pageToken;
@@ -383,6 +384,15 @@ class TiktokSyncService
         $createdCount = 0;
         $updatedCount = 0;
 
+        // Jika pesanan real dari TikTok API ditemukan, otomatis bersihkan data pesanan contoh (dummy)
+        if (count($allOrders) > 0 && class_exists(TiktokOrder::class) && Schema::hasTable('tiktok_orders')) {
+            try {
+                TiktokOrder::whereIn('order_sn', TiktokOrderService::DUMMY_ORDER_SNS)->delete();
+            } catch (\Throwable $e) {
+                Log::warning('TiktokSyncService clear dummy orders notice: ' . $e->getMessage());
+            }
+        }
+
         foreach ($allOrders as $order) {
             $orderId = (string) ($order['id'] ?? '');
             if (empty($orderId)) continue;
@@ -407,19 +417,6 @@ class TiktokSyncService
 
             $statusRaw  = (string) ($order['status'] ?? '');
             $statusText = $this->mapOrderStatus($statusRaw);
-
-            // Pesanan Cut Off hanya menampung pesanan yang telah diproses ("Diproses" dan seterusnya).
-            if (CutOffOrder::isExcludedStatus($statusText, $statusRaw)) {
-                $existing = CutOffOrder::withTrashed()
-                    ->where('order_number', $orderId)
-                    ->orderByRaw('CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END ASC')
-                    ->orderBy('id', 'asc')
-                    ->first();
-                if ($existing && ! $existing->trashed()) {
-                    $existing->delete();
-                }
-                continue;
-            }
 
             // Rumus ERP: (Harga Produk - Voucher/Diskon Toko) * 79%
             $payment        = $order['payment'] ?? [];
@@ -469,6 +466,76 @@ class TiktokSyncService
             // Alasan & pembatalan
             $cancelReason = $order['cancel_reason'] ?? $order['cancellation']['cancel_reason'] ?? null;
             $cancelBy     = ! empty($order['cancel_user']) ? ucfirst(strtolower($order['cancel_user'])) : null;
+
+            // 1. Simpan atau perbarui ke tabel tiktok_orders (Pesanan Saya TikTok) untuk SEMUA STATUS pesanan
+            try {
+                if (class_exists(TiktokOrder::class) && Schema::hasTable('tiktok_orders')) {
+                    $orderItemsJson = [];
+                    foreach ($lineItems as $li) {
+                        $orderItemsJson[] = [
+                            'item_id'                  => $li['product_id'] ?? null,
+                            'item_name'                => $li['product_name'] ?? 'Produk TikTok Shop',
+                            'model_id'                 => $li['sku_id'] ?? null,
+                            'model_name'               => $li['sku_name'] ?? null,
+                            'model_sku'                => $li['seller_sku'] ?? $li['sku_id'] ?? null,
+                            'model_quantity_purchased' => max(1, (int) ($li['quantity'] ?? 1)),
+                            'model_original_price'     => (float) ($li['original_price'] ?? 0),
+                            'model_discounted_price'   => (float) ($li['sale_price'] ?? $li['original_price'] ?? 0),
+                            'image_url'                => $li['sku_image'] ?? $li['product_image'] ?? null,
+                        ];
+                    }
+
+                    $recip = $order['recipient_address'] ?? [];
+                    TiktokOrder::updateOrCreate(
+                        [
+                            'tiktok_account_id' => $account->id,
+                            'order_sn'          => $orderId,
+                        ],
+                        [
+                            'package_number'         => $order['package_list'][0]['id'] ?? 'PKG-' . $orderId,
+                            'order_status'           => strtoupper($statusRaw) ?: 'READY_TO_SHIP',
+                            'logistics_status'       => $order['fulfillment_type'] ?? null,
+                            'shipping_carrier'       => $order['shipping_provider'] ?? $order['delivery_option_name'] ?? 'J&T Express',
+                            'tracking_number'        => $order['tracking_number'] ?? null,
+                            'fulfillment_method'     => 'pickup',
+                            'buyer_user_id'          => $order['buyer_uid'] ?? null,
+                            'buyer_username'         => $order['buyer_email'] ?? $recip['name'] ?? $order['buyer_uid'] ?? null,
+                            'buyer_note'             => $order['buyer_message'] ?? null,
+                            'recipient_data'         => [
+                                'name'         => $recip['name'] ?? null,
+                                'phone'        => $recip['phone'] ?? null,
+                                'full_address' => $recip['full_address'] ?? $recip['address_detail'] ?? null,
+                                'city'         => $recip['city'] ?? null,
+                                'province'     => $recip['region'] ?? $recip['state'] ?? null,
+                            ],
+                            'items_json'             => $orderItemsJson,
+                            'package_list_json'      => $order['package_list'] ?? [],
+                            'payment_method'         => $paymentMethod,
+                            'is_cod'                 => ! empty($order['is_cod']),
+                            'total_amount'           => $productPrice,
+                            'order_created_at'       => $orderDate,
+                            'ship_by_date'           => $shipByDate,
+                            'raw_payload'            => json_encode($order),
+                            'last_synced_at'         => now(),
+                        ]
+                    );
+                }
+            } catch (\Throwable $e) {
+                Log::warning("TiktokSyncService upsert to tiktok_orders warning ({$orderId}): " . $e->getMessage());
+            }
+
+            // 2. Pesanan Cut Off hanya menampung pesanan yang telah diproses ("Diproses" dan seterusnya).
+            if (CutOffOrder::isExcludedStatus($statusText, $statusRaw)) {
+                $existing = CutOffOrder::withTrashed()
+                    ->where('order_number', $orderId)
+                    ->orderByRaw('CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END ASC')
+                    ->orderBy('id', 'asc')
+                    ->first();
+                if ($existing && ! $existing->trashed()) {
+                    $existing->delete();
+                }
+                continue;
+            }
 
             $existing = CutOffOrder::withTrashed()
                 ->where('order_number', $orderId)
@@ -576,63 +643,6 @@ class TiktokSyncService
             } else {
                 CutOffOrder::create($payload);
                 $createdCount++;
-            }
-
-            // Sinkronkan juga ke tabel tiktok_orders (Pesanan Saya TikTok)
-            try {
-                if (class_exists(TiktokOrder::class) && Schema::hasTable('tiktok_orders')) {
-                    $orderItemsJson = [];
-                    foreach ($lineItems as $li) {
-                        $orderItemsJson[] = [
-                            'item_id'                  => $li['product_id'] ?? null,
-                            'item_name'                => $li['product_name'] ?? 'Produk TikTok Shop',
-                            'model_id'                 => $li['sku_id'] ?? null,
-                            'model_name'               => $li['sku_name'] ?? null,
-                            'model_sku'                => $li['seller_sku'] ?? $li['sku_id'] ?? null,
-                            'model_quantity_purchased' => max(1, (int) ($li['quantity'] ?? 1)),
-                            'model_original_price'     => (float) ($li['original_price'] ?? 0),
-                            'model_discounted_price'   => (float) ($li['sale_price'] ?? $li['original_price'] ?? 0),
-                            'image_url'                => $li['sku_image'] ?? $li['product_image'] ?? null,
-                        ];
-                    }
-
-                    $recip = $order['recipient_address'] ?? [];
-                    TiktokOrder::updateOrCreate(
-                        [
-                            'tiktok_account_id' => $account->id,
-                            'order_sn'          => $orderId,
-                        ],
-                        [
-                            'package_number'         => $order['package_list'][0]['id'] ?? 'PKG-' . $orderId,
-                            'order_status'           => strtoupper($statusRaw) ?: 'READY_TO_SHIP',
-                            'logistics_status'       => $order['fulfillment_type'] ?? null,
-                            'shipping_carrier'       => $order['shipping_provider'] ?? $order['delivery_option_name'] ?? 'J&T Express',
-                            'tracking_number'        => $order['tracking_number'] ?? null,
-                            'fulfillment_method'     => 'pickup',
-                            'buyer_user_id'          => $order['buyer_uid'] ?? null,
-                            'buyer_username'         => $order['buyer_email'] ?? $recip['name'] ?? $order['buyer_uid'] ?? null,
-                            'buyer_note'             => $order['buyer_message'] ?? null,
-                            'recipient_data'         => [
-                                'name'         => $recip['name'] ?? null,
-                                'phone'        => $recip['phone'] ?? null,
-                                'full_address' => $recip['full_address'] ?? $recip['address_detail'] ?? null,
-                                'city'         => $recip['city'] ?? null,
-                                'province'     => $recip['region'] ?? $recip['state'] ?? null,
-                            ],
-                            'items_json'             => $orderItemsJson,
-                            'package_list_json'      => $order['package_list'] ?? [],
-                            'payment_method'         => $paymentMethod,
-                            'is_cod'                 => ! empty($order['is_cod']),
-                            'total_amount'           => $productPrice,
-                            'order_created_at'       => $orderDate,
-                            'ship_by_date'           => $shipByDate,
-                            'raw_payload'            => json_encode($order),
-                            'last_synced_at'         => now(),
-                        ]
-                    );
-                }
-            } catch (\Throwable $e) {
-                Log::warning("TiktokSyncService upsert to tiktok_orders warning ({$orderId}): " . $e->getMessage());
             }
         }
 

@@ -146,6 +146,7 @@ class TiktokOrderController extends Controller
             'tabCounts'       => $tabCounts,
             'orderTypeCounts' => $orderTypeCounts,
             'carriers'        => $carriers,
+            'hasDummyData'    => TiktokOrder::whereIn('order_sn', TiktokOrderService::DUMMY_ORDER_SNS)->exists(),
             'filters'         => [
                 'tab'              => $tab,
                 'sub_tab'          => $subTab,
@@ -159,6 +160,23 @@ class TiktokOrderController extends Controller
                 'sort'             => $sort,
             ],
         ]);
+    }
+
+    public function clearSample(Request $request): RedirectResponse
+    {
+        $this->authorizeAccess($request);
+        $deleted = $this->orderService->clearSampleOrders();
+
+        return back()->with('success', "Data contoh berhasil dibersihkan ({$deleted} order contoh dihapus). Menunggu pesanan real dari TikTok Shop.");
+    }
+
+    public function resetSample(Request $request): RedirectResponse
+    {
+        $this->authorizeAccess($request);
+        $account = $this->resolveTiktokAccount();
+        $this->orderService->reseedSampleOrders($account);
+
+        return back()->with('success', 'Data contoh (dummy) TikTok berhasil dimuat ulang.');
     }
 
     public function sync(Request $request): RedirectResponse

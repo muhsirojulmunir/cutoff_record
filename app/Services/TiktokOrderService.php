@@ -17,6 +17,19 @@ use RuntimeException;
 class TiktokOrderService
 {
     private const SCHEMA_CACHE_KEY = 'tiktok_orders_schema_ensured_v1';
+    public const DUMMY_CACHE_KEY = 'tiktok_sample_data_cleared_v1';
+
+    public const DUMMY_ORDER_SNS = [
+        '5798234719082341',
+        '5791823901823904',
+        '5792019384910283',
+        '5793019284719283',
+        '5794829102938401',
+        '5795819203948572',
+        '5796819203948192',
+        '5797819203948293',
+    ];
+
     private bool $schemaEnsured = false;
 
     public function __construct(
@@ -50,8 +63,8 @@ class TiktokOrderService
                 ]
             );
 
-            // Jika tabel masih kosong, seed sample data TikTok yang realistis agar UI langsung tampil lengkap
-            if (TiktokOrder::count() === 0) {
+            // Jika tabel masih kosong dan belum pernah dibersihkan sengaja oleh user, seed sample data
+            if (TiktokOrder::count() === 0 && ! Cache::get(self::DUMMY_CACHE_KEY)) {
                 $this->seedInitialOrders($account);
             }
 
@@ -59,6 +72,31 @@ class TiktokOrderService
         } catch (\Throwable $e) {
             Log::warning('TiktokOrderService ensureSchema notice: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Bersihkan 8 data pesanan contoh (dummy) TikTok.
+     */
+    public function clearSampleOrders(): int
+    {
+        $this->ensureSchema();
+        Cache::forever(self::DUMMY_CACHE_KEY, true);
+        return TiktokOrder::whereIn('order_sn', self::DUMMY_ORDER_SNS)->delete();
+    }
+
+    /**
+     * Muat ulang 8 pesanan contoh (dummy) TikTok untuk kebutuhan demonstrasi atau screenshot.
+     */
+    public function reseedSampleOrders(?TiktokAccount $account = null): void
+    {
+        $this->ensureSchema();
+        Cache::forget(self::DUMMY_CACHE_KEY);
+        $account = $account ?: TiktokAccount::first();
+        if (! $account) {
+            return;
+        }
+        TiktokOrder::whereIn('order_sn', self::DUMMY_ORDER_SNS)->delete();
+        $this->seedInitialOrders($account);
     }
 
     /**
