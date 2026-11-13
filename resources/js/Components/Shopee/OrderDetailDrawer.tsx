@@ -102,14 +102,14 @@ export default function OrderDetailDrawer({
   const [escrowDetail, setEscrowDetail] = useState<ShopeeEscrowDetailResponse | null>(null);
   const [isLoadingEscrow, setIsLoadingEscrow] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    subtotal: true,
-    shipping: true,
-    voucher: true,
-    platform: true,
-    freeShippingXtra: true,
-    serviceFee: true,
+    subtotal: false,
+    shipping: false,
+    voucher: false,
+    platform: false,
+    freeShippingXtra: false,
+    serviceFee: false,
     otherFee: false,
-    tax: true,
+    tax: false,
   });
   const copyTimerRef = useRef<number | null>(null);
   const isOpen = Boolean(order);
@@ -198,6 +198,16 @@ export default function OrderDetailDrawer({
     setTrackingStatus(null);
     setTrackingError(null);
     setEscrowDetail(null);
+    setExpandedSections({
+      subtotal: false,
+      shipping: false,
+      voucher: false,
+      platform: false,
+      freeShippingXtra: false,
+      serviceFee: false,
+      otherFee: false,
+      tax: false,
+    });
 
     if (order?.order_sn) {
       void loadEscrowDetail(order.order_sn);
