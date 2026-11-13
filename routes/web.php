@@ -91,6 +91,7 @@ Route::middleware('auth')->group(function () {
     // Customer Service (Omnichannel Shopee & TikTok Shop)
     Route::get('/customer-service', [\App\Http\Controllers\CustomerServiceController::class, 'index'])->name('customer-service.index');
     Route::get('/customer-service/poll', [\App\Http\Controllers\CustomerServiceController::class, 'poll'])->name('customer-service.poll');
+    Route::get('/customer-service/diagnose', [\App\Http\Controllers\CustomerServiceController::class, 'diagnose'])->name('customer-service.diagnose');
     Route::post('/customer-service/sync', [\App\Http\Controllers\CustomerServiceController::class, 'sync'])->name('customer-service.sync');
     Route::post('/customer-service/clear-demo', [\App\Http\Controllers\CustomerServiceController::class, 'clearDemo'])->name('customer-service.clear-demo');
     Route::post('/customer-service/send-message', [\App\Http\Controllers\CustomerServiceController::class, 'sendMessage'])->name('customer-service.send-message');

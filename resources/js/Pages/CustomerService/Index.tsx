@@ -112,6 +112,37 @@ export default function CustomerServiceIndex({
     return conversations.some((c) => c.is_demo);
   }, [conversations]);
 
+  // Keep conversations synchronized with Inertia props
+  useEffect(() => {
+    if (initialConversations) {
+      setConversations(initialConversations);
+    }
+  }, [initialConversations]);
+
+  const [diagData, setDiagData] = useState<{
+    shopee?: { account_name: string; shop_id: string; has_token: boolean; success: boolean; message: string; error?: string };
+    tiktok?: { account_name: string; shop_id: string; has_token: boolean; success: boolean; message: string; error?: string };
+    timestamp?: string;
+  } | null>(null);
+  const [showDiagModal, setShowDiagModal] = useState(false);
+  const [loadingDiag, setLoadingDiag] = useState(false);
+
+  const handleOpenDiag = async () => {
+    setShowDiagModal(true);
+    setLoadingDiag(true);
+    try {
+      const res = await fetch('/customer-service/diagnose', {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      });
+      const data = await res.json();
+      setDiagData(data);
+    } catch {
+      setDiagData(null);
+    } finally {
+      setLoadingDiag(false);
+    }
+  };
+
   const handleClearDemo = () => {
     if (!confirm('Hapus seluruh pesan simulasi/demo awal? Kotak masuk akan bersih dan hanya menampilkan chat riil dari API.')) return;
     router.post('/customer-service/clear-demo', {}, {
@@ -432,6 +463,16 @@ export default function CustomerServiceIndex({
                 <span>🧹 Bersihkan Data Demo</span>
               </button>
             )}
+
+            {/* Diagnostic API Button */}
+            <button
+              type="button"
+              onClick={handleOpenDiag}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
+              title="Cek respon status akses izin API Shopee & TikTok"
+            >
+              <span>🔍 Cek Status API</span>
+            </button>
 
             {/* Manual Sync Button */}
             <button
@@ -1069,6 +1110,132 @@ export default function CustomerServiceIndex({
                 type="button"
                 onClick={() => setShowQuickReplyModal(false)}
                 className="rounded-xl border border-slate-300 bg-white px-4 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* API Diagnostic Modal */}
+      {showDiagModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 backdrop-blur-xs p-4">
+          <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 text-white font-bold text-xs">
+                  🔍
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Diagnostik Izin & Koneksi API Marketplace</h3>
+                  <p className="text-[11px] text-slate-500">Hasil panggilan langsung ke server resmi Shopee & TikTok</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDiagModal(false)}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4 max-h-[70vh] overflow-y-auto">
+              {loadingDiag ? (
+                <div className="py-12 text-center text-xs text-slate-500 flex flex-col items-center gap-2">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
+                  <span>Menghubungi server Shopee & TikTok...</span>
+                </div>
+              ) : diagData ? (
+                <>
+                  {/* Shopee Card */}
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#EE4D2D] text-white font-bold text-xs">
+                          S
+                        </span>
+                        <div>
+                          <p className="text-xs font-bold text-slate-900">Shopee Open Platform (Seller Chat)</p>
+                          <p className="text-[10px] text-slate-500">{diagData.shopee?.account_name} (ID: {diagData.shopee?.shop_id})</p>
+                        </div>
+                      </div>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          diagData.shopee?.success
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}
+                      >
+                        {diagData.shopee?.success ? '✓ Chat Terhubung' : '⚠️ Perlu Izin Scope'}
+                      </span>
+                    </div>
+
+                    <div className="rounded-lg bg-white p-3 border border-slate-200 text-xs text-slate-700 space-y-1">
+                      <p className="font-semibold text-slate-900">Status Respon Shopee:</p>
+                      <p className="font-mono text-[11px] text-slate-600 bg-slate-50 p-2 rounded border border-slate-100">
+                        {diagData.shopee?.message} {diagData.shopee?.error ? `(Kode: ${diagData.shopee.error})` : ''}
+                      </p>
+                      {!diagData.shopee?.success && (
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          💡 <strong>Catatan:</strong> Agar chat Shopee masuk ke ERP, akun developer di Shopee Open Platform Console harus memiliki izin <strong>Seller Chat</strong> yang disetujui (whitelisted) oleh Shopee.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* TikTok Card */}
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-black text-white font-bold text-xs">
+                          TT
+                        </span>
+                        <div>
+                          <p className="text-xs font-bold text-slate-900">TikTok Shop Partner API (Customer Service)</p>
+                          <p className="text-[10px] text-slate-500">{diagData.tiktok?.account_name}</p>
+                        </div>
+                      </div>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          diagData.tiktok?.success
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}
+                      >
+                        {diagData.tiktok?.success ? '✓ CS Terhubung' : '⚠️ Izin Belum Aktif'}
+                      </span>
+                    </div>
+
+                    <div className="rounded-lg bg-white p-3 border border-slate-200 text-xs text-slate-700 space-y-1">
+                      <p className="font-semibold text-slate-900">Status Respon TikTok:</p>
+                      <p className="font-mono text-[11px] text-slate-600 bg-slate-50 p-2 rounded border border-slate-100">
+                        {diagData.tiktok?.message} {diagData.tiktok?.error ? `(Kode: ${diagData.tiktok.error})` : ''}
+                      </p>
+                      {!diagData.tiktok?.success && (
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          💡 <strong>Catatan:</strong> TikTok memerlukan verifikasi cakupan <strong>Customer Service (Scope ID: 480004)</strong>. Setelah pengajuan di TikTok Partner Center disetujui (Approved), chat akan otomatis dapat ditarik.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="py-8 text-center text-xs text-rose-500">
+                  Gagal memuat data diagnostik API.
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+              <span className="text-[11px] text-slate-400">
+                Waktu Pengecekan: {diagData?.timestamp || '-'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowDiagModal(false)}
+                className="rounded-xl bg-slate-900 px-4 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
               >
                 Tutup
               </button>
