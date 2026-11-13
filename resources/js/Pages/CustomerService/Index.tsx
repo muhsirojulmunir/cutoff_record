@@ -204,7 +204,7 @@ export default function CustomerServiceIndex({
         {/* Top Header Bar */}
         <header className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-3 shadow-xs">
           <div className="flex items-center gap-3.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600 text-white shadow-xs">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white shadow-xs">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
@@ -233,53 +233,6 @@ export default function CustomerServiceIndex({
               </p>
             </div>
           </div>
-
-          {/* Integrated Channel Status Badges */}
-          <div className="hidden sm:flex items-center gap-3">
-            {/* Shopee Channel Pill */}
-            <div className="flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50/70 px-3 py-1.5 text-xs">
-              <span className="flex h-5 w-5 items-center justify-center rounded-md bg-[#EE4D2D] font-bold text-[10px] text-white">
-                S
-              </span>
-              <div>
-                <p className="font-bold text-[#EE4D2D] leading-none">Shopee Official</p>
-                <p className="text-[10px] text-orange-700/80 leading-none mt-0.5">{channels.shopee.status}</p>
-              </div>
-              {shopeeUnread > 0 && (
-                <span className="ml-1 rounded-full bg-[#EE4D2D] px-1.5 py-0.2 text-[10px] font-bold text-white">
-                  {shopeeUnread}
-                </span>
-              )}
-            </div>
-
-            {/* TikTok Shop Channel Pill */}
-            <div className="flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs">
-              <span className="flex h-5 w-5 items-center justify-center rounded-md bg-black font-bold text-[10px] text-white">
-                TT
-              </span>
-              <div>
-                <p className="font-bold text-slate-900 leading-none">TikTok Shop</p>
-                <p className="text-[10px] text-slate-500 leading-none mt-0.5">{channels.tiktok.status}</p>
-              </div>
-              {tiktokUnread > 0 && (
-                <span className="ml-1 rounded-full bg-black px-1.5 py-0.2 text-[10px] font-bold text-white">
-                  {tiktokUnread}
-                </span>
-              )}
-            </div>
-
-            {/* Quick Actions */}
-            <button
-              type="button"
-              onClick={() => setShowQuickReplyModal(true)}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="h-3.5 w-3.5 text-amber-500">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
-              </svg>
-              <span>Pesan Cepat</span>
-            </button>
-          </div>
         </header>
 
         {/* 3-Column Main Workspace */}
@@ -297,7 +250,7 @@ export default function CustomerServiceIndex({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Cari pembeli, pesan, resi..."
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:border-violet-500 focus:bg-white focus:outline-hidden"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:border-slate-800 focus:bg-white focus:outline-hidden"
                 />
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -354,7 +307,7 @@ export default function CustomerServiceIndex({
                 <button
                   type="button"
                   onClick={() => setStatusFilter('all')}
-                  className={`cursor-pointer font-semibold ${statusFilter === 'all' ? 'text-violet-600 underline' : 'text-slate-600 hover:text-slate-900'}`}
+                  className={`cursor-pointer font-semibold ${statusFilter === 'all' ? 'text-slate-900 font-bold underline decoration-slate-900 underline-offset-4' : 'text-slate-600 hover:text-slate-900'}`}
                 >
                   Semua
                 </button>
@@ -362,7 +315,7 @@ export default function CustomerServiceIndex({
                 <button
                   type="button"
                   onClick={() => setStatusFilter('unread')}
-                  className={`cursor-pointer font-semibold ${statusFilter === 'unread' ? 'text-violet-600 underline' : 'text-slate-600 hover:text-slate-900'}`}
+                  className={`cursor-pointer font-semibold ${statusFilter === 'unread' ? 'text-slate-900 font-bold underline decoration-slate-900 underline-offset-4' : 'text-slate-600 hover:text-slate-900'}`}
                 >
                   Belum Dibalas
                 </button>
@@ -370,7 +323,7 @@ export default function CustomerServiceIndex({
                 <button
                   type="button"
                   onClick={() => setStatusFilter('resolved')}
-                  className={`cursor-pointer font-semibold ${statusFilter === 'resolved' ? 'text-violet-600 underline' : 'text-slate-600 hover:text-slate-900'}`}
+                  className={`cursor-pointer font-semibold ${statusFilter === 'resolved' ? 'text-slate-900 font-bold underline decoration-slate-900 underline-offset-4' : 'text-slate-600 hover:text-slate-900'}`}
                 >
                   Selesai
                 </button>
@@ -394,7 +347,7 @@ export default function CustomerServiceIndex({
                       onClick={() => setSelectedConvId(conv.id)}
                       className={`group flex cursor-pointer items-start gap-3 p-3 transition-colors ${
                         isSelected
-                          ? 'border-l-4 border-violet-600 bg-violet-50/50'
+                          ? 'border-l-4 border-slate-900 bg-slate-100/90 font-medium'
                           : 'hover:bg-slate-50'
                       }`}
                     >
@@ -636,7 +589,7 @@ export default function CustomerServiceIndex({
                         }
                       }}
                       placeholder={`Tulis balasan untuk @${activeConv.buyer_username}... (Enter untuk kirim)`}
-                      className="flex-1 resize-none rounded-xl border border-slate-300 p-2.5 text-xs text-slate-900 placeholder-slate-400 focus:border-violet-600 focus:outline-hidden"
+                      className="flex-1 resize-none rounded-xl border border-slate-300 p-2.5 text-xs text-slate-900 placeholder-slate-400 focus:border-slate-800 focus:outline-hidden"
                     />
 
                     <button
@@ -801,7 +754,7 @@ export default function CustomerServiceIndex({
                   value={csNoteInput}
                   onChange={(e) => setCsNoteInput(e.target.value)}
                   placeholder="Tambahkan catatan tindak lanjut pesanan pembeli ini..."
-                  className="w-full resize-none rounded-lg border border-slate-200 p-2 text-xs text-slate-800 placeholder-slate-400 focus:border-violet-500 focus:outline-hidden"
+                  className="w-full resize-none rounded-lg border border-slate-200 p-2 text-xs text-slate-800 placeholder-slate-400 focus:border-slate-800 focus:outline-hidden"
                 />
                 <button
                   type="button"
@@ -844,7 +797,7 @@ export default function CustomerServiceIndex({
                   className="group flex cursor-pointer flex-col p-3 hover:bg-slate-50 rounded-xl transition-colors"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-900 group-hover:text-violet-600">
+                    <span className="text-xs font-bold text-slate-900 group-hover:text-slate-900">
                       {qr.title}
                     </span>
                     <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">

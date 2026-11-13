@@ -2,6 +2,7 @@ import { Link, router, usePage } from '@inertiajs/react';
 import { ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import NotificationBell from '../Components/NotificationBell';
+import SideChatDock from '../Components/CustomerService/SideChatDock';
 import { PageProps } from '../Types';
 
 /** Key sessionStorage untuk menyimpan posisi scroll sidebar antar navigasi Inertia. */
@@ -541,6 +542,22 @@ export default function AppLayout({ children, headerRight }: Props) {
           {/* Topbar right items */}
           <div className="flex items-center gap-2.5">
             {headerRight}
+
+            {/* Quick Trigger Side Chat Dock (Customer Service) */}
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('toggle-side-chat-dock'))}
+              className="relative p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all border border-slate-200 cursor-pointer"
+              title="Buka Chat Customer Service"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a.75.75 0 01-.974-.965 4.966 4.966 0 00.73-1.879C3.642 16.586 3 14.412 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+              </svg>
+              <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#EE4D2D] px-1 text-[9px] font-bold text-white shadow-2xs">
+                2
+              </span>
+            </button>
+
             <NotificationBell queue={queue} />
             <div className="h-4 w-[1px] bg-slate-200 hidden sm:block" />
             <span className="hidden sm:flex items-center gap-2 text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-full px-3 py-1.5">
@@ -567,6 +584,9 @@ export default function AppLayout({ children, headerRight }: Props) {
           </div>
         </main>
       </div>
+
+      {/* Omnichannel Side Chat Dock & Slide-out Drawer */}
+      <SideChatDock />
     </div>
   );
 }
