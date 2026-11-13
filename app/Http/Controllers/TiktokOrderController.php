@@ -166,9 +166,29 @@ class TiktokOrderController extends Controller
         $this->authorizeAccess($request);
         $account = $this->resolveTiktokAccount();
 
+        $validated = $request->validate([
+            'days'       => ['nullable', 'integer', 'min:1', 'max:90'],
+            'start_date' => ['nullable', 'date', 'required_with:end_date'],
+            'end_date'   => ['nullable', 'date', 'required_with:start_date'],
+        ]);
+
+        if (! empty($validated['start_date']) && ! empty($validated['end_date'])) {
+            $startDate = Carbon::parse($validated['start_date'], 'Asia/Jakarta');
+            $endDate = Carbon::parse($validated['end_date'], 'Asia/Jakarta');
+            if ($startDate->gt($endDate)) {
+                [$startDate, $endDate] = [$endDate, $startDate];
+            }
+            $timeFrom = $startDate->copy()->startOfDay()->timestamp;
+            $timeTo = $endDate->copy()->endOfDay()->timestamp;
+        } else {
+            $days = (int) ($validated['days'] ?? 14);
+            $timeTo = time();
+            $timeFrom = $timeTo - ($days * 86400);
+        }
+
         try {
-            $account->update(['last_synced_at' => now(), 'last_sync_status' => 'success']);
-            return back()->with('success', 'Sinkronisasi pesanan TikTok Shop berhasil diperbarui.');
+            $result = $this->orderService->syncOrders($account, $timeFrom, $timeTo);
+            return back()->with('success', $result['message']);
         } catch (\Throwable $e) {
             return back()->with('error', 'Gagal sinkronisasi pesanan TikTok: ' . $e->getMessage());
         }
@@ -383,3 +403,4 @@ class TiktokOrderController extends Controller
         return preg_match('/^\d{4}-\d{2}-\d{2}$/', $val) ? $val : '';
     }
 }
+

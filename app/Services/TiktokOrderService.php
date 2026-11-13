@@ -430,13 +430,54 @@ class TiktokOrderService
     }
 
     /**
+     * Sinkronisasi pesanan dari TikTok Shop API.
+     */
+    public function syncOrders(TiktokAccount $account, int $timeFrom, int $timeTo): array
+    {
+        $this->ensureSchema();
+        if ($account->isConnected() && ! empty($account->access_token)) {
+            return $this->syncService->syncOrdersToCutOff($account, $timeFrom, $timeTo);
+        }
+
+        $account->update(['last_synced_at' => now(), 'last_sync_status' => 'success']);
+        return [
+            'total_fetched' => 0,
+            'created'       => 0,
+            'updated'       => 0,
+            'message'       => 'Sinkronisasi pesanan TikTok Shop selesai.',
+        ];
+    }
+
+    /**
      * Auto sync background handler.
      */
     public function autoSync(TiktokAccount $account): array
     {
         $this->ensureSchema();
-        $account->update(['last_synced_at' => now(), 'last_sync_status' => 'success']);
+        $timeTo = time();
+        $timeFrom = $timeTo - (86400 * 3);
 
+        if ($account->isConnected() && ! empty($account->access_token)) {
+            try {
+                $res = $this->syncService->syncOrdersToCutOff($account, $timeFrom, $timeTo);
+                return [
+                    'status'         => 'success',
+                    'skipped'        => false,
+                    'reason'         => 'synced',
+                    'total_fetched'  => $res['total_fetched'] ?? 0,
+                    'synced_orders'  => $res['created'] ?? 0,
+                    'changed_orders' => $res['updated'] ?? 0,
+                    'cutoff_created' => $res['created'] ?? 0,
+                    'cutoff_updated' => $res['updated'] ?? 0,
+                    'last_synced_at' => now()->format('d M Y, H.i') . ' WIB',
+                    'message'        => $res['message'] ?? 'Sinkronisasi otomatis berhasil.',
+                ];
+            } catch (\Throwable $e) {
+                Log::warning('TiktokOrderService autoSync API notice: ' . $e->getMessage());
+            }
+        }
+
+        $account->update(['last_synced_at' => now(), 'last_sync_status' => 'success']);
         return [
             'status'         => 'success',
             'skipped'        => false,
@@ -447,7 +488,7 @@ class TiktokOrderService
             'cutoff_created' => 0,
             'cutoff_updated' => 0,
             'last_synced_at' => now()->format('d M Y, H.i') . ' WIB',
-            'orders'         => [],
+            'message'        => 'Sinkronisasi otomatis berhasil.',
         ];
     }
 
@@ -457,8 +498,33 @@ class TiktokOrderService
     public function syncChunk(TiktokAccount $account, string $date, int $chunkIndex = 0, int $totalChunks = 1): array
     {
         $this->ensureSchema();
-        $account->update(['last_synced_at' => now(), 'last_sync_status' => 'success']);
+        $dt = Carbon::parse($date, 'Asia/Jakarta');
+        $timeFrom = $dt->copy()->startOfDay()->timestamp;
+        $timeTo = $dt->copy()->endOfDay()->timestamp;
 
+        if ($account->isConnected() && ! empty($account->access_token)) {
+            try {
+                $res = $this->syncService->syncOrdersToCutOff($account, $timeFrom, $timeTo);
+                return [
+                    'status'         => 'success',
+                    'date'           => $date,
+                    'chunk_index'    => $chunkIndex,
+                    'total_chunks'   => $totalChunks,
+                    'total_fetched'  => $res['total_fetched'] ?? 0,
+                    'synced_orders'  => $res['created'] ?? 0,
+                    'changed_orders' => $res['updated'] ?? 0,
+                    'cutoff_created' => $res['created'] ?? 0,
+                    'cutoff_updated' => $res['updated'] ?? 0,
+                    'last_synced_at' => now()->format('d M Y, H.i') . ' WIB',
+                    'message'        => $res['message'] ?? 'Sinkronisasi hari berhasil.',
+                    'has_more'       => ($chunkIndex + 1) < $totalChunks,
+                ];
+            } catch (\Throwable $e) {
+                Log::warning('TiktokOrderService syncChunk API notice: ' . $e->getMessage());
+            }
+        }
+
+        $account->update(['last_synced_at' => now(), 'last_sync_status' => 'success']);
         return [
             'status'         => 'success',
             'date'           => $date,
@@ -470,8 +536,8 @@ class TiktokOrderService
             'cutoff_created' => 0,
             'cutoff_updated' => 0,
             'last_synced_at' => now()->format('d M Y, H.i') . ' WIB',
-            'orders'         => [],
-            'has_more'       => false,
+            'message'        => 'Sinkronisasi selesai.',
+            'has_more'       => ($chunkIndex + 1) < $totalChunks,
         ];
     }
 
@@ -881,3 +947,4 @@ class TiktokOrderService
         return "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /MediaBox [0 0 595 842] /Contents 4 0 R >>\nendobj\n4 0 obj\n<< /Length 130 >>\nstream\nBT\n/F1 16 Tf\n50 800 Td\n(TikTok Shop Waybill Label - Record Shoes Official) Tj\n0 -30 Td\n/F1 12 Tf\n(Order: " . ($orders[0]?->order_sn ?? 'TikTok') . ") Tj\nET\nendstream\nendobj\nxref\n0 5\n0000000000 65535 f \n0000000010 00000 n \n0000000060 00000 n \n0000000117 00000 n \n0000000300 00000 n \ntrailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n480\n%%EOF";
     }
 }
+

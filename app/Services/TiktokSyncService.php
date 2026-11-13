@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\CutOffOrder;
 use App\Models\CutOffReturn;
 use App\Models\TiktokAccount;
+use App\Models\TiktokOrder;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -575,6 +576,63 @@ class TiktokSyncService
             } else {
                 CutOffOrder::create($payload);
                 $createdCount++;
+            }
+
+            // Sinkronkan juga ke tabel tiktok_orders (Pesanan Saya TikTok)
+            try {
+                if (class_exists(TiktokOrder::class) && Schema::hasTable('tiktok_orders')) {
+                    $orderItemsJson = [];
+                    foreach ($lineItems as $li) {
+                        $orderItemsJson[] = [
+                            'item_id'                  => $li['product_id'] ?? null,
+                            'item_name'                => $li['product_name'] ?? 'Produk TikTok Shop',
+                            'model_id'                 => $li['sku_id'] ?? null,
+                            'model_name'               => $li['sku_name'] ?? null,
+                            'model_sku'                => $li['seller_sku'] ?? $li['sku_id'] ?? null,
+                            'model_quantity_purchased' => max(1, (int) ($li['quantity'] ?? 1)),
+                            'model_original_price'     => (float) ($li['original_price'] ?? 0),
+                            'model_discounted_price'   => (float) ($li['sale_price'] ?? $li['original_price'] ?? 0),
+                            'image_url'                => $li['sku_image'] ?? $li['product_image'] ?? null,
+                        ];
+                    }
+
+                    $recip = $order['recipient_address'] ?? [];
+                    TiktokOrder::updateOrCreate(
+                        [
+                            'tiktok_account_id' => $account->id,
+                            'order_sn'          => $orderId,
+                        ],
+                        [
+                            'package_number'         => $order['package_list'][0]['id'] ?? 'PKG-' . $orderId,
+                            'order_status'           => strtoupper($statusRaw) ?: 'READY_TO_SHIP',
+                            'logistics_status'       => $order['fulfillment_type'] ?? null,
+                            'shipping_carrier'       => $order['shipping_provider'] ?? $order['delivery_option_name'] ?? 'J&T Express',
+                            'tracking_number'        => $order['tracking_number'] ?? null,
+                            'fulfillment_method'     => 'pickup',
+                            'buyer_user_id'          => $order['buyer_uid'] ?? null,
+                            'buyer_username'         => $order['buyer_email'] ?? $recip['name'] ?? $order['buyer_uid'] ?? null,
+                            'buyer_note'             => $order['buyer_message'] ?? null,
+                            'recipient_data'         => [
+                                'name'         => $recip['name'] ?? null,
+                                'phone'        => $recip['phone'] ?? null,
+                                'full_address' => $recip['full_address'] ?? $recip['address_detail'] ?? null,
+                                'city'         => $recip['city'] ?? null,
+                                'province'     => $recip['region'] ?? $recip['state'] ?? null,
+                            ],
+                            'items_json'             => $orderItemsJson,
+                            'package_list_json'      => $order['package_list'] ?? [],
+                            'payment_method'         => $paymentMethod,
+                            'is_cod'                 => ! empty($order['is_cod']),
+                            'total_amount'           => $productPrice,
+                            'order_created_at'       => $orderDate,
+                            'ship_by_date'           => $shipByDate,
+                            'raw_payload'            => json_encode($order),
+                            'last_synced_at'         => now(),
+                        ]
+                    );
+                }
+            } catch (\Throwable $e) {
+                Log::warning("TiktokSyncService upsert to tiktok_orders warning ({$orderId}): " . $e->getMessage());
             }
         }
 
