@@ -276,114 +276,6 @@ function getRelativeTime(
   };
 }
 
-interface ShippingSlaInfo {
-  deadlineTime: string;
-  remainingText: string;
-  courierSearchText?: string | null;
-  isReadyForPickup: boolean;
-  isUrgent: boolean;
-}
-
-function getShippingSla(
-  order: CutOffOrder,
-  shippingTier: { label: string },
-  nowMs: number
-): ShippingSlaInfo | null {
-  if (shippingTier.label !== 'INSTAN' && shippingTier.label !== 'SAMEDAY') {
-    return null;
-  }
-
-  const st = (order.order_status ?? '').toLowerCase();
-  const isCancelled = st.includes('batal') || st.includes('cancel');
-  const isCompleted = st.includes('selesai') || st.includes('delivered');
-  // Jangan kecualikan "perlu dikirim", "siap dikirim", atau "belum dikirim"
-  const isShipped =
-    st.includes('shipped') ||
-    st.includes('sedang dikirim') ||
-    st.includes('dalam pengiriman') ||
-    (st.includes('dikirim') && !st.includes('perlu') && !st.includes('siap') && !st.includes('belum'));
-
-  if (isCancelled || isCompleted || isShipped) {
-    return null;
-  }
-
-  const orderMs = parseDateToMs(order.order_date);
-  let deadlineMs: number | null = null;
-
-  if (order.ship_by_date) {
-    deadlineMs = parseDateToMs(order.ship_by_date);
-  }
-
-  if (!deadlineMs && orderMs) {
-    const windowHours = shippingTier.label === 'INSTAN' ? 1 : 6;
-    deadlineMs = orderMs + windowHours * 60 * 60 * 1000;
-  }
-
-  if (!deadlineMs) {
-    return null;
-  }
-
-  const diffSec = Math.floor((deadlineMs - nowMs) / 1000);
-
-  // Jika waktu pickup sudah terlewati atau driver sudah tiba, jangan tampilkan notif lagi (hilang)
-  if (diffSec <= 0) {
-    return null;
-  }
-
-  const dDate = new Date(deadlineMs);
-  const hh = String(dDate.getHours()).padStart(2, '0');
-  const mm = String(dDate.getMinutes()).padStart(2, '0');
-  const deadlineTime = `${hh}:${mm}`;
-
-  const hours = Math.floor(diffSec / 3600);
-  const minutes = Math.floor((diffSec % 3600) / 60);
-  const seconds = diffSec % 60;
-
-  // Notifikasi "Driver Segera Tiba (Paket Harus Siap)" HANYA muncul jika dalam kurun 2 menit (<= 120 detik) sebelum batas pickup
-  const isReadyForPickup = diffSec <= 2 * 60;
-
-  // Cek apakah masih dalam fase 30 menit awal pencarian kurir otomatis Shopee ("Mencari Kurir dalam Xm Xd")
-  let courierSearchText: string;
-  const autoSearchDeadlineMs = orderMs ? orderMs + 30 * 60 * 1000 : null;
-  const searchDiffSec = autoSearchDeadlineMs ? Math.floor((autoSearchDeadlineMs - nowMs) / 1000) : 0;
-
-  // Jam operasional pencarian kurir otomatis Shopee aktif jam 09:00 - 20:00 WIB.
-  // Jika order masuk di jam operasional dan masih dalam 30 menit awal: tampilkan "Mencari Kurir dalam Xm Xd".
-  // Jika di luar jam operasional (pesanan pagi sebelum jam 09:00), Shopee langsung menampilkan "Atur pickup dalam X jam Y menit".
-  const orderDateObj = orderMs ? new Date(orderMs) : null;
-  const orderHour = orderDateObj ? orderDateObj.getHours() : 9;
-  const isOperatingHours = orderHour >= 9 && orderHour < 20;
-
-  if (shippingTier.label === 'INSTAN' && isOperatingHours && searchDiffSec > 0) {
-    // FASE 1 (Menit 0 - 30 sejak order di jam operasional): Persis Shopee Seller Center "Mencari Kurir dalam 0m 58d"
-    const sm = Math.floor(searchDiffSec / 60);
-    const ss = searchDiffSec % 60;
-    courierSearchText = `Mencari Kurir dalam ${sm}m ${String(ss).padStart(2, '0')}d`;
-  } else {
-    // FASE 2: Setelah fase pencarian awal atau di luar jam operasional, tampilkan "Atur pickup dalam X jam Y menit"
-    if (hours > 0) {
-      courierSearchText = `Atur pickup dalam ${hours} jam ${minutes} menit`;
-    } else if (minutes > 0) {
-      courierSearchText = `Atur pickup dalam ${minutes} menit ${seconds} detik`;
-    } else {
-      courierSearchText = `Atur pickup dalam ${seconds} detik`;
-    }
-  }
-
-  const remainingText = hours > 0
-    ? `${hours}j ${minutes}m`
-    : `${minutes}m ${String(seconds).padStart(2, '0')}d`;
-  const isUrgent = diffSec <= 30 * 60;
-
-  return {
-    deadlineTime,
-    remainingText,
-    courierSearchText,
-    isReadyForPickup,
-    isUrgent,
-  };
-}
-
 function formatBreakdownCurrency(amount: number): string {
   const rounded = Math.round(amount * 100) / 100;
   const hasDecimals = Math.abs(rounded - Math.round(rounded)) > 0.001;
@@ -1664,8 +1556,17 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                       (order.order_status && order.order_status.toLowerCase().includes('cod'))
                     );
                     const relativeTime = getRelativeTime(order.order_date, currentTimeMs);
-                    const shippingSla = getShippingSla(order, shippingTier, currentTimeMs);
-                    const isPendingInstant = (shippingTier.label === 'INSTAN' || shippingTier.label === 'SAMEDAY') && shippingSla !== null;
+                    const isInstantOrder = shippingTier.label === 'INSTAN' || shippingTier.label === 'SAMEDAY';
+                    const orderStatusLower = (order.order_status ?? '').toLowerCase();
+                    const isProcessed = orderStatusLower.includes('diproses') || orderStatusLower === 'processed';
+                    const isCancelled = orderStatusLower.includes('batal') || orderStatusLower.includes('cancel');
+                    const isCompleted = orderStatusLower.includes('selesai') || orderStatusLower.includes('delivered');
+                    const isShipped =
+                      orderStatusLower.includes('shipped') ||
+                      orderStatusLower.includes('sedang dikirim') ||
+                      orderStatusLower.includes('dalam pengiriman') ||
+                      (orderStatusLower.includes('dikirim') && !orderStatusLower.includes('perlu') && !orderStatusLower.includes('siap') && !orderStatusLower.includes('belum'));
+                    const isPendingInstant = isInstantOrder && !isCancelled && !isCompleted && !isShipped;
 
                     return (
                       <tr
@@ -1754,31 +1655,6 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                                   <span className="truncate">{order.shipping_courier}</span>
                                 </span>
                               </div>
-
-                              {/* Pengingat Persiapan Barang (Shopee Auto-Pickup Kurir) */}
-                              {shippingSla && (
-                                <div className="mt-0.5">
-                                  {shippingSla.isReadyForPickup ? (
-                                    <span
-                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-300 shadow-2xs font-sans animate-pulse"
-                                      title="Auto-pickup Shopee: Kurir segera tiba. Pastikan barang sudah dipacking dan siap diserahkan."
-                                    >
-                                      <span>🛵</span>
-                                      <span>Driver Segera Tiba</span>
-                                    </span>
-                                  ) : (
-                                    <span
-                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-medium bg-slate-100 text-slate-700 border border-slate-200"
-                                      title={`Pengingat packing: Siapkan barang sebelum kurir tiba sekitar pukul ${shippingSla.deadlineTime} WIB`}
-                                    >
-                                      <span>📦 s/d {shippingSla.deadlineTime}</span>
-                                      <span className="text-slate-500 font-mono text-[9px]">
-                                        ({shippingSla.remainingText})
-                                      </span>
-                                    </span>
-                                  )}
-                                </div>
-                              )}
                             </div>
                           ) : (
                             <span className="text-slate-400 font-sans text-[10px] block mt-1">— Kurir belum ada</span>
@@ -1911,35 +1787,23 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                                 className={`inline-block whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                                   isRj
                                     ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                    : order.order_status.toLowerCase().includes('selesai')
+                                    : orderStatusLower.includes('selesai')
                                     ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                                    : order.order_status.toLowerCase().includes('batal') || order.order_status.toLowerCase().includes('cancel')
+                                    : isCancelled
                                     ? 'bg-rose-100 text-rose-800 border border-rose-200'
                                     : isOrderCod
                                     ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs font-bold'
+                                    : isInstantOrder && isProcessed
+                                    ? 'bg-sky-100 text-sky-800 border border-sky-200'
                                     : 'bg-slate-100 text-slate-700'
                                 }`}
                               >
-                                {isOrderCod && (order.order_status === 'Belum Bayar' || order.order_status.toLowerCase().includes('belum bayar'))
+                                {isOrderCod && (order.order_status === 'Belum Bayar' || orderStatusLower.includes('belum bayar'))
                                   ? 'Perlu Dikirim [COD]'
+                                  : isInstantOrder && isProcessed
+                                  ? 'Menunggu Kurir'
                                   : order.order_status}
                               </span>
-
-                              {/* Batas Waktu Pickup Ala Shopee Seller Center */}
-                              {shippingSla && (
-                                <span
-                                  className={`block mt-1 text-[10px] tracking-tight whitespace-nowrap font-sans ${
-                                    shippingSla.isReadyForPickup
-                                      ? 'font-bold text-rose-700 animate-pulse'
-                                      : 'font-semibold text-rose-600'
-                                  }`}
-                                  title="Batas waktu atur pickup kurir Instant (Shopee)"
-                                >
-                                  {shippingSla.isReadyForPickup
-                                    ? '🛵 Driver Segera Tiba'
-                                    : shippingSla.courierSearchText}
-                                </span>
-                              )}
 
                               {/* Label Keterangan Metode Pembayaran */}
                               {isOrderCod ? (

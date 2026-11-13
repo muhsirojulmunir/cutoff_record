@@ -89,7 +89,7 @@ interface CancelTargetState {
 
 function isInstantCarrier(carrier: string | null | undefined): boolean {
   if (!carrier) return false;
-  return /instan|instant|same\s*day|sameday/i.test(carrier);
+  return /instan|instant|same\s*day|sameday|gosend|grab/i.test(carrier);
 }
 
 function resolveItemQty(item: ShopeeOrderItem): number {
@@ -133,37 +133,114 @@ function formatPaginationLabel(rawLabel: string): string {
   return rawLabel;
 }
 
+interface DeadlineStateResult {
+  label: string;
+  badgeText: string | null;
+  badgeClass: string;
+  textClass: string;
+  countdownText: string | null;
+  courierStatusText: string | null;
+}
+
 function getDeadlineState(
   shipByDate: string | null,
-  normalizedStatus: string
-): { label: string; badgeText: string | null; badgeClass: string; textClass: string } {
+  orderCreatedAt: string | null,
+  normalizedStatus: string,
+  isInstant: boolean,
+  nowMs: number
+): DeadlineStateResult {
   const formatted = formatOrderTimestampWIB(shipByDate);
-  const parsed = parseWibDate(shipByDate);
+  const parsedShipBy = parseWibDate(shipByDate);
+  const parsedCreated = parseWibDate(orderCreatedAt);
 
-  if (!parsed || !ACTIVE_DEADLINE_STATUSES.has(normalizedStatus)) {
+  // Jika pesanan Instant:
+  if (isInstant) {
+    if (normalizedStatus === 'PROCESSED') {
+      return {
+        label: formatted,
+        badgeText: 'Instant',
+        badgeClass: 'border-orange-200 bg-orange-50 text-[#EE4D2D]',
+        textClass: 'text-slate-700',
+        countdownText: null,
+        courierStatusText: 'Mencari Kurir',
+      };
+    }
+
+    if (normalizedStatus === 'READY_TO_SHIP' || normalizedStatus === 'RETRY_SHIP') {
+      let deadlineMs: number | null = parsedShipBy ? parsedShipBy.getTime() : null;
+      if (!deadlineMs && parsedCreated) {
+        // Batas waktu SLA Instant Shopee adalah 1 jam sejak pesanan dibuat
+        deadlineMs = parsedCreated.getTime() + 60 * 60 * 1000;
+      }
+
+      if (deadlineMs) {
+        const diffSec = Math.floor((deadlineMs - nowMs) / 1000);
+        if (diffSec > 0) {
+          const hours = Math.floor(diffSec / 3600);
+          const minutes = Math.floor((diffSec % 3600) / 60);
+          const seconds = diffSec % 60;
+          const countdownText =
+            hours > 0
+              ? `Atur pickup dalam ${hours} jam ${minutes} menit`
+              : minutes > 0
+              ? `Atur pickup dalam ${minutes} menit ${seconds} detik`
+              : `Atur pickup dalam ${seconds} detik`;
+
+          return {
+            label: formatted,
+            badgeText: 'Instant',
+            badgeClass: 'border-orange-200 bg-orange-50 text-[#EE4D2D]',
+            textClass: 'text-rose-600 font-semibold',
+            countdownText,
+            courierStatusText: null,
+          };
+        } else {
+          return {
+            label: formatted,
+            badgeText: 'Lewat Tenggat',
+            badgeClass: 'border-rose-200 bg-rose-50 text-rose-700',
+            textClass: 'text-rose-700 font-bold',
+            countdownText: 'Batas pickup terlewati',
+            courierStatusText: null,
+          };
+        }
+      }
+    }
+  }
+
+  // Untuk pesanan reguler / status lainnya:
+  if (!parsedShipBy || !ACTIVE_DEADLINE_STATUSES.has(normalizedStatus)) {
     return {
       label: formatted,
       badgeText: null,
       badgeClass: '',
       textClass: 'text-slate-700',
+      countdownText: null,
+      courierStatusText: null,
     };
   }
 
-  const diffMs = parsed.getTime() - Date.now();
+  const diffMs = parsedShipBy.getTime() - nowMs;
   if (diffMs < 0) {
     return {
       label: formatted,
       badgeText: 'Lewat Tenggat',
       badgeClass: 'border-rose-200 bg-rose-50 text-rose-700',
       textClass: 'text-rose-700 font-bold',
+      countdownText: 'Batas kirim terlewati',
+      courierStatusText: null,
     };
   }
   if (diffMs <= URGENT_DEADLINE_MS) {
+    const hours = Math.floor(diffMs / 3600000);
+    const minutes = Math.floor((diffMs % 3600000) / 60000);
     return {
       label: formatted,
       badgeText: 'Segera Kirim',
       badgeClass: 'border-amber-200 bg-amber-50 text-amber-800',
       textClass: 'text-amber-800 font-bold',
+      countdownText: hours > 0 ? `Kirim dalam ${hours}j ${minutes}m` : `Kirim dalam ${minutes}m`,
+      courierStatusText: null,
     };
   }
 
@@ -172,6 +249,8 @@ function getDeadlineState(
     badgeText: null,
     badgeClass: '',
     textClass: 'text-slate-700',
+    countdownText: null,
+    courierStatusText: null,
   };
 }
 
@@ -388,6 +467,14 @@ export default function ShopeeOrdersPage({
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
+  const [currentTimeMs, setCurrentTimeMs] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setCurrentTimeMs(Date.now());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Bulk selection state
   const [selectedOrderSns, setSelectedOrderSns] = useState<string[]>([]);
@@ -2383,7 +2470,14 @@ export default function ShopeeOrdersPage({
               const isShipped = normalizedStatus === 'SHIPPED';
               const isInCancel = normalizedStatus === 'IN_CANCEL';
               const isPrintingThis = printingTarget === order.order_sn;
-              const deadline = getDeadlineState(order.ship_by_date, normalizedStatus);
+              const isInstant = isInstantCarrier(order.shipping_carrier);
+              const deadline = getDeadlineState(
+                order.ship_by_date,
+                order.order_created_at,
+                normalizedStatus,
+                isInstant,
+                currentTimeMs
+              );
               const snCopyKey = `sn:${order.order_sn}`;
               const resiCopyKey = `resi:${order.order_sn}`;
 
@@ -2452,6 +2546,12 @@ export default function ShopeeOrdersPage({
                       >
                         {statusMeta.label}
                       </span>
+                      {isInstant && isProcessed && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-800">
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                          Mencari Kurir
+                        </span>
+                      )}
 
                       <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1">
                         <span className="text-[11px] text-slate-400">No. Pesanan</span>
@@ -2694,7 +2794,17 @@ export default function ShopeeOrdersPage({
                             </span>
                           )}
                         </div>
-                        <p className={`text-xs tabular-nums ${deadline.textClass}`}>
+                        {deadline.countdownText ? (
+                          <p className="text-xs font-bold text-rose-600 animate-pulse">
+                            ⏱ {deadline.countdownText}
+                          </p>
+                        ) : deadline.courierStatusText ? (
+                          <p className="flex items-center gap-1 text-xs font-semibold text-amber-700">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                            🛵 {deadline.courierStatusText}
+                          </p>
+                        ) : null}
+                        <p className={`text-[11px] tabular-nums ${deadline.textClass}`}>
                           {deadline.label}
                         </p>
                       </div>
