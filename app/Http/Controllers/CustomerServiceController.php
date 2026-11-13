@@ -120,16 +120,31 @@ class CustomerServiceController extends Controller
             $tiktokRes = $this->csManager->syncTiktokChat();
         }
 
-        $totalSynced = ($shopeeRes['synced'] ?? 0) + ($tiktokRes['synced'] ?? 0);
         $messages = [];
         if ($shopeeRes) {
-            $messages[] = 'Shopee: ' . ($shopeeRes['message'] ?? 'OK');
+            $status = ($shopeeRes['success'] ?? false) ? 'Berhasil' : 'Kendala';
+            $messages[] = "Shopee: [{$status}] " . ($shopeeRes['message'] ?? 'OK');
         }
         if ($tiktokRes) {
-            $messages[] = 'TikTok: ' . ($tiktokRes['message'] ?? 'OK');
+            $status = ($tiktokRes['success'] ?? false) ? 'Berhasil' : 'Kendala';
+            $messages[] = "TikTok: [{$status}] " . ($tiktokRes['message'] ?? 'OK');
         }
 
-        return back()->with('success', implode(' | ', $messages));
+        $msg = implode(' | ', $messages);
+        $hasError = ($shopeeRes && ! ($shopeeRes['success'] ?? false)) || ($tiktokRes && ! ($tiktokRes['success'] ?? false));
+
+        return back()->with($hasError ? 'warning' : 'success', $msg);
+    }
+
+    /**
+     * Bersihkan data chat simulasi / demo awal.
+     */
+    public function clearDemo(): RedirectResponse
+    {
+        \App\Models\CsConversation::where('external_conv_id', 'like', 'conv-%')->delete();
+        \Illuminate\Support\Facades\Cache::forever('cs_demo_cleared', true);
+
+        return back()->with('success', 'Data chat simulasi telah dibersihkan. Kotak masuk kini bersih dan siap menerima chat riil dari API.');
     }
 
     /**

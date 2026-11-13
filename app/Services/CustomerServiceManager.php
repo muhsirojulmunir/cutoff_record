@@ -74,7 +74,7 @@ class CustomerServiceManager
                 });
             }
 
-            if (CsConversation::count() === 0) {
+            if (CsConversation::count() === 0 && ! \Illuminate\Support\Facades\Cache::get('cs_demo_cleared')) {
                 $this->seedInitialConversations();
             }
         } catch (\Throwable $e) {
@@ -251,6 +251,7 @@ class CustomerServiceManager
                 'last_message_time' => $conv->last_message_time ? $conv->last_message_time->diffForHumans() : '-',
                 'status'            => $conv->status,
                 'group'             => $conv->group,
+                'is_demo'           => str_starts_with($conv->external_conv_id, 'conv-'),
                 'order'             => $conv->resolveOrderContext(),
                 'notes'             => $conv->notes ?: '',
                 'messages'          => $messages,

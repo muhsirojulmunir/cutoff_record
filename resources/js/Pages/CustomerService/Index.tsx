@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Head, router } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 
 interface ChatMessage {
@@ -25,6 +25,7 @@ interface BuyerOrder {
 interface Conversation {
   id: string;
   external_conv_id?: string;
+  is_demo?: boolean;
   channel: 'shopee' | 'tiktok';
   channel_label: string;
   shop_name: string;
@@ -90,6 +91,37 @@ export default function CustomerServiceIndex({
   const [isLiveActive, setIsLiveActive] = useState(true);
   const [countdown, setCountdown] = useState(6);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const { flash } = usePage<{ flash?: { success?: string; error?: string; warning?: string } }>().props;
+
+  // Listen to flash notices from controller
+  useEffect(() => {
+    if (flash?.warning) {
+      setToastMessage(flash.warning);
+      setTimeout(() => setToastMessage(null), 10000);
+    } else if (flash?.success) {
+      setToastMessage(flash.success);
+      setTimeout(() => setToastMessage(null), 8000);
+    } else if (flash?.error) {
+      setToastMessage(flash.error);
+      setTimeout(() => setToastMessage(null), 10000);
+    }
+  }, [flash]);
+
+  const hasDemoData = useMemo(() => {
+    return conversations.some((c) => c.is_demo);
+  }, [conversations]);
+
+  const handleClearDemo = () => {
+    if (!confirm('Hapus seluruh pesan simulasi/demo awal? Kotak masuk akan bersih dan hanya menampilkan chat riil dari API.')) return;
+    router.post('/customer-service/clear-demo', {}, {
+      preserveScroll: true,
+      onSuccess: () => {
+        setConversations([]);
+        setSelectedConvId('');
+      },
+    });
+  };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -389,6 +421,18 @@ export default function CustomerServiceIndex({
               </span>
             </button>
 
+            {/* Clear Demo Button if demo data exists */}
+            {hasDemoData && (
+              <button
+                type="button"
+                onClick={handleClearDemo}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 transition-colors"
+                title="Hapus data percakapan simulasi awal agar kotak masuk bersih menunggu chat riil dari API"
+              >
+                <span>🧹 Bersihkan Data Demo</span>
+              </button>
+            )}
+
             {/* Manual Sync Button */}
             <button
               type="button"
@@ -568,9 +612,16 @@ export default function CustomerServiceIndex({
                       {/* Content preview */}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1">
-                          <p className="truncate text-xs font-bold text-slate-900">
-                            {conv.buyer_name}
-                          </p>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <p className="truncate text-xs font-bold text-slate-900">
+                              {conv.buyer_name}
+                            </p>
+                            {conv.is_demo && (
+                              <span className="shrink-0 rounded bg-amber-100 px-1 py-0.2 text-[9px] font-bold text-amber-800">
+                                Simulasi
+                              </span>
+                            )}
+                          </div>
                           <span className="text-[10px] text-slate-400 shrink-0 tabular-nums">
                             {conv.last_message_time}
                           </span>
@@ -632,6 +683,11 @@ export default function CustomerServiceIndex({
                         >
                           {activeConv.channel === 'shopee' ? 'Shopee' : 'TikTok Shop'}
                         </span>
+                        {activeConv.is_demo && (
+                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-200">
+                            Data Simulasi / Demo
+                          </span>
+                        )}
                       </div>
                       <p className="text-[11px] text-slate-500">
                         Toko: <span className="font-semibold text-slate-700">{activeConv.shop_name}</span>
