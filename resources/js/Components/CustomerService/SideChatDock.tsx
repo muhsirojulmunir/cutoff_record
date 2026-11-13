@@ -159,9 +159,24 @@ const DEFAULT_CONVERSATIONS: SideChatConversation[] = [
   },
 ];
 
-export default function SideChatDock() {
+export interface SideChatProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export default function SideChatDock({ isOpen: controlledIsOpen, onClose }: SideChatProps = {}) {
   const { url } = usePage();
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
+  const isOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
+
+  const handleClose = () => {
+    if (onClose) {
+      onClose();
+    } else {
+      setInternalIsOpen(false);
+    }
+  };
+
   const [conversations, setConversations] = useState<SideChatConversation[]>(DEFAULT_CONVERSATIONS);
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [channelFilter, setChannelFilter] = useState<'all' | 'shopee' | 'tiktok'>('all');
@@ -192,10 +207,16 @@ export default function SideChatDock() {
 
   // Listen to custom event from topbar header button
   useEffect(() => {
-    const handleToggle = () => setIsOpen((prev) => !prev);
+    const handleToggle = () => {
+      if (onClose && controlledIsOpen !== undefined) {
+        if (controlledIsOpen) onClose();
+      } else {
+        setInternalIsOpen((prev) => !prev);
+      }
+    };
     window.addEventListener('toggle-side-chat-dock', handleToggle);
     return () => window.removeEventListener('toggle-side-chat-dock', handleToggle);
-  }, []);
+  }, [controlledIsOpen, onClose]);
 
   // Active selected conversation in mini chat view
   const activeConv = useMemo(() => {
@@ -274,98 +295,69 @@ export default function SideChatDock() {
 
   return (
     <>
-      {/* Floating Side Dock Tab on Right Edge */}
-      <div className="fixed right-0 top-1/2 -translate-y-1/2 z-40 select-none">
-        <button
-          type="button"
-          onClick={() => setIsOpen(!isOpen)}
-          title="Buka Chat Customer Service"
-          className="group flex flex-col items-center gap-1.5 rounded-l-2xl bg-white border-y border-l border-slate-300/80 px-2.5 py-3 shadow-lg hover:bg-slate-50 transition-all cursor-pointer"
-        >
-          {/* Chat Icon with Red Badge */}
-          <div className="relative">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#EE4D2D] text-white shadow-xs group-hover:scale-105 transition-transform">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                className="h-4.5 w-4.5"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M4.804 21.644A6.707 6.707 0 006 21.75a6.721 6.721 0 003.583-1.029c.774.182 1.584.279 2.417.279 5.322 0 9.75-3.97 9.75-9 0-5.03-4.428-9-9.75-9s-9.75 3.97-9.75 9c0 2.409 1.025 4.587 2.674 6.192.232.226.277.428.254.543a3.73 3.73 0 01-.814 1.686.75.75 0 00.44 1.223zM8.25 10.875a1.125 1.125 0 100 2.25 1.125 1.125 0 000-2.25zM10.875 12a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zm4.875-1.125a1.125 1.125 0 100 2.25 1.125 1.125 0 000-2.25z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </span>
-            {totalUnread > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-bold text-white shadow-xs">
-                {totalUnread}
-              </span>
-            )}
-          </div>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 writing-mode-vertical">
-            Chat
-          </span>
-        </button>
-      </div>
-
-      {/* Slide-out Drawer Panel */}
+      {/* Slide-out Drawer Panel (Positioned adjacent to Right Rail Dock on desktop) */}
       {isOpen && (
-        <div
-          className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[340px] flex-col border-l border-slate-200 bg-white shadow-2xl transition-transform duration-200 ease-in-out sm:w-[340px]"
-          style={{ animation: 'slideInRight 0.2s cubic-bezier(0.16, 1, 0.3, 1)' }}
-        >
-          {/* ========================================================= */}
-          {/* MODE 1: Conversation List View (Default)                  */}
-          {/* ========================================================= */}
-          {!activeConv ? (
-            <div className="flex h-full flex-col overflow-hidden">
-              {/* Header Bar (Directly modeled after Gambar 2) */}
-              <div className="flex h-12 shrink-0 items-center justify-between border-b border-slate-200 px-3 bg-white">
-                <div className="flex items-center gap-2">
-                  <span className="text-base font-black tracking-tight text-[#EE4D2D]">Chat</span>
-                  
-                  {/* Dropdown Trigger */}
-                  <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50/70 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                    <span className="truncate max-w-[85px]">Chat Pembeli</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5 text-slate-400">
-                      <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-                    </svg>
+        <>
+          {/* Subtle mobile backdrop */}
+          <div
+            onClick={handleClose}
+            className="fixed inset-0 z-40 bg-slate-950/20 backdrop-blur-2xs md:hidden"
+          />
+
+          <div
+            className="fixed inset-y-0 right-0 md:right-14 z-50 flex w-full max-w-[340px] flex-col border-l border-slate-200 bg-white shadow-2xl transition-transform duration-200 ease-in-out sm:w-[340px]"
+            style={{ animation: 'slideInRight 0.2s cubic-bezier(0.16, 1, 0.3, 1)' }}
+          >
+            {/* ========================================================= */}
+            {/* MODE 1: Conversation List View (Default)                  */}
+            {/* ========================================================= */}
+            {!activeConv ? (
+              <div className="flex h-full flex-col overflow-hidden">
+                {/* Header Bar (Directly modeled after Gambar 2) */}
+                <div className="flex h-12 shrink-0 items-center justify-between border-b border-slate-200 px-3 bg-white">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base font-black tracking-tight text-[#EE4D2D]">Chat</span>
+                    
+                    {/* Dropdown Trigger */}
+                    <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50/70 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                      <span className="truncate max-w-[85px]">Chat Pembeli</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5 text-slate-400">
+                        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Webchat Link */}
+                    <Link
+                      href="/customer-service"
+                      onClick={handleClose}
+                      className="flex items-center gap-1 text-xs font-semibold text-sky-600 hover:text-sky-700 hover:underline"
+                      title="Buka Halaman Customer Service Penuh"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-3.5 w-3.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                      </svg>
+                      <span>Webchat</span>
+                    </Link>
+
+                    <span className="text-slate-300">|</span>
+
+                    {/* Collapse Button (» like Gambar 2) */}
+                    <button
+                      type="button"
+                      onClick={handleClose}
+                      className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                      title="Tutup Panel Chat"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="h-4 w-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {/* Webchat Link */}
-                  <Link
-                    href="/customer-service"
-                    onClick={() => setIsOpen(false)}
-                    className="flex items-center gap-1 text-xs font-semibold text-sky-600 hover:text-sky-700 hover:underline"
-                    title="Buka Halaman Customer Service Penuh"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-3.5 w-3.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                    </svg>
-                    <span>Webchat</span>
-                  </Link>
-
-                  <span className="text-slate-300">|</span>
-
-                  {/* Collapse Button (» like Gambar 2) */}
-                  <button
-                    type="button"
-                    onClick={() => setIsOpen(false)}
-                    className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                    title="Tutup Panel Chat"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="h-4 w-4">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              {/* Search Bar */}
+                {/* Search Bar */}
               <div className="p-2.5 border-b border-slate-100 bg-white">
                 <div className="relative">
                   <input
@@ -648,7 +640,7 @@ export default function SideChatDock() {
                   </span>
                   <Link
                     href="/customer-service"
-                    onClick={() => setIsOpen(false)}
+                    onClick={handleClose}
                     className="text-xs font-bold text-sky-600 hover:underline"
                     title="Buka Halaman Customer Service Penuh"
                   >
@@ -656,7 +648,7 @@ export default function SideChatDock() {
                   </Link>
                   <button
                     type="button"
-                    onClick={() => setIsOpen(false)}
+                    onClick={handleClose}
                     className="p-1 rounded text-slate-400 hover:text-slate-700 cursor-pointer"
                   >
                     ✕
@@ -778,6 +770,7 @@ export default function SideChatDock() {
             </div>
           )}
         </div>
+        </>
       )}
     </>
   );

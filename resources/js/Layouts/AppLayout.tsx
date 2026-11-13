@@ -182,6 +182,8 @@ export default function AppLayout({ children, headerRight }: Props) {
     user?.roles?.includes('Super Admin')
   );
 
+  const [isChatDrawerOpen, setIsChatDrawerOpen] = useState(false);
+
   const currentPath = (url ? url.split('?')[0] : '') || window.location.pathname;
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [menuSearch, setMenuSearch] = useState('');
@@ -525,8 +527,8 @@ export default function AppLayout({ children, headerRight }: Props) {
         </div>
       </aside>
 
-      {/* Main content container */}
-      <div className="flex-1 flex flex-col min-w-0 h-full">
+      {/* Main content container (Reserve space for Right Rail Dock on desktop) */}
+      <div className="flex-1 flex flex-col min-w-0 h-full md:mr-14">
         {/* Topbar (Crisp White + subtle border) */}
         <header className={`${justLoggedIn ? 'anim-fade-down anim-d1' : ''} h-16 border-b border-slate-200 bg-white flex items-center justify-between px-6 shrink-0 z-10 shadow-xs`}>
           <button
@@ -543,22 +545,24 @@ export default function AppLayout({ children, headerRight }: Props) {
           <div className="flex items-center gap-2.5">
             {headerRight}
 
-            {/* Quick Trigger Side Chat Dock (Customer Service) */}
-            <button
-              type="button"
-              onClick={() => window.dispatchEvent(new CustomEvent('toggle-side-chat-dock'))}
-              className="relative p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all border border-slate-200 cursor-pointer"
-              title="Buka Chat Customer Service"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a.75.75 0 01-.974-.965 4.966 4.966 0 00.73-1.879C3.642 16.586 3 14.412 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
-              </svg>
-              <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#EE4D2D] px-1 text-[9px] font-bold text-white shadow-2xs">
-                2
-              </span>
-            </button>
+            {/* Mobile fallback only (< md screens) */}
+            <div className="flex md:hidden items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsChatDrawerOpen((prev) => !prev)}
+                className="relative p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all border border-slate-200 cursor-pointer"
+                title="Buka Chat Customer Service"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a.75.75 0 01-.974-.965 4.966 4.966 0 00.73-1.879C3.642 16.586 3 14.412 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+                </svg>
+                <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#EE4D2D] px-1 text-[9px] font-bold text-white shadow-2xs">
+                  2
+                </span>
+              </button>
+              <NotificationBell queue={queue} />
+            </div>
 
-            <NotificationBell queue={queue} />
             <div className="h-4 w-[1px] bg-slate-200 hidden sm:block" />
             <span className="hidden sm:flex items-center gap-2 text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-full px-3 py-1.5">
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -585,8 +589,50 @@ export default function AppLayout({ children, headerRight }: Props) {
         </main>
       </div>
 
-      {/* Omnichannel Side Chat Dock & Slide-out Drawer */}
-      <SideChatDock />
+      {/* Shopee-style Right Action Rail (Persis Gambar Shopee Seller Centre) */}
+      <aside className="hidden md:flex fixed top-0 right-0 bottom-0 w-14 z-40 bg-white border-l border-slate-200 flex-col items-center py-3.5 gap-4 shrink-0 select-none shadow-2xs">
+        {/* 1. Profil User Avatar */}
+        <div
+          title={`${user?.name ?? 'User'} (${user?.role?.name ?? 'Super Admin'})`}
+          className="h-9 w-9 rounded-full bg-slate-900 text-white font-bold text-xs flex items-center justify-center ring-2 ring-slate-100 hover:ring-slate-300 transition-all cursor-pointer shadow-2xs"
+        >
+          {initials}
+        </div>
+
+        {/* 2. Notification Bell (Unchanged NotificationBell.tsx) */}
+        <NotificationBell queue={queue} />
+
+        {/* 3. Shopee-style Red Chat Bubble Button */}
+        <button
+          type="button"
+          onClick={() => setIsChatDrawerOpen((prev) => !prev)}
+          title="Chat Customer Service (Shopee & TikTok)"
+          className={`relative h-9 w-9 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+            isChatDrawerOpen
+              ? 'bg-[#EE4D2D] text-white shadow-xs ring-2 ring-orange-300'
+              : 'bg-[#EE4D2D] text-white hover:bg-[#d94122] shadow-2xs hover:scale-105'
+          }`}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            className="h-4.5 w-4.5"
+          >
+            <path
+              fillRule="evenodd"
+              d="M4.804 21.644A6.707 6.707 0 006 21.75a6.721 6.721 0 003.583-1.029c.774.182 1.584.279 2.417.279 5.322 0 9.75-3.97 9.75-9 0-5.03-4.428-9-9.75-9s-9.75 3.97-9.75 9c0 2.409 1.025 4.587 2.674 6.192.232.226.277.428.254.543a3.73 3.73 0 01-.814 1.686.75.75 0 00.44 1.223zM8.25 10.875a1.125 1.125 0 100 2.25 1.125 1.125 0 000-2.25zM10.875 12a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zm4.875-1.125a1.125 1.125 0 100 2.25 1.125 1.125 0 000-2.25z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-bold text-white ring-2 ring-white shadow-2xs">
+            2
+          </span>
+        </button>
+      </aside>
+
+      {/* Slide-out Drawer Panel (Positioned adjacent to Right Rail Dock on desktop) */}
+      <SideChatDock isOpen={isChatDrawerOpen} onClose={() => setIsChatDrawerOpen(false)} />
     </div>
   );
 }
