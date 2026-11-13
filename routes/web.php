@@ -88,6 +88,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/marketplace/shopee/sync-products', [\App\Http\Controllers\ShopeeIntegrationController::class, 'syncProducts'])->name('shopee.sync-products');
     Route::get('/marketplace/shopee/products', [\App\Http\Controllers\ShopeeIntegrationController::class, 'productsList'])->name('shopee.products');
 
+    // Customer Service (Omnichannel Shopee & TikTok Shop)
+    Route::get('/customer-service', [\App\Http\Controllers\CustomerServiceController::class, 'index'])->name('customer-service.index');
+
     // Pesanan Saya Shopee (Eksklusif Super Admin - Fulfillment & Cetak Resi A4)
     Route::get('/shopee-orders', [\App\Http\Controllers\ShopeeOrderController::class, 'index'])->name('shopee-orders.index');
     Route::post('/shopee-orders/sync', [\App\Http\Controllers\ShopeeOrderController::class, 'sync'])->name('shopee-orders.sync');
