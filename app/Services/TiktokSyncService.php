@@ -285,7 +285,7 @@ class TiktokSyncService
     /**
      * Ensure access token is still fresh, refresh automatically if close to expiration.
      */
-    private function ensureValidAccessToken(TiktokAccount $account): void
+    public function ensureValidAccessToken(TiktokAccount $account): void
     {
         if (! $account->token_expires_at || $account->token_expires_at->isPast() || $account->token_expires_at->diffInMinutes(now()) < 30) {
             if (! empty($account->refresh_token)) {

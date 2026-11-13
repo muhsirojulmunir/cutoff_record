@@ -264,98 +264,110 @@ class CustomerServiceManager
      */
     public function syncShopeeChat(?ShopeeAccount $account = null): array
     {
-        $this->ensureSchema();
-        $account = $account ?: (ShopeeAccount::where('status', 'active')->first() ?: ShopeeAccount::first());
+        try {
+            $this->ensureSchema();
+            $account = $account ?: (ShopeeAccount::where('status', 'active')->first() ?: ShopeeAccount::first());
 
-        if (! $account || empty($account->access_token) || empty($account->partner_id)) {
-            return [
-                'success' => false,
-                'synced'  => 0,
-                'message' => 'Akun Shopee belum terhubung ke sistem ERP.',
-            ];
-        }
-
-        $res = $this->shopeeChatService->getConversationList($account, 'all', 20);
-
-        if (! $res['success']) {
-            return [
-                'success' => false,
-                'synced'  => 0,
-                'error'   => $res['error'] ?? 'ERROR',
-                'message' => $res['message'] ?? 'Kendala saat mengakses Shopee Seller Chat API.',
-            ];
-        }
-
-        $apiConversations = $res['conversations'] ?? [];
-        $syncedCount = 0;
-
-        foreach ($apiConversations as $apiConv) {
-            $convId = (string) ($apiConv['conversation_id'] ?? '');
-            if (empty($convId)) continue;
-
-            $toId = $apiConv['to_id'] ?? null;
-            $toName = $apiConv['to_name'] ?? ('buyer_' . $toId);
-            $unread = (int) ($apiConv['unread_count'] ?? 0);
-            $lastMsgContent = $apiConv['last_message_content']['text'] ?? '';
-            $lastMsgTs = ! empty($apiConv['last_message_timestamp']) 
-                ? Carbon::createFromTimestamp($apiConv['last_message_timestamp'], 'Asia/Jakarta') 
-                : now('Asia/Jakarta');
-
-            $conv = CsConversation::updateOrCreate(
-                [
-                    'external_conv_id' => 'sh_' . $convId,
-                ],
-                [
-                    'channel'             => 'shopee',
-                    'shop_id'             => (string) $account->shop_id,
-                    'shop_name'           => $account->account_name ?: 'Record Shoes Official Shop',
-                    'buyer_id'            => (string) $toId,
-                    'buyer_username'      => $toName,
-                    'buyer_name'          => $toName,
-                    'unread_count'        => $unread,
-                    'last_message'        => $lastMsgContent,
-                    'last_message_time'   => $lastMsgTs,
-                    'last_message_sender' => ($apiConv['latest_message_from_id'] ?? 0) == $toId ? 'buyer' : 'seller',
-                    'status'              => $unread > 0 ? 'unread' : 'read',
-                    'api_synced_at'       => now(),
-                ]
-            );
-
-            // Tarik pesan-pesan di dalamnya
-            $msgRes = $this->shopeeChatService->getMessages($account, $convId, 25);
-            if ($msgRes['success'] && ! empty($msgRes['messages'])) {
-                foreach ($msgRes['messages'] as $apiMsg) {
-                    $msgId = (string) ($apiMsg['message_id'] ?? '');
-                    $msgText = $apiMsg['content']['text'] ?? '';
-                    $msgSender = ($apiMsg['from_id'] ?? 0) == $toId ? 'buyer' : 'seller';
-                    $msgTs = ! empty($apiMsg['created_timestamp'])
-                        ? Carbon::createFromTimestamp($apiMsg['created_timestamp'], 'Asia/Jakarta')
-                        : now('Asia/Jakarta');
-
-                    CsMessage::updateOrCreate(
-                        [
-                            'conversation_id'     => $conv->id,
-                            'external_message_id' => $msgId ?: ('gen_' . md5($msgText . $msgTs->timestamp)),
-                        ],
-                        [
-                            'sender'       => $msgSender,
-                            'message_type' => $apiMsg['message_type'] ?? 'text',
-                            'text'         => $msgText,
-                            'status'       => 'read',
-                            'sent_at'      => $msgTs,
-                        ]
-                    );
-                }
+            if (! $account || empty($account->access_token) || empty($account->partner_id)) {
+                return [
+                    'success' => false,
+                    'synced'  => 0,
+                    'message' => 'Akun Shopee belum terhubung ke sistem ERP.',
+                ];
             }
 
-            $syncedCount++;
-        }
+            $res = $this->shopeeChatService->getConversationList($account, 'all', 20);
 
-        return [
-            'success' => true,
-            'synced'  => $syncedCount,
-            'message' => "Berhasil menyinkronkan {$syncedCount} percakapan Shopee Chat.",
-        ];
+            if (! $res['success']) {
+                return [
+                    'success' => false,
+                    'synced'  => 0,
+                    'error'   => $res['error'] ?? 'ERROR',
+                    'message' => $res['message'] ?? 'Kendala saat mengakses Shopee Seller Chat API.',
+                ];
+            }
+
+            $apiConversations = $res['conversations'] ?? [];
+            $syncedCount = 0;
+
+            foreach ($apiConversations as $apiConv) {
+                $convId = (string) ($apiConv['conversation_id'] ?? '');
+                if (empty($convId)) continue;
+
+                $toId = $apiConv['to_id'] ?? null;
+                $toName = $apiConv['to_name'] ?? ('buyer_' . $toId);
+                $unread = (int) ($apiConv['unread_count'] ?? 0);
+                $lastMsgContent = $apiConv['last_message_content']['text'] ?? '';
+                $lastMsgTs = ! empty($apiConv['last_message_timestamp']) 
+                    ? Carbon::createFromTimestamp($apiConv['last_message_timestamp'], 'Asia/Jakarta') 
+                    : now('Asia/Jakarta');
+
+                $conv = CsConversation::updateOrCreate(
+                    [
+                        'external_conv_id' => 'sh_' . $convId,
+                    ],
+                    [
+                        'channel'             => 'shopee',
+                        'shop_id'             => (string) $account->shop_id,
+                        'shop_name'           => $account->account_name ?: 'Record Shoes Official Shop',
+                        'buyer_id'            => (string) $toId,
+                        'buyer_username'      => $toName,
+                        'buyer_name'          => $toName,
+                        'unread_count'        => $unread,
+                        'last_message'        => $lastMsgContent,
+                        'last_message_time'   => $lastMsgTs,
+                        'last_message_sender' => ($apiConv['latest_message_from_id'] ?? 0) == $toId ? 'buyer' : 'seller',
+                        'status'              => $unread > 0 ? 'unread' : 'read',
+                        'api_synced_at'       => now(),
+                    ]
+                );
+
+                // Tarik pesan-pesan di dalamnya
+                $msgRes = $this->shopeeChatService->getMessages($account, $convId, 25);
+                if ($msgRes['success'] && ! empty($msgRes['messages'])) {
+                    foreach ($msgRes['messages'] as $apiMsg) {
+                        $msgId = (string) ($apiMsg['message_id'] ?? '');
+                        $msgText = $apiMsg['content']['text'] ?? '';
+                        $msgSender = ($apiMsg['from_id'] ?? 0) == $toId ? 'buyer' : 'seller';
+                        $msgTs = ! empty($apiMsg['created_timestamp'])
+                            ? Carbon::createFromTimestamp($apiMsg['created_timestamp'], 'Asia/Jakarta')
+                            : now('Asia/Jakarta');
+
+                        CsMessage::updateOrCreate(
+                            [
+                                'conversation_id'     => $conv->id,
+                                'external_message_id' => $msgId ?: ('gen_' . md5($msgText . $msgTs->timestamp)),
+                            ],
+                            [
+                                'sender'       => $msgSender,
+                                'message_type' => $apiMsg['message_type'] ?? 'text',
+                                'text'         => $msgText,
+                                'status'       => 'read',
+                                'sent_at'      => $msgTs,
+                            ]
+                        );
+                    }
+                }
+
+                $syncedCount++;
+            }
+
+            return [
+                'success' => true,
+                'synced'  => $syncedCount,
+                'message' => "Berhasil menyinkronkan {$syncedCount} percakapan Shopee Chat.",
+            ];
+        } catch (\Throwable $e) {
+            Log::error('CustomerServiceManager syncShopeeChat error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return [
+                'success' => false,
+                'synced'  => 0,
+                'message' => 'Shopee Error: ' . $e->getMessage(),
+            ];
+        }
     }
 
     /**
@@ -363,106 +375,118 @@ class CustomerServiceManager
      */
     public function syncTiktokChat(?TiktokAccount $account = null): array
     {
-        $this->ensureSchema();
-        $account = $account ?: TiktokAccount::first();
+        try {
+            $this->ensureSchema();
+            $account = $account ?: TiktokAccount::first();
 
-        if (! $account || empty($account->access_token) || empty($account->app_key)) {
-            return [
-                'success' => false,
-                'synced'  => 0,
-                'message' => 'Akun TikTok Shop belum terhubung ke sistem ERP.',
-            ];
-        }
-
-        $res = $this->tiktokChatService->getConversationList($account, 20);
-
-        if (! $res['success']) {
-            return [
-                'success' => false,
-                'synced'  => 0,
-                'error'   => $res['error'] ?? 'ERROR',
-                'message' => $res['message'] ?? 'Kendala saat mengakses TikTok Customer Service API.',
-            ];
-        }
-
-        $apiConversations = $res['conversations'] ?? [];
-        $syncedCount = 0;
-
-        foreach ($apiConversations as $apiConv) {
-            $convId = (string) ($apiConv['id'] ?? $apiConv['conversation_id'] ?? '');
-            if (empty($convId)) continue;
-
-            $buyer = $apiConv['participant'] ?? $apiConv['buyer'] ?? [];
-            $buyerUid = (string) ($buyer['id'] ?? $buyer['user_id'] ?? '');
-            $buyerUsername = $buyer['nickname'] ?? $buyer['username'] ?? ('tt_buyer_' . substr($buyerUid, -4));
-            $unread = (int) ($apiConv['unread_count'] ?? 0);
-            $lastMsg = $apiConv['latest_message'] ?? [];
-            $lastMsgText = $lastMsg['content'] ?? '';
-            if (is_array($lastMsgText)) {
-                $lastMsgText = $lastMsgText['text'] ?? '';
+            if (! $account || empty($account->access_token) || empty($account->app_key)) {
+                return [
+                    'success' => false,
+                    'synced'  => 0,
+                    'message' => 'Akun TikTok Shop belum terhubung ke sistem ERP.',
+                ];
             }
-            $lastMsgTs = ! empty($lastMsg['create_time'])
-                ? Carbon::createFromTimestamp($lastMsg['create_time'], 'Asia/Jakarta')
-                : now('Asia/Jakarta');
 
-            $conv = CsConversation::updateOrCreate(
-                [
-                    'external_conv_id' => 'tt_' . $convId,
-                ],
-                [
-                    'channel'             => 'tiktok',
-                    'shop_id'             => (string) ($account->shop_id ?: ''),
-                    'shop_name'           => $account->account_name ?: 'Record Shoes Official TikTok',
-                    'buyer_id'            => $buyerUid,
-                    'buyer_username'      => $buyerUsername,
-                    'buyer_name'          => $buyerUsername,
-                    'unread_count'        => $unread,
-                    'last_message'        => $lastMsgText,
-                    'last_message_time'   => $lastMsgTs,
-                    'last_message_sender' => ($lastMsg['sender_role'] ?? 'BUYER') === 'BUYER' ? 'buyer' : 'seller',
-                    'status'              => $unread > 0 ? 'unread' : 'read',
-                    'api_synced_at'       => now(),
-                ]
-            );
+            $res = $this->tiktokChatService->getConversationList($account, 20);
 
-            // Tarik pesan-pesan di dalamnya
-            $msgRes = $this->tiktokChatService->getMessages($account, $convId, 25);
-            if ($msgRes['success'] && ! empty($msgRes['messages'])) {
-                foreach ($msgRes['messages'] as $apiMsg) {
-                    $msgId = (string) ($apiMsg['id'] ?? $apiMsg['message_id'] ?? '');
-                    $msgText = $apiMsg['content'] ?? '';
-                    if (is_array($msgText)) {
-                        $msgText = $msgText['text'] ?? '';
-                    }
-                    $msgSender = ($apiMsg['sender_role'] ?? 'BUYER') === 'BUYER' ? 'buyer' : 'seller';
-                    $msgTs = ! empty($apiMsg['create_time'])
-                        ? Carbon::createFromTimestamp($apiMsg['create_time'], 'Asia/Jakarta')
-                        : now('Asia/Jakarta');
+            if (! $res['success']) {
+                return [
+                    'success' => false,
+                    'synced'  => 0,
+                    'error'   => $res['error'] ?? 'ERROR',
+                    'message' => $res['message'] ?? 'Kendala saat mengakses TikTok Customer Service API.',
+                ];
+            }
 
-                    CsMessage::updateOrCreate(
-                        [
-                            'conversation_id'     => $conv->id,
-                            'external_message_id' => $msgId ?: ('gen_tt_' . md5($msgText . $msgTs->timestamp)),
-                        ],
-                        [
-                            'sender'       => $msgSender,
-                            'message_type' => $apiMsg['type'] ?? 'text',
-                            'text'         => (string) $msgText,
-                            'status'       => 'read',
-                            'sent_at'      => $msgTs,
-                        ]
-                    );
+            $apiConversations = $res['conversations'] ?? [];
+            $syncedCount = 0;
+
+            foreach ($apiConversations as $apiConv) {
+                $convId = (string) ($apiConv['id'] ?? $apiConv['conversation_id'] ?? '');
+                if (empty($convId)) continue;
+
+                $buyer = $apiConv['participant'] ?? $apiConv['buyer'] ?? [];
+                $buyerUid = (string) ($buyer['id'] ?? $buyer['user_id'] ?? '');
+                $buyerUsername = $buyer['nickname'] ?? $buyer['username'] ?? ('tt_buyer_' . substr($buyerUid, -4));
+                $unread = (int) ($apiConv['unread_count'] ?? 0);
+                $lastMsg = $apiConv['latest_message'] ?? [];
+                $lastMsgText = $lastMsg['content'] ?? '';
+                if (is_array($lastMsgText)) {
+                    $lastMsgText = $lastMsgText['text'] ?? '';
                 }
+                $lastMsgTs = ! empty($lastMsg['create_time'])
+                    ? Carbon::createFromTimestamp($lastMsg['create_time'], 'Asia/Jakarta')
+                    : now('Asia/Jakarta');
+
+                $conv = CsConversation::updateOrCreate(
+                    [
+                        'external_conv_id' => 'tt_' . $convId,
+                    ],
+                    [
+                        'channel'             => 'tiktok',
+                        'shop_id'             => (string) ($account->shop_id ?: ''),
+                        'shop_name'           => $account->account_name ?: 'Record Shoes Official TikTok',
+                        'buyer_id'            => $buyerUid,
+                        'buyer_username'      => $buyerUsername,
+                        'buyer_name'          => $buyerUsername,
+                        'unread_count'        => $unread,
+                        'last_message'        => $lastMsgText,
+                        'last_message_time'   => $lastMsgTs,
+                        'last_message_sender' => ($lastMsg['sender_role'] ?? 'BUYER') === 'BUYER' ? 'buyer' : 'seller',
+                        'status'              => $unread > 0 ? 'unread' : 'read',
+                        'api_synced_at'       => now(),
+                    ]
+                );
+
+                // Tarik pesan-pesan di dalamnya
+                $msgRes = $this->tiktokChatService->getMessages($account, $convId, 25);
+                if ($msgRes['success'] && ! empty($msgRes['messages'])) {
+                    foreach ($msgRes['messages'] as $apiMsg) {
+                        $msgId = (string) ($apiMsg['id'] ?? $apiMsg['message_id'] ?? '');
+                        $msgText = $apiMsg['content'] ?? '';
+                        if (is_array($msgText)) {
+                            $msgText = $msgText['text'] ?? '';
+                        }
+                        $msgSender = ($apiMsg['sender_role'] ?? 'BUYER') === 'BUYER' ? 'buyer' : 'seller';
+                        $msgTs = ! empty($apiMsg['create_time'])
+                            ? Carbon::createFromTimestamp($apiMsg['create_time'], 'Asia/Jakarta')
+                            : now('Asia/Jakarta');
+
+                        CsMessage::updateOrCreate(
+                            [
+                                'conversation_id'     => $conv->id,
+                                'external_message_id' => $msgId ?: ('gen_tt_' . md5($msgText . $msgTs->timestamp)),
+                            ],
+                            [
+                                'sender'       => $msgSender,
+                                'message_type' => $apiMsg['type'] ?? 'text',
+                                'text'         => (string) $msgText,
+                                'status'       => 'read',
+                                'sent_at'      => $msgTs,
+                            ]
+                        );
+                    }
+                }
+
+                $syncedCount++;
             }
 
-            $syncedCount++;
-        }
+            return [
+                'success' => true,
+                'synced'  => $syncedCount,
+                'message' => "Berhasil menyinkronkan {$syncedCount} percakapan TikTok Shop.",
+            ];
+        } catch (\Throwable $e) {
+            Log::error('CustomerServiceManager syncTiktokChat error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
 
-        return [
-            'success' => true,
-            'synced'  => $syncedCount,
-            'message' => "Berhasil menyinkronkan {$syncedCount} percakapan TikTok Shop.",
-        ];
+            return [
+                'success' => false,
+                'synced'  => 0,
+                'message' => 'TikTok Error: ' . $e->getMessage(),
+            ];
+        }
     }
 
     /**

@@ -112,22 +112,30 @@ class CustomerServiceController extends Controller
         $shopeeRes = null;
         $tiktokRes = null;
 
-        if ($channel === 'all' || $channel === 'shopee') {
-            $shopeeRes = $this->csManager->syncShopeeChat();
+        try {
+            if ($channel === 'all' || $channel === 'shopee') {
+                $shopeeRes = $this->csManager->syncShopeeChat();
+            }
+        } catch (\Throwable $e) {
+            $shopeeRes = ['success' => false, 'message' => $e->getMessage()];
         }
 
-        if ($channel === 'all' || $channel === 'tiktok') {
-            $tiktokRes = $this->csManager->syncTiktokChat();
+        try {
+            if ($channel === 'all' || $channel === 'tiktok') {
+                $tiktokRes = $this->csManager->syncTiktokChat();
+            }
+        } catch (\Throwable $e) {
+            $tiktokRes = ['success' => false, 'message' => $e->getMessage()];
         }
 
         $messages = [];
         if ($shopeeRes) {
             $status = ($shopeeRes['success'] ?? false) ? 'Berhasil' : 'Kendala';
-            $messages[] = "Shopee: [{$status}] " . ($shopeeRes['message'] ?? 'OK');
+            $messages[] = "Shopee [{$status}]: " . ($shopeeRes['message'] ?? 'OK');
         }
         if ($tiktokRes) {
             $status = ($tiktokRes['success'] ?? false) ? 'Berhasil' : 'Kendala';
-            $messages[] = "TikTok: [{$status}] " . ($tiktokRes['message'] ?? 'OK');
+            $messages[] = "TikTok [{$status}]: " . ($tiktokRes['message'] ?? 'OK');
         }
 
         $msg = implode(' | ', $messages);
