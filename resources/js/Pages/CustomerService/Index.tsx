@@ -221,16 +221,7 @@ export default function CustomerServiceIndex({
               </svg>
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base font-bold text-slate-900">Customer Service Terpadu</h1>
-                <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse" />
-                  Live Omnichannel
-                </span>
-              </div>
-              <p className="text-xs text-slate-500">
-                Inbox percakapan pelanggan terpadu untuk Shopee Open Platform & TikTok Shop Partner API
-              </p>
+              <h1 className="text-base font-bold text-slate-900">Customer Service Terpadu</h1>
             </div>
           </div>
         </header>
@@ -444,12 +435,7 @@ export default function CustomerServiceIndex({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 border border-emerald-200">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                      Online
-                    </span>
-                  </div>
+
                 </header>
 
                 {/* Chat Messages Thread */}
