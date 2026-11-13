@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Head } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 
 interface ChatMessage {
@@ -7,7 +7,7 @@ interface ChatMessage {
   sender: 'buyer' | 'seller';
   text: string;
   timestamp: string;
-  status?: 'sent' | 'received' | 'read';
+  status?: 'pending' | 'sent' | 'received' | 'read' | 'failed';
 }
 
 interface BuyerOrder {
@@ -24,6 +24,7 @@ interface BuyerOrder {
 
 interface Conversation {
   id: string;
+  external_conv_id?: string;
   channel: 'shopee' | 'tiktok';
   channel_label: string;
   shop_name: string;
@@ -33,6 +34,7 @@ interface Conversation {
   last_message: string;
   last_message_time: string;
   status: 'unread' | 'read' | 'resolved';
+  group?: 'unread' | 'manual' | 'auto';
   order: BuyerOrder;
   notes: string;
   messages: ChatMessage[];
@@ -53,12 +55,14 @@ interface CustomerServiceProps {
       name: string;
       shop_name: string;
       status: string;
+      connected?: boolean;
       color: string;
     };
     tiktok: {
       name: string;
       shop_name: string;
       status: string;
+      connected?: boolean;
       color: string;
     };
   };
@@ -81,6 +85,11 @@ export default function CustomerServiceIndex({
   const [copiedSn, setCopiedSn] = useState<string | null>(null);
   const [csNoteInput, setCsNoteInput] = useState<string>('');
   const [isSavedNote, setIsSavedNote] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [isLiveActive, setIsLiveActive] = useState(true);
+  const [countdown, setCountdown] = useState(6);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -102,6 +111,32 @@ export default function CustomerServiceIndex({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeConv?.messages]);
 
+  // Real-time polling live refresh every 6 seconds
+  useEffect(() => {
+    if (!isLiveActive) return;
+
+    const interval = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          fetch(`/customer-service/poll?channel=${channelFilter}`, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+              if (data?.conversations && Array.isArray(data.conversations)) {
+                setConversations(data.conversations);
+              }
+            })
+            .catch(() => {});
+          return 6;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isLiveActive, channelFilter]);
+
   // Filtered conversation list
   const filteredConversations = useMemo(() => {
     return conversations.filter((conv) => {
@@ -119,10 +154,10 @@ export default function CustomerServiceIndex({
       // Search query
       if (searchQuery.trim() !== '') {
         const q = searchQuery.toLowerCase();
-        const matchName = conv.buyer_name.toLowerCase().includes(q);
-        const matchUser = conv.buyer_username.toLowerCase().includes(q);
+        const matchName = conv.buyer_name?.toLowerCase().includes(q);
+        const matchUser = conv.buyer_username?.toLowerCase().includes(q);
         const matchSn = conv.order?.order_sn?.toLowerCase().includes(q);
-        const matchMsg = conv.messages.some((m) => m.text.toLowerCase().includes(q));
+        const matchMsg = conv.messages?.some((m) => m.text?.toLowerCase().includes(q));
         if (!matchName && !matchUser && !matchSn && !matchMsg) {
           return false;
         }
@@ -131,29 +166,57 @@ export default function CustomerServiceIndex({
     });
   }, [conversations, channelFilter, statusFilter, searchQuery]);
 
-  // Unread count metrics
-  const shopeeUnread = useMemo(
-    () => conversations.filter((c) => c.channel === 'shopee' && c.unread_count > 0).length,
-    [conversations]
-  );
-  const tiktokUnread = useMemo(
-    () => conversations.filter((c) => c.channel === 'tiktok' && c.unread_count > 0).length,
-    [conversations]
-  );
+  // Manual sync with marketplace APIs
+  const handleManualSync = () => {
+    setSyncing(true);
+    router.post(
+      '/customer-service/sync',
+      { channel: channelFilter },
+      {
+        preserveScroll: true,
+        onFinish: () => setSyncing(false),
+      }
+    );
+  };
 
-  // Send message handler
-  const handleSendMessage = (e?: React.FormEvent) => {
+  // Select conversation and mark as read
+  const handleSelectConversation = (conv: Conversation) => {
+    setSelectedConvId(conv.id);
+    if (conv.unread_count > 0) {
+      setConversations((prev) =>
+        prev.map((c) => (c.id === conv.id ? { ...c, unread_count: 0, status: 'read' } : c))
+      );
+      const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content;
+      fetch(`/customer-service/${conv.id}/read`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(csrfToken ? { 'X-CSRF-TOKEN': csrfToken } : {}),
+        },
+      }).catch(() => {});
+    }
+  };
+
+  // Send message handler via Omnichannel API
+  const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!replyInput.trim() || !activeConv) return;
+    if (!replyInput.trim() || !activeConv || sending) return;
 
+    const textToSend = replyInput.trim();
+    setReplyInput('');
+    setSending(true);
+
+    const tempId = `temp-${Date.now()}`;
     const newMsg: ChatMessage = {
-      id: `msg-${Date.now()}`,
+      id: tempId,
       sender: 'seller',
-      text: replyInput.trim(),
+      text: textToSend,
       timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
-      status: 'read',
+      status: 'sent',
     };
 
+    // Optimistic UI update
     setConversations((prev) =>
       prev.map((c) => {
         if (c.id === activeConv.id) {
@@ -170,7 +233,45 @@ export default function CustomerServiceIndex({
       })
     );
 
-    setReplyInput('');
+    try {
+      const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content;
+      const res = await fetch('/customer-service/send-message', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(csrfToken ? { 'X-CSRF-TOKEN': csrfToken } : {}),
+        },
+        body: JSON.stringify({
+          conversation_id: activeConv.id,
+          text: textToSend,
+        }),
+      });
+
+      const data = await res.json();
+      if (data?.message) {
+        setConversations((prev) =>
+          prev.map((c) => {
+            if (c.id === activeConv.id) {
+              return {
+                ...c,
+                messages: c.messages.map((m) => (m.id === tempId ? data.message : m)),
+              };
+            }
+            return c;
+          })
+        );
+      }
+      if (data?.api_error) {
+        setToastMessage(`Catatan API: ${data.api_error}`);
+        setTimeout(() => setToastMessage(null), 5000);
+      }
+    } catch (err: unknown) {
+      setToastMessage('Gagal mengirim ke server: ' + (err instanceof Error ? err.message : 'Koneksi terputus'));
+      setTimeout(() => setToastMessage(null), 5000);
+    } finally {
+      setSending(false);
+    }
   };
 
   // Quick reply select handler
@@ -187,13 +288,27 @@ export default function CustomerServiceIndex({
   };
 
   // Save internal note
-  const handleSaveNote = () => {
+  const handleSaveNote = async () => {
     if (!activeConv) return;
+    const noteText = csNoteInput.trim();
     setConversations((prev) =>
-      prev.map((c) => (c.id === activeConv.id ? { ...c, notes: csNoteInput } : c))
+      prev.map((c) => (c.id === activeConv.id ? { ...c, notes: noteText } : c))
     );
     setIsSavedNote(true);
     setTimeout(() => setIsSavedNote(false), 2000);
+
+    try {
+      const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content;
+      await fetch(`/customer-service/${activeConv.id}/notes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(csrfToken ? { 'X-CSRF-TOKEN': csrfToken } : {}),
+        },
+        body: JSON.stringify({ notes: noteText }),
+      });
+    } catch {}
   };
 
   return (
@@ -221,10 +336,99 @@ export default function CustomerServiceIndex({
               </svg>
             </div>
             <div>
-              <h1 className="text-base font-bold text-slate-900">Customer Service Terpadu</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-base font-bold text-slate-900">Customer Service Terpadu</h1>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Shopee Seller Chat
+                </span>
+                {channels.tiktok?.connected && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-black" />
+                    TikTok Shop
+                  </span>
+                )}
+              </div>
             </div>
           </div>
+
+          <div className="flex items-center gap-2.5">
+            {/* Live Indicator Toggle */}
+            <button
+              type="button"
+              onClick={() => setIsLiveActive((prev) => !prev)}
+              title={
+                isLiveActive
+                  ? 'Live Auto-Sync aktif: menyegarkan chat otomatis setiap 6 detik. Klik untuk menjeda.'
+                  : 'Live Auto-Sync dijeda. Klik untuk mengaktifkan kembali.'
+              }
+              className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                isLiveActive
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                  : 'border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              <span className="relative flex h-2 w-2">
+                {isLiveActive && (
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                )}
+                <span
+                  className={`relative inline-flex h-2 w-2 rounded-full ${
+                    isLiveActive ? 'bg-emerald-500' : 'bg-slate-400'
+                  }`}
+                />
+              </span>
+              <span>
+                {isLiveActive ? (
+                  <>
+                    Live Sync: <strong className="font-mono font-bold">{countdown}s</strong>
+                  </>
+                ) : (
+                  'Live: Jeda'
+                )}
+              </span>
+            </button>
+
+            {/* Manual Sync Button */}
+            <button
+              type="button"
+              onClick={handleManualSync}
+              disabled={syncing}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-slate-900 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-slate-800 transition-colors disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.8}
+                stroke="currentColor"
+                className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
+                />
+              </svg>
+              <span>{syncing ? 'Menyinkronkan...' : 'Sinkronkan Chat'}</span>
+            </button>
+          </div>
         </header>
+
+        {/* Toast Alert Notice */}
+        {toastMessage && (
+          <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 text-xs font-semibold text-amber-900 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-amber-700">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              </svg>
+              <span>{toastMessage}</span>
+            </div>
+            <button type="button" onClick={() => setToastMessage(null)} className="text-amber-700 hover:text-amber-900">
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* 3-Column Main Workspace */}
         <div className="flex flex-1 overflow-hidden">
@@ -335,7 +539,7 @@ export default function CustomerServiceIndex({
                   return (
                     <div
                       key={conv.id}
-                      onClick={() => setSelectedConvId(conv.id)}
+                      onClick={() => handleSelectConversation(conv)}
                       className={`group flex cursor-pointer items-start gap-3 p-3 transition-colors ${
                         isSelected
                           ? 'border-l-4 border-slate-900 bg-slate-100/90 font-medium'
@@ -499,8 +703,11 @@ export default function CustomerServiceIndex({
                         <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-400">
                           <span>{msg.timestamp}</span>
                           {!isBuyer && (
-                            <span title="Terkirim & Dibaca" className="text-sky-500 font-bold">
-                              ✓✓
+                            <span
+                              title={msg.status === 'read' ? 'Dibaca pembeli' : msg.status === 'sent' ? 'Terkirim' : 'Pending'}
+                              className={msg.status === 'read' ? 'text-sky-500 font-bold' : 'text-slate-400 font-bold'}
+                            >
+                              {msg.status === 'pending' ? '⏱' : msg.status === 'sent' ? '✓' : '✓✓'}
                             </span>
                           )}
                         </div>
@@ -712,12 +919,18 @@ export default function CustomerServiceIndex({
                 {/* Action Link to Orders / CutOff */}
                 <div className="pt-2">
                   <a
-                    href={`/cut-off?search=${encodeURIComponent(activeConv.order.order_sn)}`}
+                    href={
+                      activeConv.channel === 'shopee'
+                        ? `/shopee-orders?search=${encodeURIComponent(activeConv.order.order_sn)}`
+                        : activeConv.channel === 'tiktok'
+                        ? `/tiktok-orders?search=${encodeURIComponent(activeConv.order.order_sn)}`
+                        : `/cut-off?search=${encodeURIComponent(activeConv.order.order_sn)}`
+                    }
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex w-full items-center justify-center gap-1 rounded-lg border border-slate-200 bg-slate-50 py-1.5 text-center text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
                   >
-                    <span>Buka Rincian Order ERP</span>
+                    <span>Buka Rincian Order {activeConv.channel === 'shopee' ? 'Shopee' : 'TikTok'}</span>
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-3 w-3">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
                     </svg>

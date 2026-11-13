@@ -2,269 +2,32 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\CutOffOrder;
 use App\Models\ShopeeAccount;
-use App\Models\ShopeeOrder;
 use App\Models\TiktokAccount;
+use App\Services\CustomerServiceManager;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
 class CustomerServiceController extends Controller
 {
+    public function __construct(
+        private readonly CustomerServiceManager $csManager,
+    ) {}
+
     /**
      * Tampilkan halaman utama Omnichannel Customer Service (Shopee + TikTok Shop).
      */
     public function index(Request $request): InertiaResponse
     {
-        $shopeeAccount = ShopeeAccount::where('status', 'active')->first();
+        $this->csManager->ensureSchema();
+
+        $shopeeAccount = ShopeeAccount::where('status', 'active')->first() ?: ShopeeAccount::first();
         $tiktokAccount = TiktokAccount::first();
 
-        // Ambil contoh pesanan riil dari database lokal jika ada untuk melengkapi konteks pembeli
-        $realShopeeOrder = ShopeeOrder::latest('id')->first();
-        $shopeeOrderSn = $realShopeeOrder?->order_sn ?? '2611136UB88J62';
-        $shopeeProdName = $realShopeeOrder?->items_json[0]['item_name'] ?? 'RECORD IONIQ SEPATU SNEAKER SEKOLAH ANAK TK SD SMP UNISEX BLACK HITAM PUTIH PEREKAT 30-37';
-        $shopeeVariation = $realShopeeOrder?->items_json[0]['model_name'] ?? 'CONFERO-TUCSON P/H,37 (23CM)';
-        $shopeeSku = $realShopeeOrder?->items_json[0]['model_sku'] ?? 'RECORD-TUCSON-PH-37_01240237';
-        $shopeeTotal = (float) ($realShopeeOrder?->total_amount ?? 159299);
-        $shopeeCarrier = $realShopeeOrder?->shipping_carrier ?? 'SPX Standard';
-        $shopeeTracking = $realShopeeOrder?->tracking_number ?? null;
-
-        $conversations = [
-            [
-                'id'                 => 'conv-sh-01',
-                'channel'            => 'shopee',
-                'channel_label'      => 'Shopee',
-                'shop_name'          => $shopeeAccount?->account_name ?? 'Record Shoes Official Shop',
-                'buyer_username'     => 'fitria.rizal',
-                'buyer_name'         => 'Fitria Rizal',
-                'unread_count'       => 1,
-                'last_message'       => '[Ringkasan Chat] Pembeli butuh bantuanmu: Kak apakah ukuran 37 warna putih ini ready stok?',
-                'last_message_time'  => '09:39 WIB',
-                'status'             => 'unread',
-                'group'              => 'unread',
-                'order'              => [
-                    'order_sn'        => $shopeeOrderSn,
-                    'product_name'    => $shopeeProdName,
-                    'variation'       => $shopeeVariation,
-                    'sku'             => $shopeeSku,
-                    'price'           => $shopeeTotal,
-                    'status'          => 'Perlu Dikirim',
-                    'status_detail'   => 'Menunggu Pengemasan Gudang',
-                    'carrier'         => $shopeeCarrier,
-                    'tracking_number' => $shopeeTracking,
-                ],
-                'notes'              => 'Pembeli menanyakan stok dan minta pengemasan rapi.',
-                'messages'           => [
-                    [
-                        'id'        => 'msg-1',
-                        'sender'    => 'buyer',
-                        'text'      => 'Halo admin Record Shoes Official',
-                        'timestamp' => '09:35 WIB',
-                        'status'    => 'read',
-                    ],
-                    [
-                        'id'        => 'msg-2',
-                        'sender'    => 'seller',
-                        'text'      => 'Halo kak Fitria! Selamat datang di Record Shoes Official. Ada yang bisa kami bantu? 😊',
-                        'timestamp' => '09:36 WIB',
-                        'status'    => 'read',
-                    ],
-                    [
-                        'id'        => 'msg-3',
-                        'sender'    => 'buyer',
-                        'text'      => 'Kak, untuk ukuran 37 warna putih ini ready stok gak ya?',
-                        'timestamp' => '09:39 WIB',
-                        'status'    => 'received',
-                    ],
-                ],
-            ],
-            [
-                'id'                 => 'conv-tt-02',
-                'channel'            => 'tiktok',
-                'channel_label'      => 'TikTok Shop',
-                'shop_name'          => $tiktokAccount?->shop_name ?? 'Record Shoes Official TikTok',
-                'buyer_username'     => 'budi_santoso_sub',
-                'buyer_name'         => 'Budi Santoso',
-                'unread_count'       => 1,
-                'last_message'       => 'Min, kalau ukuran sepatu kurang pas bisa tukar size kan ya?',
-                'last_message_time'  => '08:15 WIB',
-                'status'             => 'unread',
-                'group'              => 'unread',
-                'order'              => [
-                    'order_sn'        => '5791823901823904',
-                    'product_name'    => 'RECORD CONFERO TUCSON SNEAKER SEKOLAH PRIA WANITA',
-                    'variation'       => 'Hitam Putih, 40 (25.5cm)',
-                    'sku'             => 'RECORD-TUCSON-HP-40',
-                    'price'           => 169000,
-                    'status'          => 'Perlu Dikirim',
-                    'status_detail'   => 'Siap Diproses',
-                    'carrier'         => 'Ninja Xpress',
-                    'tracking_number' => null,
-                ],
-                'notes'              => 'Tanya kebijakan garansi tukar size sebelum checkout.',
-                'messages'           => [
-                    [
-                        'id'        => 'msg-10',
-                        'sender'    => 'buyer',
-                        'text'      => 'Pagi min mau tanya dulu sebelum checkout',
-                        'timestamp' => '08:14 WIB',
-                        'status'    => 'received',
-                    ],
-                    [
-                        'id'        => 'msg-11',
-                        'sender'    => 'buyer',
-                        'text'      => 'Min, kalau ukuran sepatu kurang pas bisa tukar size kan ya?',
-                        'timestamp' => '08:15 WIB',
-                        'status'    => 'received',
-                    ],
-                ],
-            ],
-            [
-                'id'                 => 'conv-sh-03',
-                'channel'            => 'shopee',
-                'channel_label'      => 'Shopee',
-                'shop_name'          => $shopeeAccount?->account_name ?? 'Record Shoes Official Shop',
-                'buyer_username'     => 'dodinovrizon',
-                'buyer_name'         => 'Dodi Novrizon',
-                'unread_count'       => 0,
-                'last_message'       => 'Iya kak',
-                'last_message_time'  => 'Kemarin',
-                'status'             => 'read',
-                'group'              => 'manual',
-                'order'              => [
-                    'order_sn'        => '26111248X09ZZ1',
-                    'product_name'    => 'RECORD MOTOBIKE SITRUN SEPATU SEKOLAH HITAM POLOS',
-                    'variation'       => 'Hitam, 39 (24.5cm)',
-                    'sku'             => 'RECORD-SPK19-SB-39',
-                    'price'           => 134299,
-                    'status'          => 'Dikirim',
-                    'status_detail'   => 'Paket Dalam Perjalanan',
-                    'carrier'         => 'SPX Standard',
-                    'tracking_number' => 'SPXID09812763',
-                ],
-                'notes'              => 'Pesanan sudah diserahkan ke kurir SPX.',
-                'messages'           => [
-                    [
-                        'id'        => 'msg-20',
-                        'sender'    => 'buyer',
-                        'text'      => 'Sore min, paket saya sudah dikirim belum ya?',
-                        'timestamp' => 'Kemarin 16:30',
-                        'status'    => 'read',
-                    ],
-                    [
-                        'id'        => 'msg-21',
-                        'sender'    => 'seller',
-                        'text'      => 'Halo kak Dodi, paket sudah dipickup kurir SPX sore tadi dan resi SPXID09812763 sudah aktif ya kak.',
-                        'timestamp' => 'Kemarin 16:35',
-                        'status'    => 'read',
-                    ],
-                    [
-                        'id'        => 'msg-22',
-                        'sender'    => 'buyer',
-                        'text'      => 'Iya kak',
-                        'timestamp' => 'Kemarin 16:40',
-                        'status'    => 'read',
-                    ],
-                ],
-            ],
-            [
-                'id'                 => 'conv-tt-01',
-                'channel'            => 'tiktok',
-                'channel_label'      => 'TikTok Shop',
-                'shop_name'          => $tiktokAccount?->shop_name ?? 'Record Shoes Official TikTok',
-                'buyer_username'     => 'dewi_kartika99',
-                'buyer_name'         => 'Dewi Kartika',
-                'unread_count'       => 0,
-                'last_message'       => 'Baik min, sudah saya checkout ya. Mohon segera diproses.',
-                'last_message_time'  => 'Kemarin',
-                'status'             => 'read',
-                'group'              => 'manual',
-                'order'              => [
-                    'order_sn'        => '5798234719082341',
-                    'product_name'    => 'RECORD KYLIE SEPATU SNEAKERS SEKOLAH ANAK SMP SMA CEWE BLACK HITAM/PUTIH 12 TH KEATAS TALI 33-40',
-                    'variation'       => 'Putih, 38 (24cm)',
-                    'sku'             => 'RECORD-KYLIE-P-38_01224638',
-                    'price'           => 141599,
-                    'status'          => 'Dikirim',
-                    'status_detail'   => 'Paket Diserahkan ke Kurir',
-                    'carrier'         => 'J&T Express',
-                    'tracking_number' => 'JT9928172901',
-                ],
-                'notes'              => 'Pengiriman reguler J&T.',
-                'messages'           => [
-                    [
-                        'id'        => 'msg-4',
-                        'sender'    => 'buyer',
-                        'text'      => 'Min kalau order sekarang dikirim hari apa ya?',
-                        'timestamp' => 'Kemarin 09:30',
-                        'status'    => 'read',
-                    ],
-                    [
-                        'id'        => 'msg-5',
-                        'sender'    => 'seller',
-                        'text'      => 'Halo kak Dewi! Pesanan yang masuk sebelum jam 15.00 WIB langsung kami kirim hari ini ya kak ✨',
-                        'timestamp' => 'Kemarin 09:35',
-                        'status'    => 'read',
-                    ],
-                    [
-                        'id'        => 'msg-6',
-                        'sender'    => 'buyer',
-                        'text'      => 'Baik min, sudah saya checkout ya. Mohon segera diproses.',
-                        'timestamp' => 'Kemarin 09:42',
-                        'status'    => 'read',
-                    ],
-                ],
-            ],
-            [
-                'id'                 => 'conv-sh-02',
-                'channel'            => 'shopee',
-                'channel_label'      => 'Shopee',
-                'shop_name'          => $shopeeAccount?->account_name ?? 'Record Shoes Official Shop',
-                'buyer_username'     => 'newblackelucidator',
-                'buyer_name'         => 'Ahmad Pratama',
-                'unread_count'       => 0,
-                'last_message'       => 'Terima kasih min infonya, paket sudah sampai tadi siang 👍',
-                'last_message_time'  => '2 hari lalu',
-                'status'             => 'resolved',
-                'group'              => 'auto',
-                'order'              => [
-                    'order_sn'        => '26111259X07YEX',
-                    'product_name'    => 'RECORD KYLIE SEPATU SNEAKERS SEKOLAH ANAK SMP SMA CEWE BLACK HITAM/PUTIH',
-                    'variation'       => 'Putih, 34 (22 cm)',
-                    'sku'             => 'RECORD-KYLIE-P-34',
-                    'price'           => 154199,
-                    'status'          => 'Selesai',
-                    'status_detail'   => 'Pesanan Diterima Pembeli',
-                    'carrier'         => 'SPX Instant',
-                    'tracking_number' => 'SPXID0299281',
-                ],
-                'notes'              => 'Pengiriman kurir instan berhasil.',
-                'messages'           => [
-                    [
-                        'id'        => 'msg-7',
-                        'sender'    => 'buyer',
-                        'text'      => 'Min kurir instan nya estimasi jam berapa ya sampai ke alamat?',
-                        'timestamp' => '2 hari lalu',
-                        'status'    => 'read',
-                    ],
-                    [
-                        'id'        => 'msg-8',
-                        'sender'    => 'seller',
-                        'text'      => 'Halo kak Ahmad, kurir SPX Instant sudah pickup dari gudang dan sedang meluncur ke alamat tujuan ya kak.',
-                        'timestamp' => '2 hari lalu',
-                        'status'    => 'read',
-                    ],
-                    [
-                        'id'        => 'msg-9',
-                        'sender'    => 'buyer',
-                        'text'      => 'Terima kasih min infonya, paket sudah sampai tadi siang 👍',
-                        'timestamp' => '2 hari lalu',
-                        'status'    => 'read',
-                    ],
-                ],
-            ],
-        ];
+        $conversations = $this->csManager->getConversationsData();
 
         $quickReplies = [
             [
@@ -299,6 +62,9 @@ class CustomerServiceController extends Controller
             ],
         ];
 
+        $isShopeeConnected = $shopeeAccount && ! empty($shopeeAccount->access_token);
+        $isTiktokConnected = $tiktokAccount && ! empty($tiktokAccount->access_token);
+
         return Inertia::render('CustomerService/Index', [
             'initialConversations' => $conversations,
             'quickReplies'         => $quickReplies,
@@ -306,16 +72,107 @@ class CustomerServiceController extends Controller
                 'shopee' => [
                     'name'      => 'Shopee',
                     'shop_name' => $shopeeAccount?->account_name ?? 'Record Shoes Official Shop',
-                    'status'    => $shopeeAccount ? 'Terhubung' : 'Terhubung (API V2)',
+                    'status'    => $isShopeeConnected ? 'Terhubung (Shopee Seller Chat)' : 'Belum Terhubung',
+                    'connected' => $isShopeeConnected,
                     'color'     => '#EE4D2D',
                 ],
                 'tiktok' => [
                     'name'      => 'TikTok Shop',
-                    'shop_name' => $tiktokAccount?->shop_name ?? 'Record Shoes Official TikTok',
-                    'status'    => 'Siap Integrasi (Pengajuan CS)',
+                    'shop_name' => $tiktokAccount?->account_name ?? 'Record Shoes Official TikTok',
+                    'status'    => $isTiktokConnected ? 'Terhubung (TikTok Partner CS)' : 'Belum Terhubung',
+                    'connected' => $isTiktokConnected,
                     'color'     => '#000000',
                 ],
             ],
+        ]);
+    }
+
+    /**
+     * Polling real-time endpoint untuk update obrolan dan pesan baru.
+     */
+    public function poll(Request $request): JsonResponse
+    {
+        $channel = $request->query('channel');
+        $conversations = $this->csManager->getConversationsData($channel ? ['channel' => $channel] : []);
+
+        return response()->json([
+            'status'        => 'success',
+            'conversations' => $conversations,
+            'polled_at'     => now('Asia/Jakarta')->format('H.i.s') . ' WIB',
+        ]);
+    }
+
+    /**
+     * Trigger sinkronisasi chat manual dari Shopee & TikTok API.
+     */
+    public function sync(Request $request): RedirectResponse
+    {
+        $channel = $request->input('channel', 'all');
+
+        $shopeeRes = null;
+        $tiktokRes = null;
+
+        if ($channel === 'all' || $channel === 'shopee') {
+            $shopeeRes = $this->csManager->syncShopeeChat();
+        }
+
+        if ($channel === 'all' || $channel === 'tiktok') {
+            $tiktokRes = $this->csManager->syncTiktokChat();
+        }
+
+        $totalSynced = ($shopeeRes['synced'] ?? 0) + ($tiktokRes['synced'] ?? 0);
+        $messages = [];
+        if ($shopeeRes) {
+            $messages[] = 'Shopee: ' . ($shopeeRes['message'] ?? 'OK');
+        }
+        if ($tiktokRes) {
+            $messages[] = 'TikTok: ' . ($tiktokRes['message'] ?? 'OK');
+        }
+
+        return back()->with('success', implode(' | ', $messages));
+    }
+
+    /**
+     * Kirim pesan baru ke percakapan pembeli.
+     */
+    public function sendMessage(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'conversation_id' => ['required'],
+            'text'            => ['required', 'string', 'max:2000'],
+        ]);
+
+        try {
+            $result = $this->csManager->sendMessage($validated['conversation_id'], $validated['text']);
+            return response()->json($result);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengirim pesan: ' . $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Tandai percakapan sebagai terbaca.
+     */
+    public function markAsRead(Request $request, int|string $id): JsonResponse
+    {
+        $ok = $this->csManager->markAsRead($id);
+        return response()->json(['success' => $ok]);
+    }
+
+    /**
+     * Simpan catatan internal CS untuk percakapan ini.
+     */
+    public function saveNotes(Request $request, int|string $id): JsonResponse
+    {
+        $notes = (string) $request->input('notes', '');
+        $ok = $this->csManager->saveNotes($id, $notes);
+
+        return response()->json([
+            'success' => $ok,
+            'message' => 'Catatan internal berhasil disimpan.',
         ]);
     }
 }

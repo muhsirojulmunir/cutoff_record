@@ -218,6 +218,56 @@ export default function SideChatDock({ isOpen: controlledIsOpen, onClose }: Side
     return () => window.removeEventListener('toggle-side-chat-dock', handleToggle);
   }, [controlledIsOpen, onClose]);
 
+  // Poll live conversations when drawer is open
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const fetchLive = () => {
+      fetch('/customer-service/poll', {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.conversations && Array.isArray(data.conversations) && data.conversations.length > 0) {
+            const mapped: SideChatConversation[] = data.conversations.map((c: any) => ({
+              id: String(c.id),
+              channel: c.channel === 'tiktok' ? 'tiktok' : 'shopee',
+              channel_label: c.channel_label || (c.channel === 'shopee' ? 'Shopee' : 'TikTok Shop'),
+              shop_name: c.shop_name || 'Record Shoes Official',
+              buyer_username: c.buyer_username || 'buyer',
+              buyer_name: c.buyer_name || 'Pembeli',
+              unread_count: Number(c.unread_count || 0),
+              last_message: c.last_message || '',
+              last_message_time: c.last_message_time || '',
+              group: (c.unread_count > 0 ? 'unread' : (c.status === 'resolved' ? 'auto' : 'manual')) as 'unread' | 'auto' | 'manual',
+              order: c.order || {
+                order_sn: '-',
+                product_name: '-',
+                variation: '-',
+                sku: '-',
+                price: 0,
+                status: '-',
+              },
+              messages: Array.isArray(c.messages)
+                ? c.messages.map((m: any) => ({
+                    id: String(m.id),
+                    sender: m.sender === 'buyer' ? 'buyer' : 'seller',
+                    text: m.text || '',
+                    timestamp: m.timestamp || '',
+                  }))
+                : [],
+            }));
+            setConversations(mapped);
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchLive();
+    const interval = setInterval(fetchLive, 8000);
+    return () => clearInterval(interval);
+  }, [isOpen]);
+
   // Active selected conversation in mini chat view
   const activeConv = useMemo(() => {
     if (!selectedConvId) return null;
@@ -255,14 +305,16 @@ export default function SideChatDock({ isOpen: controlledIsOpen, onClose }: Side
   const manualItems = useMemo(() => filteredList.filter((c) => c.group === 'manual'), [filteredList]);
 
   // Send message from mini chat view
-  const handleSendReply = (e?: React.FormEvent) => {
+  const handleSendReply = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!replyText.trim() || !activeConv) return;
 
+    const textToSend = replyText.trim();
+    const tempId = `sc-msg-${Date.now()}`;
     const newMsg: SideChatMessage = {
-      id: `sc-msg-${Date.now()}`,
+      id: tempId,
       sender: 'seller',
-      text: replyText.trim(),
+      text: textToSend,
       timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
     };
 
@@ -273,7 +325,7 @@ export default function SideChatDock({ isOpen: controlledIsOpen, onClose }: Side
             ...c,
             unread_count: 0,
             group: 'manual',
-            last_message: replyText.trim(),
+            last_message: textToSend,
             last_message_time: 'Baru saja',
             messages: [...c.messages, newMsg],
           };
@@ -283,14 +335,42 @@ export default function SideChatDock({ isOpen: controlledIsOpen, onClose }: Side
     );
 
     setReplyText('');
+
+    try {
+      const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content;
+      await fetch('/customer-service/send-message', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(csrfToken ? { 'X-CSRF-TOKEN': csrfToken } : {}),
+        },
+        body: JSON.stringify({
+          conversation_id: activeConv.id,
+          text: textToSend,
+        }),
+      });
+    } catch {}
   };
 
   const handleSelectConv = (convId: string) => {
     setSelectedConvId(convId);
-    // Mark as read locally
+    // Mark as read locally and dispatch to server
     setConversations((prev) =>
       prev.map((c) => (c.id === convId ? { ...c, unread_count: 0 } : c))
     );
+
+    try {
+      const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content;
+      fetch(`/customer-service/${convId}/read`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(csrfToken ? { 'X-CSRF-TOKEN': csrfToken } : {}),
+        },
+      }).catch(() => {});
+    } catch {}
   };
 
   return (
@@ -675,7 +755,18 @@ export default function SideChatDock({ isOpen: controlledIsOpen, onClose }: Side
               {activeConv.order && (
                 <div className="border-b border-slate-200 bg-amber-50/40 p-2.5 text-xs">
                   <div className="flex items-center justify-between text-[10px] font-semibold text-slate-600">
-                    <span>Pesanan: {activeConv.order.order_sn}</span>
+                    <a
+                      href={
+                        activeConv.channel === 'shopee'
+                          ? `/shopee-orders?search=${encodeURIComponent(activeConv.order.order_sn)}`
+                          : `/tiktok-orders?search=${encodeURIComponent(activeConv.order.order_sn)}`
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono text-sky-700 hover:underline"
+                    >
+                      Pesanan: {activeConv.order.order_sn} ↗
+                    </a>
                     <span className="rounded bg-amber-100 px-1 text-amber-800 font-bold">
                       {activeConv.order.status}
                     </span>

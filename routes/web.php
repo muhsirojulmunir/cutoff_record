@@ -90,6 +90,11 @@ Route::middleware('auth')->group(function () {
 
     // Customer Service (Omnichannel Shopee & TikTok Shop)
     Route::get('/customer-service', [\App\Http\Controllers\CustomerServiceController::class, 'index'])->name('customer-service.index');
+    Route::get('/customer-service/poll', [\App\Http\Controllers\CustomerServiceController::class, 'poll'])->name('customer-service.poll');
+    Route::post('/customer-service/sync', [\App\Http\Controllers\CustomerServiceController::class, 'sync'])->name('customer-service.sync');
+    Route::post('/customer-service/send-message', [\App\Http\Controllers\CustomerServiceController::class, 'sendMessage'])->name('customer-service.send-message');
+    Route::post('/customer-service/{id}/read', [\App\Http\Controllers\CustomerServiceController::class, 'markAsRead'])->name('customer-service.read');
+    Route::post('/customer-service/{id}/notes', [\App\Http\Controllers\CustomerServiceController::class, 'saveNotes'])->name('customer-service.notes');
 
     // Pesanan Saya Shopee (Eksklusif Super Admin - Fulfillment & Cetak Resi A4)
     Route::get('/shopee-orders', [\App\Http\Controllers\ShopeeOrderController::class, 'index'])->name('shopee-orders.index');
