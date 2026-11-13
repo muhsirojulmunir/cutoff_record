@@ -1014,4 +1014,54 @@ class ShopeeOrderControllerTest extends TestCase
         $this->assertSame('SHIPPED', ShopeeOrder::where('order_sn', $pendingSn)->value('order_status'));
         $this->assertSame('Dikirim', CutOffOrder::where('order_number', $pendingSn)->value('order_status'));
     }
+
+    public function test_escrow_detail_endpoint_returns_live_order_income_and_cutoff_data(): void
+    {
+        $orderSn = '2611136UB88J62';
+        $this->makeShopeeOrder([
+            'order_sn'     => $orderSn,
+            'order_status' => 'READY_TO_SHIP',
+            'total_amount' => 159299,
+        ]);
+        $this->makeCutOffOrder($orderSn, [
+            'order_status'           => 'Perlu Dikirim',
+            'est_net_income'         => 129649,
+            'marketplace_net_payout' => 129649,
+            'financial_breakdown'    => [
+                'seller_voucher' => 20000,
+                'voucher_code'   => 'RECORD20',
+            ],
+        ]);
+
+        Http::fake([
+            '*/api/v2/payment/get_escrow_detail*' => Http::response([
+                'error'    => '',
+                'message'  => '',
+                'response' => [
+                    'order_sn'     => $orderSn,
+                    'order_income' => [
+                        'cost_of_goods_sold'   => 189999,
+                        'voucher_from_seller'  => 20000,
+                        'seller_voucher_code'  => ['RECORD20'],
+                        'commission_fee'       => 17340,
+                        'service_fee'          => 11050,
+                        'seller_transaction_fee'=> 4310,
+                        'final_product_vat_tax'=> 850,
+                        'escrow_amount'        => 129649,
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this->actingAs($this->superAdmin)
+            ->getJson("/shopee-orders/{$orderSn}/escrow-detail");
+
+        $response->assertOk()
+            ->assertJsonPath('status', 'success')
+            ->assertJsonPath('order_sn', $orderSn)
+            ->assertJsonPath('order_income.escrow_amount', 129649)
+            ->assertJsonPath('order_income.voucher_from_seller', 20000)
+            ->assertJsonPath('cutoff.seller_voucher', 20000)
+            ->assertJsonPath('cutoff.voucher_code', 'RECORD20');
+    }
 }

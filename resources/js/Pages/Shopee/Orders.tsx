@@ -2555,12 +2555,20 @@ export default function ShopeeOrdersPage({
 
                       <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1">
                         <span className="text-[11px] text-slate-400">No. Pesanan</span>
-                        <span className="font-mono text-xs font-bold text-slate-900">
-                          {order.order_sn}
-                        </span>
                         <button
                           type="button"
-                          onClick={() => handleCopyText(snCopyKey, order.order_sn, 'No. Pesanan')}
+                          onClick={() => openOrderDrawer(order, false)}
+                          title="Klik untuk melihat Rincian Pesanan"
+                          className="cursor-pointer font-mono text-xs font-bold text-slate-900 transition-colors hover:text-[#EE4D2D] hover:underline"
+                        >
+                          {order.order_sn}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCopyText(snCopyKey, order.order_sn, 'No. Pesanan');
+                          }}
                           title="Salin No. Pesanan"
                           className="ml-0.5 cursor-pointer rounded px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
                         >

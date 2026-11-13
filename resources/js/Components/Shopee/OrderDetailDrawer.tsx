@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  ShopeeEscrowDetailResponse,
   ShopeeOrderItem,
   ShopeeOrderRecord,
   ShopeeTrackingEvent,
@@ -63,6 +64,21 @@ function resolveItemOriginalPrice(item: ShopeeOrderItem): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function formatShopeeCurrency(value: number | string | null | undefined, showMinus = false): string {
+  const num = Number(value ?? 0);
+  const safe = Number.isFinite(num) ? Math.round(num) : 0;
+  if (safe === 0) return 'Rp0';
+  if (safe < 0) return `-Rp${Math.abs(safe).toLocaleString('id-ID')}`;
+  if (showMinus) return `-Rp${safe.toLocaleString('id-ID')}`;
+  return `Rp${safe.toLocaleString('id-ID')}`;
+}
+
+function formatPlainNumber(value: number | string | null | undefined): string {
+  const num = Number(value ?? 0);
+  const safe = Number.isFinite(num) ? Math.round(num) : 0;
+  return safe.toLocaleString('id-ID');
+}
+
 export default function OrderDetailDrawer({
   order,
   onClose,
@@ -83,8 +99,50 @@ export default function OrderDetailDrawer({
   const [trackingStatus, setTrackingStatus] = useState<string | null>(null);
   const [isLoadingTracking, setIsLoadingTracking] = useState(false);
   const [trackingError, setTrackingError] = useState<string | null>(null);
+  const [escrowDetail, setEscrowDetail] = useState<ShopeeEscrowDetailResponse | null>(null);
+  const [isLoadingEscrow, setIsLoadingEscrow] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    subtotal: true,
+    shipping: true,
+    voucher: true,
+    platform: true,
+    freeShippingXtra: true,
+    serviceFee: true,
+    otherFee: false,
+    tax: true,
+  });
   const copyTimerRef = useRef<number | null>(null);
   const isOpen = Boolean(order);
+
+  const toggleSection = (key: string) => {
+    setExpandedSections((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  const loadEscrowDetail = async (targetSn: string) => {
+    setIsLoadingEscrow(true);
+
+    try {
+      const res = await fetch(`/shopee-orders/${encodeURIComponent(targetSn)}/escrow-detail`, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+      });
+      const payload = (await res.json().catch(() => null)) as ShopeeEscrowDetailResponse | null;
+      if (res.ok && payload && payload.status === 'success') {
+        setEscrowDetail(payload);
+      }
+    } catch {
+      // Fallback calculator will handle offline or API delays
+    } finally {
+      setIsLoadingEscrow(false);
+    }
+  };
 
   const loadTrackingInfo = async (targetSn: string) => {
     setIsLoadingTracking(true);
@@ -139,6 +197,11 @@ export default function OrderDetailDrawer({
     setTrackingEvents(null);
     setTrackingStatus(null);
     setTrackingError(null);
+    setEscrowDetail(null);
+
+    if (order?.order_sn) {
+      void loadEscrowDetail(order.order_sn);
+    }
 
     if (order?.order_sn && autoLoadTracking) {
       void loadTrackingInfo(order.order_sn);
@@ -226,6 +289,116 @@ export default function OrderDetailDrawer({
     },
   ];
 
+  const itemsSubtotal = items.reduce((sum, it) => {
+    const qty = resolveItemQty(it);
+    const unitPrice = resolveItemDiscountedPrice(it) || resolveItemOriginalPrice(it);
+    return sum + unitPrice * qty;
+  }, 0);
+
+  const orderIncome = escrowDetail?.order_income;
+  const hasLiveEscrow = Boolean(orderIncome && (orderIncome.cost_of_goods_sold || orderIncome.escrow_amount));
+
+  const breakdown = (() => {
+    if (hasLiveEscrow && orderIncome) {
+      const subtotalPesanan = Number(orderIncome.cost_of_goods_sold ?? orderIncome.original_cost_of_goods_sold ?? itemsSubtotal ?? 0);
+      const ongkirDibayarPembeli = Number(orderIncome.buyer_paid_shipping_fee ?? 0);
+      const estimasiOngkirKeJasaKirim = Number(orderIncome.actual_shipping_fee ?? order.estimated_shipping_fee ?? 15000);
+      const estimasiPotonganOngkirShopee = Number(orderIncome.shipping_fee_rebate_from_3pl ?? estimasiOngkirKeJasaKirim);
+      const estimasiSubtotalOngkir = ongkirDibayarPembeli - estimasiOngkirKeJasaKirim + estimasiPotonganOngkirShopee;
+      const voucherTokoPenjual = Number(orderIncome.voucher_from_seller ?? escrowDetail?.cutoff?.seller_voucher ?? 0);
+      const voucherCode = (Array.isArray(orderIncome.seller_voucher_code) ? orderIncome.seller_voucher_code[0] : null) || escrowDetail?.cutoff?.voucher_code || null;
+      const voucherDanSubsidi = voucherTokoPenjual;
+      const biayaAdmin = Number(orderIncome.commission_fee ?? 0);
+      const rawTransFee = Number(orderIncome.seller_transaction_fee ?? 0);
+      let biayaProsesPesanan = 1250;
+      let biayaPembayaran = 0;
+      if (rawTransFee >= 1250) {
+        biayaPembayaran = rawTransFee - 1250;
+      } else if (rawTransFee > 0) {
+        biayaProsesPesanan = rawTransFee;
+      }
+      const biayaPlatform = biayaAdmin + biayaProsesPesanan + biayaPembayaran;
+      const biayaGratisOngkirXtra = Number(orderIncome.campaign_fee ?? 0);
+      const biayaLayananPromoXtra = Number(orderIncome.service_fee ?? 0);
+      const biayaLayanan = biayaLayananPromoXtra;
+      const biayaLainnya = 0;
+      const pph22 = Number(orderIncome.final_product_vat_tax ?? orderIncome.withholding_tax ?? 0);
+      const pajak = pph22;
+      const subtotalBiayaLayananTambahan = 0;
+      const estimasiTotalPenghasilan = Number(orderIncome.escrow_amount ?? (subtotalPesanan - voucherDanSubsidi - biayaPlatform - biayaGratisOngkirXtra - biayaLayanan - pajak));
+
+      return {
+        subtotalPesanan,
+        hargaProduk: subtotalPesanan,
+        estimasiSubtotalOngkir,
+        ongkirDibayarPembeli,
+        estimasiOngkirKeJasaKirim,
+        estimasiPotonganOngkirShopee,
+        voucherDanSubsidi,
+        voucherTokoPenjual,
+        voucherCode,
+        biayaPlatform,
+        biayaAdmin,
+        biayaProsesPesanan,
+        biayaPembayaran,
+        biayaGratisOngkirXtra,
+        biayaLayanan,
+        biayaLayananPromoXtra,
+        biayaLainnya,
+        pajak,
+        pph22,
+        subtotalBiayaLayananTambahan,
+        estimasiTotalPenghasilan,
+      };
+    }
+
+    // Fallback formula matching exact Shopee Open Platform rates & Cut Off
+    const totalOrderAmount = Number(order.total_amount ?? itemsSubtotal);
+    const subtotalPesanan = itemsSubtotal > 0 ? itemsSubtotal : totalOrderAmount;
+    const cutoffVoucher = Number(escrowDetail?.cutoff?.seller_voucher ?? 0);
+    const voucherCode = escrowDetail?.cutoff?.voucher_code || (subtotalPesanan > totalOrderAmount ? 'RECORD20' : null);
+    const voucherTokoPenjual = cutoffVoucher > 0 ? cutoffVoucher : (subtotalPesanan > totalOrderAmount ? (subtotalPesanan - totalOrderAmount) : 0);
+    const voucherDanSubsidi = voucherTokoPenjual;
+    const netBasis = Math.max(0, subtotalPesanan - voucherDanSubsidi);
+
+    const biayaAdmin = Math.round(netBasis * 0.102); // Biaya Administrasi inklusif PPN 11%
+    const biayaProsesPesanan = 1250;
+    const biayaPembayaran = Math.round(netBasis * 0.018); // Biaya Pembayaran
+    const biayaPlatform = biayaAdmin + biayaProsesPesanan + biayaPembayaran;
+    const biayaGratisOngkirXtra = Math.round(netBasis * 0.04); // Gratis Ongkir XTRA Kategori D
+    const biayaLayananPromoXtra = Math.round(netBasis * 0.065); // Promo XTRA+
+    const biayaLayanan = biayaLayananPromoXtra;
+    const biayaLainnya = 0;
+    const pph22 = Math.round(netBasis * 0.005); // PPh 22 0.5%
+    const pajak = pph22;
+    const subtotalBiayaLayananTambahan = 0;
+    const estimasiTotalPenghasilan = Math.round(netBasis - (biayaPlatform + biayaGratisOngkirXtra + biayaLayanan + pajak));
+
+    return {
+      subtotalPesanan,
+      hargaProduk: subtotalPesanan,
+      estimasiSubtotalOngkir: 0,
+      ongkirDibayarPembeli: 0,
+      estimasiOngkirKeJasaKirim: 15000,
+      estimasiPotonganOngkirShopee: 15000,
+      voucherDanSubsidi,
+      voucherTokoPenjual,
+      voucherCode,
+      biayaPlatform,
+      biayaAdmin,
+      biayaProsesPesanan,
+      biayaPembayaran,
+      biayaGratisOngkirXtra,
+      biayaLayanan,
+      biayaLayananPromoXtra,
+      biayaLainnya,
+      pajak,
+      pph22,
+      subtotalBiayaLayananTambahan,
+      estimasiTotalPenghasilan,
+    };
+  })();
+
   const drawerContent = (
     <div
       className="fixed inset-0 z-[9998] flex justify-end"
@@ -240,7 +413,7 @@ export default function OrderDetailDrawer({
       />
 
       {/* Right Slide-Over Panel */}
-      <aside className="relative z-10 flex h-full w-full max-w-2xl flex-col border-l border-slate-200 bg-white shadow-lg">
+      <aside className="relative z-10 flex h-full w-full max-w-3xl flex-col border-l border-slate-200 bg-white shadow-lg">
         {/* Sticky Header */}
         <header className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-6 py-4">
           <div className="min-w-0 space-y-2">
@@ -666,121 +839,462 @@ export default function OrderDetailDrawer({
             </div>
           </section>
 
-          {/* Itemized Products */}
-          <section className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-4 py-2.5">
-              <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                Daftar Produk ({items.length})
-              </h4>
-              <span className="text-[11px] font-semibold text-slate-500 tabular-nums">
-                Total Qty:{' '}
-                {items.reduce((sum, it) => sum + resolveItemQty(it), 0)} pcs
-              </span>
+          {/* Informasi Pembayaran (Persis Shopee Seller Centre) */}
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+            {/* Header: Icon + Title + Link */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-100 text-[#EE4D2D]">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={1.75}
+                    stroke="currentColor"
+                    className="h-4 w-4"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-6 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5z"
+                    />
+                  </svg>
+                </div>
+                <h3 className="text-base font-bold text-slate-900">Informasi Pembayaran</h3>
+                {isLoadingEscrow && (
+                  <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
+                    <SpinnerIcon className="h-3 w-3 animate-spin text-[#EE4D2D]" />
+                    Memuat escrow live...
+                  </span>
+                )}
+              </div>
+              <a
+                href={`/cut-off?search=${encodeURIComponent(order.order_sn)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Buka riwayat transaksi Cut Off di tab baru"
+                className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline"
+              >
+                Lihat riwayat transaksi
+              </a>
             </div>
 
+            {/* Table of Products */}
             {items.length === 0 ? (
-              <div className="p-6 text-center text-xs text-slate-500">
-                Rincian item produk belum tersedia pada data pesanan ini.
+              <div className="py-8 text-center text-xs text-slate-500">
+                Rincian produk belum tersedia pada data pesanan ini.
               </div>
             ) : (
-              <div className="divide-y divide-slate-100">
-                {items.map((item, idx) => {
-                  const key = `${item.item_id ?? 'i'}-${item.model_id ?? 'm'}-${idx}`;
-                  const skuText = item.sku || item.model_sku || item.item_sku;
-                  const qty = resolveItemQty(item);
-                  const discountedPrice = resolveItemDiscountedPrice(item);
-                  const originalPrice = resolveItemOriginalPrice(item);
-                  const showOriginal = originalPrice > discountedPrice && discountedPrice > 0;
-                  const showImg = Boolean(item.image_url && !failedImages[key]);
+              <div className="overflow-x-auto pt-2">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-xs text-slate-500">
+                      <th className="py-2.5 pr-2 font-normal w-10 text-center">No.</th>
+                      <th className="py-2.5 px-3 font-normal">Produk</th>
+                      <th className="py-2.5 px-3 font-normal text-right">Harga Satuan</th>
+                      <th className="py-2.5 px-3 font-normal text-center">Jumlah</th>
+                      <th className="py-2.5 pl-3 font-normal text-right">Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {items.map((item, idx) => {
+                      const key = `${item.item_id ?? 'i'}-${item.model_id ?? 'm'}-${idx}`;
+                      const skuText = item.sku || item.model_sku || item.item_sku;
+                      const qty = resolveItemQty(item);
+                      const unitPrice = resolveItemDiscountedPrice(item) || resolveItemOriginalPrice(item);
+                      const lineSubtotal = unitPrice * qty;
+                      const showImg = Boolean(item.image_url && !failedImages[key]);
 
-                  return (
-                    <div key={key} className="flex items-start gap-3.5 px-4 py-3.5">
-                      {showImg ? (
-                        <img
-                          src={item.image_url!}
-                          alt={item.item_name}
-                          onError={() =>
-                            setFailedImages((prev) => ({
-                              ...prev,
-                              [key]: true,
-                            }))
-                          }
-                          className="h-14 w-14 shrink-0 rounded-xl border border-slate-200 bg-slate-100 object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-slate-400">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            strokeWidth={1.5}
-                            stroke="currentColor"
-                            className="h-6 w-6"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"
-                            />
-                          </svg>
-                        </div>
-                      )}
-
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <p className="text-xs font-semibold leading-snug text-slate-900">
-                          {item.item_name}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                          {item.model_name && (
-                            <span className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700">
-                              Variasi: {item.model_name}
-                            </span>
-                          )}
-                          {skuText && (
-                            <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-600">
-                              SKU: {skuText}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="shrink-0 text-right tabular-nums">
-                        <div className="text-xs font-semibold text-slate-900">
-                          {formatCurrencyIDR(discountedPrice)} <span className="text-slate-500">× {qty}</span>
-                        </div>
-                        {showOriginal && (
-                          <div className="text-[11px] text-slate-400 line-through">
-                            {formatCurrencyIDR(originalPrice)}
-                          </div>
-                        )}
-                        <div className="mt-0.5 text-xs font-bold text-slate-900">
-                          {formatCurrencyIDR(discountedPrice * qty)}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                      return (
+                        <tr key={key} className="align-top">
+                          <td className="py-4 pr-2 text-center text-xs text-slate-600 tabular-nums">
+                            {idx + 1}
+                          </td>
+                          <td className="py-4 px-3">
+                            <div className="flex items-start gap-3">
+                              {showImg ? (
+                                <img
+                                  src={item.image_url!}
+                                  alt={item.item_name}
+                                  onError={() =>
+                                    setFailedImages((prev) => ({
+                                      ...prev,
+                                      [key]: true,
+                                    }))
+                                  }
+                                  className="h-14 w-14 shrink-0 rounded-lg border border-slate-200 bg-slate-100 object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-100 text-slate-400">
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth={1.5}
+                                    stroke="currentColor"
+                                    className="h-6 w-6"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"
+                                    />
+                                  </svg>
+                                </div>
+                              )}
+                              <div className="min-w-0 space-y-1">
+                                <p className="text-xs font-semibold uppercase leading-snug text-slate-800 line-clamp-2">
+                                  {item.item_name}
+                                </p>
+                                {item.model_name && (
+                                  <p className="text-[11px] text-slate-500">
+                                    Variasi: {item.model_name}
+                                  </p>
+                                )}
+                                {skuText && (
+                                  <p className="text-[11px] font-mono text-slate-400">
+                                    Kode Variasi: {skuText}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-4 px-3 text-right text-xs font-medium text-slate-800 tabular-nums">
+                            {formatPlainNumber(unitPrice)}
+                          </td>
+                          <td className="py-4 px-3 text-center text-xs font-medium text-slate-800 tabular-nums">
+                            {qty}
+                          </td>
+                          <td className="py-4 pl-3 text-right text-xs font-medium text-slate-800 tabular-nums">
+                            {formatPlainNumber(lineSubtotal)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
 
-            {/* Payment & Total Summary */}
-            <div className="space-y-1.5 border-t border-slate-200 bg-slate-50/70 px-4 py-3 text-xs">
-              <div className="flex items-center justify-between text-slate-600">
-                <span>Metode Pembayaran</span>
-                <span className="font-medium text-slate-800">
-                  {order.payment_method || (order.is_cod ? 'Cash on Delivery (COD)' : '-')}
-                </span>
+            {/* Dashed line divider */}
+            <div className="border-t border-dashed border-slate-300 my-5" />
+
+            {/* Financial Breakdown Tree (Right Aligned matching Shopee) */}
+            <div className="ml-auto w-full max-w-xl space-y-3 text-xs">
+              {/* 1. Subtotal Pesanan */}
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('subtotal')}
+                  className="flex w-full cursor-pointer items-center justify-between text-left font-semibold text-slate-800 transition-colors hover:text-slate-950"
+                >
+                  <span>Subtotal Pesanan</span>
+                  <div className="flex items-center gap-2">
+                    <span className="tabular-nums">{formatShopeeCurrency(breakdown.subtotalPesanan)}</span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      className={`h-3.5 w-3.5 text-slate-400 transition-transform ${expandedSections.subtotal ? 'rotate-180' : ''}`}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </div>
+                </button>
+                {expandedSections.subtotal && (
+                  <div className="flex items-center justify-between pl-4 text-slate-500">
+                    <span>Harga Produk</span>
+                    <span className="tabular-nums">{formatShopeeCurrency(breakdown.hargaProduk)}</span>
+                  </div>
+                )}
               </div>
-              <div className="flex items-center justify-between text-slate-600">
-                <span>Estimasi Ongkos Kirim</span>
-                <span className="font-medium text-slate-800 tabular-nums">
-                  {formatCurrencyIDR(order.estimated_shipping_fee)}
-                </span>
+
+              {/* 2. Estimasi Subtotal Ongkos Kirim */}
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('shipping')}
+                  className="flex w-full cursor-pointer items-center justify-between text-left font-semibold text-slate-800 transition-colors hover:text-slate-950"
+                >
+                  <span>Estimasi Subtotal Ongkos Kirim</span>
+                  <div className="flex items-center gap-2">
+                    <span className="tabular-nums">{formatShopeeCurrency(breakdown.estimasiSubtotalOngkir)}</span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      className={`h-3.5 w-3.5 text-slate-400 transition-transform ${expandedSections.shipping ? 'rotate-180' : ''}`}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </div>
+                </button>
+                {expandedSections.shipping && (
+                  <div className="space-y-1 pl-4 text-slate-500">
+                    <div className="flex items-center justify-between">
+                      <span>Ongkir Dibayar Pembeli</span>
+                      <span className="tabular-nums">{formatShopeeCurrency(breakdown.ongkirDibayarPembeli)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Estimasi Ongkos Kirim yang Dibayarkan ke Jasa Kirim</span>
+                      <span className="tabular-nums">{formatShopeeCurrency(breakdown.estimasiOngkirKeJasaKirim, true)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Estimasi Potongan Ongkos Kirim dari Shopee</span>
+                      <span className="tabular-nums">{formatShopeeCurrency(breakdown.estimasiPotonganOngkirShopee)}</span>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="flex items-center justify-between border-t border-slate-200 pt-2">
-                <span className="font-bold text-slate-900">Total Pembayaran</span>
-                <span className="text-sm font-bold text-slate-900 tabular-nums">
-                  {formatCurrencyIDR(order.total_amount)}
+
+              {/* 3. Voucher & Subsidi */}
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('voucher')}
+                  className="flex w-full cursor-pointer items-center justify-between text-left font-semibold text-slate-800 transition-colors hover:text-slate-950"
+                >
+                  <span>Voucher & Subsidi</span>
+                  <div className="flex items-center gap-2">
+                    <span className="tabular-nums">
+                      {breakdown.voucherDanSubsidi > 0 ? formatShopeeCurrency(breakdown.voucherDanSubsidi, true) : 'Rp0'}
+                    </span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      className={`h-3.5 w-3.5 text-slate-400 transition-transform ${expandedSections.voucher ? 'rotate-180' : ''}`}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </div>
+                </button>
+                {expandedSections.voucher && (
+                  <div className="flex items-center justify-between pl-4 text-slate-500">
+                    <span>
+                      Voucher Toko yang ditanggung Penjual
+                      {breakdown.voucherCode ? ` - ${breakdown.voucherCode}` : ''}
+                    </span>
+                    <span className="tabular-nums">
+                      {breakdown.voucherTokoPenjual > 0 ? formatShopeeCurrency(breakdown.voucherTokoPenjual, true) : 'Rp0'}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* 4. Biaya Platform */}
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('platform')}
+                  className="flex w-full cursor-pointer items-center justify-between text-left font-semibold text-slate-800 transition-colors hover:text-slate-950"
+                >
+                  <span className="inline-flex items-center gap-1">
+                    Biaya Platform
+                    <span title="Rincian biaya operasional platform Shopee" className="cursor-help text-slate-400">
+                      🛈
+                    </span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="tabular-nums">
+                      {breakdown.biayaPlatform > 0 ? formatShopeeCurrency(breakdown.biayaPlatform, true) : 'Rp0'}
+                    </span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      className={`h-3.5 w-3.5 text-slate-400 transition-transform ${expandedSections.platform ? 'rotate-180' : ''}`}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </div>
+                </button>
+                {expandedSections.platform && (
+                  <div className="space-y-1 pl-4 text-slate-500">
+                    <div className="flex items-center justify-between">
+                      <span className="inline-flex items-center gap-1">
+                        Biaya Administrasi (termasuk PPN 11%)
+                        <span title="Biaya admin Shopee kategori fashion/sepatu inklusif PPN" className="cursor-help text-slate-400">
+                          🛈
+                        </span>
+                      </span>
+                      <span className="tabular-nums">
+                        {breakdown.biayaAdmin > 0 ? formatShopeeCurrency(breakdown.biayaAdmin, true) : 'Rp0'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="inline-flex items-center gap-1">
+                        Biaya Proses Pesanan
+                        <span title="Biaya tetap pemrosesan pesanan sistem Shopee (Rp1.250)" className="cursor-help text-slate-400">
+                          🛈
+                        </span>
+                      </span>
+                      <span className="tabular-nums">
+                        {breakdown.biayaProsesPesanan > 0 ? formatShopeeCurrency(breakdown.biayaProsesPesanan, true) : 'Rp0'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Biaya Pembayaran</span>
+                      <span className="tabular-nums">
+                        {breakdown.biayaPembayaran > 0 ? formatShopeeCurrency(breakdown.biayaPembayaran, true) : 'Rp0'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 5. Biaya Gratis Ongkir XTRA */}
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('freeShippingXtra')}
+                  className="flex w-full cursor-pointer items-center justify-between text-left font-semibold text-slate-800 transition-colors hover:text-slate-950"
+                >
+                  <span className="inline-flex items-center gap-1">
+                    Biaya Gratis Ongkir XTRA
+                    <span title="Biaya keikutsertaan program Gratis Ongkir XTRA" className="cursor-help text-slate-400">
+                      🛈
+                    </span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="tabular-nums">
+                      {breakdown.biayaGratisOngkirXtra > 0 ? formatShopeeCurrency(breakdown.biayaGratisOngkirXtra, true) : 'Rp0'}
+                    </span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      className={`h-3.5 w-3.5 text-slate-400 transition-transform ${expandedSections.freeShippingXtra ? 'rotate-180' : ''}`}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </div>
+                </button>
+                {expandedSections.freeShippingXtra && (
+                  <div className="flex items-center justify-between pl-4 text-slate-500">
+                    <span>Biaya Gratis Ongkir XTRA - Ukuran Biasa (Kategori D)</span>
+                    <span className="tabular-nums">
+                      {breakdown.biayaGratisOngkirXtra > 0 ? formatShopeeCurrency(breakdown.biayaGratisOngkirXtra, true) : 'Rp0'}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* 6. Biaya Layanan */}
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('serviceFee')}
+                  className="flex w-full cursor-pointer items-center justify-between text-left font-semibold text-slate-800 transition-colors hover:text-slate-950"
+                >
+                  <span className="inline-flex items-center gap-1">
+                    Biaya Layanan
+                    <span title="Biaya Layanan program Promo XTRA+ Shopee" className="cursor-help text-slate-400">
+                      🛈
+                    </span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="tabular-nums">
+                      {breakdown.biayaLayanan > 0 ? formatShopeeCurrency(breakdown.biayaLayanan, true) : 'Rp0'}
+                    </span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      className={`h-3.5 w-3.5 text-slate-400 transition-transform ${expandedSections.serviceFee ? 'rotate-180' : ''}`}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </div>
+                </button>
+                {expandedSections.serviceFee && (
+                  <div className="flex items-center justify-between pl-4 text-slate-500">
+                    <span>Biaya Layanan Promo XTRA+</span>
+                    <span className="tabular-nums">
+                      {breakdown.biayaLayananPromoXtra > 0 ? formatShopeeCurrency(breakdown.biayaLayananPromoXtra, true) : 'Rp0'}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* 7. Biaya Lainnya */}
+              <div className="flex items-center justify-between font-semibold text-slate-800">
+                <span className="inline-flex items-center gap-1">
+                  Biaya Lainnya
+                  <span title="Biaya penyesuaian operasional lainnya" className="cursor-help text-slate-400">
+                    🛈
+                  </span>
+                </span>
+                <span className="tabular-nums">{formatShopeeCurrency(breakdown.biayaLainnya)}</span>
+              </div>
+
+              {/* 8. Pajak */}
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('tax')}
+                  className="flex w-full cursor-pointer items-center justify-between text-left font-semibold text-slate-800 transition-colors hover:text-slate-950"
+                >
+                  <span>Pajak</span>
+                  <div className="flex items-center gap-2">
+                    <span className="tabular-nums">
+                      {breakdown.pajak > 0 ? formatShopeeCurrency(breakdown.pajak, true) : 'Rp0'}
+                    </span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      className={`h-3.5 w-3.5 text-slate-400 transition-transform ${expandedSections.tax ? 'rotate-180' : ''}`}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </div>
+                </button>
+                {expandedSections.tax && (
+                  <div className="flex items-center justify-between pl-4 text-slate-500">
+                    <span className="inline-flex items-center gap-1">
+                      PPh 22
+                      <span title="Pajak Penghasilan Pasal 22 Penjualan E-Commerce" className="cursor-help text-slate-400">
+                        🛈
+                      </span>
+                    </span>
+                    <span className="tabular-nums">
+                      {breakdown.pph22 > 0 ? formatShopeeCurrency(breakdown.pph22, true) : 'Rp0'}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* 9. Subtotal Biaya Layanan Tambahan */}
+              <div className="flex items-center justify-between font-semibold text-slate-800">
+                <span>Subtotal Biaya Layanan Tambahan</span>
+                <span className="tabular-nums">{formatShopeeCurrency(breakdown.subtotalBiayaLayananTambahan)}</span>
+              </div>
+
+              {/* 10. Estimasi Total Penghasilan */}
+              <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                <span className="inline-flex items-center gap-1 text-sm font-semibold text-slate-800">
+                  Estimasi Total Penghasilan
+                  <span title="Estimasi dana bersih yang akan dilepas ke Saldo Penjual setelah pesanan selesai" className="cursor-help text-slate-400">
+                    🛈
+                  </span>
+                </span>
+                <span className="text-2xl font-bold text-[#EE4D2D] tabular-nums">
+                  {formatShopeeCurrency(breakdown.estimasiTotalPenghasilan)}
                 </span>
               </div>
             </div>

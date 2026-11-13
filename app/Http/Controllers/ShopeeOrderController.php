@@ -382,6 +382,30 @@ class ShopeeOrderController extends Controller
     }
 
     /**
+     * Ambil rincian escrow (informasi pembayaran akuntansi) live dari Shopee API v2 untuk 1 pesanan.
+     */
+    public function escrowDetail(Request $request, string $orderSn): JsonResponse
+    {
+        $this->authorizeSuperAdmin($request);
+
+        try {
+            $orderSn = $this->normalizeOrderSn($orderSn);
+            $account = $this->requireConnectedAccount();
+            $result = $this->orderService->getEscrowDetail($account, $orderSn);
+
+            return response()->json([
+                'status'       => 'success',
+                'order_sn'     => $result['order_sn'],
+                'escrow'       => $result['escrow'],
+                'order_income' => $result['order_income'],
+                'cutoff'       => $result['cutoff'],
+            ], 200);
+        } catch (\Throwable $e) {
+            return $this->actionErrorResponse($e);
+        }
+    }
+
+    /**
      * Ambil parameter pengiriman (Pickup / Drop-off / Non-integrated) untuk 1 pesanan.
      */
     public function shippingParameters(Request $request, string $orderSn): JsonResponse

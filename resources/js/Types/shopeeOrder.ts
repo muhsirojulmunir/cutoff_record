@@ -459,3 +459,57 @@ export interface ShopeeTrackingInfoResponse {
   message?: string;
 }
 
+/**
+ * Respons endpoint GET /shopee-orders/{orderSn}/escrow-detail.
+ */
+export interface ShopeeEscrowDetailResponse {
+  status: 'success' | 'error';
+  order_sn: string;
+  escrow?: Record<string, unknown>;
+  order_income?: {
+    buyer_total_amount?: number;
+    cost_of_goods_sold?: number;
+    original_cost_of_goods_sold?: number;
+    seller_discount?: number;
+    shopee_discount?: number;
+    voucher_from_seller?: number;
+    seller_voucher_code?: string[];
+    voucher_from_shopee?: number;
+    coins?: number;
+    buyer_paid_shipping_fee?: number;
+    buyer_transaction_fee?: number;
+    actual_shipping_fee?: number;
+    shipping_fee_rebate_from_3pl?: number;
+    commission_fee?: number;
+    service_fee?: number;
+    seller_transaction_fee?: number;
+    order_ams_commission_fee?: number;
+    campaign_fee?: number;
+    final_product_vat_tax?: number;
+    withholding_tax?: number;
+    escrow_amount?: number;
+    items?: Array<{
+      item_id?: number;
+      item_name?: string;
+      item_sku?: string;
+      model_id?: number;
+      model_name?: string;
+      model_sku?: string;
+      quantity_purchased?: number;
+      original_price?: number;
+      discounted_price?: number;
+      discount_from_voucher_seller?: number;
+      seller_discount?: number;
+    }>;
+    [key: string]: unknown;
+  };
+  cutoff?: {
+    seller_voucher?: number;
+    voucher_code?: string;
+    est_net_income?: number;
+    marketplace_net_payout?: number;
+    keterangan?: string;
+  } | null;
+  message?: string;
+}
+

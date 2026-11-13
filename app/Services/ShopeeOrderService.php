@@ -440,6 +440,42 @@ class ShopeeOrderService
     }
 
     /**
+     * Ambil rincian escrow (informasi pembayaran akuntansi) dari Shopee API v2 untuk 1 pesanan.
+     */
+    public function getEscrowDetail(ShopeeAccount $account, string $orderSn): array
+    {
+        $this->ensureSchema();
+        $account = $this->ensureConnectedAccount($account);
+
+        try {
+            $data = $this->getApi($account, '/api/v2/payment/get_escrow_detail', ['order_sn' => $orderSn]);
+            $resp = is_array($data['response'] ?? null) ? $data['response'] : [];
+            $orderIncome = is_array($resp['order_income'] ?? null) ? $resp['order_income'] : [];
+        } catch (\Throwable $e) {
+            Log::warning("Shopee getEscrowDetail API notice ({$orderSn}): " . $e->getMessage());
+            $resp = [];
+            $orderIncome = [];
+        }
+
+        $cutOff = CutOffOrder::where('channel', 'SH')
+            ->where('order_number', $orderSn)
+            ->first();
+
+        return [
+            'order_sn'     => $orderSn,
+            'escrow'       => $resp,
+            'order_income' => $orderIncome,
+            'cutoff'       => $cutOff ? [
+                'seller_voucher'        => (float) ($cutOff->financial_breakdown['seller_voucher'] ?? 0),
+                'voucher_code'          => (string) ($cutOff->financial_breakdown['voucher_code'] ?? ''),
+                'est_net_income'        => (float) $cutOff->est_net_income,
+                'marketplace_net_payout'=> (float) $cutOff->marketplace_net_payout,
+                'keterangan'            => (string) $cutOff->keterangan_solutif,
+            ] : null,
+        ];
+    }
+
+    /**
      * Ambil opsi parameter pengiriman (Pickup / Drop-off / Non-integrated) dari Shopee API v2.
      */
     public function getShippingParameter(ShopeeAccount $account, string $orderSn, ?string $packageNumber = null): array

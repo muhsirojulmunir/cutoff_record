@@ -96,6 +96,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/shopee-orders/mass-ship', [\App\Http\Controllers\ShopeeOrderController::class, 'massShip'])->name('shopee-orders.mass-ship');
     Route::post('/shopee-orders/mass-waybill-a4', [\App\Http\Controllers\ShopeeOrderController::class, 'massPrintWaybill'])->name('shopee-orders.mass-waybill');
     Route::post('/shopee-orders/{orderSn}/refresh', [\App\Http\Controllers\ShopeeOrderController::class, 'refreshDetail'])->name('shopee-orders.refresh');
+    Route::get('/shopee-orders/{orderSn}/escrow-detail', [\App\Http\Controllers\ShopeeOrderController::class, 'escrowDetail'])->name('shopee-orders.escrow-detail');
     Route::get('/shopee-orders/{orderSn}/tracking-info', [\App\Http\Controllers\ShopeeOrderController::class, 'trackingInfo'])->name('shopee-orders.tracking-info');
     Route::get('/shopee-orders/{orderSn}/shipping-parameters', [\App\Http\Controllers\ShopeeOrderController::class, 'shippingParameters'])->name('shopee-orders.shipping-params');
     Route::post('/shopee-orders/{orderSn}/ship', [\App\Http\Controllers\ShopeeOrderController::class, 'ship'])->name('shopee-orders.ship');
