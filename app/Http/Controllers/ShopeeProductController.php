@@ -244,6 +244,10 @@ class ShopeeProductController extends Controller
         $search      = trim((string) $request->input('search', ''));
         $stockStatus = (string) $request->input('stock_status', 'all');
         $sort        = (string) $request->input('sort', 'stock_desc');
+        $warehouse   = strtoupper(trim((string) $request->input('warehouse', 'ALL')));
+        if (! in_array($warehouse, ['ALL', 'G', 'A'], true)) {
+            $warehouse = 'ALL';
+        }
         $todayStr    = now('Asia/Jakarta')->toDateString();
 
         // Default rentang tanggal penjualan: Hari Ini
@@ -1082,8 +1086,8 @@ class ShopeeProductController extends Controller
                 'warehouse_stock'      => $info['warehouse_stock'],
                 'stock_g'              => $info['stock_g'],
                 'stock_a'              => $info['stock_a'],
-                'shopee_stock'         => $info['shopee_stock'],
-                'reserved_stock'       => $info['reserved_stock'],
+                'shopee_stock'         => $info['shopee_stock'] ?? (int) $p->stock,
+                'reserved_stock'       => $info['reserved_stock'] ?? (int) $p->reserved_stock,
                 'diff'                 => $info['diff'],
                 'status'               => $info['status'],
                 'match_type'           => $info['match_type'],

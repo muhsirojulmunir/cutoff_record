@@ -230,6 +230,10 @@ class TiktokProductController extends Controller
         $search      = trim((string) $request->input('search', ''));
         $stockStatus = (string) $request->input('stock_status', 'all');
         $sort        = (string) $request->input('sort', 'stock_desc');
+        $warehouse   = strtoupper(trim((string) $request->input('warehouse', 'ALL')));
+        if (! in_array($warehouse, ['ALL', 'G', 'A'], true)) {
+            $warehouse = 'ALL';
+        }
         $todayStr    = now('Asia/Jakarta')->toDateString();
 
         $dateFrom = $request->has('date_from') ? (string) $request->input('date_from') : $todayStr;
@@ -935,6 +939,270 @@ class TiktokProductController extends Controller
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /**
+     * Compare internal warehouse stock (uploaded from Excel) against TikTok products stock.
+     */
+    public function compareStock(Request $request): JsonResponse
+    {
+        $this->syncService->ensureProductSchema();
+
+        $account = TiktokAccount::where('status', 'active')->first() ?? TiktokAccount::first();
+        if (! $account) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Toko TikTok belum terhubung di sistem ERP.',
+            ], 422);
+        }
+
+        $items = $request->input('items', []);
+        if (empty($items) || ! is_array($items)) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Data baris Excel tidak ditemukan atau kosong.',
+            ], 422);
+        }
+
+        $tiktokProducts = TiktokProduct::where('tiktok_account_id', $account->id)->get();
+
+        $productMap = [];
+        $codeMap    = [];
+
+        foreach ($tiktokProducts as $p) {
+            if (! empty($p->sku)) {
+                $norm = strtoupper(trim($p->sku));
+                $productMap[$norm] = $p;
+
+                if (preg_match('/_(\d{6,8})(?:\D|$)/i', $norm, $m)) {
+                    $codeMap[$m[1]] = $p;
+                    $codeMap[ltrim($m[1], '0')] = $p;
+                }
+                if (preg_match('/(?:\D|^)(\d{7,8})(?:\D|$)/', $norm, $m)) {
+                    $codeMap[$m[1]] = $p;
+                    $codeMap[ltrim($m[1], '0')] = $p;
+                }
+            }
+        }
+
+        $comparisonList   = [];
+        $criticalCount    = 0;
+        $lowStockCount    = 0;
+        $discrepancyCount = 0;
+        $matchedCount     = 0;
+        $unmatchedCount   = 0;
+
+        foreach ($items as $row) {
+            $rawSku = trim((string) ($row['sku'] ?? ''));
+            if ($rawSku === '') {
+                continue;
+            }
+
+            $warehouseStock = max(0, (int) ($row['warehouse_stock'] ?? $row['stock'] ?? 0));
+            $normSku        = strtoupper($rawSku);
+
+            $matchedProduct = $productMap[$normSku]
+                ?? $codeMap[$normSku]
+                ?? ($codeMap[ltrim($normSku, '0')] ?? null)
+                ?? null;
+
+            if (! $matchedProduct && preg_match('/(?:\D|^)(\d{7,8})(?:\D|$)/', $normSku, $m)) {
+                $matchedProduct = $codeMap[$m[1]] ?? ($codeMap[ltrim($m[1], '0')] ?? null);
+            }
+
+            if ($matchedProduct) {
+                $tiktokStock   = (int) $matchedProduct->stock;
+                $reservedStock = (int) $matchedProduct->reserved_stock;
+                $diff          = $warehouseStock - $tiktokStock;
+
+                if ($warehouseStock <= 0 && $tiktokStock > 0) {
+                    $status = 'CRITICAL';
+                    $criticalCount++;
+                } elseif ($warehouseStock > 0 && $warehouseStock <= 3) {
+                    $status = 'LOW_STOCK';
+                    $lowStockCount++;
+                } elseif ($diff !== 0) {
+                    $status = 'DISCREPANCY';
+                    $discrepancyCount++;
+                } else {
+                    $status = 'MATCHED';
+                    $matchedCount++;
+                }
+
+                $comparisonList[] = [
+                    'id'               => $matchedProduct->id,
+                    'sku'              => $matchedProduct->sku ?: $rawSku,
+                    'item_id'          => $matchedProduct->item_id,
+                    'model_id'         => $matchedProduct->model_id,
+                    'item_name'        => $matchedProduct->item_name,
+                    'model_name'       => $matchedProduct->model_name,
+                    'warehouse_stock'  => $warehouseStock,
+                    'tiktok_stock'     => $tiktokStock,
+                    'shopee_stock'     => $tiktokStock,
+                    'reserved_stock'   => $reservedStock,
+                    'diff'             => $diff,
+                    'status'           => $status,
+                    'is_matched'       => true,
+                ];
+            } else {
+                $unmatchedCount++;
+                $comparisonList[] = [
+                    'id'               => null,
+                    'sku'              => $rawSku,
+                    'item_id'          => null,
+                    'model_id'         => null,
+                    'item_name'        => $row['item_name'] ?? $rawSku,
+                    'model_name'       => null,
+                    'warehouse_stock'  => $warehouseStock,
+                    'tiktok_stock'     => 0,
+                    'shopee_stock'     => 0,
+                    'reserved_stock'   => 0,
+                    'diff'             => $warehouseStock,
+                    'status'           => 'UNMATCHED',
+                    'is_matched'       => false,
+                ];
+            }
+        }
+
+        return response()->json([
+            'status'    => 'success',
+            'summary'   => [
+                'total_rows'        => count($comparisonList),
+                'critical_count'    => $criticalCount,
+                'low_stock_count'   => $lowStockCount,
+                'discrepancy_count' => $discrepancyCount,
+                'matched_count'     => $matchedCount,
+                'unmatched_count'   => $unmatchedCount,
+            ],
+            'items'     => $comparisonList,
+            'source'    => 'EXCEL_UPLOAD',
+        ]);
+    }
+
+    /**
+     * Audit perbandingan stok fisik Master Stock internal ERP vs katalog produk TikTok.
+     */
+    public function compareWithMaster(Request $request): JsonResponse
+    {
+        $this->syncService->ensureProductSchema();
+
+        $account = TiktokAccount::where('status', 'active')->first() ?? TiktokAccount::first();
+        if (! $account) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Toko TikTok belum terhubung di sistem ERP.',
+            ], 422);
+        }
+
+        $warehouse = strtoupper(trim((string) $request->input('warehouse', 'ALL')));
+
+        if (! \Illuminate\Support\Facades\Schema::hasTable('master_stocks')) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Belum ada data Master Stok di database. Silakan upload laporan stok di menu Master Stok terlebih dahulu.',
+            ], 422);
+        }
+
+        $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs', 'raw_qty', 'unit')->get();
+
+        if ($masterStocks->isEmpty()) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Belum ada data Master Stok di database. Silakan upload laporan stok di menu Master Stok terlebih dahulu.',
+            ], 422);
+        }
+
+        $maps = ProductStockMatcher::buildMasterStockMaps($masterStocks);
+        $tiktokProducts = TiktokProduct::where('tiktok_account_id', $account->id)->get();
+        $variantCounts = ProductStockMatcher::countDistinctSizesPerItem($tiktokProducts);
+
+        $comparisonList   = [];
+        $criticalCount    = 0;
+        $lowStockCount    = 0;
+        $discrepancyCount = 0;
+        $matchedCount     = 0;
+        $unmatchedCount   = 0;
+
+        foreach ($tiktokProducts as $p) {
+            $info = ProductStockMatcher::resolveStockInfo(
+                $p,
+                $maps,
+                $warehouse,
+                $variantCounts[$p->item_id] ?? 6
+            );
+
+            if ($info['status'] === 'UNMATCHED') {
+                $unmatchedCount++;
+            } elseif ($info['status'] === 'CRITICAL') {
+                $criticalCount++;
+            } elseif ($info['status'] === 'LOW_STOCK') {
+                $lowStockCount++;
+            } elseif ($info['status'] === 'DISCREPANCY') {
+                $discrepancyCount++;
+            } else {
+                $matchedCount++;
+            }
+
+            $comparisonList[] = [
+                'id'                   => $p->id,
+                'item_id'              => $p->item_id,
+                'model_id'             => $p->model_id,
+                'sku'                  => $p->sku ?: '—',
+                'manual_item_code'     => $p->manual_item_code,
+                'item_name'            => $p->item_name,
+                'model_name'           => $p->model_name,
+                'warehouse_stock'      => $info['warehouse_stock'],
+                'stock_g'              => $info['stock_g'],
+                'stock_a'              => $info['stock_a'],
+                'tiktok_stock'         => $info['tiktok_stock'] ?? (int) $p->stock,
+                'shopee_stock'         => $info['tiktok_stock'] ?? (int) $p->stock,
+                'reserved_stock'       => $info['reserved_stock'] ?? (int) $p->reserved_stock,
+                'diff'                 => $info['diff'],
+                'status'               => $info['status'],
+                'match_type'           => $info['match_type'],
+                'matched_code'         => $info['matched_code'],
+                'suggested_code'       => $info['suggested_code'],
+                'suggested_name'       => $info['suggested_name'],
+                'warning_message'      => $info['warning_message'],
+                'is_safe_to_zero'      => $info['is_safe_to_zero'],
+                'is_critical_oos'      => $info['is_critical_oos'],
+                'is_campaign_locked'   => $info['is_campaign_locked'],
+                'is_campaign_unlocked' => $info['is_campaign_unlocked'],
+                'is_tiktok_found'      => true,
+            ];
+        }
+
+        $priorityOrder = [
+            'UNMATCHED'   => 1,
+            'CRITICAL'    => 2,
+            'LOW_STOCK'   => 3,
+            'DISCREPANCY' => 4,
+            'MATCHED'     => 5,
+        ];
+
+        usort($comparisonList, function ($a, $b) use ($priorityOrder) {
+            $pA = $priorityOrder[$a['status']] ?? 99;
+            $pB = $priorityOrder[$b['status']] ?? 99;
+            if ($pA !== $pB) {
+                return $pA <=> $pB;
+            }
+            return strcmp((string) $a['sku'], (string) $b['sku']);
+        });
+
+        return response()->json([
+            'status'    => 'success',
+            'summary'   => [
+                'total_rows'        => count($comparisonList),
+                'critical_count'    => $criticalCount,
+                'low_stock_count'   => $lowStockCount,
+                'discrepancy_count' => $discrepancyCount,
+                'matched_count'     => $matchedCount,
+                'unmatched_count'   => $unmatchedCount,
+            ],
+            'items'     => $comparisonList,
+            'source'    => 'MASTER_STOCK',
+            'warehouse' => $warehouse,
+        ]);
     }
 
     /**

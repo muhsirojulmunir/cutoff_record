@@ -343,16 +343,16 @@ class ProductStockMatcher
      */
     public static function resolveStockInfo(
         object $p,
-        array &$maps,
+        array $maps,
         string $warehouse = 'ALL',
         ?int $variantCount = null
     ): array {
-        $masterByCode = &$maps['masterByCode'];
-        $gMap         = &$maps['gMap'];
-        $aMap         = &$maps['aMap'];
-        $aPrefixMap   = &$maps['aPrefixMap'];
-        $smartIndex   = &$maps['smartIndex'];
-        $aSerianItems = &$maps['aSerianItems'];
+        $masterByCode = $maps['masterByCode'] ?? [];
+        $gMap         = $maps['gMap'] ?? [];
+        $aMap         = $maps['aMap'] ?? [];
+        $aPrefixMap   = $maps['aPrefixMap'] ?? [];
+        $smartIndex   = $maps['smartIndex'] ?? [];
+        $aSerianItems = $maps['aSerianItems'] ?? [];
 
         $normSku = strtoupper(trim((string) $p->sku));
         $manualCode = strtoupper(trim((string) ($p->manual_item_code ?? '')));
@@ -491,6 +491,10 @@ class ProductStockMatcher
             'warehouse_stock'      => $whStock,
             'stock_g'              => $stockG,
             'stock_a'              => $stockA,
+            'marketplace_stock'    => $currentStock,
+            'shopee_stock'         => $currentStock,
+            'tiktok_stock'         => $currentStock,
+            'reserved_stock'       => $reservedStock,
             'diff'                 => $diff,
             'status'               => $status,
             'matched_code'         => $matchedCode,
