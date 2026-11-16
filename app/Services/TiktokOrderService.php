@@ -619,6 +619,7 @@ class TiktokOrderService
         }
 
         return [
+            'status'         => count($failed) === 0 ? 'success' : (count($succeeded) > 0 ? 'warning' : 'error'),
             'total'          => count($orderSns),
             'succeeded'      => $succeeded,
             'failed'         => $failed,
@@ -642,55 +643,76 @@ class TiktokOrderService
         $today = now()->format('Y-m-d');
         $tomorrow = now()->addDay()->format('Y-m-d');
 
-        return [
-            'order_sn'             => $order->order_sn,
-            'shipping_carrier'     => $order->shipping_carrier,
-            'fulfillment_method'   => $order->fulfillment_method,
-            'tracking_number'      => $order->tracking_number,
-            'is_shippable'         => in_array($order->order_status, ['READY_TO_SHIP', 'AWAITING_SHIPMENT', 'RETRY_SHIP'], true),
-            'allow_pickup'         => true,
-            'allow_dropoff'        => true,
-            'pickup_address_list'  => [
-                [
-                    'address_id'   => 101,
-                    'region'       => 'Jawa Barat, Kab. Bogor',
-                    'state'        => 'Jawa Barat',
-                    'city'         => 'Kab. Bogor',
-                    'district'     => 'Gunung Putri',
-                    'town'         => 'Cicadas',
-                    'address'      => 'Gudang Utama Record Shoes, Jl. Raya Wanaherang No. 88',
-                    'zipcode'      => '16964',
-                    'time_slot_list' => [
-                        [
-                            'date'       => $today,
-                            'time_text'  => 'Hari Ini (14:00 - 18:00 WIB)',
-                            'pickup_time_id' => 'slot_today_pm',
-                        ],
-                        [
-                            'date'       => $tomorrow,
-                            'time_text'  => 'Besok Pagi (09:00 - 12:00 WIB)',
-                            'pickup_time_id' => 'slot_tomorrow_am',
-                        ],
-                        [
-                            'date'       => $tomorrow,
-                            'time_text'  => 'Besok Siang (13:00 - 17:00 WIB)',
-                            'pickup_time_id' => 'slot_tomorrow_pm',
-                        ],
+        $pickupAddressList = [
+            [
+                'address_id'     => 101,
+                'region'         => 'Jawa Barat, Kab. Bogor',
+                'state'          => 'Jawa Barat',
+                'city'           => 'Kab. Bogor',
+                'district'       => 'Gunung Putri',
+                'town'           => 'Cicadas',
+                'address'        => 'Gudang Utama Record Shoes, Jl. Raya Wanaherang No. 88',
+                'zipcode'        => '16964',
+                'time_slot_list' => [
+                    [
+                        'date'           => $today,
+                        'time_text'      => 'Hari Ini (14:00 - 18:00 WIB)',
+                        'pickup_time_id' => 'slot_today_pm',
+                    ],
+                    [
+                        'date'           => $tomorrow,
+                        'time_text'      => 'Besok Pagi (09:00 - 12:00 WIB)',
+                        'pickup_time_id' => 'slot_tomorrow_am',
+                    ],
+                    [
+                        'date'           => $tomorrow,
+                        'time_text'      => 'Besok Siang (13:00 - 17:00 WIB)',
+                        'pickup_time_id' => 'slot_tomorrow_pm',
                     ],
                 ],
             ],
-            'dropoff_branch_list'  => [
-                [
-                    'branch_id' => 'drop_jnt_01',
-                    'branch_name' => 'Drop Point J&T Express Wanaherang',
-                    'address'   => 'Jl. Raya Mercedes Benz No. 12, Cicadas, Gn. Putri',
-                ],
-                [
-                    'branch_id' => 'drop_ninja_01',
-                    'branch_name' => 'Ninja Point Gunung Putri',
-                    'address'   => 'Jl. Alternatif Cibubur KM 6, Gn. Putri',
-                ],
+        ];
+
+        $dropoffBranchList = [
+            [
+                'branch_id'   => 'drop_jnt_01',
+                'branch_name' => 'Drop Point J&T Express Wanaherang',
+                'address'     => 'Jl. Raya Mercedes Benz No. 12, Cicadas, Gn. Putri',
             ],
+            [
+                'branch_id'   => 'drop_ninja_01',
+                'branch_name' => 'Ninja Point Gunung Putri',
+                'address'     => 'Jl. Alternatif Cibubur KM 6, Gn. Putri',
+            ],
+        ];
+
+        return [
+            'status'                   => 'success',
+            'order_sn'                 => $order->order_sn,
+            'package_number'           => $order->package_number,
+            'shipping_carrier'         => $order->shipping_carrier,
+            'fulfillment_method'       => $order->fulfillment_method,
+            'tracking_number'          => $order->tracking_number,
+            'is_shippable'             => in_array($order->order_status, ['READY_TO_SHIP', 'AWAITING_SHIPMENT', 'RETRY_SHIP'], true),
+            'pickup_supported'         => true,
+            'dropoff_supported'        => true,
+            'non_integrated_supported' => false,
+            'info_needed'              => [
+                'pickup'  => ['address_id'],
+                'dropoff' => [],
+            ],
+            'pickup'                   => [
+                'address_list' => $pickupAddressList,
+            ],
+            'dropoff'                  => [
+                'branch_list' => $dropoffBranchList,
+                'slug_list'   => [],
+            ],
+            // Backward-compat keys:
+            'allow_pickup'             => true,
+            'allow_dropoff'            => true,
+            'pickup_address_list'      => $pickupAddressList,
+            'dropoff_branch_list'      => $dropoffBranchList,
         ];
     }
 
@@ -704,8 +726,10 @@ class TiktokOrderService
             ->where('order_sn', $orderSn)
             ->firstOrFail();
 
-        $method = ($payload['fulfillment_method'] ?? 'pickup') === 'dropoff' ? 'dropoff' : 'pickup';
-        $trackingNo = $order->tracking_number ?: 'TT' . strtoupper(substr(md5($order->order_sn . time()), 0, 10));
+        $rawMethod = $payload['method'] ?? $payload['fulfillment_method'] ?? 'pickup';
+        $method = $rawMethod === 'dropoff' ? 'dropoff' : ($rawMethod === 'non_integrated' ? 'non_integrated' : 'pickup');
+        $customTrackingNo = ! empty($payload['tracking_number']) ? trim((string) $payload['tracking_number']) : null;
+        $trackingNo = $customTrackingNo ?: ($order->tracking_number ?: 'TT' . strtoupper(substr(md5($order->order_sn . time()), 0, 10)));
 
         $order->update([
             'order_status'         => 'PROCESSED',

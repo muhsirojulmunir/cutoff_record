@@ -135,6 +135,9 @@ export default function ShipOrderModal({
   onSuccess,
   onPrintWaybill,
 }: ShipOrderModalProps) {
+  const isTiktok = baseRoute.includes('tiktok');
+  const platformName = isTiktok ? 'TikTok Shop' : 'Shopee';
+
   const isMountedRef = useRef(true);
   const singleShippedSnRef = useRef<string | null>(null);
   const submitAbortRef = useRef<AbortController | null>(null);
@@ -253,7 +256,7 @@ export default function ShipOrderModal({
             extractErrorMessage(
               data as Record<string, unknown> | null,
               res.status,
-              'Gagal memuat parameter pengiriman dari Shopee'
+              `Gagal memuat parameter pengiriman dari ${platformName}`
             )
           );
         }
@@ -479,7 +482,7 @@ export default function ShipOrderModal({
 
     if (selectedMethod === 'pickup') {
       if (pickupAddresses.length === 0) {
-        setSubmitError('Alamat penjemputan (Pick-up) belum tersedia di akun Shopee. Gunakan Antar ke Counter jika tersedia.');
+        setSubmitError(`Alamat penjemputan (Pick-up) belum tersedia di akun ${platformName}. Gunakan Antar ke Counter jika tersedia.`);
         return;
       }
       if (selectedAddressId === null || !selectedAddress) {
@@ -602,7 +605,7 @@ export default function ShipOrderModal({
       ? `Atur Pengiriman Massal (${targetMassOrders.length} Pesanan)`
       : order
         ? `Atur Pengiriman — ${order.order_sn}`
-        : 'Atur Pengiriman Shopee';
+        : `Atur Pengiriman ${platformName}`;
 
   const canPrintAfterSingleShip = Boolean(
     singleResult &&
@@ -736,7 +739,7 @@ export default function ShipOrderModal({
                 </div>
                 <div className="text-right">
                   <span className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-800">
-                    {order.shipping_carrier || 'Kurir Shopee'}
+                    {order.shipping_carrier || `Kurir ${platformName}`}
                   </span>
                 </div>
               </div>
@@ -746,7 +749,7 @@ export default function ShipOrderModal({
               <div className="flex flex-col items-center justify-center gap-2.5 rounded-xl border border-slate-200 bg-white py-10 text-center">
                 <SpinnerIcon className="h-6 w-6 text-[#EE4D2D]" />
                 <p className="text-xs font-medium text-slate-600">
-                  Mengambil parameter alamat & jadwal kurir dari Shopee API...
+                  Mengambil parameter alamat & jadwal kurir dari {platformName}...
                 </p>
               </div>
             ) : paramsError ? (
@@ -789,7 +792,7 @@ export default function ShipOrderModal({
               <>
                 {supportedTabs.length === 0 ? (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
-                    Shopee tidak mengembalikan metode pengiriman (Pick-up / Drop-off / Non-Integrated) untuk pesanan ini.
+                    {platformName} tidak mengembalikan metode pengiriman (Pick-up / Drop-off / Non-Integrated) untuk pesanan ini.
                   </div>
                 ) : (
                   <>
@@ -832,7 +835,7 @@ export default function ShipOrderModal({
                       <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
                         {pickupAddresses.length === 0 ? (
                           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                            Alamat penjemputan belum diatur pada akun Seller Centre Shopee Anda.
+                            Alamat penjemputan belum diatur pada akun Seller Centre {platformName} Anda.
                           </div>
                         ) : (
                           <>
@@ -1210,7 +1213,7 @@ export default function ShipOrderModal({
               )}
               {truncatedMassCount > 0 && (
                 <p>
-                  Shopee membatasi maksimal 50 pesanan per batch.{' '}
+                  {platformName} membatasi maksimal 50 pesanan per batch.{' '}
                   <span className="font-semibold tabular-nums">{truncatedMassCount}</span> pesanan valid
                   lainnya tidak disertakan dalam batch ini.
                 </p>

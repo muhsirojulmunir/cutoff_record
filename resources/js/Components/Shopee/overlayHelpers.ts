@@ -2,17 +2,22 @@ import React, { useEffect, useRef } from 'react';
 import { ShopeeOrderStatus } from '../../Types/shopeeOrder';
 
 /**
- * Status pesanan Shopee yang dapat diatur pengirimannya (belum diproses).
+ * Status pesanan Shopee & TikTok yang dapat diatur pengirimannya (belum diproses).
  */
-export const SHIPPABLE_STATUSES = new Set<string>(['READY_TO_SHIP', 'RETRY_SHIP']);
+export const SHIPPABLE_STATUSES = new Set<string>([
+  'READY_TO_SHIP',
+  'RETRY_SHIP',
+  'AWAITING_SHIPMENT',
+]);
 
 /**
- * Status pesanan Shopee yang dilarang untuk cetak resi A4 (harus sudah diproses & tidak batal).
+ * Status pesanan yang dilarang untuk cetak resi A4 (harus sudah diproses & tidak batal).
  */
 export const WAYBILL_BLOCKED_STATUSES = new Set<string>([
   'UNPAID',
   'READY_TO_SHIP',
   'RETRY_SHIP',
+  'AWAITING_SHIPMENT',
   'CANCELLED',
 ]);
 
@@ -22,7 +27,9 @@ export const WAYBILL_BLOCKED_STATUSES = new Set<string>([
 export const ACTIVE_DEADLINE_STATUSES = new Set<string>([
   'READY_TO_SHIP',
   'RETRY_SHIP',
+  'AWAITING_SHIPMENT',
   'PROCESSED',
+  'AWAITING_COLLECTION',
 ]);
 
 export interface OrderStatusMeta {
@@ -39,12 +46,20 @@ export const ORDER_STATUS_META: Record<string, OrderStatusMeta> = {
     label: 'Perlu Dikirim (Belum Diproses)',
     classes: 'border-orange-200 bg-orange-50 text-[#EE4D2D]',
   },
+  AWAITING_SHIPMENT: {
+    label: 'Perlu Dikirim (Belum Diproses)',
+    classes: 'border-orange-200 bg-orange-50 text-[#EE4D2D]',
+  },
   RETRY_SHIP: {
     label: 'Perlu Atur Ulang Pengiriman',
     classes: 'border-amber-200 bg-amber-50 text-amber-800',
   },
   PROCESSED: {
     label: 'Telah Diproses (Siap Cetak Resi)',
+    classes: 'border-sky-200 bg-sky-50 text-sky-800',
+  },
+  AWAITING_COLLECTION: {
+    label: 'Telah Diproses (Menunggu Kurir)',
     classes: 'border-sky-200 bg-sky-50 text-sky-800',
   },
   SHIPPED: {

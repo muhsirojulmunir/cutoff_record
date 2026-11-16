@@ -268,11 +268,16 @@ class TiktokOrderController extends Controller
         $account = $this->resolveTiktokAccount();
 
         $validated = $request->validate([
-            'fulfillment_method' => ['required', 'string', 'in:pickup,dropoff'],
+            'method'             => ['nullable', 'string', 'in:pickup,dropoff,non_integrated'],
+            'fulfillment_method' => ['nullable', 'string', 'in:pickup,dropoff,non_integrated'],
             'address_id'         => ['nullable'],
             'pickup_time_id'     => ['nullable', 'string'],
             'branch_id'          => ['nullable', 'string'],
+            'tracking_number'    => ['nullable', 'string', 'max:100'],
+            'sender_real_name'   => ['nullable', 'string', 'max:120'],
         ]);
+
+        $validated['fulfillment_method'] = $validated['method'] ?? $validated['fulfillment_method'] ?? 'pickup';
 
         $result = $this->orderService->ship($account, $orderSn, $validated);
 

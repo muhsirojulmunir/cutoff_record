@@ -210,8 +210,8 @@ function getDeadlineState(
     };
   }
 
-  // Kasus 2: Pesanan sudah diproses / diatur pickup (PROCESSED)
-  if (normalizedStatus === 'PROCESSED') {
+  // Kasus 2: Pesanan sudah diproses / diatur pickup (PROCESSED atau AWAITING_COLLECTION)
+  if (normalizedStatus === 'PROCESSED' || normalizedStatus === 'AWAITING_COLLECTION') {
     return {
       label: formatted,
       badgeText: isInstant ? 'Instant' : 'Diproses',
@@ -2570,8 +2570,8 @@ export default function TiktokOrdersPage({
               const totalQty = items.reduce((sum, it) => sum + resolveItemQty(it), 0);
               const isSelected = selectedSet.has(order.order_sn);
               const canShip = isShippableOrderStatus(normalizedStatus);
-              const isProcessed = normalizedStatus === 'PROCESSED';
-              const isShipped = normalizedStatus === 'SHIPPED';
+              const isProcessed = normalizedStatus === 'PROCESSED' || normalizedStatus === 'AWAITING_COLLECTION';
+              const isShipped = normalizedStatus === 'SHIPPED' || normalizedStatus === 'IN_TRANSIT';
               const isInCancel = normalizedStatus === 'IN_CANCEL';
               const isPrintingThis = printingTarget === order.order_sn;
               const isInstant = isInstantCarrier(order.shipping_carrier);
