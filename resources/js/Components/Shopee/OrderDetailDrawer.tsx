@@ -289,9 +289,8 @@ export default function OrderDetailDrawer({
   if (hasActiveDeadline) {
     if (isOverdue) {
       deadlineCountdownText = 'Batas kirim terlewati';
-    } else {
-      const actionPrefix = isInstant ? 'Atur pickup dalam' : 'Atur pengiriman dalam';
-      deadlineCountdownText = `${actionPrefix} ${formatShopeeSlaDuration(deadlineMs)}`;
+    } else if (isInstant) {
+      deadlineCountdownText = `Atur pickup dalam ${formatShopeeSlaDuration(deadlineMs)}`;
     }
   }
 
@@ -316,7 +315,7 @@ export default function OrderDetailDrawer({
     {
       label: 'Batas Kirim',
       value: formatOrderTimestampWIB(order.ship_by_date),
-      highlight: hasActiveDeadline && (isOverdue || deadlineMs <= 12 * 60 * 60 * 1000),
+      highlight: hasActiveDeadline && (isOverdue || (isInstant && deadlineMs <= 12 * 60 * 60 * 1000)),
       note: deadlineCountdownText,
     },
     {

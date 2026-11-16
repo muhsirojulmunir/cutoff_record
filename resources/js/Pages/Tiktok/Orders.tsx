@@ -224,21 +224,28 @@ function getDeadlineState(
     };
   }
 
-  // Kasus 3: Pesanan Belum Diproses (READY_TO_SHIP atau RETRY_SHIP)
-  // Menampilkan countdown waktu nyata persis Shopee: "Atur pickup dalam X jam Y menit"
+  // Kasus 3: Pengiriman selain Instant / Same Day tidak perlu keterangan "Atur pickup dalam ..."
+  if (!isInstant) {
+    return {
+      label: formatted,
+      badgeText: null,
+      badgeClass: '',
+      textClass: 'text-slate-700',
+      countdownText: null,
+      courierStatusText: null,
+    };
+  }
+
+  // Kasus 4: Khusus pesanan Instant / Same Day Belum Diproses (READY_TO_SHIP atau RETRY_SHIP)
+  // Menampilkan hitung mundur waktu nyata: "Atur pickup dalam X jam Y menit"
   const durationStr = formatShopeeSlaDuration(diffMs);
-  const actionPrefix = isInstant ? 'Atur pickup dalam' : 'Atur pengiriman dalam';
 
   return {
     label: formatted,
-    badgeText: isInstant ? 'Instant' : diffMs <= 12 * 3600 * 1000 ? 'Segera Kirim' : 'Batas Kirim',
-    badgeClass: isInstant
-      ? 'border-orange-200 bg-orange-50 text-[#EE4D2D]'
-      : diffMs <= 12 * 3600 * 1000
-      ? 'border-amber-200 bg-amber-50 text-amber-800'
-      : 'border-slate-200 bg-slate-50 text-slate-700',
-    textClass: diffMs <= 12 * 3600 * 1000 ? 'text-red-600 font-bold' : 'text-slate-700',
-    countdownText: `${actionPrefix} ${durationStr}`,
+    badgeText: 'Instant',
+    badgeClass: 'border-orange-200 bg-orange-50 text-[#EE4D2D]',
+    textClass: 'text-red-600 font-bold',
+    countdownText: `Atur pickup dalam ${durationStr}`,
     courierStatusText: null,
   };
 }
