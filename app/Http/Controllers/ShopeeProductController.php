@@ -8,6 +8,7 @@ use App\Models\ShopeeStockZeroBatch;
 use App\Models\ShopeeStockZeroItem;
 use App\Models\MasterStock;
 use App\Models\User;
+use App\Services\ProductStockMatcher;
 use App\Services\ShopeeSyncService;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
@@ -170,28 +171,28 @@ class ShopeeProductController extends Controller
                 return $empty;
             }
 
-            $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs')->get();
+            $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs', 'raw_qty', 'unit')->get();
             if ($masterStocks->isEmpty()) {
                 return $empty;
             }
 
-            $maps     = $this->buildMasterStockMaps($masterStocks);
+            $maps     = ProductStockMatcher::buildMasterStockMaps($masterStocks);
             $allProds = ShopeeProduct::select($this->getLightProductColumns())
                 ->where('shopee_account_id', $account->id)
                 ->get();
+
+            $variantCounts = ProductStockMatcher::countDistinctSizesPerItem($allProds);
 
             $criticalOosCount      = 0;
             $campaignUnlockedCount = 0;
             $discrepancyCount      = 0;
 
             foreach ($allProds as $p) {
-                $info = $this->resolveProductStockInfoFast(
+                $info = ProductStockMatcher::resolveStockInfo(
                     $p,
-                    $maps['masterByCode'],
-                    $maps['gMap'],
-                    $maps['aMap'],
-                    $maps['aPrefixMap'],
-                    $maps['smartIndex']
+                    $maps,
+                    'ALL',
+                    $variantCounts[$p->item_id] ?? 6
                 );
 
                 if ($info['is_critical_oos']) {
@@ -319,7 +320,7 @@ class ShopeeProductController extends Controller
                 ];
 
                 if ($masterStockSummary['has_master_stock']) {
-                    $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs')->get();
+                    $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs', 'raw_qty', 'unit')->get();
                 }
             } catch (\Throwable $e) {
                 // Fallback aman jika query MasterStock mengalami kendala
@@ -336,21 +337,21 @@ class ShopeeProductController extends Controller
         $stockInfoById       = [];
 
         if ($masterStockSummary['has_master_stock'] && $account && $masterStocks->isNotEmpty()) {
-            $maps = $this->buildMasterStockMaps($masterStocks);
+            $maps = ProductStockMatcher::buildMasterStockMaps($masterStocks);
 
             // Ambil kolom produk tanpa raw_data (JSON besar) dan tetap aman walau skema berbeda
             $allProds = ShopeeProduct::select($this->getLightProductColumns())
                 ->where('shopee_account_id', $account->id)
                 ->get();
 
+            $variantCounts = ProductStockMatcher::countDistinctSizesPerItem($allProds);
+
             foreach ($allProds as $p) {
-                $info = $this->resolveProductStockInfoFast(
+                $info = ProductStockMatcher::resolveStockInfo(
                     $p,
-                    $maps['masterByCode'],
-                    $maps['gMap'],
-                    $maps['aMap'],
-                    $maps['aPrefixMap'],
-                    $maps['smartIndex']
+                    $maps,
+                    $warehouse,
+                    $variantCounts[$p->item_id] ?? 6
                 );
 
                 if ($info['is_critical_oos']) {
@@ -1030,7 +1031,7 @@ class ShopeeProductController extends Controller
             ], 422);
         }
 
-        $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs')->get();
+        $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs', 'raw_qty', 'unit')->get();
 
         if ($masterStocks->isEmpty()) {
             return response()->json([
@@ -1039,8 +1040,9 @@ class ShopeeProductController extends Controller
             ], 422);
         }
 
-        $maps = $this->buildMasterStockMaps($masterStocks);
+        $maps = ProductStockMatcher::buildMasterStockMaps($masterStocks);
         $shopeeProducts = ShopeeProduct::where('shopee_account_id', $account->id)->get();
+        $variantCounts = ProductStockMatcher::countDistinctSizesPerItem($shopeeProducts);
 
         $comparisonList   = [];
         $criticalCount    = 0;
@@ -1050,14 +1052,11 @@ class ShopeeProductController extends Controller
         $unmatchedCount   = 0;
 
         foreach ($shopeeProducts as $p) {
-            $info = $this->resolveProductStockInfoFast(
+            $info = ProductStockMatcher::resolveStockInfo(
                 $p,
-                $maps['masterByCode'],
-                $maps['gMap'],
-                $maps['aMap'],
-                $maps['aPrefixMap'],
-                $maps['smartIndex'],
-                $warehouse
+                $maps,
+                $warehouse,
+                $variantCounts[$p->item_id] ?? 6
             );
 
             if ($info['status'] === 'UNMATCHED') {
@@ -1134,92 +1133,15 @@ class ShopeeProductController extends Controller
     }
 
     /**
-     * Build indexed lookup maps and O(1) smart index for Master Stocks in a single linear pass.
+     * Build indexed lookup maps for Master Stocks via ProductStockMatcher.
      */
     public function buildMasterStockMaps($masterStocks): array
     {
-        $gMap = [];
-        $aMap = [];
-        $aPrefixMap = [];
-        $masterByCode = [];
-        $smartIndex = [];
-
-        foreach ($masterStocks as $ms) {
-            $code = strtoupper(trim((string) $ms->item_code));
-            if ($code === '') {
-                continue;
-            }
-
-            $unpadded = ltrim($code, '0');
-            $padded8  = str_pad($unpadded !== '' ? $unpadded : $code, 8, '0', STR_PAD_LEFT);
-
-            if (! isset($masterByCode[$code])) {
-                $masterByCode[$code] = $ms;
-            }
-            if ($unpadded !== '' && ! isset($masterByCode[$unpadded])) {
-                $masterByCode[$unpadded] = $ms;
-            }
-            if (! isset($masterByCode[$padded8])) {
-                $masterByCode[$padded8] = $ms;
-            }
-
-            if ($ms->warehouse === 'G') {
-                $gMap[$code] = ($gMap[$code] ?? 0) + (int) $ms->qty_pcs;
-                if ($unpadded !== '') {
-                    $gMap[$unpadded] = ($gMap[$unpadded] ?? 0) + (int) $ms->qty_pcs;
-                }
-                $gMap[$padded8] = ($gMap[$padded8] ?? 0) + (int) $ms->qty_pcs;
-            } elseif ($ms->warehouse === 'A') {
-                $aMap[$code] = ($aMap[$code] ?? 0) + (int) $ms->qty_pcs;
-                if ($unpadded !== '') {
-                    $aMap[$unpadded] = ($aMap[$unpadded] ?? 0) + (int) $ms->qty_pcs;
-                }
-                $aMap[$padded8] = ($aMap[$padded8] ?? 0) + (int) $ms->qty_pcs;
-
-                if (strlen($padded8) >= 6) {
-                    $prefix = substr($padded8, 0, 6);
-                    $aPrefixMap[$prefix] = ($aPrefixMap[$prefix] ?? 0) + (int) $ms->qty_pcs;
-                }
-                if (strlen($code) >= 6) {
-                    $prefix = substr($code, 0, 6);
-                    $aPrefixMap[$prefix] = ($aPrefixMap[$prefix] ?? 0) + (int) $ms->qty_pcs;
-                }
-            }
-
-            // Index for O(1) Smart Candidate lookup: key = ARTICLE_SIZE
-            $nameUpper = strtoupper(trim((string) $ms->item_name));
-            if (preg_match('/[\s\-_](2[0-9]|3[0-9]|4[0-9]|5[0-9])$/', $nameUpper, $sm)) {
-                $size = $sm[1];
-                $article = $this->extractArticleKeyword('', $nameUpper);
-                if ($article) {
-                    $key = $article . '_' . $size;
-                    $exists = false;
-                    if (isset($smartIndex[$key])) {
-                        foreach ($smartIndex[$key] as $existing) {
-                            if ($existing->item_code === $ms->item_code) {
-                                $exists = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (! $exists) {
-                        $smartIndex[$key][] = $ms;
-                    }
-                }
-            }
-        }
-
-        return [
-            'masterByCode' => $masterByCode,
-            'gMap'         => $gMap,
-            'aMap'         => $aMap,
-            'aPrefixMap'   => $aPrefixMap,
-            'smartIndex'   => $smartIndex,
-        ];
+        return ProductStockMatcher::buildMasterStockMaps($masterStocks);
     }
 
     /**
-     * Fast O(1) resolution of stock info using pre-indexed smart dictionary.
+     * Fast O(1) resolution of stock info using pre-indexed smart dictionary and lusin allocation.
      */
     public function resolveProductStockInfoFast(
         ShopeeProduct $p,
@@ -1228,206 +1150,21 @@ class ShopeeProductController extends Controller
         array &$aMap,
         array &$aPrefixMap,
         array &$smartIndex,
-        string $warehouse = 'ALL'
+        string $warehouse = 'ALL',
+        ?array $aSerianItems = null,
+        ?int $variantCount = null
     ): array {
-        $normSku = strtoupper(trim((string) $p->sku));
-
-        // 1. Cek manual mapping admin atau deteksi kode angka internal dari SKU
-        $manualCode = strtoupper(trim((string) ($p->manual_item_code ?? '')));
-        $internalCode = null;
-        $matchType = 'EXACT_CODE';
-        $warningMessage = null;
-        $suggestedCode = null;
-        $suggestedName = null;
-        $isSafeToZero = true;
-
-        if (! empty($manualCode)) {
-            $internalCode = $manualCode;
-            $matchType = 'MANUAL_MAPPED';
-        } elseif (preg_match('/_(\d{6,8})(?:\D|$)/i', $normSku, $m)) {
-            $internalCode = $m[1];
-        } elseif (preg_match('/(?:\D|^)(\d{8})(?:\D|$)/', $normSku, $m)) {
-            $internalCode = $m[1];
-        } elseif (preg_match('/(?:\D|^)(\d{7})(?:\D|$)/', $normSku, $m)) {
-            $internalCode = $m[1];
-        }
-
-        $paddedCode = $internalCode ? str_pad($internalCode, 8, '0', STR_PAD_LEFT) : null;
-        $unpaddedCode = $internalCode ? ltrim($internalCode, '0') : null;
-
-        $exactItem = $internalCode
-            ? ($masterByCode[$internalCode] ?? $masterByCode[$paddedCode] ?? ($unpaddedCode !== '' ? ($masterByCode[$unpaddedCode] ?? null) : null))
-            : null;
-
-        if (! empty($exactItem)) {
-            // Kode barang cocok di Master Stok!
-            // Sesuai aturan: "Beda artikel tidak apa-apa, yang penting kode barang di SKU terdeteksi di master stok"
-            if ($matchType !== 'MANUAL_MAPPED') {
-                $matchType = 'EXACT_CODE';
-            }
-            $isSafeToZero = true;
-            $warningMessage = null;
-        } else {
-            // Kode belum ketemu langsung, coba cari smart fallback via nama artikel & ukuran
-            $cleanSku = preg_replace('/_\d+$/', '', $normSku);
-            $expectedSize = null;
-            if (preg_match('/[-_ ](2[0-9]|3[0-9]|4[0-9]|5[0-9])$/', $cleanSku, $sm)) {
-                $expectedSize = $sm[1];
-            } elseif ($p->model_name && preg_match('/(2[0-9]|3[0-9]|4[0-9]|5[0-9])/', (string) $p->model_name, $sm)) {
-                $expectedSize = $sm[1];
-            }
-
-            $articleKeyword = $this->extractArticleKeyword($cleanSku, (string) $p->item_name);
-            $colorCode = $this->extractColorCode($cleanSku, (string) $p->model_name);
-
-            $candidateFound = false;
-            if ($articleKeyword && $expectedSize) {
-                $key = $articleKeyword . '_' . $expectedSize;
-                $candidates = $smartIndex[$key] ?? [];
-                if (! empty($candidates)) {
-                    $candidate = $this->pickBestCandidate($candidates, $colorCode);
-                    if ($candidate) {
-                        $suggestedCode = $candidate->item_code;
-                        $suggestedName = $candidate->item_name;
-                        $matchType = 'SMART_MATCH';
-                        $internalCode = $candidate->item_code;
-                        $paddedCode = str_pad($internalCode, 8, '0', STR_PAD_LEFT);
-                        $unpaddedCode = ltrim($internalCode, '0');
-                        $isSafeToZero = true;
-                        $warningMessage = "Saran Otomatis: Cocok ke {$candidate->item_code} ({$candidate->item_name})";
-                        $candidateFound = true;
-                    }
-                }
-            }
-
-            if (! $candidateFound) {
-                $matchType = $internalCode ? 'CODE_NOT_FOUND' : 'NO_CODE';
-                $warningMessage = $internalCode
-                    ? "Kode {$internalCode} belum terdaftar di Master Stok Gudang"
-                    : "SKU belum mencantumkan kode barang";
-                $isSafeToZero = true;
-            }
-        }
-
-        // 4. Hitung stok fisik gudang (Gudang G + Gudang A)
-        $stockG = 0;
-        $stockA = 0;
-
-        if ($internalCode) {
-            $stockG = $gMap[$internalCode] ?? $gMap[$paddedCode] ?? ($unpaddedCode !== '' ? ($gMap[$unpaddedCode] ?? 0) : 0);
-            $stockA = $aMap[$internalCode] ?? $aMap[$paddedCode] ?? ($unpaddedCode !== '' ? ($aMap[$unpaddedCode] ?? 0) : 0);
-
-            if ($stockA === 0 && strlen($internalCode) >= 6) {
-                $prefix = substr($paddedCode, 0, 6);
-                $stockA = $aMap[$prefix . '00'] ?? ($aPrefixMap[$prefix] ?? 0);
-            }
-        } elseif (isset($gMap[$normSku])) {
-            $stockG = $gMap[$normSku];
-        }
-
-        if ($warehouse === 'G') {
-            $warehouseStock = $stockG;
-        } elseif ($warehouse === 'A') {
-            $warehouseStock = $stockA;
-        } else {
-            $warehouseStock = $stockG + $stockA;
-        }
-
-        $shopeeStock   = (int) $p->stock;
-        $reservedStock = (int) $p->reserved_stock;
-        $diff          = $warehouseStock - $shopeeStock;
-        $wasCampaignLocked = (bool) ($p->was_campaign_locked ?? false);
-
-        // Evaluasi kondisi OOS Kritis & Campaign Promo Lock
-        $isCriticalOos = false;
-        $isCampaignLocked = false;
-        $isCampaignUnlocked = false;
-
-        if ($warehouseStock <= 0) {
-            if ($wasCampaignLocked && $shopeeStock > 0) {
-                // Kuota promosi selesai dan terbuka kembali menjadi stok normal > 0
-                $isCampaignUnlocked = true;
-            } elseif ($shopeeStock > 0) {
-                // Habis di gudang (A + G = 0), tapi masih ada stok yang dijual di Shopee -> Wajib Kosongkan!
-                $isCriticalOos = true;
-            } elseif ($reservedStock > 0 && $shopeeStock <= 0) {
-                // Stok reguler sudah 0, tersisa kuota campaign promo yang terkunci
-                $isCampaignLocked = true;
-            }
-        }
-
-        // Tentukan status audit
-        if ($warehouseStock <= 0 && $shopeeStock > 0) {
-            $status = 'CRITICAL';
-        } elseif ($matchType === 'CODE_NOT_FOUND' || $matchType === 'NO_CODE') {
-            $status = 'UNMATCHED';
-        } elseif ($warehouseStock > 0 && $warehouseStock <= 3) {
-            $status = 'LOW_STOCK';
-        } elseif ($diff !== 0) {
-            $status = 'DISCREPANCY';
-        } else {
-            $status = 'MATCHED';
-        }
-
-        return [
-            'warehouse_stock'      => $warehouseStock,
-            'stock_g'              => $stockG,
-            'stock_a'              => $stockA,
-            'shopee_stock'         => $shopeeStock,
-            'reserved_stock'       => $reservedStock,
-            'diff'                 => $diff,
-            'status'               => $status,
-            'matched_code'         => $internalCode,
-            'match_type'           => $matchType,
-            'is_critical_oos'      => $isCriticalOos,
-            'is_campaign_locked'   => $isCampaignLocked,
-            'is_campaign_unlocked' => $isCampaignUnlocked,
-            'suggested_code'       => $suggestedCode,
-            'suggested_name'       => $suggestedName,
-            'warning_message'      => $warningMessage,
-            'is_safe_to_zero'      => $isSafeToZero,
-        ];
-    }
-
-    /**
-     * Pilih kandidat Master Stock terbaik berdasarkan kesesuaian warna dalam array yang sudah terfilter O(1).
-     */
-    public function pickBestCandidate(array $candidates, ?string $colorCode)
-    {
-        if (empty($candidates)) return null;
-        if (count($candidates) === 1) return $candidates[0];
-
-        $colorKeywordsMap = [
-            'HP' => ['HITAM/PUTIH', 'HITAM-PUTIH', 'HTM/PTH'],
-            'HH' => ['HITAM/HITAM', 'HITAM-HITAM', 'FULL BLACK'],
-            'BO' => ['BR TUA/ORANYE', 'BIRU/ORANYE'],
-            'BA' => ['BR TUA/ABU', 'BIRU/ABU'],
-            'PH' => ['PUTIH/HITAM'],
-            'MO' => ['MERAH/ORANYE'],
-            'H'  => ['HITAM'],
-            'P'  => ['PUTIH'],
+        $serian = $aSerianItems ?? [];
+        $maps = [
+            'masterByCode' => &$masterByCode,
+            'gMap'         => &$gMap,
+            'aMap'         => &$aMap,
+            'aPrefixMap'   => &$aPrefixMap,
+            'smartIndex'   => &$smartIndex,
+            'aSerianItems' => &$serian,
         ];
 
-        $targetKeywords = ($colorCode && isset($colorKeywordsMap[$colorCode])) ? $colorKeywordsMap[$colorCode] : [];
-        $bestCandidate = $candidates[0];
-        $highestScore = -1;
-
-        foreach ($candidates as $c) {
-            $score = 0;
-            $nameUpper = strtoupper((string) $c->item_name);
-            foreach ($targetKeywords as $kw) {
-                if (str_contains($nameUpper, $kw)) {
-                    $score += 10;
-                    break;
-                }
-            }
-            if ($score > $highestScore) {
-                $highestScore = $score;
-                $bestCandidate = $c;
-            }
-        }
-
-        return $bestCandidate;
+        return ProductStockMatcher::resolveStockInfo($p, $maps, $warehouse, $variantCount);
     }
 
     /**
@@ -2629,29 +2366,29 @@ class ShopeeProductController extends Controller
         // Ambil data stok gudang untuk referensi
         $hasMasterTable = \Illuminate\Support\Facades\Schema::hasTable('master_stocks');
         $maps = null;
+        $variantCounts = [];
         if ($hasMasterTable) {
             try {
-                $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs')->get();
+                $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs', 'raw_qty', 'unit')->get();
                 if ($masterStocks->isNotEmpty()) {
-                    $maps = $this->buildMasterStockMaps($masterStocks);
+                    $maps = ProductStockMatcher::buildMasterStockMaps($masterStocks);
+                    $variantCounts = ProductStockMatcher::countDistinctSizesPerItem($products);
                 }
             } catch (\Throwable $e) {}
         }
 
-        $result = $products->map(function ($p) use ($maps) {
+        $result = $products->map(function ($p) use ($maps, $variantCounts) {
             $whStock = 0;
             $stockG = 0;
             $stockA = 0;
             $suggestedCode = null;
 
             if ($maps) {
-                $info = $this->resolveProductStockInfoFast(
+                $info = ProductStockMatcher::resolveStockInfo(
                     $p,
-                    $maps['masterByCode'],
-                    $maps['gMap'],
-                    $maps['aMap'],
-                    $maps['aPrefixMap'],
-                    $maps['smartIndex']
+                    $maps,
+                    'ALL',
+                    $variantCounts[$p->item_id] ?? 6
                 );
                 $whStock = $info['warehouse_stock'];
                 $stockG = $info['stock_g'];

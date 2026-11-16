@@ -8,6 +8,7 @@ use App\Models\TiktokProduct;
 use App\Models\TiktokStockZeroBatch;
 use App\Models\TiktokStockZeroItem;
 use App\Models\User;
+use App\Services\ProductStockMatcher;
 use App\Services\TiktokSyncService;
 use Carbon\CarbonInterface;
 use Illuminate\Http\JsonResponse;
@@ -170,28 +171,28 @@ class TiktokProductController extends Controller
                 return $empty;
             }
 
-            $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs')->get();
+            $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs', 'raw_qty', 'unit')->get();
             if ($masterStocks->isEmpty()) {
                 return $empty;
             }
 
-            $maps     = $this->buildMasterStockMaps($masterStocks);
+            $maps     = ProductStockMatcher::buildMasterStockMaps($masterStocks);
             $allProds = TiktokProduct::select($this->getLightProductColumns())
                 ->where('tiktok_account_id', $account->id)
                 ->get();
+
+            $variantCounts = ProductStockMatcher::countDistinctSizesPerItem($allProds);
 
             $criticalOosCount      = 0;
             $campaignUnlockedCount = 0;
             $discrepancyCount      = 0;
 
             foreach ($allProds as $p) {
-                $info = $this->resolveProductStockInfoFast(
+                $info = ProductStockMatcher::resolveStockInfo(
                     $p,
-                    $maps['masterByCode'],
-                    $maps['gMap'],
-                    $maps['aMap'],
-                    $maps['aPrefixMap'],
-                    $maps['smartIndex']
+                    $maps,
+                    'ALL',
+                    $variantCounts[$p->item_id] ?? 6
                 );
 
                 if ($info['is_critical_oos']) {
@@ -303,7 +304,7 @@ class TiktokProductController extends Controller
                 ];
 
                 if ($masterStockSummary['has_master_stock']) {
-                    $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs')->get();
+                    $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs', 'raw_qty', 'unit')->get();
                 }
             } catch (\Throwable $e) {
                 // Fallback
@@ -320,20 +321,20 @@ class TiktokProductController extends Controller
         $stockInfoById       = [];
 
         if ($masterStockSummary['has_master_stock'] && $account && $masterStocks->isNotEmpty()) {
-            $maps = $this->buildMasterStockMaps($masterStocks);
+            $maps = ProductStockMatcher::buildMasterStockMaps($masterStocks);
 
             $allProds = TiktokProduct::select($this->getLightProductColumns())
                 ->where('tiktok_account_id', $account->id)
                 ->get();
 
+            $variantCounts = ProductStockMatcher::countDistinctSizesPerItem($allProds);
+
             foreach ($allProds as $p) {
-                $info = $this->resolveProductStockInfoFast(
+                $info = ProductStockMatcher::resolveStockInfo(
                     $p,
-                    $maps['masterByCode'],
-                    $maps['gMap'],
-                    $maps['aMap'],
-                    $maps['aPrefixMap'],
-                    $maps['smartIndex']
+                    $maps,
+                    $warehouse,
+                    $variantCounts[$p->item_id] ?? 6
                 );
 
                 if ($info['is_critical_oos']) {
@@ -937,76 +938,15 @@ class TiktokProductController extends Controller
     }
 
     /**
-     * Build indexed lookup maps for Master Stocks.
+     * Build indexed lookup maps for Master Stocks via ProductStockMatcher.
      */
     public function buildMasterStockMaps($masterStocks): array
     {
-        $gMap = [];
-        $aMap = [];
-        $aPrefixMap = [];
-        $masterByCode = [];
-        $smartIndex = [];
-
-        foreach ($masterStocks as $ms) {
-            $code = strtoupper(trim((string) $ms->item_code));
-            if ($code === '') {
-                continue;
-            }
-
-            $unpadded = ltrim($code, '0');
-            $padded8  = str_pad($unpadded !== '' ? $unpadded : $code, 8, '0', STR_PAD_LEFT);
-
-            if (! isset($masterByCode[$code])) {
-                $masterByCode[$code] = $ms;
-            }
-            if ($unpadded !== '' && ! isset($masterByCode[$unpadded])) {
-                $masterByCode[$unpadded] = $ms;
-            }
-            if (! isset($masterByCode[$padded8])) {
-                $masterByCode[$padded8] = $ms;
-            }
-
-            if ($ms->warehouse === 'G') {
-                $gMap[$code] = ($gMap[$code] ?? 0) + (int) $ms->qty_pcs;
-                if ($unpadded !== '') {
-                    $gMap[$unpadded] = ($gMap[$unpadded] ?? 0) + (int) $ms->qty_pcs;
-                }
-                $gMap[$padded8] = ($gMap[$padded8] ?? 0) + (int) $ms->qty_pcs;
-            } elseif ($ms->warehouse === 'A') {
-                $aMap[$code] = ($aMap[$code] ?? 0) + (int) $ms->qty_pcs;
-                if ($unpadded !== '') {
-                    $aMap[$unpadded] = ($aMap[$unpadded] ?? 0) + (int) $ms->qty_pcs;
-                }
-                $aMap[$padded8] = ($aMap[$padded8] ?? 0) + (int) $ms->qty_pcs;
-
-                if (strlen($padded8) >= 6) {
-                    $prefix = substr($padded8, 0, 6);
-                    $aPrefixMap[$prefix] = ($aPrefixMap[$prefix] ?? 0) + (int) $ms->qty_pcs;
-                }
-            }
-
-            $nameUpper = strtoupper(trim((string) $ms->item_name));
-            if (preg_match('/[\s\-_](2[0-9]|3[0-9]|4[0-9]|5[0-9])$/', $nameUpper, $sm)) {
-                $size = $sm[1];
-                $article = $this->extractArticleKeyword('', $nameUpper);
-                if ($article) {
-                    $key = $article . '_' . $size;
-                    $smartIndex[$key][] = $ms;
-                }
-            }
-        }
-
-        return [
-            'masterByCode' => $masterByCode,
-            'gMap'         => $gMap,
-            'aMap'         => $aMap,
-            'aPrefixMap'   => $aPrefixMap,
-            'smartIndex'   => $smartIndex,
-        ];
+        return ProductStockMatcher::buildMasterStockMaps($masterStocks);
     }
 
     /**
-     * Fast O(1) resolution of stock info using pre-indexed smart dictionary.
+     * Fast O(1) resolution of stock info using pre-indexed smart dictionary and lusin allocation.
      */
     public function resolveProductStockInfoFast(
         TiktokProduct $p,
@@ -1015,113 +955,21 @@ class TiktokProductController extends Controller
         array &$aMap,
         array &$aPrefixMap,
         array &$smartIndex,
-        string $warehouse = 'ALL'
+        string $warehouse = 'ALL',
+        ?array $aSerianItems = null,
+        ?int $variantCount = null
     ): array {
-        $normSku = strtoupper(trim((string) $p->sku));
-        $manualCode = strtoupper(trim((string) ($p->manual_item_code ?? '')));
-        $internalCode = null;
-
-        if ($manualCode !== '') {
-            $internalCode = $manualCode;
-        } elseif (preg_match('/_0*(\d{6,8})$/', $normSku, $matches)) {
-            $internalCode = $matches[1];
-        }
-
-        $stockG = 0;
-        $stockA = 0;
-        $whStock = 0;
-        $matchedCode = null;
-        $matchType = 'CODE_NOT_FOUND';
-        $suggestedCode = null;
-        $suggestedName = null;
-
-        if ($internalCode) {
-            $lookupKeys = [
-                $internalCode,
-                ltrim($internalCode, '0'),
-                str_pad(ltrim($internalCode, '0'), 8, '0', STR_PAD_LEFT),
-            ];
-
-            $found = false;
-            foreach ($lookupKeys as $k) {
-                if (isset($masterByCode[$k])) {
-                    $found = true;
-                    $matchedCode = $masterByCode[$k]->item_code;
-                    $stockG = $gMap[$k] ?? 0;
-                    $stockA = $aMap[$k] ?? 0;
-                    $matchType = ($manualCode !== '') ? 'MANUAL_MAPPED' : 'EXACT_CODE';
-                    break;
-                }
-            }
-
-            if (! $found && strlen($internalCode) >= 6) {
-                $prefix = substr($internalCode, 0, 6);
-                if (isset($aPrefixMap[$prefix])) {
-                    $stockA = $aPrefixMap[$prefix];
-                    $matchedCode = $prefix . ' (A)';
-                    $matchType = 'SMART_MATCH';
-                }
-            }
-        }
-
-        $whStock = match ($warehouse) {
-            'G'     => $stockG,
-            'A'     => $stockA,
-            default => $stockG + $stockA,
-        };
-
-        $diff = $whStock - (int) $p->stock;
-
-        $status = 'UNMATCHED';
-        if ($matchedCode) {
-            if ($diff === 0) {
-                $status = 'MATCHED';
-            } elseif ($whStock <= 0 && $p->stock > 0) {
-                $status = 'CRITICAL';
-            } elseif ($whStock < $p->stock) {
-                $status = 'LOW_STOCK';
-            } else {
-                $status = 'DISCREPANCY';
-            }
-        }
-
-        $isCriticalOos = ($whStock <= 0 && $p->stock > 0);
-        $isCampaignLocked = (bool) $p->was_campaign_locked && (int) $p->locked_campaign_qty > 0;
-        $isCampaignUnlocked = $isCriticalOos && ! $isCampaignLocked;
-
-        return [
-            'warehouse_stock'      => $whStock,
-            'stock_g'              => $stockG,
-            'stock_a'              => $stockA,
-            'diff'                 => $diff,
-            'status'               => $status,
-            'matched_code'         => $matchedCode,
-            'match_type'           => $matchType,
-            'is_critical_oos'      => $isCriticalOos,
-            'is_campaign_locked'   => $isCampaignLocked,
-            'is_campaign_unlocked' => $isCampaignUnlocked,
-            'suggested_code'       => $suggestedCode,
-            'suggested_name'       => $suggestedName,
-            'warning_message'      => $isCriticalOos ? 'Stok fisik gudang 0 pcs tetapi produk masih dijual di TikTok!' : null,
-            'is_safe_to_zero'      => $isCriticalOos,
-        ];
-    }
-
-    private function extractArticleKeyword(string $sku, string $name): ?string
-    {
-        $text = strtoupper($sku . ' ' . $name);
-        $articles = [
-            'KYLIE', 'NOVA', 'IONIQ', 'CONFERO', 'TUCSON', 'SPARK', 'DONNA', 'SPIDER',
-            'ROBOT', 'SONIC', 'TURBO', 'BLAZE', 'SPEED', 'FLASH', 'TITAN', 'AVENGER',
+        $serian = $aSerianItems ?? [];
+        $maps = [
+            'masterByCode' => &$masterByCode,
+            'gMap'         => &$gMap,
+            'aMap'         => &$aMap,
+            'aPrefixMap'   => &$aPrefixMap,
+            'smartIndex'   => &$smartIndex,
+            'aSerianItems' => &$serian,
         ];
 
-        foreach ($articles as $art) {
-            if (str_contains($text, $art)) {
-                return $art;
-            }
-        }
-
-        return null;
+        return ProductStockMatcher::resolveStockInfo($p, $maps, $warehouse, $variantCount);
     }
 
     private function isSuperAdmin(?User $user): bool
