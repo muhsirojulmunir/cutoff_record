@@ -517,8 +517,8 @@ export default function OrderDetailDrawer({
               </span>
 
               {deadlineCountdownText && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-0.5 text-[11px] font-bold text-[#EE4D2D]">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#EE4D2D] animate-pulse" />
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-[11px] font-bold text-red-600">
+                  <span className="h-1.5 w-1.5 rounded-full bg-red-600 animate-pulse" />
                   {deadlineCountdownText}
                 </span>
               )}
@@ -584,9 +584,7 @@ export default function OrderDetailDrawer({
                   key={entry.label}
                   className={`rounded-xl border p-3 ${
                     entry.highlight
-                      ? isOverdue
-                        ? 'border-rose-200 bg-rose-50/70'
-                        : 'border-amber-200 bg-amber-50/70'
+                      ? 'border-red-200 bg-red-50/70'
                       : 'border-slate-200 bg-slate-50/60'
                   }`}
                 >
@@ -594,9 +592,7 @@ export default function OrderDetailDrawer({
                   <p
                     className={`mt-1 text-xs font-bold tabular-nums ${
                       entry.highlight
-                        ? isOverdue
-                          ? 'text-rose-800'
-                          : 'text-amber-900'
+                        ? 'text-red-700'
                         : 'text-slate-900'
                     }`}
                   >
@@ -606,9 +602,7 @@ export default function OrderDetailDrawer({
                     <p
                       className={`mt-0.5 text-[10px] font-semibold ${
                         entry.highlight
-                          ? isOverdue
-                            ? 'text-rose-700'
-                            : 'text-amber-700'
+                          ? 'text-red-600'
                           : 'text-slate-500'
                       }`}
                     >

@@ -233,7 +233,7 @@ function getDeadlineState(
       : diffMs <= 12 * 3600 * 1000
       ? 'border-amber-200 bg-amber-50 text-amber-800'
       : 'border-slate-200 bg-slate-50 text-slate-700',
-    textClass: diffMs <= 12 * 3600 * 1000 ? 'text-[#EE4D2D] font-bold' : 'text-slate-700',
+    textClass: diffMs <= 12 * 3600 * 1000 ? 'text-red-600 font-bold' : 'text-slate-700',
     countdownText: `${actionPrefix} ${durationStr}`,
     courierStatusText: null,
   };
@@ -2532,8 +2532,8 @@ export default function ShopeeOrdersPage({
                         {statusMeta.label}
                       </span>
                       {deadline.countdownText && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-0.5 text-[11px] font-bold text-[#EE4D2D]">
-                          <span className="h-1.5 w-1.5 rounded-full bg-[#EE4D2D] animate-pulse" />
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-[11px] font-bold text-red-600">
+                          <span className="h-1.5 w-1.5 rounded-full bg-red-600 animate-pulse" />
                           {deadline.countdownText}
                         </span>
                       )}
@@ -2794,8 +2794,8 @@ export default function ShopeeOrdersPage({
                           )}
                         </div>
                         {deadline.countdownText ? (
-                          <p className="flex items-center gap-1 text-xs font-bold text-[#EE4D2D]">
-                            <span className="h-1.5 w-1.5 rounded-full bg-[#EE4D2D] animate-pulse shrink-0" />
+                          <p className="flex items-center gap-1 text-xs font-bold text-red-600">
+                            <span className="h-1.5 w-1.5 rounded-full bg-red-600 animate-pulse shrink-0" />
                             ⏱ {deadline.countdownText}
                           </p>
                         ) : deadline.courierStatusText ? (
