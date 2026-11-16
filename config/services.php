@@ -59,11 +59,11 @@ return [
 
     'warehouse' => [
         'name'     => env('WAREHOUSE_NAME', 'Gudang Utama Record Shoes'),
-        'address'  => env('WAREHOUSE_ADDRESS', 'Gudang Utama Record Shoes, Surabaya'),
-        'district' => env('WAREHOUSE_DISTRICT', 'Rungkut'),
+        'address'  => env('WAREHOUSE_ADDRESS', 'Jalan Kyai Tambak Deres No. 32, Bulak'),
+        'district' => env('WAREHOUSE_DISTRICT', 'Bulak'),
         'city'     => env('WAREHOUSE_CITY', 'Kota Surabaya'),
         'state'    => env('WAREHOUSE_PROVINCE', 'Jawa Timur'),
-        'zipcode'  => env('WAREHOUSE_ZIPCODE', '60293'),
+        'zipcode'  => env('WAREHOUSE_ZIPCODE', '60124'),
     ],
 
 ];

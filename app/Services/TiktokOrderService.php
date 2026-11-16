@@ -645,11 +645,11 @@ class TiktokOrderService
 
         $wh = config('services.warehouse') ?? [];
         $whName = $wh['name'] ?? 'Gudang Utama Record Shoes';
-        $whAddress = $wh['address'] ?? 'Gudang Utama Record Shoes, Surabaya';
-        $whDistrict = $wh['district'] ?? 'Rungkut';
+        $whAddress = $wh['address'] ?? 'Jalan Kyai Tambak Deres No. 32, Bulak';
+        $whDistrict = $wh['district'] ?? 'Bulak';
         $whCity = $wh['city'] ?? 'Kota Surabaya';
         $whState = $wh['state'] ?? 'Jawa Timur';
-        $whZip = $wh['zipcode'] ?? '60293';
+        $whZip = $wh['zipcode'] ?? '60124';
 
         $pickupAddressList = [
             [
@@ -684,18 +684,18 @@ class TiktokOrderService
         $dropoffBranchList = [
             [
                 'branch_id'   => 'drop_jnt_sby_01',
-                'branch_name' => 'Drop Point J&T Express Surabaya',
-                'address'     => "Jl. Raya Jemursari No. 15, {$whCity}",
+                'branch_name' => 'Drop Point J&T Express Kenjeran / Bulak',
+                'address'     => "Jl. Kenjeran No. 288, Bulak, {$whCity}",
             ],
             [
                 'branch_id'   => 'drop_spx_sby_01',
                 'branch_name' => 'SPX Express Drop Off Point Surabaya',
-                'address'     => "Jl. Ngagel Madya No. 8, {$whCity}",
+                'address'     => "Jl. Kapas Krampung No. 45, {$whCity}",
             ],
             [
                 'branch_id'   => 'drop_ninja_sby_01',
-                'branch_name' => 'Ninja Point Surabaya',
-                'address'     => "Jl. Rungkut Industri No. 20, {$whCity}",
+                'branch_name' => 'Ninja Point Surabaya Kenjeran',
+                'address'     => "Jl. Kedung Cowek No. 80, {$whCity}",
             ],
         ];
 
