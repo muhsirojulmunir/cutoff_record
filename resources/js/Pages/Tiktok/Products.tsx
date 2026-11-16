@@ -1308,17 +1308,17 @@ export default function TiktokProductsIndex({
                 }
                 className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border text-xs font-semibold shadow-2xs transition-colors cursor-pointer whitespace-nowrap active:scale-98 ${
                   (zeroRestoreSummary?.restorable_items_count ?? 0) > 0
-                    ? 'border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-800'
+                    ? 'border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-800'
                     : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
                 }`}
                 title="Buka modal Pulihkan stok TikTok & lihat riwayat tanggal pengosongan/pemulihan"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-indigo-600">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-slate-700">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
                 </svg>
                 <span>Pulihkan</span>
                 {(zeroRestoreSummary?.restorable_items_count ?? 0) > 0 && (
-                  <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-600 text-white font-mono">
+                  <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-white font-mono">
                     {zeroRestoreSummary?.restorable_items_count}
                   </span>
                 )}
@@ -1360,7 +1360,7 @@ export default function TiktokProductsIndex({
               className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer whitespace-nowrap active:scale-98 ${
                 isSyncing
                   ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                  : 'bg-[#8B5CF6] hover:bg-[#d83f21] text-white'
+                  : 'bg-[#0B132B] hover:bg-slate-800 text-white'
               }`}
             >
               {isSyncing ? (
@@ -1475,7 +1475,7 @@ export default function TiktokProductsIndex({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 className="text-xs font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-[#8B5CF6]">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-slate-700">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" />
                 </svg>
                 <span>Rentang Waktu Penjualan TikTok:</span>
@@ -1486,13 +1486,13 @@ export default function TiktokProductsIndex({
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-[#8B5CF6]">
+              <span className="text-xs font-bold text-slate-800">
                 {startDate && endDate ? (
                   startDate === endDate ? 'Hari Ini Terpilih' : `${getDaysCount(startDate, endDate)} Hari Terpilih`
                 ) : 'Semua Waktu'}
               </span>
               {summary?.total_period_sales !== undefined && summary.total_period_sales > 0 && (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-800 border border-slate-300">
                   {summary.total_period_sales.toLocaleString('id-ID')} unit terjual
                 </span>
               )}
@@ -1550,7 +1550,7 @@ export default function TiktokProductsIndex({
               className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/90 border border-slate-200 hover:border-slate-300 rounded-xl text-left transition-all cursor-pointer group shadow-2xs"
             >
               <div className="flex items-center gap-3 min-w-0">
-                <span className="p-2 rounded-xl bg-white border border-slate-200 text-[#8B5CF6] group-hover:scale-105 transition-transform shadow-2xs shrink-0">
+                <span className="p-2 rounded-xl bg-white border border-slate-200 text-slate-800 group-hover:scale-105 transition-transform shadow-2xs shrink-0">
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-5 h-5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" />
                   </svg>
@@ -1563,11 +1563,11 @@ export default function TiktokProductsIndex({
                     {startDate && endDate ? (
                       <>
                         {startDate === endDate ? (
-                          <span>{formatDateIndo(startDate)} <span className="text-[#8B5CF6] font-bold">(Hari Ini)</span></span>
+                          <span>{formatDateIndo(startDate)} <span className="text-slate-900 font-bold">(Hari Ini)</span></span>
                         ) : (
                           <span>
                             {formatDateIndo(startDate)} — {formatDateIndo(endDate)}
-                            <span className="ml-2 text-[11px] font-bold text-[#8B5CF6]">
+                            <span className="ml-2 text-[11px] font-bold text-slate-800">
                               ({getDaysCount(startDate, endDate)} hari)
                             </span>
                           </span>
@@ -1581,7 +1581,7 @@ export default function TiktokProductsIndex({
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0 pl-2">
-                <span className="text-[11px] font-bold text-[#8B5CF6] hidden sm:inline">
+                <span className="text-[11px] font-bold text-slate-700 hidden sm:inline">
                   {isCalendarOpen ? 'Tutup Kalender' : 'Buka Kalender'}
                 </span>
                 <svg
@@ -1718,7 +1718,7 @@ export default function TiktokProductsIndex({
               </div>
               <p className="text-sm font-semibold text-slate-700">Tabel Stok Produk TikTok Kosong</p>
               <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                Silakan klik tombol <strong className="text-[#8B5CF6]">"Tarik Stok TikTok (API)"</strong> di atas untuk mengambil data SKU dan kuantitas stok produk terkini.
+                Silakan klik tombol <strong className="text-slate-900 font-bold">"Tarik Stok TikTok (API)"</strong> di atas untuk mengambil data SKU dan kuantitas stok produk terkini.
               </p>
             </div>
           ) : (
@@ -1851,7 +1851,7 @@ export default function TiktokProductsIndex({
                             </span>
                             <span
                               className={`text-[10px] font-medium mt-0.5 ${
-                                (p.sales ?? 0) > 0 ? 'text-violet-600 font-semibold' : 'text-slate-400'
+                                (p.sales ?? 0) > 0 ? 'text-slate-900 font-bold font-mono' : 'text-slate-400'
                               }`}
                               title={`Total Penjualan: ${(p.sales ?? 0).toLocaleString('id-ID')} unit terjual`}
                             >
@@ -2141,7 +2141,7 @@ export default function TiktokProductsIndex({
             {/* Modal Header */}
             <div className="p-5 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-200">
+                <div className="p-2.5 bg-slate-100 text-slate-800 rounded-xl border border-slate-300">
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                   </svg>
@@ -2743,7 +2743,7 @@ export default function TiktokProductsIndex({
                         value={auditSearch}
                         onChange={(e) => setAuditSearch(e.target.value)}
                         placeholder="Filter tabel..."
-                        className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 w-full sm:w-48"
+                        className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-slate-800 w-full sm:w-48"
                       />
 
                       {/* Export Excel Laporan */}

@@ -287,7 +287,7 @@ export default function TiktokZeroRestoreModal({
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/70 flex items-start justify-between gap-4 shrink-0">
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-violet-50 border border-violet-200 text-violet-600 flex items-center justify-center shrink-0 mt-0.5">
+            <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-300 text-slate-800 flex items-center justify-center shrink-0 mt-0.5">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.9} stroke="currentColor" className="w-5 h-5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
               </svg>
@@ -323,7 +323,7 @@ export default function TiktokZeroRestoreModal({
 
           {isLoading && batches.length === 0 ? (
             <div className="py-12 text-center text-xs text-slate-500">
-              <div className="w-6 h-6 border-2 border-violet-600 border-t-transparent rounded-full animate-spin mx-auto mb-2.5"></div>
+              <div className="w-6 h-6 border-2 border-slate-800 border-t-transparent rounded-full animate-spin mx-auto mb-2.5"></div>
               Memuat riwayat pengosongan &amp; pemulihan TikTok...
             </div>
           ) : batches.length === 0 ? (
@@ -352,7 +352,7 @@ export default function TiktokZeroRestoreModal({
                         <span className="font-mono text-xs font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
                           {batch.batch_code}
                         </span>
-                        <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-violet-50 text-violet-700 border border-violet-200">
+                        <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-800 border border-slate-300">
                           {batch.source_label || 'Bulk'}
                         </span>
                         {renderBatchStatusBadge(batch)}
@@ -386,7 +386,7 @@ export default function TiktokZeroRestoreModal({
                           type="button"
                           onClick={() => openRestoreConfirm(batch, restorableItems, true)}
                           disabled={isRestoring}
-                          className="px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                          className="px-3 py-1.5 rounded-xl bg-[#0B132B] hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-xs cursor-pointer disabled:opacity-50"
                         >
                           Pulihkan Seluruh Batch ({restorableItems.length})
                         </button>
@@ -436,7 +436,7 @@ export default function TiktokZeroRestoreModal({
                                 <td className="px-3 py-2.5 text-slate-700 font-medium">
                                   {item.model_name || '-'}
                                 </td>
-                                <td className="px-3 py-2.5 text-right font-black font-mono text-indigo-600">
+                                <td className="px-3 py-2.5 text-right font-black font-mono text-slate-900">
                                   {item.previous_stock} pcs
                                 </td>
                                 <td className="px-3 py-2.5 text-center">
@@ -485,8 +485,8 @@ export default function TiktokZeroRestoreModal({
       {confirmState && (
         <div className="fixed inset-0 z-[10010] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center gap-3 text-violet-600">
-              <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center border border-violet-200 shrink-0">
+            <div className="flex items-center gap-3 text-slate-900">
+              <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center border border-slate-300 text-slate-800 shrink-0">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
                 </svg>
@@ -515,7 +515,7 @@ export default function TiktokZeroRestoreModal({
                 type="button"
                 onClick={executeRestore}
                 disabled={isRestoring}
-                className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                className="px-4 py-2 rounded-xl bg-[#0B132B] hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-xs cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
               >
                 {isRestoring && (
                   <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
