@@ -57,4 +57,13 @@ return [
         'auth_url'  => env('TIKTOK_AUTH_URL', 'https://services.tiktokshop.com/open/authorize'),
     ],
 
+    'warehouse' => [
+        'name'     => env('WAREHOUSE_NAME', 'Gudang Utama Record Shoes'),
+        'address'  => env('WAREHOUSE_ADDRESS', 'Gudang Utama Record Shoes, Surabaya'),
+        'district' => env('WAREHOUSE_DISTRICT', 'Rungkut'),
+        'city'     => env('WAREHOUSE_CITY', 'Kota Surabaya'),
+        'state'    => env('WAREHOUSE_PROVINCE', 'Jawa Timur'),
+        'zipcode'  => env('WAREHOUSE_ZIPCODE', '60293'),
+    ],
+
 ];

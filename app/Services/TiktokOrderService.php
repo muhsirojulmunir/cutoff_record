@@ -643,16 +643,24 @@ class TiktokOrderService
         $today = now()->format('Y-m-d');
         $tomorrow = now()->addDay()->format('Y-m-d');
 
+        $wh = config('services.warehouse') ?? [];
+        $whName = $wh['name'] ?? 'Gudang Utama Record Shoes';
+        $whAddress = $wh['address'] ?? 'Gudang Utama Record Shoes, Surabaya';
+        $whDistrict = $wh['district'] ?? 'Rungkut';
+        $whCity = $wh['city'] ?? 'Kota Surabaya';
+        $whState = $wh['state'] ?? 'Jawa Timur';
+        $whZip = $wh['zipcode'] ?? '60293';
+
         $pickupAddressList = [
             [
                 'address_id'     => 101,
-                'region'         => 'Jawa Barat, Kab. Bogor',
-                'state'          => 'Jawa Barat',
-                'city'           => 'Kab. Bogor',
-                'district'       => 'Gunung Putri',
-                'town'           => 'Cicadas',
-                'address'        => 'Gudang Utama Record Shoes, Jl. Raya Wanaherang No. 88',
-                'zipcode'        => '16964',
+                'region'         => "{$whState}, {$whCity}",
+                'state'          => $whState,
+                'city'           => $whCity,
+                'district'       => $whDistrict,
+                'town'           => $whDistrict,
+                'address'        => $whAddress,
+                'zipcode'        => $whZip,
                 'time_slot_list' => [
                     [
                         'date'           => $today,
@@ -675,14 +683,19 @@ class TiktokOrderService
 
         $dropoffBranchList = [
             [
-                'branch_id'   => 'drop_jnt_01',
-                'branch_name' => 'Drop Point J&T Express Wanaherang',
-                'address'     => 'Jl. Raya Mercedes Benz No. 12, Cicadas, Gn. Putri',
+                'branch_id'   => 'drop_jnt_sby_01',
+                'branch_name' => 'Drop Point J&T Express Surabaya',
+                'address'     => "Jl. Raya Jemursari No. 15, {$whCity}",
             ],
             [
-                'branch_id'   => 'drop_ninja_01',
-                'branch_name' => 'Ninja Point Gunung Putri',
-                'address'     => 'Jl. Alternatif Cibubur KM 6, Gn. Putri',
+                'branch_id'   => 'drop_spx_sby_01',
+                'branch_name' => 'SPX Express Drop Off Point Surabaya',
+                'address'     => "Jl. Ngagel Madya No. 8, {$whCity}",
+            ],
+            [
+                'branch_id'   => 'drop_ninja_sby_01',
+                'branch_name' => 'Ninja Point Surabaya',
+                'address'     => "Jl. Rungkut Industri No. 20, {$whCity}",
             ],
         ];
 
