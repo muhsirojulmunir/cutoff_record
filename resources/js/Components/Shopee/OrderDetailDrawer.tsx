@@ -42,6 +42,30 @@ function isInstantCarrier(carrier: string | null | undefined): boolean {
   return /instan|instant|same\s*day|sameday/i.test(carrier);
 }
 
+function formatShopeeSlaDuration(diffMs: number): string {
+  if (diffMs <= 0) return '0 menit';
+
+  const totalSeconds = Math.floor(diffMs / 1000);
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+  const seconds = totalSeconds % 60;
+
+  if (days > 0) {
+    return hours > 0 ? `${days} hari ${hours} jam` : `${days} hari`;
+  }
+  if (hours > 0) {
+    return minutes > 0 ? `${hours} jam ${minutes} menit` : `${hours} jam`;
+  }
+  if (minutes > 0) {
+    return minutes < 15 && seconds > 0
+      ? `${minutes} menit ${seconds} detik`
+      : `${minutes} menit`;
+  }
+  return `${Math.max(1, seconds)} detik`;
+}
+
 function resolveItemQty(item: ShopeeOrderItem): number {
   const raw = item.model_quantity_purchased ?? (item as Record<string, unknown>).qty ?? 1;
   const n = Number(raw);
@@ -257,11 +281,19 @@ export default function OrderDetailDrawer({
 
   const shipByParsed = parseWibDate(order.ship_by_date);
   const deadlineMs = shipByParsed ? shipByParsed.getTime() - Date.now() : null;
-  const showDeadlineAlert =
-    ACTIVE_DEADLINE_STATUSES.has(normalizedStatus) &&
-    deadlineMs !== null &&
-    deadlineMs <= 6 * 60 * 60 * 1000;
-  const isOverdue = showDeadlineAlert && deadlineMs !== null && deadlineMs < 0;
+  const hasActiveDeadline = ACTIVE_DEADLINE_STATUSES.has(normalizedStatus) && deadlineMs !== null;
+  const isOverdue = hasActiveDeadline && deadlineMs <= 0;
+  const isInstant = isInstantCarrier(order.shipping_carrier);
+
+  let deadlineCountdownText: string | null = null;
+  if (hasActiveDeadline) {
+    if (isOverdue) {
+      deadlineCountdownText = 'Batas kirim terlewati';
+    } else {
+      const actionPrefix = isInstant ? 'Atur pickup dalam' : 'Atur pengiriman dalam';
+      deadlineCountdownText = `${actionPrefix} ${formatShopeeSlaDuration(deadlineMs)}`;
+    }
+  }
 
   const canShip = isShippableOrderStatus(normalizedStatus);
   const canPrintWaybill = !isWaybillBlockedStatus(normalizedStatus);
@@ -284,8 +316,8 @@ export default function OrderDetailDrawer({
     {
       label: 'Batas Kirim',
       value: formatOrderTimestampWIB(order.ship_by_date),
-      highlight: showDeadlineAlert,
-      note: isOverdue ? 'Melewati tenggat' : showDeadlineAlert ? 'Segera kirim' : null,
+      highlight: hasActiveDeadline && (isOverdue || deadlineMs <= 12 * 60 * 60 * 1000),
+      note: deadlineCountdownText,
     },
     {
       label: 'Pengiriman Diatur',
@@ -483,6 +515,13 @@ export default function OrderDetailDrawer({
               >
                 {statusMeta.label}
               </span>
+
+              {deadlineCountdownText && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-0.5 text-[11px] font-bold text-[#EE4D2D]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#EE4D2D] animate-pulse" />
+                  {deadlineCountdownText}
+                </span>
+              )}
 
               {order.label_print_count > 0 ? (
                 <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 tabular-nums">

@@ -143,21 +143,31 @@ interface DeadlineStateResult {
 }
 
 /**
- * Format durasi hitung mundur ringkas ala Shopee Seller Centre (contoh: "5m 44d", "28m 10d", "1j 15m").
+ * Format durasi hitung mundur tenggat pengiriman persis gaya Shopee Seller Centre:
+ * Contoh di Shopee Seller Centre: "Atur pickup dalam 1 jam 47 menit", "Atur pengiriman dalam 2 hari 4 jam", dll.
  */
-function formatShopeeInstantDuration(diffSec: number): string {
-  if (diffSec <= 0) return '0d';
-  const hours = Math.floor(diffSec / 3600);
-  const minutes = Math.floor((diffSec % 3600) / 60);
-  const seconds = diffSec % 60;
+function formatShopeeSlaDuration(diffMs: number): string {
+  if (diffMs <= 0) return '0 menit';
 
+  const totalSeconds = Math.floor(diffMs / 1000);
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+  const seconds = totalSeconds % 60;
+
+  if (days > 0) {
+    return hours > 0 ? `${days} hari ${hours} jam` : `${days} hari`;
+  }
   if (hours > 0) {
-    return `${hours}j ${minutes}m`;
+    return minutes > 0 ? `${hours} jam ${minutes} menit` : `${hours} jam`;
   }
   if (minutes > 0) {
-    return `${minutes}m ${seconds}d`;
+    return minutes < 15 && seconds > 0
+      ? `${minutes} menit ${seconds} detik`
+      : `${minutes} menit`;
   }
-  return `${seconds}d`;
+  return `${Math.max(1, seconds)} detik`;
 }
 
 function getDeadlineState(
@@ -169,68 +179,8 @@ function getDeadlineState(
 ): DeadlineStateResult {
   const formatted = formatOrderTimestampWIB(shipByDate);
   const parsedShipBy = parseWibDate(shipByDate);
-  const parsedCreated = parseWibDate(orderCreatedAt);
 
-  // Jika pesanan Instant:
-  if (isInstant) {
-    // 1. Jika pesanan sudah diatur pickup / diproses:
-    if (normalizedStatus === 'PROCESSED') {
-      return {
-        label: formatted,
-        badgeText: 'Instant',
-        badgeClass: 'border-orange-200 bg-orange-50 text-[#EE4D2D]',
-        textClass: 'text-slate-700',
-        countdownText: null,
-        courierStatusText: 'Mencari Kurir',
-      };
-    }
-
-    // 2. Jika pesanan belum diatur pickup (READY_TO_SHIP / RETRY_SHIP):
-    if (normalizedStatus === 'READY_TO_SHIP' || normalizedStatus === 'RETRY_SHIP') {
-      // Shopee Instant memiliki jeda persiapan / batas Cari Kurir Otomatis 30 menit (1.800 detik) sejak pesanan dibuat
-      const autoSearchCourierMs = parsedCreated ? parsedCreated.getTime() + 30 * 60 * 1000 : null;
-      const systemSlaDeadlineMs = parsedShipBy ? parsedShipBy.getTime() : null;
-
-      if (autoSearchCourierMs) {
-        const diffSec = Math.floor((autoSearchCourierMs - nowMs) / 1000);
-        if (diffSec > 0) {
-          const durationStr = formatShopeeInstantDuration(diffSec);
-          return {
-            label: formatted,
-            badgeText: 'Instant',
-            badgeClass: 'border-orange-200 bg-orange-50 text-[#EE4D2D]',
-            textClass: 'text-[#EE4D2D] font-semibold',
-            countdownText: `Mencari Kurir dalam ${durationStr}`,
-            courierStatusText: null,
-          };
-        } else {
-          // Setelah 30 menit jeda persiapan lewat, sistem Shopee otomatis masuk status "Mencari Kurir"
-          const slaDiffSec = systemSlaDeadlineMs ? Math.floor((systemSlaDeadlineMs - nowMs) / 1000) : null;
-          if (slaDiffSec !== null && slaDiffSec <= 0) {
-            return {
-              label: formatted,
-              badgeText: 'Lewat Tenggat',
-              badgeClass: 'border-rose-200 bg-rose-50 text-rose-700',
-              textClass: 'text-rose-700 font-bold',
-              countdownText: null,
-              courierStatusText: 'Batas kirim terlewati',
-            };
-          }
-
-          return {
-            label: formatted,
-            badgeText: 'Instant',
-            badgeClass: 'border-orange-200 bg-orange-50 text-[#EE4D2D]',
-            textClass: 'text-slate-700',
-            countdownText: null,
-            courierStatusText: 'Mencari Kurir',
-          };
-        }
-      }
-    }
-  }
-
-  // Untuk pesanan reguler / status lainnya:
+  // Jika tidak ada data batas kirim atau bukan status aktif yang butuh pengiriman:
   if (!parsedShipBy || !ACTIVE_DEADLINE_STATUSES.has(normalizedStatus)) {
     return {
       label: formatted,
@@ -243,35 +193,48 @@ function getDeadlineState(
   }
 
   const diffMs = parsedShipBy.getTime() - nowMs;
-  if (diffMs < 0) {
+
+  // Kasus 1: Batas Waktu Telah Terlewati (Expired SLA)
+  if (diffMs <= 0) {
     return {
       label: formatted,
       badgeText: 'Lewat Tenggat',
       badgeClass: 'border-rose-200 bg-rose-50 text-rose-700',
       textClass: 'text-rose-700 font-bold',
       countdownText: 'Batas kirim terlewati',
-      courierStatusText: null,
-    };
-  }
-  if (diffMs <= URGENT_DEADLINE_MS) {
-    const hours = Math.floor(diffMs / 3600000);
-    const minutes = Math.floor((diffMs % 3600000) / 60000);
-    return {
-      label: formatted,
-      badgeText: 'Segera Kirim',
-      badgeClass: 'border-amber-200 bg-amber-50 text-amber-800',
-      textClass: 'text-amber-800 font-bold',
-      countdownText: hours > 0 ? `Kirim dalam ${hours}j ${minutes}m` : `Kirim dalam ${minutes}m`,
-      courierStatusText: null,
+      courierStatusText: 'Batas kirim terlewati',
     };
   }
 
+  // Kasus 2: Pesanan sudah diproses / diatur pickup (PROCESSED)
+  if (normalizedStatus === 'PROCESSED') {
+    return {
+      label: formatted,
+      badgeText: isInstant ? 'Instant' : 'Diproses',
+      badgeClass: isInstant
+        ? 'border-orange-200 bg-orange-50 text-[#EE4D2D]'
+        : 'border-blue-200 bg-blue-50 text-blue-700',
+      textClass: 'text-slate-700',
+      countdownText: null,
+      courierStatusText: isInstant ? 'Mencari Kurir' : 'Menunggu kurir pickup / scan agen',
+    };
+  }
+
+  // Kasus 3: Pesanan Belum Diproses (READY_TO_SHIP atau RETRY_SHIP)
+  // Menampilkan countdown waktu nyata persis Shopee Seller Centre: "Atur pickup dalam X jam Y menit"
+  const durationStr = formatShopeeSlaDuration(diffMs);
+  const actionPrefix = isInstant ? 'Atur pickup dalam' : 'Atur pengiriman dalam';
+
   return {
     label: formatted,
-    badgeText: null,
-    badgeClass: '',
-    textClass: 'text-slate-700',
-    countdownText: null,
+    badgeText: isInstant ? 'Instant' : diffMs <= 12 * 3600 * 1000 ? 'Segera Kirim' : 'Batas Kirim',
+    badgeClass: isInstant
+      ? 'border-orange-200 bg-orange-50 text-[#EE4D2D]'
+      : diffMs <= 12 * 3600 * 1000
+      ? 'border-amber-200 bg-amber-50 text-amber-800'
+      : 'border-slate-200 bg-slate-50 text-slate-700',
+    textClass: diffMs <= 12 * 3600 * 1000 ? 'text-[#EE4D2D] font-bold' : 'text-slate-700',
+    countdownText: `${actionPrefix} ${durationStr}`,
     courierStatusText: null,
   };
 }
@@ -2568,16 +2531,16 @@ export default function ShopeeOrdersPage({
                       >
                         {statusMeta.label}
                       </span>
-                      {isInstant && deadline.countdownText && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#EE4D2D]">
+                      {deadline.countdownText && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-0.5 text-[11px] font-bold text-[#EE4D2D]">
                           <span className="h-1.5 w-1.5 rounded-full bg-[#EE4D2D] animate-pulse" />
                           {deadline.countdownText}
                         </span>
                       )}
-                      {isInstant && !deadline.countdownText && (isProcessed || deadline.courierStatusText === 'Mencari Kurir') && (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-800">
+                      {!deadline.countdownText && deadline.courierStatusText && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-800">
                           <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                          Mencari Kurir
+                          {deadline.courierStatusText}
                         </span>
                       )}
 
@@ -2831,12 +2794,13 @@ export default function ShopeeOrdersPage({
                           )}
                         </div>
                         {deadline.countdownText ? (
-                          <p className="text-xs font-bold text-rose-600 animate-pulse">
+                          <p className="flex items-center gap-1 text-xs font-bold text-[#EE4D2D]">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#EE4D2D] animate-pulse shrink-0" />
                             ⏱ {deadline.countdownText}
                           </p>
                         ) : deadline.courierStatusText ? (
                           <p className="flex items-center gap-1 text-xs font-semibold text-amber-700">
-                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
                             🛵 {deadline.courierStatusText}
                           </p>
                         ) : null}
