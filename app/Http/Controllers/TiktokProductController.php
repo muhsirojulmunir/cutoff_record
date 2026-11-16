@@ -98,6 +98,7 @@ class TiktokProductController extends Controller
                 'count'       => $criticalOosCount,
                 'amount'      => null,
                 'href'        => '/tiktok-products?stock_status=oos_critical',
+                'severity'    => 'critical',
             ];
         }
 
@@ -105,19 +106,117 @@ class TiktokProductController extends Controller
             $items[] = [
                 'key'         => 'tiktok_stock_discrepancy',
                 'type'        => 'stock',
-                'title'       => 'Selisih Stok Gudang vs TikTok',
-                'description' => number_format($discrepancyCount, 0, ',', '.') . ' variasi SKU berbeda jumlah stoknya antara gudang fisik dan TikTok Shop.',
+                'title'       => 'SKU Selisih Stok (Gudang ≠ TikTok)',
+                'description' => number_format($discrepancyCount, 0, ',', '.') . ' SKU memiliki selisih stok antara TikTok dan Gudang A + G.',
                 'count'       => $discrepancyCount,
                 'amount'      => null,
                 'href'        => '/tiktok-products?stock_status=discrepancy',
+                'severity'    => 'warning',
             ];
         }
 
         return [
             'items'    => $items,
             'total'    => count($items),
-            'critical' => $criticalOosCount,
+            'critical' => ($criticalOosCount > 0 || $campaignUnlockedCount > 0) ? 1 : 0,
         ];
+    }
+
+    /**
+     * Ambil ringkasan notifikasi stok TikTok untuk topbar (khusus Super Admin).
+     * Menggunakan file cache agar aman tanpa ketergantungan tabel database cache.
+     *
+     * @return array{items: array<int, array<string, mixed>>, total: int, critical: int}
+     */
+    public function getStockAlertWorkQueue(): array
+    {
+        $empty = ['items' => [], 'total' => 0, 'critical' => 0];
+
+        try {
+            $cached = Cache::store('file')->get('tiktok_stock_alert_queue');
+            if (is_array($cached) && isset($cached['items'])) {
+                return $cached;
+            }
+        } catch (\Throwable $e) {
+            // Lanjutkan evaluasi langsung bila file cache gagal dibaca
+        }
+
+        try {
+            $tablesReady = false;
+            if (! app()->runningUnitTests()) {
+                $tablesReady = Cache::store('file')->get('tiktok_workqueue_tables_ready_v1') === true;
+            }
+
+            if (! $tablesReady) {
+                $tablesReady = \Illuminate\Support\Facades\Schema::hasTable('master_stocks')
+                    && \Illuminate\Support\Facades\Schema::hasTable('tiktok_products')
+                    && \Illuminate\Support\Facades\Schema::hasTable('tiktok_accounts');
+
+                if (! $tablesReady) {
+                    return $empty;
+                }
+
+                if (! app()->runningUnitTests()) {
+                    try {
+                        Cache::store('file')->put('tiktok_workqueue_tables_ready_v1', true, 3600);
+                    } catch (\Throwable) {
+                        // Abaikan error tulis file cache
+                    }
+                }
+            }
+
+            $account = TiktokAccount::where('status', 'active')->first() ?? TiktokAccount::first();
+            if (! $account) {
+                return $empty;
+            }
+
+            $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs')->get();
+            if ($masterStocks->isEmpty()) {
+                return $empty;
+            }
+
+            $maps     = $this->buildMasterStockMaps($masterStocks);
+            $allProds = TiktokProduct::select($this->getLightProductColumns())
+                ->where('tiktok_account_id', $account->id)
+                ->get();
+
+            $criticalOosCount      = 0;
+            $campaignUnlockedCount = 0;
+            $discrepancyCount      = 0;
+
+            foreach ($allProds as $p) {
+                $info = $this->resolveProductStockInfoFast(
+                    $p,
+                    $maps['masterByCode'],
+                    $maps['gMap'],
+                    $maps['aMap'],
+                    $maps['aPrefixMap'],
+                    $maps['smartIndex']
+                );
+
+                if ($info['is_critical_oos']) {
+                    $criticalOosCount++;
+                } elseif ($info['is_campaign_unlocked']) {
+                    $campaignUnlockedCount++;
+                }
+
+                if (! empty($info['matched_code']) && $info['diff'] !== 0) {
+                    $discrepancyCount++;
+                }
+            }
+
+            $queue = self::buildStockWorkQueue($criticalOosCount, $discrepancyCount, $campaignUnlockedCount);
+
+            try {
+                Cache::store('file')->put('tiktok_stock_alert_queue', $queue, 900);
+            } catch (\Throwable $e) {
+                // Abaikan jika tidak bisa menulis file cache
+            }
+
+            return $queue;
+        } catch (\Throwable $e) {
+            return $empty;
+        }
     }
 
     /**
@@ -390,8 +489,19 @@ class TiktokProductController extends Controller
             count($discrepancyIds),
             count($campaignUnlockedIds)
         );
+        try {
+            Cache::store('file')->put('tiktok_stock_alert_queue', $stockWorkQueue, 900);
+        } catch (\Throwable) {
+        }
 
         $isSuperAdmin = $this->isSuperAdmin($request->user());
+
+        $shopeeQueue = app(\App\Http\Controllers\ShopeeProductController::class)->getStockAlertWorkQueue();
+        $combinedQueue = [
+            'items'    => array_values(array_merge($shopeeQueue['items'] ?? [], $stockWorkQueue['items'] ?? [])),
+            'total'    => count($shopeeQueue['items'] ?? []) + count($stockWorkQueue['items'] ?? []),
+            'critical' => (($shopeeQueue['critical'] ?? 0) > 0 || ($stockWorkQueue['critical'] ?? 0) > 0) ? 1 : 0,
+        ];
 
         return Inertia::render('Tiktok/Products', [
             'products' => $products,
@@ -422,7 +532,7 @@ class TiktokProductController extends Controller
                 'last_synced_at'          => $lastSyncedAt,
             ],
             'master_stock_summary' => $masterStockSummary,
-            'workQueue'            => $isSuperAdmin ? $stockWorkQueue : ['items' => [], 'total' => 0, 'critical' => 0],
+            'workQueue'            => $isSuperAdmin ? $combinedQueue : ['items' => [], 'total' => 0, 'critical' => 0],
             'zeroRestoreSummary'   => $isSuperAdmin ? $this->buildZeroRestoreSummary($account?->id) : null,
             'account'              => $account ? [
                 'id'           => $account->id,

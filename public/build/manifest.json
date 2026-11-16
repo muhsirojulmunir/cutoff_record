@@ -1,20 +1,20 @@
 {
-  "_AppLayout-BTbCYnZv.js": {
-    "file": "assets/AppLayout-BTbCYnZv.js",
+  "_AppLayout-BpTO9slI.js": {
+    "file": "assets/AppLayout-BpTO9slI.js",
     "name": "AppLayout",
     "imports": [
       "resources/js/app.tsx"
     ]
   },
-  "_DualCalendarRangePicker-BF0mwRsR.js": {
-    "file": "assets/DualCalendarRangePicker-BF0mwRsR.js",
+  "_DualCalendarRangePicker-ClyReZQ9.js": {
+    "file": "assets/DualCalendarRangePicker-ClyReZQ9.js",
     "name": "DualCalendarRangePicker",
     "imports": [
       "resources/js/app.tsx"
     ]
   },
-  "_OrderDetailDrawer-BTHwTMK7.js": {
-    "file": "assets/OrderDetailDrawer-BTHwTMK7.js",
+  "_OrderDetailDrawer-pXwTBeCY.js": {
+    "file": "assets/OrderDetailDrawer-pXwTBeCY.js",
     "name": "OrderDetailDrawer",
     "imports": [
       "resources/js/app.tsx"
@@ -53,7 +53,7 @@
     "name": "xlsx"
   },
   "resources/css/app.css": {
-    "file": "assets/app-B05W0If8.css",
+    "file": "assets/app-Bg2TRRvC.css",
     "name": "app",
     "names": [
       "app.css"
@@ -62,7 +62,7 @@
     "isEntry": true
   },
   "resources/js/Pages/Auth/Login.tsx": {
-    "file": "assets/Login-CEhpQV91.js",
+    "file": "assets/Login-BPvWsqsQ.js",
     "name": "Login",
     "src": "resources/js/Pages/Auth/Login.tsx",
     "isDynamicEntry": true,
@@ -71,171 +71,171 @@
     ]
   },
   "resources/js/Pages/CustomerService/Index.tsx": {
-    "file": "assets/Index-DyVKHrBb.js",
+    "file": "assets/Index-DvJG9lWH.js",
     "name": "Index",
     "src": "resources/js/Pages/CustomerService/Index.tsx",
     "isDynamicEntry": true,
     "imports": [
       "resources/js/app.tsx",
-      "_AppLayout-BTbCYnZv.js"
+      "_AppLayout-BpTO9slI.js"
     ]
   },
   "resources/js/Pages/CutOff/Index.tsx": {
-    "file": "assets/Index-BSpn6Ce3.js",
+    "file": "assets/Index-DRkveNow.js",
     "name": "Index",
     "src": "resources/js/Pages/CutOff/Index.tsx",
     "isDynamicEntry": true,
     "imports": [
       "resources/js/app.tsx",
-      "_AppLayout-BTbCYnZv.js",
+      "_AppLayout-BpTO9slI.js",
       "_xlsx-DZIa3EYa.js"
     ]
   },
   "resources/js/Pages/CutOff/Returns.tsx": {
-    "file": "assets/Returns-Cr2xKcZp.js",
+    "file": "assets/Returns-rgyTwtko.js",
     "name": "Returns",
     "src": "resources/js/Pages/CutOff/Returns.tsx",
     "isDynamicEntry": true,
     "imports": [
       "resources/js/app.tsx",
-      "_AppLayout-BTbCYnZv.js",
+      "_AppLayout-BpTO9slI.js",
       "_xlsx-DZIa3EYa.js",
-      "_DualCalendarRangePicker-BF0mwRsR.js"
+      "_DualCalendarRangePicker-ClyReZQ9.js"
     ]
   },
   "resources/js/Pages/Dashboard.tsx": {
-    "file": "assets/Dashboard-dYzXxzBU.js",
+    "file": "assets/Dashboard-Cj6zwOA0.js",
     "name": "Dashboard",
     "src": "resources/js/Pages/Dashboard.tsx",
     "isDynamicEntry": true,
     "imports": [
       "resources/js/app.tsx",
-      "_AppLayout-BTbCYnZv.js"
+      "_AppLayout-BpTO9slI.js"
     ]
   },
   "resources/js/Pages/MasterStock/Index.tsx": {
-    "file": "assets/Index-D5wlO7LB.js",
+    "file": "assets/Index-DOOtUo4u.js",
     "name": "Index",
     "src": "resources/js/Pages/MasterStock/Index.tsx",
     "isDynamicEntry": true,
     "imports": [
       "resources/js/app.tsx",
-      "_AppLayout-BTbCYnZv.js",
+      "_AppLayout-BpTO9slI.js",
       "_xlsx-DZIa3EYa.js"
     ]
   },
   "resources/js/Pages/Roles/Index.tsx": {
-    "file": "assets/Index-CFCS4VMT.js",
+    "file": "assets/Index-DgY1O23D.js",
     "name": "Index",
     "src": "resources/js/Pages/Roles/Index.tsx",
     "isDynamicEntry": true,
     "imports": [
       "resources/js/app.tsx",
-      "_AppLayout-BTbCYnZv.js"
+      "_AppLayout-BpTO9slI.js"
     ]
   },
   "resources/js/Pages/Shopee/Index.tsx": {
-    "file": "assets/Index-BqFjyRk6.js",
+    "file": "assets/Index-Bs48SSqB.js",
     "name": "Index",
     "src": "resources/js/Pages/Shopee/Index.tsx",
     "isDynamicEntry": true,
     "imports": [
       "resources/js/app.tsx",
-      "_AppLayout-BTbCYnZv.js",
-      "_DualCalendarRangePicker-BF0mwRsR.js"
+      "_AppLayout-BpTO9slI.js",
+      "_DualCalendarRangePicker-ClyReZQ9.js"
     ]
   },
   "resources/js/Pages/Shopee/Orders.tsx": {
-    "file": "assets/Orders-DFgPZ4nz.js",
+    "file": "assets/Orders-DhVLtitp.js",
     "name": "Orders",
     "src": "resources/js/Pages/Shopee/Orders.tsx",
     "isDynamicEntry": true,
     "imports": [
       "resources/js/app.tsx",
-      "_AppLayout-BTbCYnZv.js",
-      "_DualCalendarRangePicker-BF0mwRsR.js",
-      "_OrderDetailDrawer-BTHwTMK7.js"
+      "_AppLayout-BpTO9slI.js",
+      "_DualCalendarRangePicker-ClyReZQ9.js",
+      "_OrderDetailDrawer-pXwTBeCY.js"
     ]
   },
   "resources/js/Pages/Shopee/Products.tsx": {
-    "file": "assets/Products-XZv79PZh.js",
+    "file": "assets/Products-rOFPJGfr.js",
     "name": "Products",
     "src": "resources/js/Pages/Shopee/Products.tsx",
     "isDynamicEntry": true,
     "imports": [
       "resources/js/app.tsx",
-      "_AppLayout-BTbCYnZv.js",
+      "_AppLayout-BpTO9slI.js",
       "_xlsx-DZIa3EYa.js",
-      "_DualCalendarRangePicker-BF0mwRsR.js"
+      "_DualCalendarRangePicker-ClyReZQ9.js"
     ]
   },
   "resources/js/Pages/Tiktok/Index.tsx": {
-    "file": "assets/Index-BpODfrnC.js",
+    "file": "assets/Index-DgiftXkX.js",
     "name": "Index",
     "src": "resources/js/Pages/Tiktok/Index.tsx",
     "isDynamicEntry": true,
     "imports": [
       "resources/js/app.tsx",
-      "_AppLayout-BTbCYnZv.js",
-      "_DualCalendarRangePicker-BF0mwRsR.js"
+      "_AppLayout-BpTO9slI.js",
+      "_DualCalendarRangePicker-ClyReZQ9.js"
     ]
   },
   "resources/js/Pages/Tiktok/Orders.tsx": {
-    "file": "assets/Orders-D9vQ-uVR.js",
+    "file": "assets/Orders-BFChqMZb.js",
     "name": "Orders",
     "src": "resources/js/Pages/Tiktok/Orders.tsx",
     "isDynamicEntry": true,
     "imports": [
       "resources/js/app.tsx",
-      "_AppLayout-BTbCYnZv.js",
-      "_DualCalendarRangePicker-BF0mwRsR.js",
-      "_OrderDetailDrawer-BTHwTMK7.js"
+      "_AppLayout-BpTO9slI.js",
+      "_DualCalendarRangePicker-ClyReZQ9.js",
+      "_OrderDetailDrawer-pXwTBeCY.js"
     ]
   },
   "resources/js/Pages/Tiktok/Products.tsx": {
-    "file": "assets/Products-B05N75Jr.js",
+    "file": "assets/Products-BWaq1K8S.js",
     "name": "Products",
     "src": "resources/js/Pages/Tiktok/Products.tsx",
     "isDynamicEntry": true,
     "imports": [
       "resources/js/app.tsx",
-      "_AppLayout-BTbCYnZv.js",
+      "_AppLayout-BpTO9slI.js",
       "_xlsx-DZIa3EYa.js",
-      "_DualCalendarRangePicker-BF0mwRsR.js"
+      "_DualCalendarRangePicker-ClyReZQ9.js"
     ]
   },
   "resources/js/Pages/Users/Create.tsx": {
-    "file": "assets/Create-CV0AayaJ.js",
+    "file": "assets/Create-ah48zY8y.js",
     "name": "Create",
     "src": "resources/js/Pages/Users/Create.tsx",
     "isDynamicEntry": true,
     "imports": [
       "resources/js/app.tsx",
-      "_AppLayout-BTbCYnZv.js"
+      "_AppLayout-BpTO9slI.js"
     ]
   },
   "resources/js/Pages/Users/Edit.tsx": {
-    "file": "assets/Edit-CMKgRj3k.js",
+    "file": "assets/Edit-D2429NdX.js",
     "name": "Edit",
     "src": "resources/js/Pages/Users/Edit.tsx",
     "isDynamicEntry": true,
     "imports": [
       "resources/js/app.tsx",
-      "_AppLayout-BTbCYnZv.js"
+      "_AppLayout-BpTO9slI.js"
     ]
   },
   "resources/js/Pages/Users/Index.tsx": {
-    "file": "assets/Index-Baq_uuD6.js",
+    "file": "assets/Index-DOK8gJYJ.js",
     "name": "Index",
     "src": "resources/js/Pages/Users/Index.tsx",
     "isDynamicEntry": true,
     "imports": [
       "resources/js/app.tsx",
-      "_AppLayout-BTbCYnZv.js"
+      "_AppLayout-BpTO9slI.js"
     ]
   },
   "resources/js/app.tsx": {
-    "file": "assets/app-k47SSPIO.js",
+    "file": "assets/app-BTnUpu5s.js",
     "name": "app",
     "src": "resources/js/app.tsx",
     "isEntry": true,

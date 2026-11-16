@@ -60,7 +60,7 @@ class HandleInertiaRequests extends Middleware
                 'success' => $request->session()->get('success'),
                 'error'   => $request->session()->get('error'),
             ],
-            // Antrian notifikasi stok Shopee (hanya tampil untuk Super Admin).
+            // Antrian notifikasi stok Shopee & TikTok (hanya tampil untuk Super Admin).
             // Closure membuat prop hanya dievaluasi saat benar-benar dibutuhkan (lewati partial reload & redirect).
             'workQueue' => function () use ($request): array {
                 $currentUser = $request->user();
@@ -68,7 +68,26 @@ class HandleInertiaRequests extends Middleware
                     return ['items' => [], 'total' => 0, 'critical' => 0];
                 }
 
-                return app(\App\Http\Controllers\ShopeeProductController::class)->getStockAlertWorkQueue();
+                $shopeeQueue = app(\App\Http\Controllers\ShopeeProductController::class)->getStockAlertWorkQueue();
+                $tiktokQueue = app(\App\Http\Controllers\TiktokProductController::class)->getStockAlertWorkQueue();
+
+                $items = array_values(array_merge(
+                    $shopeeQueue['items'] ?? [],
+                    $tiktokQueue['items'] ?? []
+                ));
+
+                $critical = 0;
+                foreach ($items as $it) {
+                    if (($it['severity'] ?? '') === 'critical') {
+                        $critical++;
+                    }
+                }
+
+                return [
+                    'items'    => $items,
+                    'total'    => count($items),
+                    'critical' => $critical,
+                ];
             },
         ];
     }

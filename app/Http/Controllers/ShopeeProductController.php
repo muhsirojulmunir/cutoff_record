@@ -595,6 +595,13 @@ class ShopeeProductController extends Controller
 
         $isSuperAdmin = $request->user()?->isSuperAdmin() ?? false;
 
+        $tiktokQueue = app(\App\Http\Controllers\TiktokProductController::class)->getStockAlertWorkQueue();
+        $combinedQueue = [
+            'items'    => array_values(array_merge($stockWorkQueue['items'] ?? [], $tiktokQueue['items'] ?? [])),
+            'total'    => count($stockWorkQueue['items'] ?? []) + count($tiktokQueue['items'] ?? []),
+            'critical' => (($stockWorkQueue['critical'] ?? 0) > 0 || ($tiktokQueue['critical'] ?? 0) > 0) ? 1 : 0,
+        ];
+
         return Inertia::render('Shopee/Products', [
             'products' => $products,
             'filters'  => [
@@ -624,7 +631,7 @@ class ShopeeProductController extends Controller
                 'last_synced_at'          => $lastSyncedAt,
             ],
             'master_stock_summary' => $masterStockSummary,
-            'workQueue' => $isSuperAdmin ? $stockWorkQueue : ['items' => [], 'total' => 0, 'critical' => 0],
+            'workQueue' => $isSuperAdmin ? $combinedQueue : ['items' => [], 'total' => 0, 'critical' => 0],
             'zeroRestoreSummary' => $isSuperAdmin ? $this->buildZeroRestoreSummary($account?->id) : null,
             'account'  => $account ? [
                 'id'           => $account->id,

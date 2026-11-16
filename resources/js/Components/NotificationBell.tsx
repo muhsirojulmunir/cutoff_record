@@ -1,10 +1,10 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, router, usePage } from '@inertiajs/react';
 
 import { PageProps, WorkQueue, WorkQueueSeverity, WorkQueueType } from '../Types';
 
 interface Props {
-  queue: WorkQueue;
+  queue?: WorkQueue | null;
 }
 
 /** Path Heroicons 24x24 outline per jenis dokumen. */
@@ -31,27 +31,46 @@ const SEVERITY_STYLES: Record<WorkQueueSeverity, { icon: string; badge: string }
   info: { icon: 'text-teal-600 bg-teal-50', badge: 'bg-teal-50 text-teal-700 border-teal-200' },
 };
 
+const DEFAULT_SEVERITY_STYLE = {
+  icon: 'text-slate-600 bg-slate-100',
+  badge: 'bg-slate-100 text-slate-700 border-slate-200',
+};
+
 export default function NotificationBell({ queue }: Props) {
   const { auth } = usePage<PageProps>().props;
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const isSuperAdmin = Boolean(auth?.user?.is_super_admin || auth?.user?.role?.name === 'Super Admin');
+  const rawItems = Array.isArray(queue?.items) ? queue.items : [];
   const visibleItems = isSuperAdmin
-    ? queue.items
-    : queue.items.filter(
-        (item) => item.key !== 'shopee_critical_oos' && item.key !== 'shopee_stock_discrepancy'
+    ? rawItems
+    : rawItems.filter(
+        (item) =>
+          item &&
+          item.key !== 'shopee_critical_oos' &&
+          item.key !== 'shopee_stock_discrepancy' &&
+          item.key !== 'tiktok_critical_oos' &&
+          item.key !== 'tiktok_stock_discrepancy'
       );
   const visibleTotal = visibleItems.length;
-  const hasCritical = visibleItems.some((item) => item.severity === 'critical');
+  const hasCritical = visibleItems.some((item) => (item?.severity ?? '') === 'critical');
   const badgeLabel = visibleTotal > 99 ? '99+' : String(visibleTotal);
 
-  const handleZeroOutCritical = () => {
+  const handleZeroOutCritical = (isTiktok: boolean = false) => {
     setOpen(false);
-    if (window.location.pathname === '/shopee-products') {
-      window.dispatchEvent(new CustomEvent('shopee:zero-out-critical'));
+    if (isTiktok) {
+      if (typeof window !== 'undefined' && window.location.pathname === '/tiktok-products') {
+        window.dispatchEvent(new CustomEvent('tiktok:zero-out-critical'));
+      } else {
+        router.visit('/tiktok-products?stock_status=oos_critical&open_zero_out=1');
+      }
     } else {
-      router.visit('/shopee-products?stock_status=oos_critical&open_zero_out=1');
+      if (typeof window !== 'undefined' && window.location.pathname === '/shopee-products') {
+        window.dispatchEvent(new CustomEvent('shopee:zero-out-critical'));
+      } else {
+        router.visit('/shopee-products?stock_status=oos_critical&open_zero_out=1');
+      }
     }
   };
 
@@ -127,27 +146,43 @@ export default function NotificationBell({ queue }: Props) {
           ) : (
             <div className="overflow-y-auto sidebar-scroll divide-y divide-slate-100">
               {visibleItems.map((item) => {
-                const styles = SEVERITY_STYLES[item.severity];
-                if (item.key === 'shopee_critical_oos' && isSuperAdmin) {
+                if (!item) return null;
+                const severityKey = item.severity as WorkQueueSeverity;
+                const styles = SEVERITY_STYLES[severityKey] ?? DEFAULT_SEVERITY_STYLE;
+                const iconPath = TYPE_ICONS[item.type] ?? TYPE_ICONS.stock;
+                const countFormatted = Number(item.count ?? 0).toLocaleString('id-ID');
+
+                const isShopeeCritical = item.key === 'shopee_critical_oos' && isSuperAdmin;
+                const isTiktokCritical = item.key === 'tiktok_critical_oos' && isSuperAdmin;
+
+                if (isShopeeCritical || isTiktokCritical) {
+                  const isTiktok = isTiktokCritical;
+                  const channelName = isTiktok ? 'TikTok' : 'Shopee';
+                  const targetHref = item.href || (isTiktok ? '/tiktok-products?stock_status=oos_critical' : '/shopee-products?stock_status=oos_critical');
+
                   return (
-                    <div key={item.key} className="px-4 py-3.5 hover:bg-slate-50/60 transition-colors">
+                    <div key={item.key || (isTiktok ? 'tiktok_critical' : 'shopee_critical')} className="px-4 py-3.5 hover:bg-slate-50/60 transition-colors">
                       <div className="flex items-start gap-3">
                         <span className={`shrink-0 p-2 rounded-xl ${styles.icon}`}>
                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor" className="w-4 h-4">
-                            <path strokeLinecap="round" strokeLinejoin="round" d={TYPE_ICONS[item.type]} />
+                            <path strokeLinecap="round" strokeLinejoin="round" d={iconPath} />
                           </svg>
                         </span>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-2">
-                            <p className="text-sm font-semibold text-slate-900 truncate">{item.title}</p>
+                            <p className="text-sm font-semibold text-slate-900 truncate">
+                              {item.title || `SKU Habis di Gudang (${channelName})`}
+                            </p>
                             <span className={`shrink-0 text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-md border ${styles.badge}`}>
-                              {item.count.toLocaleString('id-ID')}
+                              {countFormatted}
                             </span>
                           </div>
-                          <p className="text-xs text-slate-500 mt-1 leading-relaxed">{item.description}</p>
+                          <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                            {item.description || `${countFormatted} SKU stok gudang 0 pcs tetapi masih dijual di ${channelName}.`}
+                          </p>
                           <div className="flex items-center gap-2 mt-2.5 flex-wrap">
                             <Link
-                              href={item.href}
+                              href={targetHref}
                               onClick={() => setOpen(false)}
                               className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-rose-50 text-rose-800 border border-rose-200 text-[11px] font-semibold transition-colors"
                             >
@@ -155,13 +190,13 @@ export default function NotificationBell({ queue }: Props) {
                             </Link>
                             <button
                               type="button"
-                              onClick={handleZeroOutCritical}
+                              onClick={() => handleZeroOutCritical(isTiktok)}
                               className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold transition-colors cursor-pointer"
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
                               </svg>
-                              <span>Kosongkan di Shopee</span>
+                              <span>Kosongkan di {channelName}</span>
                             </button>
                           </div>
                         </div>
@@ -170,29 +205,35 @@ export default function NotificationBell({ queue }: Props) {
                   );
                 }
 
+                const isShopeeDiscrepancy = item.key === 'shopee_stock_discrepancy';
+                const isTiktokDiscrepancy = item.key === 'tiktok_stock_discrepancy';
+                const isDiscrepancy = isShopeeDiscrepancy || isTiktokDiscrepancy;
+
                 return (
                   <Link
-                    key={item.key}
-                    href={item.href}
+                    key={item.key || String(Math.random())}
+                    href={item.href || '#'}
                     onClick={() => setOpen(false)}
                     className="flex items-start gap-3 px-4 py-3.5 hover:bg-slate-50 transition-colors group"
                   >
                     <span className={`shrink-0 p-2 rounded-xl ${styles.icon}`}>
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.6} stroke="currentColor" className="w-4 h-4">
-                        <path strokeLinecap="round" strokeLinejoin="round" d={TYPE_ICONS[item.type]} />
+                        <path strokeLinecap="round" strokeLinejoin="round" d={iconPath} />
                       </svg>
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-900 truncate group-hover:text-slate-950">{item.title}</p>
+                        <p className="text-sm font-semibold text-slate-900 truncate group-hover:text-slate-950">
+                          {item.title}
+                        </p>
                         <span className={`shrink-0 text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-md border ${styles.badge}`}>
-                          {item.count.toLocaleString('id-ID')}
+                          {countFormatted}
                         </span>
                       </div>
                       <p className="text-xs text-slate-500 mt-1 leading-relaxed">{item.description}</p>
-                      {item.key === 'shopee_stock_discrepancy' && (
+                      {isDiscrepancy && (
                         <span className="inline-block mt-1.5 text-[11px] font-semibold text-amber-700 group-hover:text-amber-800">
-                          Tampilkan {item.count.toLocaleString('id-ID')} Selisih Stok →
+                          Tampilkan {countFormatted} Selisih Stok ({isTiktokDiscrepancy ? 'TikTok' : 'Shopee'}) →
                         </span>
                       )}
                     </div>
