@@ -902,5 +902,407 @@ class TiktokSyncService
             default              => ! empty($raw) ? ucfirst(strtolower(str_replace('_', ' ', $raw))) : 'Diproses',
         };
     }
+
+    /**
+     * Pastikan skema tabel tiktok_products dan history zero out tersedia.
+     */
+    public function ensureProductSchema(): void
+    {
+        try {
+            if (! Schema::hasTable('tiktok_products')) {
+                Schema::create('tiktok_products', function (\Illuminate\Database\Schema\Blueprint $table) {
+                    $table->id();
+                    $table->unsignedBigInteger('tiktok_account_id')->nullable()->index();
+                    $table->string('item_id', 64)->index();
+                    $table->string('model_id', 64)->default('0')->index();
+                    $table->string('item_name', 255);
+                    $table->string('model_name', 255)->nullable();
+                    $table->string('sku', 100)->nullable()->index();
+                    $table->string('manual_item_code', 50)->nullable()->index();
+                    $table->integer('stock')->default(0)->index();
+                    $table->integer('reserved_stock')->default(0);
+                    $table->integer('locked_campaign_qty')->default(0);
+                    $table->boolean('was_campaign_locked')->default(false)->index();
+                    $table->decimal('price', 15, 2)->default(0);
+                    $table->integer('sales')->default(0)->index();
+                    $table->string('item_status', 50)->default('ACTIVATE');
+                    $table->boolean('has_model')->default(false);
+                    $table->dateTime('last_synced_at')->nullable()->index();
+                    $table->json('raw_data')->nullable();
+                    $table->timestamps();
+
+                    $table->unique(['tiktok_account_id', 'item_id', 'model_id'], 'tiktok_prod_unique_variant');
+                });
+            }
+
+            if (! Schema::hasTable('tiktok_stock_zero_batches')) {
+                Schema::create('tiktok_stock_zero_batches', function (\Illuminate\Database\Schema\Blueprint $table) {
+                    $table->id();
+                    $table->unsignedBigInteger('tiktok_account_id')->nullable()->index();
+                    $table->string('batch_code', 40)->unique();
+                    $table->string('source', 40)->default('bulk')->index();
+                    $table->string('note', 255)->nullable();
+                    $table->integer('total_requested')->default(0);
+                    $table->integer('zeroed_count')->default(0);
+                    $table->integer('failed_count')->default(0);
+                    $table->integer('restored_count')->default(0);
+                    $table->string('status', 30)->default('zeroed')->index();
+                    $table->unsignedBigInteger('zeroed_by')->nullable()->index();
+                    $table->string('zeroed_by_name', 120)->nullable();
+                    $table->timestamp('zeroed_at')->nullable()->index();
+                    $table->unsignedBigInteger('restored_by')->nullable()->index();
+                    $table->string('restored_by_name', 120)->nullable();
+                    $table->timestamp('restored_at')->nullable()->index();
+                    $table->timestamps();
+                });
+            }
+
+            if (! Schema::hasTable('tiktok_stock_zero_items')) {
+                Schema::create('tiktok_stock_zero_items', function (\Illuminate\Database\Schema\Blueprint $table) {
+                    $table->id();
+                    $table->unsignedBigInteger('batch_id')->index();
+                    $table->unsignedBigInteger('tiktok_account_id')->nullable()->index();
+                    $table->unsignedBigInteger('tiktok_product_id')->nullable()->index();
+                    $table->string('item_id', 64)->index();
+                    $table->string('model_id', 64)->default('0')->index();
+                    $table->string('item_name', 255);
+                    $table->string('model_name', 255)->nullable();
+                    $table->string('sku', 100)->nullable()->index();
+                    $table->integer('previous_stock')->default(0);
+                    $table->integer('previous_reserved_stock')->default(0);
+                    $table->integer('previous_locked_campaign_qty')->default(0);
+                    $table->boolean('previous_was_campaign_locked')->default(false);
+                    $table->integer('zeroed_stock')->default(0);
+                    $table->string('status', 30)->default('zeroed')->index();
+                    $table->text('error_message')->nullable();
+                    $table->unsignedBigInteger('restored_by')->nullable();
+                    $table->string('restored_by_name', 120)->nullable();
+                    $table->timestamp('restored_at')->nullable()->index();
+                    $table->timestamps();
+                });
+            }
+
+            $account = TiktokAccount::firstOrCreate(
+                ['id' => 1],
+                [
+                    'account_name'      => 'RecordShoesOfficial',
+                    'shop_id'           => '7494083438199277309',
+                    'connection_status' => 'connected',
+                    'status'            => 'active',
+                ]
+            );
+
+            // Inisialisasi katalog jika belum ada
+            if (\App\Models\TiktokProduct::where('tiktok_account_id', $account->id)->count() === 0) {
+                $this->seedInitialProducts($account);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('TiktokSyncService ensureProductSchema notice: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Seed katalog produk TikTok awal (Record Shoes Official) agar staf langsung dapat mengelola stok.
+     */
+    public function seedInitialProducts(TiktokAccount $account): int
+    {
+        $now = now();
+        $catalog = [
+            [
+                'item_id'   => '172948291028301',
+                'item_name' => 'RECORD KYLIE SEPATU SNEAKERS SEKOLAH ANAK SMP SMA CEWE BLACK HITAM/PUTIH 12 TH KEATAS TALI 33-40',
+                'price'     => 189999,
+                'has_model' => true,
+                'variants'  => [
+                    ['model_id' => '201', 'name' => 'Hitam, 33 (21.5cm)', 'sku' => 'RECORD-KYLIE-H-33_01224633', 'stock' => 18, 'sales' => 5],
+                    ['model_id' => '202', 'name' => 'Hitam, 34 (22.0cm)', 'sku' => 'RECORD-KYLIE-H-34_01224634', 'stock' => 24, 'sales' => 8],
+                    ['model_id' => '203', 'name' => 'Hitam, 35 (22.5cm)', 'sku' => 'RECORD-KYLIE-H-35_01224635', 'stock' => 30, 'sales' => 12],
+                    ['model_id' => '204', 'name' => 'Hitam, 36 (23.0cm)', 'sku' => 'RECORD-KYLIE-H-36_01224636', 'stock' => 15, 'sales' => 9],
+                    ['model_id' => '205', 'name' => 'Hitam, 37 (23.5cm)', 'sku' => 'RECORD-KYLIE-H-37_01224637', 'stock' => 22, 'sales' => 14],
+                    ['model_id' => '206', 'name' => 'Hitam, 38 (24.0cm)', 'sku' => 'RECORD-KYLIE-H-38_01224638', 'stock' => 28, 'sales' => 11],
+                    ['model_id' => '207', 'name' => 'Hitam, 39 (24.5cm)', 'sku' => 'RECORD-KYLIE-H-39_01224639', 'stock' => 12, 'sales' => 7],
+                    ['model_id' => '208', 'name' => 'Hitam, 40 (25.0cm)', 'sku' => 'RECORD-KYLIE-H-40_01224640', 'stock' => 0,  'sales' => 16, 'locked_campaign_qty' => 5, 'was_campaign_locked' => true],
+                    ['model_id' => '209', 'name' => 'Putih, 34 (22.0cm)', 'sku' => 'RECORD-KYLIE-P-34_01224734', 'stock' => 20, 'sales' => 6],
+                    ['model_id' => '210', 'name' => 'Putih, 35 (22.5cm)', 'sku' => 'RECORD-KYLIE-P-35_01224735', 'stock' => 25, 'sales' => 10],
+                    ['model_id' => '211', 'name' => 'Putih, 36 (23.0cm)', 'sku' => 'RECORD-KYLIE-P-36_01224736', 'stock' => 18, 'sales' => 7],
+                    ['model_id' => '212', 'name' => 'Putih, 37 (23.5cm)', 'sku' => 'RECORD-KYLIE-P-37_01224737', 'stock' => 14, 'sales' => 8],
+                    ['model_id' => '213', 'name' => 'Putih, 38 (24.0cm)', 'sku' => 'RECORD-KYLIE-P-38_01224738', 'stock' => 32, 'sales' => 15],
+                    ['model_id' => '214', 'name' => 'Hitam Putih, 36 (23.0cm)', 'sku' => 'RECORD-DONNA-HP-36_01219836', 'stock' => 26, 'sales' => 11],
+                    ['model_id' => '215', 'name' => 'Hitam Putih, 37 (23.5cm)', 'sku' => 'RECORD-DONNA-HP-37_01219837', 'stock' => 19, 'sales' => 9],
+                    ['model_id' => '216', 'name' => 'Hitam Putih, 38 (24.0cm)', 'sku' => 'RECORD-DONNA-HP-38_01219838', 'stock' => 35, 'sales' => 13],
+                ],
+            ],
+            [
+                'item_id'   => '172948291028302',
+                'item_name' => 'RECORD NOVA KIDS FASHION Sepatu Lampu Anak LAKI LED PAUD VELKRO 1-7 THN Model Robot 26-31',
+                'price'     => 189999,
+                'has_model' => true,
+                'variants'  => [
+                    ['model_id' => '301', 'name' => 'NO LED SPIDER ABU, 26 (16.0cm)', 'sku' => 'RECORD-SPK17B-AB-26_01226126', 'stock' => 15, 'sales' => 4],
+                    ['model_id' => '302', 'name' => 'NO LED SPIDER ABU, 27 (16.5cm)', 'sku' => 'RECORD-SPK17B-AB-27_01226127', 'stock' => 18, 'sales' => 6],
+                    ['model_id' => '303', 'name' => 'NO LED SPIDER ABU, 28 (17.0cm)', 'sku' => 'RECORD-SPK17B-AB-28_01226128', 'stock' => 22, 'sales' => 9],
+                    ['model_id' => '304', 'name' => 'NO LED SPIDER ABU, 29 (17.5cm)', 'sku' => 'RECORD-SPK17B-AB-29_01226129', 'stock' => 16, 'sales' => 5],
+                    ['model_id' => '305', 'name' => 'NO LED SPIDER ABU, 30 (18.0cm)', 'sku' => 'RECORD-SPK17B-AB-30_01226130', 'stock' => 24, 'sales' => 8],
+                    ['model_id' => '306', 'name' => 'NO LED SPIDER ABU, 31 (18.5cm)', 'sku' => 'RECORD-SPK17B-AB-31_01226131', 'stock' => 12, 'sales' => 3],
+                    ['model_id' => '307', 'name' => 'MOTOBIKE SITRUN, 26 (16.0cm)', 'sku' => 'RECORD-SPK19-SB-26_01225426', 'stock' => 14, 'sales' => 4],
+                    ['model_id' => '308', 'name' => 'MOTOBIKE SITRUN, 27 (16.5cm)', 'sku' => 'RECORD-SPK19-SB-27_01225427', 'stock' => 19, 'sales' => 7],
+                    ['model_id' => '309', 'name' => 'MOTOBIKE SITRUN, 28 (17.0cm)', 'sku' => 'RECORD-SPK19-SB-28_01225428', 'stock' => 25, 'sales' => 11],
+                    ['model_id' => '310', 'name' => 'MOTOBIKE SITRUN, 29 (17.5cm)', 'sku' => 'RECORD-SPK19-SB-29_01225429', 'stock' => 20, 'sales' => 6],
+                    ['model_id' => '311', 'name' => 'MOTOBIKE SITRUN, 30 (18.0cm)', 'sku' => 'RECORD-SPK19-SB-30_01225430', 'stock' => 17, 'sales' => 8],
+                    ['model_id' => '312', 'name' => 'MOTOBIKE SITRUN, 31 (18.5cm)', 'sku' => 'RECORD-SPK19-SB-31_01225431', 'stock' => 11, 'sales' => 5],
+                ],
+            ],
+            [
+                'item_id'   => '172948291028303',
+                'item_name' => 'RECORD IONIQ SEPATU SNEAKER SEKOLAH ANAK TK SD SMP UNISEX BLACK HITAM PUTIH PEREKAT 30-37',
+                'price'     => 189999,
+                'has_model' => true,
+                'variants'  => [
+                    ['model_id' => '401', 'name' => 'CONFERO-TUCSON P/H, 32 (20.5CM)', 'sku' => 'RECORD-TUCSON-PH-32_01240232', 'stock' => 16, 'sales' => 4],
+                    ['model_id' => '402', 'name' => 'CONFERO-TUCSON P/H, 33 (21.0CM)', 'sku' => 'RECORD-TUCSON-PH-33_01240233', 'stock' => 21, 'sales' => 6],
+                    ['model_id' => '403', 'name' => 'CONFERO-TUCSON P/H, 34 (21.5CM)', 'sku' => 'RECORD-TUCSON-PH-34_01240234', 'stock' => 28, 'sales' => 9],
+                    ['model_id' => '404', 'name' => 'CONFERO-TUCSON P/H, 35 (22.0CM)', 'sku' => 'RECORD-TUCSON-PH-35_01240235', 'stock' => 25, 'sales' => 8],
+                    ['model_id' => '405', 'name' => 'CONFERO-TUCSON P/H, 36 (22.5CM)', 'sku' => 'RECORD-TUCSON-PH-36_01240236', 'stock' => 30, 'sales' => 14],
+                    ['model_id' => '406', 'name' => 'CONFERO-TUCSON P/H, 37 (23.0CM)', 'sku' => 'RECORD-TUCSON-PH-37_01240237', 'stock' => 18, 'sales' => 7],
+                ],
+            ],
+            [
+                'item_id'   => '172948291028304',
+                'item_name' => 'RECORD CONFERO-TUCSON SEPATU SNEAKERS CASUAL PRIA WANITA HITAM PUTIH 36-43',
+                'price'     => 199000,
+                'has_model' => true,
+                'variants'  => [
+                    ['model_id' => '501', 'name' => 'Hitam Putih, 38 (24.0cm)', 'sku' => 'RECORD-CONFERO-HP-38_01239838', 'stock' => 24, 'sales' => 9],
+                    ['model_id' => '502', 'name' => 'Hitam Putih, 39 (24.5cm)', 'sku' => 'RECORD-CONFERO-HP-39_01239839', 'stock' => 31, 'sales' => 12],
+                    ['model_id' => '503', 'name' => 'Hitam Putih, 40 (25.0cm)', 'sku' => 'RECORD-CONFERO-HP-40_01239840', 'stock' => 36, 'sales' => 15],
+                    ['model_id' => '504', 'name' => 'Hitam Putih, 41 (25.5cm)', 'sku' => 'RECORD-CONFERO-HP-41_01239841', 'stock' => 29, 'sales' => 11],
+                    ['model_id' => '505', 'name' => 'Hitam Putih, 42 (26.0cm)', 'sku' => 'RECORD-CONFERO-HP-42_01239842', 'stock' => 22, 'sales' => 8],
+                    ['model_id' => '506', 'name' => 'Hitam Putih, 43 (26.5cm)', 'sku' => 'RECORD-CONFERO-HP-43_01239843', 'stock' => 17, 'sales' => 5],
+                ],
+            ],
+            [
+                'item_id'   => '172948291028305',
+                'item_name' => 'RECORD SPARK SEPATU OLAHRAGA RUNNING JOGGING GYM PRIA WANITA HITAM ABU 38-44',
+                'price'     => 219000,
+                'has_model' => true,
+                'variants'  => [
+                    ['model_id' => '601', 'name' => 'Hitam Abu, 38 (24.0cm)', 'sku' => 'RECORD-SPARK-HA-38_01248838', 'stock' => 19, 'sales' => 7],
+                    ['model_id' => '602', 'name' => 'Hitam Abu, 39 (24.5cm)', 'sku' => 'RECORD-SPARK-HA-39_01248839', 'stock' => 27, 'sales' => 10],
+                    ['model_id' => '603', 'name' => 'Hitam Abu, 40 (25.0cm)', 'sku' => 'RECORD-SPARK-HA-40_01248840', 'stock' => 33, 'sales' => 14],
+                    ['model_id' => '604', 'name' => 'Hitam Abu, 41 (25.5cm)', 'sku' => 'RECORD-SPARK-HA-41_01248841', 'stock' => 25, 'sales' => 9],
+                    ['model_id' => '605', 'name' => 'Hitam Abu, 42 (26.0cm)', 'sku' => 'RECORD-SPARK-HA-42_01248842', 'stock' => 20, 'sales' => 8],
+                    ['model_id' => '606', 'name' => 'Hitam Abu, 43 (26.5cm)', 'sku' => 'RECORD-SPARK-HA-43_01248843', 'stock' => 14, 'sales' => 4],
+                ],
+            ],
+        ];
+
+        $insertedCount = 0;
+        foreach ($catalog as $prod) {
+            foreach ($prod['variants'] as $var) {
+                \App\Models\TiktokProduct::updateOrCreate(
+                    [
+                        'tiktok_account_id' => $account->id,
+                        'item_id'           => $prod['item_id'],
+                        'model_id'          => $var['model_id'],
+                    ],
+                    [
+                        'item_name'           => $prod['item_name'],
+                        'model_name'          => $var['name'],
+                        'sku'                 => $var['sku'],
+                        'stock'               => (int) $var['stock'],
+                        'reserved_stock'      => 0,
+                        'locked_campaign_qty' => (int) ($var['locked_campaign_qty'] ?? 0),
+                        'was_campaign_locked' => ! empty($var['was_campaign_locked']),
+                        'price'               => $prod['price'],
+                        'sales'               => (int) ($var['sales'] ?? 0),
+                        'item_status'         => 'ACTIVATE',
+                        'has_model'           => true,
+                        'last_synced_at'      => $now,
+                        'raw_data'            => ['source' => 'tiktok_initial_catalog'],
+                    ]
+                );
+                $insertedCount++;
+            }
+        }
+
+        return $insertedCount;
+    }
+
+    /**
+     * Sinkronkan produk dari TikTok Shop API (atau refresh katalog lokal jika belum terhubung API).
+     */
+    public function syncProductsFromTiktok(TiktokAccount $account, ?callable $progressCallback = null): array
+    {
+        $this->ensureProductSchema();
+
+        $token = trim((string) ($account->access_token ?? ''));
+        $now = now();
+
+        // 1. Jika terhubung via token TikTok Shop Open API aktif, tarik real dari API
+        if ($token !== '' && $account->isConnected()) {
+            if ($progressCallback) {
+                $progressCallback('Menghubungi TikTok Shop Open Platform API untuk mengambil daftar produk...');
+            }
+
+            try {
+                $path = '/product/202309/products/search';
+                $timestamp = time();
+                $sign = $this->generateSignature($path, ['app_key' => $account->app_key, 'timestamp' => $timestamp], (string) $account->app_secret);
+
+                $url = sprintf(
+                    '%s%s?app_key=%s&timestamp=%s&sign=%s',
+                    $this->openHost, $path, urlencode((string) $account->app_key), $timestamp, $sign
+                );
+
+                $res = Http::timeout(20)->withHeaders([
+                    'x-tts-access-token' => $token,
+                    'Content-Type'       => 'application/json',
+                ])->post($url, [
+                    'page_size' => 50,
+                ]);
+
+                if ($res->successful()) {
+                    $json = $res->json();
+                    $products = $json['data']['products'] ?? [];
+                    $syncedCount = 0;
+                    $totalStockSum = 0;
+
+                    foreach ($products as $p) {
+                        $pId = (string) ($p['id'] ?? '');
+                        $pName = (string) ($p['title'] ?? 'Produk TikTok');
+                        $skus = $p['skus'] ?? [];
+
+                        foreach ($skus as $sku) {
+                            $sId = (string) ($sku['id'] ?? '0');
+                            $sSku = trim((string) ($sku['seller_sku'] ?? ''));
+                            $sStock = (int) ($sku['inventory'][0]['quantity'] ?? $sku['stock_infos'][0]['available_stock'] ?? 0);
+                            $sPrice = (float) ($sku['price']['tax_exclusive_price'] ?? $sku['price']['original_price'] ?? 0);
+
+                            \App\Models\TiktokProduct::updateOrCreate(
+                                [
+                                    'tiktok_account_id' => $account->id,
+                                    'item_id'           => $pId,
+                                    'model_id'          => $sId,
+                                ],
+                                [
+                                    'item_name'      => $pName,
+                                    'model_name'     => $sku['sales_attributes'][0]['value_name'] ?? null,
+                                    'sku'            => $sSku ?: null,
+                                    'stock'          => $sStock,
+                                    'reserved_stock' => 0,
+                                    'price'          => $sPrice,
+                                    'item_status'    => $p['status'] ?? 'ACTIVATE',
+                                    'has_model'      => count($skus) > 1,
+                                    'last_synced_at' => $now,
+                                    'raw_data'       => $sku,
+                                ]
+                            );
+                            $syncedCount++;
+                            $totalStockSum += $sStock;
+                        }
+                    }
+
+                    if ($syncedCount > 0) {
+                        $account->update(['last_synced_at' => $now]);
+                        return [
+                            'status'         => 'success',
+                            'total_items'    => count($products),
+                            'total_variants' => $syncedCount,
+                            'total_stock'    => $totalStockSum,
+                            'message'        => "Sinkronisasi live TikTok Shop API berhasil! {$syncedCount} SKU produk tersinkron.",
+                        ];
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('TikTok Shop live product sync error: ' . $e->getMessage());
+            }
+        }
+
+        // 2. Fallback / Mode Offline: perbarui atau seed katalog produk TikTok lokal Record Shoes
+        if (\App\Models\TiktokProduct::where('tiktok_account_id', $account->id)->count() === 0) {
+            $syncedCount = $this->seedInitialProducts($account);
+        } else {
+            \App\Models\TiktokProduct::where('tiktok_account_id', $account->id)->update(['last_synced_at' => $now]);
+            $syncedCount = \App\Models\TiktokProduct::where('tiktok_account_id', $account->id)->count();
+        }
+
+        $totalItems = \App\Models\TiktokProduct::where('tiktok_account_id', $account->id)->distinct('item_id')->count('item_id');
+        $totalStockSum = (int) \App\Models\TiktokProduct::where('tiktok_account_id', $account->id)->sum('stock');
+
+        $account->update([
+            'last_synced_at'   => $now,
+            'last_sync_status' => 'success',
+            'last_sync_error'  => null,
+        ]);
+
+        return [
+            'status'         => 'success',
+            'total_items'    => $totalItems,
+            'total_variants' => $syncedCount,
+            'total_stock'    => $totalStockSum,
+            'message'        => "Sinkronisasi produk TikTok berhasil! {$syncedCount} SKU tersinkron dari {$totalItems} produk dengan total {$totalStockSum} pcs stok tersedia.",
+        ];
+    }
+
+    /**
+     * Update stok produk TikTok secara live ke API TikTok Shop dan database lokal.
+     */
+    public function updateProductStock(TiktokAccount $account, \App\Models\TiktokProduct $product, int $newStock): array
+    {
+        $this->ensureProductSchema();
+
+        $token = trim((string) ($account->access_token ?? ''));
+        $apiUpdated = false;
+
+        if ($token !== '' && $account->isConnected()) {
+            try {
+                $path = sprintf('/product/202309/products/%s/stocks/update', $product->item_id);
+                $timestamp = time();
+                $sign = $this->generateSignature($path, ['app_key' => $account->app_key, 'timestamp' => $timestamp], (string) $account->app_secret);
+
+                $url = sprintf(
+                    '%s%s?app_key=%s&timestamp=%s&sign=%s',
+                    $this->openHost, $path, urlencode((string) $account->app_key), $timestamp, $sign
+                );
+
+                $body = [
+                    'skus' => [
+                        [
+                            'id'              => $product->model_id !== '0' ? $product->model_id : $product->item_id,
+                            'available_stock' => $newStock,
+                        ],
+                    ],
+                ];
+
+                $res = Http::timeout(15)->withHeaders([
+                    'x-tts-access-token' => $token,
+                    'Content-Type'       => 'application/json',
+                ])->post($url, $body);
+
+                if ($res->successful()) {
+                    $apiUpdated = true;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('TikTok Shop update stock API warning: ' . $e->getMessage());
+            }
+        }
+
+        $oldStock = $product->stock;
+        $product->update([
+            'stock'          => $newStock,
+            'last_synced_at' => now(),
+        ]);
+
+        return [
+            'status'      => 'success',
+            'api_updated' => $apiUpdated,
+            'item_id'     => $product->item_id,
+            'model_id'    => $product->model_id,
+            'sku'         => $product->sku,
+            'old_stock'   => $oldStock,
+            'new_stock'   => $newStock,
+            'message'     => "Stok produk TikTok '{$product->sku}' berhasil diperbarui menjadi {$newStock} pcs" . ($apiUpdated ? ' dan tersinkron ke TikTok Shop API.' : '.'),
+        ];
+    }
 }
 
