@@ -520,6 +520,12 @@ class ShopeeOrderService
     /**
      * Atur pengiriman 1 pesanan (Pickup / Drop-off / Non-integrated), ambil tracking number,
      * refresh detail pesanan, dan perbarui status di cut_off_orders.
+     *
+     * Dilengkapi validasi pra-panggilan (pre-flight check) sesuai panduan Shopee Open Platform Compliance:
+     * - Mencegah panggilan duplikat untuk pesanan yang sudah berstatus PROCESSED/SHIPPED/sudah ada resi.
+     * - Memastikan hanya pesanan berstatus READY_TO_SHIP atau RETRY_SHIP yang dikirim ke API ship_order.
+     * - Memeriksa status package-level (is_shipment_arranged) agar success rate API ship_order > 90%.
+     * - Retry otomatis dengan jeda aman khusus kegagalan jaringan sementara (transient network failure).
      */
     public function shipOrder(ShopeeAccount $account, string $orderSn, array $shipPayload): array
     {
@@ -530,12 +536,91 @@ class ShopeeOrderService
             ->where('order_sn', $orderSn)
             ->first();
 
-        $packageList = is_array($existingOrder?->package_list_json) ? $existingOrder->package_list_json : [];
-        $isSplitOrder = count($packageList) > 1;
+        // 1. Pre-flight Check: Jika pesanan secara lokal sudah pernah diproses / dikirim / sudah ada resi
+        if ($existingOrder) {
+            $alreadyArranged = in_array($existingOrder->order_status, ['PROCESSED', 'SHIPPED', 'TO_CONFIRM_RECEIVE', 'COMPLETED'], true)
+                || (! empty($existingOrder->tracking_number) && ! empty($existingOrder->shipping_arranged_at));
 
-        // Shopee API v2 ship_order: parameter package_number HANYA boleh dikirim untuk split order.
-        // Jika dikirim untuk unsplit order, Shopee error: logistics.ship_order_not_need_pacakge_number
+            if ($alreadyArranged) {
+                Log::info("[Shopee Compliance] Skip ship_order API call for {$orderSn}: order already in {$existingOrder->order_status} status with tracking {$existingOrder->tracking_number}");
+                $refreshedOrder = $this->refreshSingleOrder($account, $orderSn);
+                return [
+                    'order_sn'             => $orderSn,
+                    'tracking_number'      => $refreshedOrder->tracking_number,
+                    'fulfillment_method'   => $refreshedOrder->fulfillment_method,
+                    'order_status'         => $refreshedOrder->order_status,
+                    'shipping_arranged_at' => $refreshedOrder->shipping_arranged_at?->format('Y-m-d H:i:s'),
+                    'order'                => $refreshedOrder,
+                    'message'              => "Pesanan ini sudah pernah diatur pengirimannya sebelumnya (Status: {$refreshedOrder->order_status}). No. Resi: " . ($refreshedOrder->tracking_number ?: 'Tersedia'),
+                ];
+            }
+
+            // Validasi: hanya status READY_TO_SHIP atau RETRY_SHIP yang boleh dikirim ke API ship_order
+            if (! in_array($existingOrder->order_status, ['READY_TO_SHIP', 'RETRY_SHIP'], true)) {
+                throw new \InvalidArgumentException(
+                    "Pesanan {$orderSn} berstatus '{$existingOrder->order_status}' dan belum siap untuk dikirim. Hanya pesanan READY_TO_SHIP yang dapat diatur pengirimannya."
+                );
+            }
+        }
+
+        // 2. Pre-flight Verification: Ambil status package terkini dari Shopee jika package_list belum lengkap
+        // Ini memastikan kita tahu pasti apakah order split atau bukan SEBELUM memanggil ship_order,
+        // sehingga API TIDAK PERNAH gagal karena salah kirim package_number.
+        $packageList = is_array($existingOrder?->package_list_json) ? $existingOrder->package_list_json : [];
+        if (empty($packageList) || $existingOrder === null) {
+            try {
+                $refreshed = $this->refreshSingleOrder($account, $orderSn);
+                $existingOrder = $refreshed;
+                $packageList = is_array($existingOrder->package_list_json) ? $existingOrder->package_list_json : [];
+
+                if (in_array($existingOrder->order_status, ['PROCESSED', 'SHIPPED', 'TO_CONFIRM_RECEIVE', 'COMPLETED'], true)) {
+                    Log::info("[Shopee Compliance] Order {$orderSn} was found already processed on Shopee after refresh.");
+                    return [
+                        'order_sn'             => $orderSn,
+                        'tracking_number'      => $existingOrder->tracking_number,
+                        'fulfillment_method'   => $existingOrder->fulfillment_method,
+                        'order_status'         => $existingOrder->order_status,
+                        'shipping_arranged_at' => $existingOrder->shipping_arranged_at?->format('Y-m-d H:i:s'),
+                        'order'                => $existingOrder,
+                        'message'              => "Pesanan ini sudah diatur pengirimannya di Shopee. No. Resi: " . ($existingOrder->tracking_number ?: 'Tersedia'),
+                    ];
+                }
+            } catch (\Throwable $e) {
+                Log::warning("[Shopee Compliance] Gagal pre-fetch detail pesanan {$orderSn}: " . $e->getMessage());
+            }
+        }
+
+        // Cek package-level readiness sesuai anjuran Shopee Open Platform FAQ
+        // Jika seluruh paket sudah is_shipment_arranged = true atau fulfillment_status = LOGISTICS_REQUEST_CREATED
+        if (! empty($packageList)) {
+            $allArranged = true;
+            foreach ($packageList as $pkg) {
+                $isArranged = ! empty($pkg['is_shipment_arranged']);
+                $fulfillment = strtoupper(trim((string) ($pkg['fulfillment_status'] ?? $pkg['logistics_status'] ?? '')));
+                if (! $isArranged && $fulfillment !== 'LOGISTICS_REQUEST_CREATED') {
+                    $allArranged = false;
+                    break;
+                }
+            }
+
+            if ($allArranged) {
+                Log::info("[Shopee Compliance] All packages in order {$orderSn} already have shipment arranged. Skipping API ship_order.");
+                $refreshedOrder = $this->refreshSingleOrder($account, $orderSn);
+                return [
+                    'order_sn'             => $orderSn,
+                    'tracking_number'      => $refreshedOrder->tracking_number,
+                    'fulfillment_method'   => $refreshedOrder->fulfillment_method,
+                    'order_status'         => $refreshedOrder->order_status,
+                    'shipping_arranged_at' => $refreshedOrder->shipping_arranged_at?->format('Y-m-d H:i:s'),
+                    'order'                => $refreshedOrder,
+                    'message'              => "Pengiriman pesanan ini sudah diatur sebelumnya. No. Resi: " . ($refreshedOrder->tracking_number ?: 'Tersedia'),
+                ];
+            }
+        }
+
+        $isSplitOrder = count($packageList) > 1;
         $candidatePackageNumber = trim((string) ($shipPayload['package_number'] ?? $existingOrder?->package_number ?? ''));
+        // Shopee API v2 ship_order: parameter package_number HANYA boleh dikirim untuk split order.
         $packageNumber = $isSplitOrder ? $candidatePackageNumber : '';
         $method = $this->resolveShipMethod($shipPayload);
 
@@ -546,29 +631,54 @@ class ShopeeOrderService
 
         $body[$method] = $this->buildMethodPayload($method, $shipPayload);
 
-        try {
-            $this->postApi($account, '/api/v2/logistics/ship_order', $body);
-        } catch (\Throwable $e) {
-            $msg = strtolower($e->getMessage());
-            $isPackageError = str_contains($msg, 'package_number')
-                || str_contains($msg, 'pacakge')
-                || str_contains($msg, 'package number')
-                || str_contains($msg, 'split')
-                || str_contains($msg, 'unsplit');
+        // 3. Eksekusi API ship_order dengan penanganan transient network retry
+        $maxAttempts = 2;
+        $lastException = null;
 
-            if (isset($body['package_number']) && $isPackageError) {
-                Log::info("Shopee ship_order auto-retry without package_number for {$orderSn}: {$e->getMessage()}");
-                unset($body['package_number']);
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            try {
                 $this->postApi($account, '/api/v2/logistics/ship_order', $body);
-                $packageNumber = '';
-            } elseif (! isset($body['package_number']) && $candidatePackageNumber !== '' && $isPackageError) {
-                Log::info("Shopee ship_order auto-retry with package_number for {$orderSn}: {$e->getMessage()}");
-                $body['package_number'] = $candidatePackageNumber;
-                $this->postApi($account, '/api/v2/logistics/ship_order', $body);
-                $packageNumber = $candidatePackageNumber;
-            } else {
-                throw $e;
+                $lastException = null;
+                break;
+            } catch (\Throwable $e) {
+                $lastException = $e;
+                $msg = strtolower($e->getMessage());
+
+                // Jika Shopee menyatakan paket sudah di-ship / sudah diatur:
+                // Tangani secara elegan sebagai sukses tanpa melempar kegagalan ke user
+                $isAlreadyShipped = str_contains($msg, 'already been shipped')
+                    || str_contains($msg, 'already been arranged')
+                    || str_contains($msg, 'already arranged')
+                    || str_contains($msg, 'package_has_been_shipped')
+                    || str_contains($msg, 'order_already_arranged');
+
+                if ($isAlreadyShipped) {
+                    Log::info("[Shopee Compliance] Order {$orderSn} was already arranged on Shopee side: {$e->getMessage()}");
+                    $lastException = null;
+                    break;
+                }
+
+                // Jika error adalah transient network error (timeout / 502 / 504), lakukan 1x retry jeda 1 detik
+                $isTransient = str_contains($msg, 'timed out')
+                    || str_contains($msg, 'timeout')
+                    || str_contains($msg, '504')
+                    || str_contains($msg, '502')
+                    || str_contains($msg, '503')
+                    || str_contains($msg, 'connection');
+
+                if ($isTransient && $attempt < $maxAttempts) {
+                    Log::warning("[Shopee Compliance] Transient failure on ship_order for {$orderSn}, retrying in 1s (attempt {$attempt}/{$maxAttempts}): " . $e->getMessage());
+                    sleep(1);
+                    continue;
+                }
+
+                // Jika bukan transient dan bukan already-shipped, hentikan loop
+                break;
             }
+        }
+
+        if ($lastException !== null) {
+            throw $lastException;
         }
 
         $trackingNumber = null;
