@@ -163,7 +163,12 @@ class ProductStockMatcher
     public static function cleanMasterItemName(string $name): string
     {
         $n = strtoupper(trim($name));
-        $n = preg_replace('/\b(SPT|SEPATU|R\.|RECORD|SHOES|SANDAL)\b/i', ' ', $n);
+        // Buang awalan jenis sepatu / brand / tipe lem / kategori pabrik
+        $n = preg_replace('/^(?:SPT|SEPATU|SANDAL|SHOES)[\s\-_.]+/i', '', $n);
+        $n = preg_replace('/^(?:R|RECORD)[\s\-_.]+/i', '', $n);
+        $n = preg_replace('/^(?:LM|L|P)[\s\-_.]+/i', '', $n);
+        // Buang tag kurung seperti (L), (A), (), (P), dll
+        $n = preg_replace('/\([A-Z0-9]*\)/i', ' ', $n);
         $n = str_replace(['(', ')', '[', ']', '{', '}'], ' ', $n);
         $n = preg_replace('/\s+/', ' ', $n);
         return trim($n);
@@ -248,12 +253,13 @@ class ProductStockMatcher
      */
     public static function buildMasterStockMaps(iterable $masterStocks): array
     {
-        $gMap = [];
-        $aMap = [];
+        $canonicalG = [];
+        $canonicalA = [];
         $aPrefixMap = [];
         $masterByCode = [];
         $smartIndex = [];
         $aSerianItems = [];
+        $codeList = [];
 
         foreach ($masterStocks as $ms) {
             $code = strtoupper(trim((string) $ms->item_code));
@@ -263,6 +269,9 @@ class ProductStockMatcher
 
             $unpadded = ltrim($code, '0');
             $padded8  = str_pad($unpadded !== '' ? $unpadded : $code, 8, '0', STR_PAD_LEFT);
+            $qtyPcs   = (int) $ms->qty_pcs;
+
+            $codeList[] = [$code, $unpadded, $padded8];
 
             if (! isset($masterByCode[$code])) {
                 $masterByCode[$code] = $ms;
@@ -274,20 +283,10 @@ class ProductStockMatcher
                 $masterByCode[$padded8] = $ms;
             }
 
-            $qtyPcs = (int) $ms->qty_pcs;
-
             if ($ms->warehouse === 'G') {
-                $gMap[$code] = ($gMap[$code] ?? 0) + $qtyPcs;
-                if ($unpadded !== '') {
-                    $gMap[$unpadded] = ($gMap[$unpadded] ?? 0) + $qtyPcs;
-                }
-                $gMap[$padded8] = ($gMap[$padded8] ?? 0) + $qtyPcs;
+                $canonicalG[$padded8] = ($canonicalG[$padded8] ?? 0) + $qtyPcs;
             } elseif ($ms->warehouse === 'A') {
-                $aMap[$code] = ($aMap[$code] ?? 0) + $qtyPcs;
-                if ($unpadded !== '') {
-                    $aMap[$unpadded] = ($aMap[$unpadded] ?? 0) + $qtyPcs;
-                }
-                $aMap[$padded8] = ($aMap[$padded8] ?? 0) + $qtyPcs;
+                $canonicalA[$padded8] = ($canonicalA[$padded8] ?? 0) + $qtyPcs;
 
                 // Index prefix 6 digit (kode artikel)
                 if (strlen($padded8) >= 6) {
@@ -312,14 +311,36 @@ class ProductStockMatcher
 
             // Index untuk Smart Candidate Eceran (Gudang G) berbasis Article_Size
             $nameUpper = strtoupper(trim((string) $ms->item_name));
-            if (preg_match('/[\s\-_](2[0-9]|3[0-9]|4[0-9])$/', $nameUpper, $sm)) {
+            $cleanName = self::cleanMasterItemName($nameUpper);
+            $size = null;
+            if (preg_match('/[\s\-_](2[0-9]|3[0-9]|4[0-9])$/', $cleanName, $sm)) {
                 $size = $sm[1];
-                $parts = preg_split('/[\s\-]+/', self::cleanMasterItemName($nameUpper));
+            }
+
+            if ($size) {
+                $cleanWithoutSize = preg_replace('/[\s\-_]' . $size . '$/', '', $cleanName);
+                $parts = preg_split('/[\s\-]+/', trim($cleanWithoutSize));
                 $article = $parts[0] ?? null;
                 if ($article && strlen($article) >= 3) {
                     $key = $article . '_' . $size;
                     $smartIndex[$key][] = $ms;
                 }
+            }
+        }
+
+        $gMap = [];
+        $aMap = [];
+        foreach ($codeList as [$c, $u, $p8]) {
+            $gMap[$c] = $canonicalG[$p8] ?? 0;
+            $gMap[$p8] = $canonicalG[$p8] ?? 0;
+            if ($u !== '') {
+                $gMap[$u] = $canonicalG[$p8] ?? 0;
+            }
+
+            $aMap[$c] = $canonicalA[$p8] ?? 0;
+            $aMap[$p8] = $canonicalA[$p8] ?? 0;
+            if ($u !== '') {
+                $aMap[$u] = $canonicalA[$p8] ?? 0;
             }
         }
 
@@ -439,20 +460,40 @@ class ProductStockMatcher
             }
         }
 
-        // 3. Fallback jika Gudang G belum terdeteksi (pencocokan nama eceran)
-        if ($stockG === 0 && ! $matchedCode) {
+        // 3. Fallback jika Gudang G belum terdeteksi (pencocokan nama eceran & warna)
+        if ($stockG === 0 && ! empty($smartIndex)) {
             $parsedSku = self::parseSku($normSku, (string) ($p->model_name ?? ''), (string) ($p->item_name ?? ''));
             if ($parsedSku['size'] && ! empty($parsedSku['expanded_articles'])) {
                 foreach ($parsedSku['expanded_articles'] as $art) {
                     $key = $art . '_' . $parsedSku['size'];
                     if (! empty($smartIndex[$key])) {
-                        $cand = $smartIndex[$key][0];
-                        $stockG = $gMap[$cand->item_code] ?? 0;
-                        $matchedCode = $cand->item_code;
-                        $matchType = 'SMART_MATCH';
-                        $suggestedCode = $cand->item_code;
-                        $suggestedName = $cand->item_name;
-                        break;
+                        foreach ($smartIndex[$key] as $cand) {
+                            $candName = strtoupper($cand->item_name);
+                            $colorMatches = true;
+                            if (! empty($parsedSku['color_keywords'])) {
+                                $colorMatches = false;
+                                foreach ($parsedSku['color_keywords'] as $kw) {
+                                    if (stripos($candName, $kw) !== false) {
+                                        $colorMatches = true;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if ($colorMatches) {
+                                $stockG = $gMap[$cand->item_code] ?? 0;
+                                if (! $matchedCode) {
+                                    $matchedCode = $cand->item_code;
+                                    $matchType = 'SMART_MATCH';
+                                    $suggestedCode = $cand->item_code;
+                                    $suggestedName = $cand->item_name;
+                                    $warningMessage = "Cocok Cerdas Gudang G: {$cand->item_code} - {$cand->item_name} ({$stockG} pcs)";
+                                } else {
+                                    $matchedCode .= " | G: " . $cand->item_code;
+                                }
+                                break 2;
+                            }
+                        }
                     }
                 }
             }
