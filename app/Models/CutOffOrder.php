@@ -657,11 +657,11 @@ class CutOffOrder extends Model
         });
 
         $query->when($filters['date_from'] ?? null, function ($q, $from) {
-            $q->whereDate('order_date', '>=', $from);
+            $q->whereDate(\Illuminate\Support\Facades\DB::raw('COALESCE(processed_at, order_date)'), '>=', $from);
         });
 
         $query->when($filters['date_to'] ?? null, function ($q, $to) {
-            $q->whereDate('order_date', '<=', $to);
+            $q->whereDate(\Illuminate\Support\Facades\DB::raw('COALESCE(processed_at, order_date)'), '<=', $to);
         });
     }
 }

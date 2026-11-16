@@ -605,6 +605,26 @@ class ShopeeOrderService
         $refreshedOrder->update($localUpdates);
         $refreshedOrder = $refreshedOrder->fresh();
 
+        try {
+            $cutOff = CutOffOrder::where('channel', 'SH')->where('order_number', $orderSn)->first();
+            if ($cutOff) {
+                $arrangedTs = $refreshedOrder->shipping_arranged_at ?? now('Asia/Jakarta');
+                $cutOffUpdates = [
+                    'order_status' => 'Diproses',
+                    'processed_at' => $arrangedTs instanceof \Carbon\CarbonInterface
+                        ? $arrangedTs->copy()->timezone('Asia/Jakarta')->format('Y-m-d H:i:s')
+                        : (string) $arrangedTs,
+                ];
+                if (! empty($refreshedOrder->tracking_number)) {
+                    $cutOffUpdates['package_count'] = $refreshedOrder->tracking_number;
+                }
+                $cutOff->update($cutOffUpdates);
+                CutOffOrder::bumpCacheVersion();
+            }
+        } catch (\Throwable $e) {
+            Log::warning("[ShopeeOrderService] Gagal update processed_at CutOffOrder ({$orderSn}): " . $e->getMessage());
+        }
+
         return [
             'order_sn'             => $orderSn,
             'tracking_number'      => $refreshedOrder->tracking_number,

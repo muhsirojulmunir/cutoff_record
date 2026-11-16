@@ -8,6 +8,7 @@ interface CutOffOrder {
   id: number;
   row_no: string | null;
   order_date: string | null;
+  processed_at?: string | null;
   ship_by_date?: string | null;
   channel: string;
   order_number: string;
@@ -1555,7 +1556,8 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                       )) ||
                       (order.order_status && order.order_status.toLowerCase().includes('cod'))
                     );
-                    const relativeTime = getRelativeTime(order.order_date, currentTimeMs);
+                    const displayDate = order.processed_at || order.order_date;
+                    const relativeTime = getRelativeTime(displayDate, currentTimeMs);
                     const isInstantOrder = shippingTier.label === 'INSTAN' || shippingTier.label === 'SAMEDAY';
                     const orderStatusLower = (order.order_status ?? '').toLowerCase();
                     const isProcessed = orderStatusLower.includes('diproses') || orderStatusLower === 'processed';
@@ -1586,17 +1588,23 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                             <span className="inline-block px-2 py-0.5 rounded-md bg-[#0B132B] text-white font-bold text-[10px] tracking-wide">
                               {order.channel}
                             </span>
-                            {formatTime(order.order_date) && (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200" title={`Pukul ${formatTime(order.order_date)}`}>
+                            {formatTime(displayDate) && (
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200"
+                                title={`Pukul ${formatTime(displayDate)}${order.processed_at ? ' (Waktu Diproses)' : ''}`}
+                              >
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3 text-slate-400">
                                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
-                                {formatTime(order.order_date)}
+                                {formatTime(displayDate)}
                               </span>
                             )}
                           </div>
-                          <p className="text-slate-800 text-xs font-semibold">
-                            {formatDate(order.order_date)}
+                          <p
+                            className="text-slate-800 text-xs font-semibold"
+                            title={order.order_date && order.processed_at && order.order_date !== order.processed_at ? `Waktu Masuk Pesanan: ${formatDate(order.order_date)} ${formatTime(order.order_date) || ''}` : undefined}
+                          >
+                            {formatDate(displayDate)}
                           </p>
                           {/* Relative Time Badge */}
                           {relativeTime && (

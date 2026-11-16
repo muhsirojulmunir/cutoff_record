@@ -43,7 +43,7 @@ class CutOffOrderController extends Controller
         $orders = CutOffOrder::query()
             ->onlyProcessed()
             ->filter($filters)
-            ->orderBy('order_date', 'desc')
+            ->orderByRaw('COALESCE(processed_at, order_date) desc')
             ->orderBy('id', 'desc')
             ->paginate($perPage)
             ->withQueryString();
@@ -269,10 +269,7 @@ class CutOffOrderController extends Controller
             ! CutOffOrder::isExcludedStatus($validated['order_status'] ?? null)
             && Schema::hasColumn('cut_off_orders', 'processed_at')
         ) {
-            $todayDate = now('Asia/Jakarta')->toDateString();
-            $validated['processed_at'] = substr((string) $validated['order_date'], 0, 10) === $todayDate
-                ? now('Asia/Jakarta')->format('Y-m-d H:i:s')
-                : $validated['order_date'];
+            $validated['processed_at'] = now('Asia/Jakarta')->format('Y-m-d H:i:s');
         }
 
         $order = CutOffOrder::create($validated);
@@ -340,7 +337,9 @@ class CutOffOrderController extends Controller
                     : null;
             }
             if ($hasProcessedAt) {
-                $rowPayload['processed_at'] = $rowPayload['order_date'];
+                $rowPayload['processed_at'] = !empty($r['processed_at'])
+                    ? $r['processed_at']
+                    : $now->format('Y-m-d H:i:s');
             }
 
             $batch[] = $rowPayload;
@@ -540,6 +539,7 @@ class CutOffOrderController extends Controller
                 ['order_number' => $orderNumber],
                 [
                     'order_date'             => $orderDate,
+                    'processed_at'           => !empty($r['processed_at']) ? $r['processed_at'] : now('Asia/Jakarta')->format('Y-m-d H:i:s'),
                     'channel'                => !empty($r['channel']) ? trim((string) $r['channel']) : 'MANUAL',
                     'jl_number'              => !empty($r['jl_number']) ? trim((string) $r['jl_number']) : null,
                     'buyer_username'         => !empty($r['buyer_username']) ? trim((string) $r['buyer_username']) : null,
@@ -588,12 +588,12 @@ class CutOffOrderController extends Controller
         $dateInput = $request->query('date', now('Asia/Jakarta')->toDateString());
         $sortOrder = strtolower($request->query('sort', 'asc')) === 'desc' ? 'desc' : 'asc';
 
-        // Ambil semua pesanan pada tanggal tersebut
+        // Ambil semua pesanan pada tanggal tersebut (berdasarkan tanggal diproses)
         $orders = CutOffOrder::query()
             ->onlyProcessed()
-            ->whereDate('order_date', $dateInput)
+            ->whereDate(\Illuminate\Support\Facades\DB::raw('COALESCE(processed_at, order_date)'), $dateInput)
             ->whereNull('deleted_at')
-            ->orderBy('order_date', $sortOrder)
+            ->orderByRaw('COALESCE(processed_at, order_date) ' . $sortOrder)
             ->orderBy('id', $sortOrder)
             ->get();
 

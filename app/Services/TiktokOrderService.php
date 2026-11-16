@@ -752,6 +752,23 @@ class TiktokOrderService
             'shipping_arranged_at' => now(),
         ]);
 
+        try {
+            $cutOff = CutOffOrder::where('channel', 'TT')->where('order_number', $order->order_sn)->first();
+            if ($cutOff) {
+                $cutOffUpdates = [
+                    'order_status' => 'Menunggu Pickup',
+                    'processed_at' => now('Asia/Jakarta')->format('Y-m-d H:i:s'),
+                ];
+                if (! empty($trackingNo)) {
+                    $cutOffUpdates['package_count'] = $trackingNo;
+                }
+                $cutOff->update($cutOffUpdates);
+                CutOffOrder::bumpCacheVersion();
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning("[TiktokOrderService] Gagal update processed_at CutOffOrder ({$order->order_sn}): " . $e->getMessage());
+        }
+
         return [
             'status'          => 'success',
             'order_sn'        => $order->order_sn,
