@@ -1662,6 +1662,10 @@ class ShopeeOrderService
             return $message !== '' ? "{$base} Detail: {$message}" : $base;
         }
 
+        if (stripos($errorCode, 'packages_can_not_download_together') !== false || stripos($message, 'different channel_id') !== false) {
+            return 'Cetak Resi Massal gagal: Pesanan yang dipilih memiliki kurir/ekspedisi yang berbeda. Server Shopee mewajibkan cetak resi massal dilakukan per ekspedisi yang sama (misal: sesama SPX Express, atau sesama J&T Express). Silakan gunakan filter Kurir terlebih dahulu sebelum mencetak massal.';
+        }
+
         if ($errorCode !== '' || $message !== '') {
             $detail = trim($errorCode . ($errorCode !== '' && $message !== '' ? ': ' : '') . $message);
             return "Shopee API ({$context}) gagal: {$detail}";
