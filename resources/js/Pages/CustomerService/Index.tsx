@@ -827,37 +827,53 @@ export default function CustomerServiceIndex({
                   </div>
 
                   {/* Message Bubbles */}
-                  {activeConv.messages.map((msg) => {
-                    const isBuyer = msg.sender === 'buyer';
-
-                    return (
-                      <div
-                        key={msg.id}
-                        className={`flex flex-col ${isBuyer ? 'items-start' : 'items-end'}`}
-                      >
-                        <div
-                          className={`max-w-md rounded-2xl px-4 py-2.5 text-xs leading-relaxed shadow-2xs ${
-                            isBuyer
-                              ? 'rounded-tl-xs bg-white text-slate-800 border border-slate-200'
-                              : 'rounded-tr-xs bg-slate-900 text-white'
-                          }`}
-                        >
-                          <p className="whitespace-pre-wrap">{formatMessageText(msg.text)}</p>
-                        </div>
-                        <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-400">
-                          <span>{msg.timestamp}</span>
-                          {!isBuyer && (
-                            <span
-                              title={msg.status === 'read' ? 'Dibaca pembeli' : msg.status === 'sent' ? 'Terkirim' : 'Pending'}
-                              className={msg.status === 'read' ? 'text-sky-500 font-bold' : 'text-slate-400 font-bold'}
-                            >
-                              {msg.status === 'pending' ? '⏱' : msg.status === 'sent' ? '✓' : '✓✓'}
-                            </span>
-                          )}
-                        </div>
+                  {activeConv.messages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center text-slate-400">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-xl mb-2">
+                        💬
                       </div>
-                    );
-                  })}
+                      <p className="text-xs font-semibold text-slate-600">Belum ada riwayat pesan tersimpan</p>
+                      <p className="text-[11px] text-slate-400 mt-1 max-w-xs">
+                        {activeConv.last_message ? (
+                          <>Pesan terakhir: <span className="font-medium text-slate-700">{formatMessageText(activeConv.last_message)}</span></>
+                        ) : (
+                          'Klik tombol "Sinkronkan Chat" di pojok kanan atas untuk mengambil riwayat pesan.'
+                        )}
+                      </p>
+                    </div>
+                  ) : (
+                    activeConv.messages.map((msg) => {
+                      const isBuyer = msg.sender === 'buyer';
+
+                      return (
+                        <div
+                          key={msg.id}
+                          className={`flex flex-col ${isBuyer ? 'items-start' : 'items-end'}`}
+                        >
+                          <div
+                            className={`max-w-md rounded-2xl px-4 py-2.5 text-xs leading-relaxed shadow-2xs ${
+                              isBuyer
+                                ? 'rounded-tl-xs bg-white text-slate-800 border border-slate-200'
+                                : 'rounded-tr-xs bg-slate-900 text-white'
+                            }`}
+                          >
+                            <p className="whitespace-pre-wrap">{formatMessageText(msg.text)}</p>
+                          </div>
+                          <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-400">
+                            <span>{msg.timestamp}</span>
+                            {!isBuyer && (
+                              <span
+                                title={msg.status === 'read' ? 'Dibaca pembeli' : msg.status === 'sent' ? 'Terkirim' : 'Pending'}
+                                className={msg.status === 'read' ? 'text-sky-500 font-bold' : 'text-slate-400 font-bold'}
+                              >
+                                {msg.status === 'pending' ? '⏱' : msg.status === 'sent' ? '✓' : '✓✓'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                   <div ref={messagesEndRef} />
                 </div>
 

@@ -329,6 +329,19 @@ class CustomerServiceManager
                 ];
             })->values()->all();
 
+            // Jika percakapan memiliki pesan terakhir tapi messages belum terisi di DB, jadikan last_message sebagai pesan awal
+            if (empty($messages) && ! empty($lastMessage)) {
+                $messages = [
+                    [
+                        'id'        => 'fallback_' . $conv->id,
+                        'sender'    => $conv->last_message_sender ?: 'buyer',
+                        'text'      => $lastMessage,
+                        'timestamp' => $conv->last_message_time ? $conv->last_message_time->format('H.i') . ' WIB' : 'Baru saja',
+                        'status'    => 'received',
+                    ],
+                ];
+            }
+
             return [
                 'id'                => (string) $conv->id,
                 'external_conv_id'  => $conv->external_conv_id,
@@ -535,9 +548,9 @@ class CustomerServiceManager
                     ? Carbon::createFromTimestamp($lastMsg['create_time'], 'Asia/Jakarta')
                     : now('Asia/Jakarta');
 
-                // Tarik riwayat pesan di dalamnya lebih dulu agar mendeteksi nomor pesanan jika ada
+                // Tarik riwayat pesan di dalamnya lebih dulu (TikTok membatasi page_size maksimal 10)
                 $savedMessages = [];
-                $msgRes = $this->tiktokChatService->getMessages($account, $convId, 25);
+                $msgRes = $this->tiktokChatService->getMessages($account, $convId, 10);
                 if ($msgRes['success'] && ! empty($msgRes['messages'])) {
                     foreach ($msgRes['messages'] as $apiMsg) {
                         $msgId = (string) ($apiMsg['id'] ?? $apiMsg['message_id'] ?? '');
@@ -545,9 +558,14 @@ class CustomerServiceManager
                         if (empty($detectedOrderSn) && ! empty($parsedMsg['order_sn'])) {
                             $detectedOrderSn = $parsedMsg['order_sn'];
                         }
+
+                        $senderObj = $apiMsg['sender'] ?? [];
+                        $senderRole = strtoupper((string) ($senderObj['role'] ?? $apiMsg['sender_role'] ?? 'BUYER'));
+                        $msgSender = in_array($senderRole, ['BUYER', 'USER'], true) ? 'buyer' : 'seller';
+
                         $savedMessages[] = [
                             'msg_id'  => $msgId,
-                            'sender'  => ($apiMsg['sender_role'] ?? 'BUYER') === 'BUYER' ? 'buyer' : 'seller',
+                            'sender'  => $msgSender,
                             'type'    => $parsedMsg['type'] ?: ($apiMsg['type'] ?? 'text'),
                             'text'    => $parsedMsg['text'],
                             'sent_at' => ! empty($apiMsg['create_time'])
@@ -555,6 +573,21 @@ class CustomerServiceManager
                                 : now('Asia/Jakarta'),
                         ];
                     }
+                }
+
+                // Jika riwayat getMessages kosong, pastikan pesan terakhir (inquiry/chat awal) tetap tersimpan sebagai pesan pertama
+                if (empty($savedMessages) && ! empty($lastMsgText)) {
+                    $lastSenderObj = $lastMsg['sender'] ?? [];
+                    $lastSenderRole = strtoupper((string) ($lastSenderObj['role'] ?? $lastMsg['sender_role'] ?? 'BUYER'));
+                    $lastMsgSender = in_array($lastSenderRole, ['BUYER', 'USER'], true) ? 'buyer' : 'seller';
+
+                    $savedMessages[] = [
+                        'msg_id'  => 'last_tt_' . ($lastMsg['message_id'] ?? $lastMsg['id'] ?? md5($convId . $lastMsgText)),
+                        'sender'  => $lastMsgSender,
+                        'type'    => $parsedLast['type'] ?: 'text',
+                        'text'    => $lastMsgText,
+                        'sent_at' => $lastMsgTs,
+                    ];
                 }
 
                 // Resolusi nama pembeli dari pesanan lokal jika ada
@@ -581,6 +614,10 @@ class CustomerServiceManager
                     $buyerUsername = 'tt_buyer_' . $suffix;
                 }
 
+                $lastSenderObj = $lastMsg['sender'] ?? [];
+                $lastSenderRole = strtoupper((string) ($lastSenderObj['role'] ?? $lastMsg['sender_role'] ?? 'BUYER'));
+                $lastMsgSender = in_array($lastSenderRole, ['BUYER', 'USER'], true) ? 'buyer' : 'seller';
+
                 $conv = CsConversation::updateOrCreate(
                     [
                         'external_conv_id' => 'tt_' . $convId,
@@ -596,7 +633,7 @@ class CustomerServiceManager
                         'unread_count'        => $unread,
                         'last_message'        => $lastMsgText,
                         'last_message_time'   => $lastMsgTs,
-                        'last_message_sender' => ($lastMsg['sender_role'] ?? 'BUYER') === 'BUYER' ? 'buyer' : 'seller',
+                        'last_message_sender' => $lastMsgSender,
                         'status'              => $unread > 0 ? 'unread' : 'read',
                         'order_sn'            => $detectedOrderSn ?: null,
                         'api_synced_at'       => now(),

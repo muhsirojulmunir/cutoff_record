@@ -82,7 +82,7 @@ class TiktokChatService
     /**
      * Ambil riwayat pesan dalam satu percakapan chat TikTok.
      */
-    public function getMessages(TiktokAccount $account, string $conversationId, int $pageSize = 25, ?string $pageToken = null): array
+    public function getMessages(TiktokAccount $account, string $conversationId, int $pageSize = 10, ?string $pageToken = null): array
     {
         try {
             $this->syncService->ensureValidAccessToken($account);
@@ -93,11 +93,14 @@ class TiktokChatService
             $path = "/customer_service/202309/conversations/{$conversationId}/messages";
             $timestamp = time();
 
+            // TikTok Shop CS API membatasi page_size pesan maksimal 10
+            $safePageSize = min(max(1, (int) $pageSize), 10);
+
             $queryParams = [
                 'app_key'     => $account->app_key,
                 'timestamp'   => (string) $timestamp,
                 'shop_cipher' => $account->shop_cipher,
-                'page_size'   => (string) $pageSize,
+                'page_size'   => (string) $safePageSize,
             ];
             if (! empty($pageToken)) {
                 $queryParams['page_token'] = $pageToken;
