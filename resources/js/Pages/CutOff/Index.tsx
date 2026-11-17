@@ -2804,7 +2804,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                     Rincian Est. Bersih ({order.order_number})
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5">
-                    Rumus: (Subtotal - Voucher Penjual) × {feePct}%
+                    {isTiktok ? 'Rumus: Order Amount × 75%' : `Rumus: (Subtotal - Voucher Penjual) × ${feePct}%`}
                   </div>
                 </div>
                 {itemCount > 1 && (
@@ -2836,45 +2836,81 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                     </div>
 
                     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-600 tabular-nums">
-                      <span>Subtotal {formatBreakdownCurrency(item.subtotal)}</span>
-                      {breakdown.seller_voucher > 0 && (
-                        <span className="text-rose-600">
-                          - Voucher {formatBreakdownCurrency(item.voucher_share)}
-                        </span>
+                      {isTiktok ? (
+                        <>
+                          <span>Order Amount {formatBreakdownCurrency(item.subtotal)}</span>
+                          <span className="text-slate-400">× 75%</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Subtotal {formatBreakdownCurrency(item.subtotal)}</span>
+                          {breakdown.seller_voucher > 0 && (
+                            <span className="text-rose-600">
+                              - Voucher {formatBreakdownCurrency(item.voucher_share)}
+                            </span>
+                          )}
+                          <span className="text-slate-400">× {feePct}%</span>
+                        </>
                       )}
-                      <span className="text-slate-400">× {feePct}%</span>
                     </div>
                   </div>
                 ))}
               </div>
 
               <div className="mt-2.5 pt-2 border-t border-slate-200 space-y-1 text-[11px] tabular-nums">
-                <div className="flex items-center justify-between text-slate-600">
-                  <span>Subtotal Pesanan</span>
-                  <span className="font-medium text-slate-900">{formatBreakdownCurrency(breakdown.subtotal_order)}</span>
-                </div>
-                <div className="flex items-center justify-between text-slate-600">
-                  <span>
-                    Voucher Ditanggung Penjual
-                    {breakdown.seller_voucher > 0 && itemCount > 1
-                      ? ` (÷ ${itemCount} = ${formatBreakdownCurrency(breakdown.voucher_per_item)})`
-                      : ''}
-                  </span>
-                  <span className={breakdown.seller_voucher > 0 ? 'font-medium text-rose-600' : 'text-slate-400'}>
-                    -{formatBreakdownCurrency(breakdown.seller_voucher)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-slate-600">
-                  <span>Dasar Perhitungan ({feePct}%)</span>
-                  <span className="font-medium text-slate-800">{formatBreakdownCurrency(breakdown.net_base)}</span>
-                </div>
+                {isTiktok ? (
+                  <>
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span>Order Amount</span>
+                      <span className="font-medium text-slate-900">
+                        {formatBreakdownCurrency(breakdown.subtotal_order || breakdown.net_base)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span>Potongan Platform (25%)</span>
+                      <span className="font-medium text-rose-600">
+                        -{formatBreakdownCurrency(Math.round((breakdown.subtotal_order || breakdown.net_base) * 0.25))}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span>Dasar Bersih (75%)</span>
+                      <span className="font-medium text-slate-800">
+                        {formatBreakdownCurrency(breakdown.net_base || (breakdown.subtotal_order ? Math.round(breakdown.subtotal_order * 0.75) : 0))}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span>Subtotal Pesanan</span>
+                      <span className="font-medium text-slate-900">{formatBreakdownCurrency(breakdown.subtotal_order)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span>
+                        Voucher Ditanggung Penjual
+                        {breakdown.seller_voucher > 0 && itemCount > 1
+                          ? ` (÷ ${itemCount} = ${formatBreakdownCurrency(breakdown.voucher_per_item)})`
+                          : ''}
+                      </span>
+                      <span className={breakdown.seller_voucher > 0 ? 'font-medium text-rose-600' : 'text-slate-400'}>
+                        -{formatBreakdownCurrency(breakdown.seller_voucher)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span>Dasar Perhitungan ({feePct}%)</span>
+                      <span className="font-medium text-slate-800">{formatBreakdownCurrency(breakdown.net_base)}</span>
+                    </div>
+                  </>
+                )}
                 <div className="flex items-center justify-between pt-1 border-t border-dashed border-slate-200 text-xs font-bold text-slate-950">
                   <span>Total Est. Bersih</span>
                   <span className="text-emerald-700">{formatRupiah(Number(order.est_net_income ?? breakdown.est_net_income ?? 0))}</span>
                 </div>
                 {isEstimatedFallback && (
                   <div className="text-[10px] text-amber-600 pt-0.5">
-                    Data lama sebelum sinkron breakdown — jalankan Sinkron & Hitung Ulang Shopee di menu Opsi untuk rincian per item.
+                    {isTiktok
+                      ? 'Data lama sebelum sinkron breakdown — sinkron ulang di Pesanan TikTok untuk rincian terbaru.'
+                      : 'Data lama sebelum sinkron breakdown — jalankan Sinkron & Hitung Ulang Shopee di menu Opsi untuk rincian per item.'}
                   </div>
                 )}
               </div>
