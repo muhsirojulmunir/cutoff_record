@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\CsConversation;
 use App\Models\CsMessage;
+use App\Models\CutOffOrder;
 use App\Models\ShopeeAccount;
 use App\Models\ShopeeOrder;
 use App\Models\TiktokAccount;
@@ -207,6 +208,61 @@ class CustomerServiceManager
     }
 
     /**
+     * Parse dan bersihkan isi pesan chat (mendukung format JSON dari API TikTok/Shopee seperti Order Card, Product Card, Image, System Message).
+     */
+    public static function parseChatMessageContent(string|array $content): array
+    {
+        if (is_array($content)) {
+            if (isset($content['text'])) {
+                return [
+                    'text'     => (string) $content['text'],
+                    'order_sn' => null,
+                    'type'     => 'text',
+                ];
+            }
+            $content = json_encode($content);
+        }
+
+        $raw = trim((string) $content);
+        $orderSn = null;
+        $type = 'text';
+        $displayText = $raw;
+
+        if (str_starts_with($raw, '{') && str_ends_with($raw, '}')) {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                if (! empty($decoded['order_id'])) {
+                    $orderSn = (string) $decoded['order_id'];
+                    $displayText = "📦 Menanyakan Pesanan #{$orderSn}";
+                    $type = 'order_card';
+                } elseif (! empty($decoded['product_id'])) {
+                    $displayText = '👟 Menanyakan Produk';
+                    $type = 'product_card';
+                } elseif (! empty($decoded['content'])) {
+                    $sub = (string) $decoded['content'];
+                    if (str_contains($sub, 'Please check this message in TikTok app') || str_contains($sub, '[Other]')) {
+                        $displayText = '💬 Pesan Khusus Aplikasi TikTok';
+                    } else {
+                        $displayText = $sub;
+                    }
+                    $type = 'system';
+                } elseif (! empty($decoded['text'])) {
+                    $displayText = (string) $decoded['text'];
+                } elseif (! empty($decoded['url'])) {
+                    $displayText = '📷 [Lampiran Gambar]';
+                    $type = 'image';
+                }
+            }
+        }
+
+        return [
+            'text'     => $displayText,
+            'order_sn' => $orderSn,
+            'type'     => $type,
+        ];
+    }
+
+    /**
      * Ambil daftar percakapan lengkap untuk response Inertia/JSON.
      */
     public function getConversationsData(array $filters = []): array
@@ -228,11 +284,46 @@ class CustomerServiceManager
         $records = $query->get();
 
         return $records->map(function (CsConversation $conv) {
+            $parsedLast = self::parseChatMessageContent($conv->last_message ?: '');
+            $lastMessage = $parsedLast['text'];
+
+            // Isi order_sn otomatis jika sebelumnya belum tersimpan
+            if ((empty($conv->order_sn) || $conv->order_sn === '-') && ! empty($parsedLast['order_sn'])) {
+                $conv->order_sn = $parsedLast['order_sn'];
+                $conv->update(['order_sn' => $parsedLast['order_sn']]);
+            }
+
+            // Normalisasi nama buyer jika masih berlabel teknis tt_buyer_
+            $buyerName = $conv->buyer_name;
+            $buyerUsername = $conv->buyer_username;
+            if ($conv->channel === 'tiktok' && ($buyerUsername === 'tt_buyer_' || $buyerName === 'tt_buyer_' || empty($buyerUsername))) {
+                $suffix = substr($conv->buyer_id ?: ($conv->order_sn ?: (string) $conv->id), -4);
+                if (! empty($conv->order_sn)) {
+                    $matchedOrder = TiktokOrder::where('order_sn', $conv->order_sn)->first()
+                        ?: CutOffOrder::where('order_number', $conv->order_sn)->first();
+                    if ($matchedOrder) {
+                        $buyerName = ($matchedOrder instanceof TiktokOrder)
+                            ? ($matchedOrder->recipient_data['name'] ?? $matchedOrder->buyer_username ?? ('Pembeli TikTok #' . $suffix))
+                            : ($matchedOrder->buyer_name ?? ('Pembeli TikTok #' . $suffix));
+                        $buyerUsername = ($matchedOrder instanceof TiktokOrder)
+                            ? ($matchedOrder->buyer_username ?: ('tt_buyer_' . $suffix))
+                            : ($matchedOrder->buyer_name ?: ('tt_buyer_' . $suffix));
+                    } else {
+                        $buyerName = 'Pembeli TikTok #' . $suffix;
+                        $buyerUsername = 'tt_buyer_' . $suffix;
+                    }
+                } else {
+                    $buyerName = 'Pembeli TikTok #' . $suffix;
+                    $buyerUsername = 'tt_buyer_' . $suffix;
+                }
+            }
+
             $messages = $conv->messages->map(function (CsMessage $m) {
+                $parsed = CustomerServiceManager::parseChatMessageContent($m->text);
                 return [
                     'id'        => (string) $m->id,
                     'sender'    => $m->sender,
-                    'text'      => $m->text,
+                    'text'      => $parsed['text'],
                     'timestamp' => $m->sent_at ? $m->sent_at->format('H.i') . ' WIB' : 'Baru saja',
                     'status'    => $m->status,
                 ];
@@ -244,10 +335,10 @@ class CustomerServiceManager
                 'channel'           => $conv->channel,
                 'channel_label'     => $conv->channel === 'shopee' ? 'Shopee' : 'TikTok Shop',
                 'shop_name'         => $conv->shop_name ?: ($conv->channel === 'shopee' ? 'Record Shoes Official Shop' : 'Record Shoes Official TikTok'),
-                'buyer_username'    => $conv->buyer_username,
-                'buyer_name'        => $conv->buyer_name ?: $conv->buyer_username,
+                'buyer_username'    => $buyerUsername,
+                'buyer_name'        => $buyerName ?: $buyerUsername,
                 'unread_count'      => (int) $conv->unread_count,
-                'last_message'      => $conv->last_message ?: '',
+                'last_message'      => $lastMessage ?: '',
                 'last_message_time' => $conv->last_message_time ? $conv->last_message_time->diffForHumans() : '-',
                 'status'            => $conv->status,
                 'group'             => $conv->group,
@@ -405,18 +496,90 @@ class CustomerServiceManager
                 $convId = (string) ($apiConv['id'] ?? $apiConv['conversation_id'] ?? '');
                 if (empty($convId)) continue;
 
-                $buyer = $apiConv['participant'] ?? $apiConv['buyer'] ?? [];
-                $buyerUid = (string) ($buyer['id'] ?? $buyer['user_id'] ?? '');
-                $buyerUsername = $buyer['nickname'] ?? $buyer['username'] ?? ('tt_buyer_' . substr($buyerUid, -4));
+                // Ambil info pembeli dari array participants resmi TikTok
+                $participants = $apiConv['participants'] ?? [];
+                $buyer = null;
+                if (is_array($participants)) {
+                    foreach ($participants as $p) {
+                        $role = strtoupper((string) ($p['role'] ?? ''));
+                        if ($role === 'BUYER' || $role === 'USER') {
+                            $buyer = $p;
+                            break;
+                        }
+                    }
+                    if (! $buyer) {
+                        foreach ($participants as $p) {
+                            $role = strtoupper((string) ($p['role'] ?? ''));
+                            if (! in_array($role, ['SHOP', 'SELLER', 'AGENT', 'CUSTOMER_SERVICE'], true)) {
+                                $buyer = $p;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (! $buyer) {
+                    $buyer = $apiConv['participant'] ?? $apiConv['buyer'] ?? [];
+                }
+
+                $buyerUid = (string) ($buyer['im_user_id'] ?? $buyer['user_id'] ?? $buyer['id'] ?? '');
+                $buyerAvatar = (string) ($buyer['avatar'] ?? $buyer['avatar_url'] ?? '');
+                $buyerNickname = trim((string) ($buyer['nickname'] ?? $buyer['username'] ?? ''));
+
                 $unread = (int) ($apiConv['unread_count'] ?? 0);
                 $lastMsg = $apiConv['latest_message'] ?? [];
-                $lastMsgText = $lastMsg['content'] ?? '';
-                if (is_array($lastMsgText)) {
-                    $lastMsgText = $lastMsgText['text'] ?? '';
-                }
+                $parsedLast = self::parseChatMessageContent($lastMsg['content'] ?? '');
+                $lastMsgText = $parsedLast['text'];
+                $detectedOrderSn = $parsedLast['order_sn'];
+
                 $lastMsgTs = ! empty($lastMsg['create_time'])
                     ? Carbon::createFromTimestamp($lastMsg['create_time'], 'Asia/Jakarta')
                     : now('Asia/Jakarta');
+
+                // Tarik riwayat pesan di dalamnya lebih dulu agar mendeteksi nomor pesanan jika ada
+                $savedMessages = [];
+                $msgRes = $this->tiktokChatService->getMessages($account, $convId, 25);
+                if ($msgRes['success'] && ! empty($msgRes['messages'])) {
+                    foreach ($msgRes['messages'] as $apiMsg) {
+                        $msgId = (string) ($apiMsg['id'] ?? $apiMsg['message_id'] ?? '');
+                        $parsedMsg = self::parseChatMessageContent($apiMsg['content'] ?? '');
+                        if (empty($detectedOrderSn) && ! empty($parsedMsg['order_sn'])) {
+                            $detectedOrderSn = $parsedMsg['order_sn'];
+                        }
+                        $savedMessages[] = [
+                            'msg_id'  => $msgId,
+                            'sender'  => ($apiMsg['sender_role'] ?? 'BUYER') === 'BUYER' ? 'buyer' : 'seller',
+                            'type'    => $parsedMsg['type'] ?: ($apiMsg['type'] ?? 'text'),
+                            'text'    => $parsedMsg['text'],
+                            'sent_at' => ! empty($apiMsg['create_time'])
+                                ? Carbon::createFromTimestamp($apiMsg['create_time'], 'Asia/Jakarta')
+                                : now('Asia/Jakarta'),
+                        ];
+                    }
+                }
+
+                // Resolusi nama pembeli dari pesanan lokal jika ada
+                $realOrder = null;
+                if (! empty($detectedOrderSn)) {
+                    $realOrder = TiktokOrder::where('order_sn', $detectedOrderSn)->first()
+                        ?: CutOffOrder::where('order_number', $detectedOrderSn)->first();
+                }
+
+                $suffix = substr($buyerUid ?: ($detectedOrderSn ?: $convId), -4);
+                if (! empty($buyerNickname)) {
+                    $buyerName = $buyerNickname;
+                    $buyerUsername = $buyerNickname;
+                } elseif ($realOrder) {
+                    if ($realOrder instanceof TiktokOrder) {
+                        $buyerName = $realOrder->recipient_data['name'] ?? $realOrder->buyer_username ?? ('Pembeli TikTok #' . $suffix);
+                        $buyerUsername = $realOrder->buyer_username ?: ('tt_buyer_' . $suffix);
+                    } else {
+                        $buyerName = $realOrder->buyer_name ?? ('Pembeli TikTok #' . $suffix);
+                        $buyerUsername = $realOrder->buyer_name ?? ('tt_buyer_' . $suffix);
+                    }
+                } else {
+                    $buyerName = 'Pembeli TikTok #' . $suffix;
+                    $buyerUsername = 'tt_buyer_' . $suffix;
+                }
 
                 $conv = CsConversation::updateOrCreate(
                     [
@@ -428,44 +591,33 @@ class CustomerServiceManager
                         'shop_name'           => $account->account_name ?: 'Record Shoes Official TikTok',
                         'buyer_id'            => $buyerUid,
                         'buyer_username'      => $buyerUsername,
-                        'buyer_name'          => $buyerUsername,
+                        'buyer_name'          => $buyerName,
+                        'buyer_avatar'        => $buyerAvatar ?: null,
                         'unread_count'        => $unread,
                         'last_message'        => $lastMsgText,
                         'last_message_time'   => $lastMsgTs,
                         'last_message_sender' => ($lastMsg['sender_role'] ?? 'BUYER') === 'BUYER' ? 'buyer' : 'seller',
                         'status'              => $unread > 0 ? 'unread' : 'read',
+                        'order_sn'            => $detectedOrderSn ?: null,
                         'api_synced_at'       => now(),
                     ]
                 );
 
-                // Tarik pesan-pesan di dalamnya
-                $msgRes = $this->tiktokChatService->getMessages($account, $convId, 25);
-                if ($msgRes['success'] && ! empty($msgRes['messages'])) {
-                    foreach ($msgRes['messages'] as $apiMsg) {
-                        $msgId = (string) ($apiMsg['id'] ?? $apiMsg['message_id'] ?? '');
-                        $msgText = $apiMsg['content'] ?? '';
-                        if (is_array($msgText)) {
-                            $msgText = $msgText['text'] ?? '';
-                        }
-                        $msgSender = ($apiMsg['sender_role'] ?? 'BUYER') === 'BUYER' ? 'buyer' : 'seller';
-                        $msgTs = ! empty($apiMsg['create_time'])
-                            ? Carbon::createFromTimestamp($apiMsg['create_time'], 'Asia/Jakarta')
-                            : now('Asia/Jakarta');
-
-                        CsMessage::updateOrCreate(
-                            [
-                                'conversation_id'     => $conv->id,
-                                'external_message_id' => $msgId ?: ('gen_tt_' . md5($msgText . $msgTs->timestamp)),
-                            ],
-                            [
-                                'sender'       => $msgSender,
-                                'message_type' => $apiMsg['type'] ?? 'text',
-                                'text'         => (string) $msgText,
-                                'status'       => 'read',
-                                'sent_at'      => $msgTs,
-                            ]
-                        );
-                    }
+                // Simpan pesan-pesan yang telah diparse
+                foreach ($savedMessages as $sMsg) {
+                    CsMessage::updateOrCreate(
+                        [
+                            'conversation_id'     => $conv->id,
+                            'external_message_id' => $sMsg['msg_id'] ?: ('gen_tt_' . md5($sMsg['text'] . $sMsg['sent_at']->timestamp)),
+                        ],
+                        [
+                            'sender'       => $sMsg['sender'],
+                            'message_type' => $sMsg['type'],
+                            'text'         => (string) $sMsg['text'],
+                            'status'       => 'read',
+                            'sent_at'      => $sMsg['sent_at'],
+                        ]
+                    );
                 }
 
                 $syncedCount++;

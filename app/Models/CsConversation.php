@@ -117,6 +117,19 @@ class CsConversation extends Model
                     'tracking_number' => $cutoff->tracking_number,
                 ];
             }
+
+            // Jika order_sn terdeteksi tapi belum tersinkron ke tabel lokal
+            return [
+                'order_sn'        => $this->order_sn,
+                'product_name'    => 'Pesanan ' . ($this->channel === 'tiktok' ? 'TikTok Shop' : 'Shopee') . ' #' . $this->order_sn,
+                'variation'       => 'Inquiry Pesanan Pembeli',
+                'sku'             => '-',
+                'price'           => 0,
+                'status'          => 'Inquiry Pesanan',
+                'status_detail'   => 'Pembeli Menanyakan Pesanan Ini',
+                'carrier'         => $this->channel === 'tiktok' ? 'TikTok Shipping' : 'Shopee Express',
+                'tracking_number' => null,
+            ];
         }
 
         // Jika order_sn kosong, coba cari dari order terbaru dengan nama pembeli yang sama

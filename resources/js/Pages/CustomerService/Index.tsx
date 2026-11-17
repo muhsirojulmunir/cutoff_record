@@ -69,6 +69,53 @@ interface CustomerServiceProps {
   };
 }
 
+export const formatMessageText = (raw?: string | null): string => {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed.order_id) {
+        return `📦 Menanyakan Pesanan #${parsed.order_id}`;
+      }
+      if (parsed.product_id) {
+        return '👟 Menanyakan Produk Sepatu';
+      }
+      if (parsed.content) {
+        const sub = String(parsed.content);
+        if (sub.includes('Please check this message in TikTok app') || sub.includes('[Other]')) {
+          return '💬 Pesan Khusus (Buka di Aplikasi TikTok)';
+        }
+        return sub;
+      }
+      if (parsed.text) {
+        return String(parsed.text);
+      }
+      if (parsed.url) {
+        return '📷 [Lampiran Gambar]';
+      }
+    } catch {
+      // not json
+    }
+  }
+  return raw;
+};
+
+export const formatBuyerDisplay = (conv: Conversation): { name: string; username: string } => {
+  let name = conv.buyer_name || conv.buyer_username || 'Pembeli';
+  let username = conv.buyer_username || 'tt_buyer';
+
+  if (username === 'tt_buyer_' || name === 'tt_buyer_' || username === '@tt_buyer_') {
+    const suffix = conv.order?.order_sn && conv.order.order_sn !== '-'
+      ? conv.order.order_sn.slice(-4)
+      : (conv.id ? conv.id.slice(-4) : 'User');
+    name = `Pembeli TikTok #${suffix}`;
+    username = `tt_buyer_${suffix}`;
+  }
+
+  return { name, username };
+};
+
 export default function CustomerServiceIndex({
   initialConversations,
   quickReplies,
@@ -655,7 +702,7 @@ export default function CustomerServiceIndex({
                         <div className="flex items-center justify-between gap-1">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <p className="truncate text-xs font-bold text-slate-900">
-                              {conv.buyer_name}
+                              {formatBuyerDisplay(conv).name}
                             </p>
                             {conv.is_demo && (
                               <span className="shrink-0 rounded bg-amber-100 px-1 py-0.2 text-[9px] font-bold text-amber-800">
@@ -667,13 +714,13 @@ export default function CustomerServiceIndex({
                             {conv.last_message_time}
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-500">@{conv.buyer_username}</p>
+                        <p className="text-[11px] text-slate-500">@{formatBuyerDisplay(conv).username}</p>
                         <p
                           className={`mt-1 truncate text-xs ${
                             conv.unread_count > 0 ? 'font-semibold text-slate-900' : 'text-slate-500'
                           }`}
                         >
-                          {conv.last_message}
+                          {formatMessageText(conv.last_message)}
                         </p>
                       </div>
 
@@ -707,14 +754,14 @@ export default function CustomerServiceIndex({
                             : 'bg-slate-200 text-slate-800'
                         }`}
                       >
-                        {activeConv.buyer_name.charAt(0)}
+                        {formatBuyerDisplay(activeConv).name.charAt(0)}
                       </div>
                       <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h2 className="text-sm font-bold text-slate-900">{activeConv.buyer_name}</h2>
-                        <span className="text-xs text-slate-400">(@{activeConv.buyer_username})</span>
+                        <h2 className="text-sm font-bold text-slate-900">{formatBuyerDisplay(activeConv).name}</h2>
+                        <span className="text-xs text-slate-400">(@{formatBuyerDisplay(activeConv).username})</span>
                         <span
                           className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
                             activeConv.channel === 'shopee'
@@ -795,7 +842,7 @@ export default function CustomerServiceIndex({
                               : 'rounded-tr-xs bg-slate-900 text-white'
                           }`}
                         >
-                          <p className="whitespace-pre-wrap">{msg.text}</p>
+                          <p className="whitespace-pre-wrap">{formatMessageText(msg.text)}</p>
                         </div>
                         <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-400">
                           <span>{msg.timestamp}</span>
@@ -878,7 +925,7 @@ export default function CustomerServiceIndex({
                           handleSendMessage();
                         }
                       }}
-                      placeholder={`Tulis balasan untuk @${activeConv.buyer_username}... (Enter untuk kirim)`}
+                      placeholder={`Tulis balasan untuk @${formatBuyerDisplay(activeConv).username}... (Enter untuk kirim)`}
                       className="flex-1 resize-none rounded-xl border border-slate-300 p-2.5 text-xs text-slate-900 placeholder-slate-400 focus:border-slate-800 focus:outline-hidden"
                     />
 
@@ -933,11 +980,11 @@ export default function CustomerServiceIndex({
                         : 'bg-slate-200 text-slate-800'
                     }`}
                   >
-                    {activeConv.buyer_name.charAt(0)}
+                    {formatBuyerDisplay(activeConv).name.charAt(0)}
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate text-xs font-bold text-slate-900">{activeConv.buyer_name}</p>
-                    <p className="text-[11px] text-slate-500">@{activeConv.buyer_username}</p>
+                    <p className="truncate text-xs font-bold text-slate-900">{formatBuyerDisplay(activeConv).name}</p>
+                    <p className="text-[11px] text-slate-500">@{formatBuyerDisplay(activeConv).username}</p>
                     <span
                       className={`mt-1 inline-block rounded px-1.5 py-0.2 text-[9px] font-bold ${
                         activeConv.channel === 'shopee' ? 'bg-orange-100 text-[#EE4D2D]' : 'bg-black text-white'
