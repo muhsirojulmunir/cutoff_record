@@ -808,9 +808,10 @@ class TiktokOrderService
         $totalAmount = (float) $order->total_amount;
         $subtotal = $totalAmount;
         $sellerVoucher = 0;
-        $platformFee = round($totalAmount * 0.04, 2);
-        $serviceFee = round($totalAmount * 0.03, 2);
-        $netPayout = round($totalAmount - $platformFee - $serviceFee, 2);
+        // Rumus Khusus TikTok: Order Amount x 75% (Potongan Komisi Platform 25%)
+        $platformFee = round($totalAmount * 0.25, 2);
+        $serviceFee = 0;
+        $netPayout = round($totalAmount * 0.75, 2);
 
         return [
             'status'   => 'success',

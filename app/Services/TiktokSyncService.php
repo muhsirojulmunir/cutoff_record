@@ -418,24 +418,23 @@ class TiktokSyncService
             $statusRaw  = (string) ($order['status'] ?? '');
             $statusText = $this->mapOrderStatus($statusRaw);
 
-            // Rumus ERP: (Harga Produk - Voucher/Diskon Toko) * 79%
-            $payment        = $order['payment'] ?? [];
-            $productPrice   = (float) ($payment['original_total_product_price'] ?? $payment['total_amount'] ?? 0);
-            $sellerDiscount = (float) ($payment['seller_discount'] ?? 0);
+            // Rumus ERP Khusus TikTok: Order Amount x 75%
+            $payment     = $order['payment'] ?? [];
+            $orderAmount = (float) ($payment['total_amount'] ?? $payment['original_total_product_price'] ?? 0);
             if (empty($normalizedItems)) {
                 $normalizedItems[] = [
                     'name'      => 'Produk TikTok Shop',
                     'variation' => null,
                     'sku'       => null,
                     'qty'       => $totalQty,
-                    'subtotal'  => round($productPrice, 2),
+                    'subtotal'  => round($orderAmount, 2),
                 ];
             }
-            $breakdown     = CutOffOrder::buildFinancialBreakdown(
+            $breakdown = CutOffOrder::buildFinancialBreakdown(
                 $normalizedItems,
-                $sellerDiscount,
-                0.79,
-                $productPrice > 0 ? $productPrice : null,
+                0.0,  // Order Amount adalah nilai bersih pesanan
+                0.75, // Khusus TikTok: Order Amount x 75%
+                $orderAmount > 0 ? $orderAmount : null,
                 $statusText === 'Batal'
             );
             $calculatedNet = $breakdown['est_net_income'];
@@ -1423,6 +1422,69 @@ class TiktokSyncService
             'old_stock'   => $oldStock,
             'new_stock'   => $newStock,
             'message'     => "Stok produk TikTok '{$product->sku}' berhasil diperbarui menjadi {$newStock} pcs" . ($apiUpdated ? ' dan tersinkron ke TikTok Shop API.' : '.'),
+        ];
+    }
+
+    /**
+     * Sesuaikan kembali seluruh pesanan TikTok di CutOffOrder
+     * menggunakan rumus resmi khusus TikTok: Order Amount x 75%.
+     */
+    public function recalculateCutOffNetIncome(): array
+    {
+        $updatedCount = 0;
+        $tiktokOrders = CutOffOrder::where('channel', 'TT')->get();
+
+        foreach ($tiktokOrders as $order) {
+            $isCancelled = (bool) preg_match('/batal|cancel/i', (string) $order->order_status);
+            $breakdown = is_array($order->financial_breakdown) ? $order->financial_breakdown : [];
+            $subtotalOrder = (float) ($breakdown['subtotal_order'] ?? 0);
+
+            if ($subtotalOrder <= 0) {
+                $localTiktok = TiktokOrder::where('order_sn', $order->order_number)->first();
+                $subtotalOrder = $localTiktok ? (float) $localTiktok->total_amount : 0;
+            }
+
+            if ($subtotalOrder <= 0 && (float) $order->est_net_income > 0) {
+                $subtotalOrder = round((float) $order->est_net_income / 0.79);
+            }
+
+            if ($subtotalOrder > 0) {
+                $calcItems = [];
+                if (! empty($breakdown['items']) && is_array($breakdown['items'])) {
+                    $calcItems = $breakdown['items'];
+                } else {
+                    $calcItems = [[
+                        'name'      => $order->product_name ?? 'Produk TikTok Shop',
+                        'variation' => $order->variation_name,
+                        'sku'       => $order->sku_utama,
+                        'qty'       => (int) ($order->qty ?? 1),
+                        'subtotal'  => $subtotalOrder,
+                    ]];
+                }
+
+                $newBreakdown = CutOffOrder::buildFinancialBreakdown(
+                    $calcItems,
+                    0.0,
+                    0.75, // Khusus TikTok: 75%
+                    $subtotalOrder,
+                    $isCancelled
+                );
+
+                $newNet = $newBreakdown['est_net_income'];
+                $order->update([
+                    'est_net_income'         => $newNet,
+                    'marketplace_net_payout' => $newNet,
+                    'financial_breakdown'    => $newBreakdown,
+                ]);
+
+                $updatedCount++;
+            }
+        }
+
+        return [
+            'status'  => 'success',
+            'message' => "Berhasil menyesuaikan {$updatedCount} pesanan TikTok sesuai rumus Order Amount × 75%!",
+            'updated' => $updatedCount,
         ];
     }
 }

@@ -315,15 +315,17 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
       return;
     }
 
+    const isTiktok = (order.channel ?? '').toUpperCase().includes('TT') || (order.channel ?? '').toUpperCase().includes('TIKTOK');
+    const feeRate = isTiktok ? 0.75 : 0.79;
     const estNet = Number(order.est_net_income ?? 0);
-    const estBase = estNet > 0 ? Math.round(estNet / 0.79) : 0;
+    const estBase = estNet > 0 ? Math.round(estNet / feeRate) : 0;
     const fallbackBreakdown: CutOffOrderFinancialBreakdown = {
       subtotal_order: estBase,
       seller_voucher: 0,
       voucher_per_item: 0,
       item_count: 1,
       net_base: estBase,
-      fee_rate: 0.79,
+      fee_rate: feeRate,
       is_cancelled: (order.order_status ?? '').toLowerCase().includes('batal'),
       est_net_income: estNet,
       items: [
@@ -2783,7 +2785,8 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
           const openUpward = rect.bottom + 280 > window.innerHeight && rect.top > 240;
           const topPos = openUpward ? Math.max(12, rect.top - 8) : rect.bottom + 8;
           const rightPos = Math.max(12, window.innerWidth - rect.right);
-          const feePct = Math.round((breakdown.fee_rate ?? 0.79) * 100);
+          const isTiktok = (order.channel ?? '').toUpperCase().includes('TT') || (order.channel ?? '').toUpperCase().includes('TIKTOK');
+          const feePct = Math.round((breakdown.fee_rate ?? (isTiktok ? 0.75 : 0.79)) * 100);
           const itemCount = breakdown.items.length;
 
           return (

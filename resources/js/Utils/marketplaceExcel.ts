@@ -425,7 +425,12 @@ export function parseTikTokExcel(rawData: any[][]): ParsedMarketplaceOrder[] {
       const shippingFee = parseMoney(cols[shippingFinalIdx]) || parseMoney(cols[shippingBuyerIdx]);
       const discount    = parseMoney(cols[sellerDiscIdx]);
       const grandTotal  = parseMoney(cols[totalAmountIdx]);
-      const estimatedPayout = parseMoney(cols[estimatedPayoutIdx]);
+      let estimatedPayout = parseMoney(cols[estimatedPayoutIdx]);
+      if (estimatedPayout <= 0) {
+        // Khusus TikTok: Order Amount x 75%
+        const baseAmount = grandTotal > 0 ? grandTotal : item.subtotal;
+        estimatedPayout = Math.round(baseAmount * 0.75);
+      }
       const notes       = String(cols[messageIdx] || '').trim();
 
       const rawPlatform = platformFeeIdx !== -1 ? parseMoney(cols[platformFeeIdx]) : 0;
