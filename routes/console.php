@@ -20,3 +20,9 @@ Schedule::command('shopee:sync-products')
     ->withoutOverlapping(15)
     ->runInBackground();
 
+// Auto-sync chat Customer Service (Shopee & TikTok Shop) setiap 1 menit di latar belakang
+Schedule::call(function () {
+    app(\App\Services\CustomerServiceManager::class)->syncTiktokChat();
+    app(\App\Services\CustomerServiceManager::class)->syncShopeeChat();
+})->everyMinute()->withoutOverlapping(2)->runInBackground();
+

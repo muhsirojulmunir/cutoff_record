@@ -382,9 +382,12 @@ export default function CustomerServiceIndex({
           })
         );
       }
-      if (data?.api_error) {
-        setToastMessage(`Catatan API: ${data.api_error}`);
-        setTimeout(() => setToastMessage(null), 5000);
+      if (data?.api_dispatched === false || data?.api_error) {
+        setToastMessage(`⚠️ Gagal terkirim ke TikTok/Shopee: ${data.api_error || 'Pesan belum diterima server marketplace'}`);
+        setTimeout(() => setToastMessage(null), 8000);
+      } else if (data?.api_dispatched) {
+        setToastMessage('✅ Pesan berhasil terkirim ke pembeli!');
+        setTimeout(() => setToastMessage(null), 4000);
       }
     } catch (err: unknown) {
       setToastMessage('Gagal mengirim ke server: ' + (err instanceof Error ? err.message : 'Koneksi terputus'));
@@ -872,12 +875,18 @@ export default function CustomerServiceIndex({
                           <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-400">
                             <span>{msg.timestamp}</span>
                             {!isBuyer && (
-                              <span
-                                title={msg.status === 'read' ? 'Dibaca pembeli' : msg.status === 'sent' ? 'Terkirim' : 'Pending'}
-                                className={msg.status === 'read' ? 'text-sky-500 font-bold' : 'text-slate-400 font-bold'}
-                              >
-                                {msg.status === 'pending' ? '⏱' : msg.status === 'sent' ? '✓' : '✓✓'}
-                              </span>
+                              msg.status === 'failed' ? (
+                                <span title="Pesan gagal terkirim ke server marketplace" className="text-rose-500 font-bold">
+                                  ⚠️ Gagal
+                                </span>
+                              ) : (
+                                <span
+                                  title={msg.status === 'read' ? 'Terkirim & Tersinkron' : msg.status === 'sent' ? 'Terkirim ke Marketplace' : 'Pending'}
+                                  className={msg.status === 'read' ? 'text-sky-500 font-bold' : msg.status === 'sent' ? 'text-emerald-600 font-bold' : 'text-slate-400 font-bold'}
+                                >
+                                  {msg.status === 'pending' ? '⏱' : msg.status === 'read' ? '✓✓' : '✓'}
+                                </span>
+                              )
                             )}
                           </div>
                         </div>

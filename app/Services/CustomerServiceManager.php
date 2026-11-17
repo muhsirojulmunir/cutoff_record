@@ -747,12 +747,16 @@ class CustomerServiceManager
                 $sendRes = $this->shopeeChatService->sendMessage($shopeeAccount, $conv->buyer_id, $text);
                 if ($sendRes['success']) {
                     $apiDispatched = true;
-                    if (! empty($sendRes['message_id'])) {
-                        $msg->update(['external_message_id' => $sendRes['message_id']]);
-                    }
+                    $msg->update([
+                        'external_message_id' => $sendRes['message_id'] ?? $msg->external_message_id,
+                        'status'              => 'read',
+                    ]);
                 } else {
                     $apiError = $sendRes['message'] ?? 'API Shopee belum mengizinkan pengiriman pesan.';
-                    $msg->update(['error_message' => $apiError]);
+                    $msg->update([
+                        'status'        => 'failed',
+                        'error_message' => $apiError,
+                    ]);
                 }
             }
         } elseif ($conv->channel === 'tiktok') {
@@ -765,24 +769,29 @@ class CustomerServiceManager
                 $sendRes = $this->tiktokChatService->sendMessage($tiktokAccount, $cleanConvId, $text);
                 if ($sendRes['success']) {
                     $apiDispatched = true;
-                    if (! empty($sendRes['message_id'])) {
-                        $msg->update(['external_message_id' => $sendRes['message_id']]);
-                    }
+                    $msg->update([
+                        'external_message_id' => $sendRes['message_id'] ?? $msg->external_message_id,
+                        'status'              => 'read',
+                    ]);
                 } else {
                     $apiError = $sendRes['message'] ?? 'API TikTok belum mengizinkan pengiriman pesan.';
-                    $msg->update(['error_message' => $apiError]);
+                    $msg->update([
+                        'status'        => 'failed',
+                        'error_message' => $apiError,
+                    ]);
                 }
             }
         }
 
         return [
-            'success'        => true,
+            'success'        => $apiDispatched,
             'message'        => [
-                'id'        => (string) $msg->id,
-                'sender'    => $msg->sender,
-                'text'      => $msg->text,
-                'timestamp' => $msg->sent_at->format('H.i') . ' WIB',
-                'status'    => $msg->status,
+                'id'            => (string) $msg->id,
+                'sender'        => $msg->sender,
+                'text'          => $msg->text,
+                'timestamp'     => $msg->sent_at->format('H.i') . ' WIB',
+                'status'        => $msg->status,
+                'error_message' => $msg->error_message,
             ],
             'api_dispatched' => $apiDispatched,
             'api_error'      => $apiError,

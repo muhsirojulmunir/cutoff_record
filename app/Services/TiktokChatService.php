@@ -169,9 +169,12 @@ class TiktokChatService
 
             $bodyPayload = [
                 'type'    => 'TEXT',
-                'content' => json_encode(['text' => trim($text)]),
+                'content' => json_encode([
+                    'content' => trim($text),
+                    'text'    => trim($text),
+                ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
             ];
-            $bodyJson = json_encode($bodyPayload);
+            $bodyJson = json_encode($bodyPayload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
             $sign = $this->syncService->generateSignature($path, $queryParams, $account->app_secret, $bodyJson);
             $queryParams['sign'] = $sign;
@@ -183,14 +186,18 @@ class TiktokChatService
                     'x-tts-access-token' => $account->access_token,
                     'Content-Type'       => 'application/json',
                 ])
-                ->withBody($bodyJson, 'application/json')
-                ->post($url);
+                ->send('POST', $url, [
+                    'body' => $bodyJson,
+                ]);
 
             $res = $response->json();
 
             if (! $response->successful() || ($res['code'] ?? -1) !== 0) {
                 $errMsg = $res['message'] ?? 'Gagal mengirim pesan ke pembeli TikTok Shop.';
-                Log::warning('TiktokChatService sendMessage notice: ' . $errMsg);
+                Log::warning('TiktokChatService sendMessage notice: ' . $errMsg, [
+                    'response' => $res,
+                    'status'   => $response->status(),
+                ]);
                 return [
                     'success' => false,
                     'error'   => (string) ($res['code'] ?? 'HTTP_' . $response->status()),

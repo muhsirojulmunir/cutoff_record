@@ -130,10 +130,34 @@ class CustomerServiceController extends Controller
 
     /**
      * Polling real-time endpoint untuk update obrolan dan pesan baru.
+     * Otomatis melakukan sinkronisasi dengan marketplace API di latar belakang setiap 15 detik.
      */
     public function poll(Request $request): JsonResponse
     {
         $channel = $request->query('channel');
+
+        // Otomatis tarik chat baru dari TikTok Shop & Shopee setiap 15 detik saat halaman dibuka
+        $lastSync = \Illuminate\Support\Facades\Cache::get('cs_auto_sync_last_time');
+        if (! $lastSync || now()->diffInSeconds($lastSync) >= 15) {
+            \Illuminate\Support\Facades\Cache::put('cs_auto_sync_last_time', now(), 60);
+
+            try {
+                if ($channel === 'all' || $channel === 'tiktok' || empty($channel)) {
+                    $this->csManager->syncTiktokChat();
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('CS auto-sync TikTok notice: ' . $e->getMessage());
+            }
+
+            try {
+                if ($channel === 'all' || $channel === 'shopee' || empty($channel)) {
+                    $this->csManager->syncShopeeChat();
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('CS auto-sync Shopee notice: ' . $e->getMessage());
+            }
+        }
+
         $conversations = $this->csManager->getConversationsData($channel ? ['channel' => $channel] : []);
 
         return response()->json([
