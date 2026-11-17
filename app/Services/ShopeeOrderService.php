@@ -1765,7 +1765,7 @@ class ShopeeOrderService
                 $dropoffSupported                         => 'dropoff',
                 $pickupSupported                          => 'pickup',
                 $nonIntegratedSupported                   => 'non_integrated',
-                default => throw new RuntimeException('Tidak ada metode pengiriman yang tersedia dari Shopee untuk pesanan ini.'),
+                default => throw new RuntimeException('Tidak ada metode pengiriman yang didukung untuk kurir pesanan ini.'),
             },
         };
 

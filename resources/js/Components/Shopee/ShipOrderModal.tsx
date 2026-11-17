@@ -97,6 +97,26 @@ function formatDropoffBranchLabel(branch: ShopeeDropoffBranch): string {
   return loc ? `${title} — ${loc}` : title;
 }
 
+function formatOrderDate(dateVal?: string | number | null): string {
+  if (!dateVal) return '-';
+  const num = Number(dateVal);
+  const dateObj =
+    Number.isFinite(num) && num > 1_000_000_000
+      ? new Date(num > 10_000_000_000 ? num : num * 1000)
+      : new Date(String(dateVal));
+  if (isNaN(dateObj.getTime())) return String(dateVal);
+  return dateObj
+    .toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Jakarta',
+    })
+    .replace(/\./g, ':');
+}
+
 function pickInitialMethod(params: ShopeeShippingParameterResponse): ShopeeFulfillmentMethod | null {
   const addresses = params.pickup?.address_list ?? [];
   if (params.pickup_supported && (addresses.length > 0 || !params.dropoff_supported)) {
@@ -121,6 +141,30 @@ function pickDefaultAddress(addresses: ShopeePickupAddress[]): ShopeePickupAddre
     return flags.includes('default_address') || Boolean(a.default) || Boolean(a.is_default);
   });
   return preferred ?? addresses[0];
+}
+
+function TruckIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.25V4.875A1.125 1.125 0 0013.125 3.75h-8.25A1.125 1.125 0 003.75 4.875v9.375m10.5-5.25H20.25" />
+    </svg>
+  );
+}
+
+function StoreIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.25A2.25 2.25 0 010 18.75V10.5m18 10.5h3.75a2.25 2.25 0 002.25-2.25V10.5M3.75 21h16.5M3.75 9h16.5m-16.5 0a2.25 2.25 0 01-2.25-2.25V4.5a2.25 2.25 0 012.25-2.25h16.5A2.25 2.25 0 0122.5 4.5v2.25a2.25 2.25 0 01-2.25 2.25m-16.5 0a2.25 2.25 0 002.25 2.25h12a2.25 2.25 0 002.25-2.25" />
+    </svg>
+  );
+}
+
+function PackageIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
+    </svg>
+  );
 }
 
 export default function ShipOrderModal({
@@ -174,9 +218,23 @@ export default function ShipOrderModal({
   const [singleResult, setSingleResult] = useState<ShopeeShipResult | null>(null);
   const [copiedTracking, setCopiedTracking] = useState(false);
 
-  // Mass-mode state
-  const [massMethod, setMassMethod] = useState<MassPreferredMethod>('auto');
+  // Mass-mode dynamic state
+  const [pendingMassOrders, setPendingMassOrders] = useState<ShopeeOrderRecord[]>([]);
+  const [activeCourier, setActiveCourier] = useState<string>('all');
+  const [selectedMassSns, setSelectedMassSns] = useState<string[]>([]);
+  const [courierParamsCache, setCourierParamsCache] = useState<
+    Record<string, ShopeeShippingParameterResponse | null>
+  >({});
+  const [loadingCourierParams, setLoadingCourierParams] = useState(false);
+  const [courierParamsError, setCourierParamsError] = useState<string | null>(null);
+
+  const [massAddressId, setMassAddressId] = useState<number | null>(null);
+  const [showMassAddressPicker, setShowMassAddressPicker] = useState(false);
+  const [massPickupDate, setMassPickupDate] = useState<string>('');
+  const [massPickupTimeId, setMassPickupTimeId] = useState<string>('');
+  const [massBranchId, setMassBranchId] = useState<number | null>(null);
   const [massSenderName, setMassSenderName] = useState<string>('');
+  const [massExecutingMethod, setMassExecutingMethod] = useState<'pickup' | 'dropoff' | null>(null);
   const [massResult, setMassResult] = useState<ShopeeMassShipResult | null>(null);
 
   // Shared submit state
@@ -190,7 +248,7 @@ export default function ShipOrderModal({
     canClose: () => !submittingRef.current,
   });
 
-  // Reset modal state and abort/invalidate any in-flight submission on close or target switch
+  // Reset modal state on target switch
   useEffect(() => {
     submitSeqRef.current += 1;
     submitAbortRef.current?.abort();
@@ -212,12 +270,22 @@ export default function ShipOrderModal({
     setSenderRealName('');
     setTrackingNumber('');
     setManualBranchId('');
-    setMassMethod('auto');
     setMassSenderName('');
     setShowOtherAddresses(false);
+    setShowMassAddressPicker(false);
+    setMassExecutingMethod(null);
   }, [show, mode, order?.order_sn]);
 
-  // Fetch single-order shipping parameters with AbortController stale guard
+  // Synchronize orders when opening mass shipment
+  useEffect(() => {
+    if (show && mode === 'mass') {
+      setPendingMassOrders(orders);
+      setMassResult(null);
+      setSubmitError(null);
+    }
+  }, [show, mode, orders]);
+
+  // Fetch single-order shipping parameters
   useEffect(() => {
     if (!show || mode !== 'single' || !order?.order_sn) {
       setShippingParams(null);
@@ -225,7 +293,6 @@ export default function ShipOrderModal({
       return;
     }
 
-    // Do not refetch shipping parameters after single-ship succeeded for the same open session
     if (singleShippedSnRef.current === order.order_sn) {
       return;
     }
@@ -298,7 +365,7 @@ export default function ShipOrderModal({
     return () => {
       controller.abort();
     };
-  }, [show, mode, order?.order_sn, order?.package_number, retryCounter]);
+  }, [show, mode, order?.order_sn, order?.package_number, retryCounter, baseRoute, platformName]);
 
   const pickupAddresses = shippingParams?.pickup?.address_list ?? [];
   const defaultAddress = useMemo(() => pickDefaultAddress(pickupAddresses), [pickupAddresses]);
@@ -376,17 +443,213 @@ export default function ShipOrderModal({
     return tabs;
   }, [shippingParams]);
 
-  // Mass mode: pisahkan pesanan berstatus valid vs batas API Shopee Open Platform v2 (maks 50 per batch)
+  // Mass mode: Grouping by courier & shippable orders
   const eligibleMassOrders = useMemo(
-    () => orders.filter((o) => isShippableOrderStatus(o.order_status)),
-    [orders]
+    () => pendingMassOrders.filter((o) => isShippableOrderStatus(o.order_status)),
+    [pendingMassOrders]
   );
-  const targetMassOrders = useMemo(
-    () => eligibleMassOrders.slice(0, 50),
-    [eligibleMassOrders]
+
+  const courierGroups = useMemo(() => {
+    const groups: Record<string, ShopeeOrderRecord[]> = {};
+    for (const o of eligibleMassOrders) {
+      const carrier = (o.shipping_carrier || 'Lainnya').trim();
+      if (!groups[carrier]) groups[carrier] = [];
+      groups[carrier].push(o);
+    }
+    return groups;
+  }, [eligibleMassOrders]);
+
+  const courierKeys = useMemo(() => Object.keys(courierGroups), [courierGroups]);
+
+  // Set active courier to the first courier group if not set or invalid
+  useEffect(() => {
+    if (mode !== 'mass') return;
+    if (courierKeys.length > 0) {
+      if (activeCourier === 'all' || !courierKeys.includes(activeCourier)) {
+        setActiveCourier(courierKeys[0]);
+      }
+    } else {
+      setActiveCourier('all');
+    }
+  }, [mode, courierKeys, activeCourier]);
+
+  // Orders displayed in the active view
+  const displayedMassOrders = useMemo(() => {
+    if (activeCourier === 'all') return eligibleMassOrders;
+    return courierGroups[activeCourier] ?? [];
+  }, [activeCourier, eligibleMassOrders, courierGroups]);
+
+  // Auto-select all displayed orders on active courier change
+  useEffect(() => {
+    if (mode !== 'mass') return;
+    setSelectedMassSns(displayedMassOrders.slice(0, 50).map((o) => o.order_sn));
+  }, [mode, activeCourier, displayedMassOrders]);
+
+  const targetOrdersToShip = useMemo(
+    () => displayedMassOrders.filter((o) => selectedMassSns.includes(o.order_sn)).slice(0, 50),
+    [displayedMassOrders, selectedMassSns]
   );
-  const ineligibleMassCount = orders.length - eligibleMassOrders.length;
-  const truncatedMassCount = Math.max(0, eligibleMassOrders.length - 50);
+
+  const isAllVisibleSelected =
+    displayedMassOrders.length > 0 &&
+    displayedMassOrders.slice(0, 50).every((o) => selectedMassSns.includes(o.order_sn));
+
+  const toggleSelectAllVisible = () => {
+    if (isAllVisibleSelected) {
+      const visibleSns = new Set(displayedMassOrders.map((o) => o.order_sn));
+      setSelectedMassSns((prev) => prev.filter((sn) => !visibleSns.has(sn)));
+    } else {
+      const visibleSns = displayedMassOrders.slice(0, 50).map((o) => o.order_sn);
+      setSelectedMassSns((prev) => Array.from(new Set([...prev, ...visibleSns])));
+    }
+  };
+
+  const toggleOrderSelection = (sn: string) => {
+    setSelectedMassSns((prev) =>
+      prev.includes(sn) ? prev.filter((item) => item !== sn) : [...prev, sn]
+    );
+  };
+
+  // Sample order to fetch courier parameters for active courier
+  const sampleOrderForCourier = useMemo(
+    () => displayedMassOrders[0] ?? eligibleMassOrders[0] ?? null,
+    [displayedMassOrders, eligibleMassOrders]
+  );
+
+  useEffect(() => {
+    if (!show || mode !== 'mass' || !sampleOrderForCourier?.order_sn) return;
+    const courierKey = activeCourier;
+    if (courierParamsCache[courierKey] !== undefined) return;
+
+    const controller = new AbortController();
+    const orderSn = sampleOrderForCourier.order_sn;
+    const pkgQuery = sampleOrderForCourier.package_number
+      ? `?package_number=${encodeURIComponent(sampleOrderForCourier.package_number)}`
+      : '';
+
+    setLoadingCourierParams(true);
+    setCourierParamsError(null);
+
+    fetch(`${baseRoute}/${encodeURIComponent(orderSn)}/shipping-parameters${pkgQuery}`, {
+      method: 'GET',
+      credentials: 'same-origin',
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+    })
+      .then(async (res) => {
+        const data = await parseJsonSafe<ShopeeShippingParameterResponse>(res);
+        if (controller.signal.aborted || !isMountedRef.current) return;
+        if (res.ok && data) {
+          setCourierParamsCache((prev) => ({ ...prev, [courierKey]: data }));
+        } else {
+          setCourierParamsError('Gagal memuat parameter kurir.');
+        }
+      })
+      .catch(() => {
+        if (controller.signal.aborted || !isMountedRef.current) return;
+        setCourierParamsError('Gagal menghubungi server.');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted && isMountedRef.current) {
+          setLoadingCourierParams(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [
+    show,
+    mode,
+    activeCourier,
+    sampleOrderForCourier?.order_sn,
+    sampleOrderForCourier?.package_number,
+    baseRoute,
+    courierParamsCache,
+  ]);
+
+  const activeShippingParams = courierParamsCache[activeCourier] ?? null;
+
+  useEffect(() => {
+    if (!activeShippingParams) return;
+
+    const addresses = activeShippingParams.pickup?.address_list ?? [];
+    const defaultAddr = pickDefaultAddress(addresses);
+    if (defaultAddr) {
+      setMassAddressId(defaultAddr.address_id);
+      const slots = defaultAddr.time_slot_list ?? [];
+      if (slots.length > 0) {
+        setMassPickupTimeId(slots[0].pickup_time_id);
+        setMassPickupDate(String(slots[0].date ?? ''));
+      }
+    }
+
+    const branches = activeShippingParams.dropoff?.branch_list ?? [];
+    if (branches.length > 0) {
+      setMassBranchId(branches[0].branch_id);
+    }
+  }, [activeShippingParams]);
+
+  const currentMassAddress = useMemo(() => {
+    const list = activeShippingParams?.pickup?.address_list ?? [];
+    if (massAddressId !== null) {
+      const found = list.find((a) => a.address_id === massAddressId);
+      if (found) return found;
+    }
+    return pickDefaultAddress(list);
+  }, [activeShippingParams, massAddressId]);
+
+  const availableMassSlots = useMemo(() => {
+    return currentMassAddress?.time_slot_list ?? [];
+  }, [currentMassAddress]);
+
+  const massDateOptions = useMemo(() => {
+    const datesMap: Record<string, { value: string; label: string }> = {};
+    for (const slot of availableMassSlots) {
+      const rawDate = slot.date;
+      if (rawDate !== undefined && rawDate !== null && rawDate !== '') {
+        const num = Number(rawDate);
+        const formatted =
+          Number.isFinite(num) && num > 1_000_000_000
+            ? new Date(num > 10_000_000_000 ? num : num * 1000).toLocaleDateString('id-ID', {
+                weekday: 'short',
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                timeZone: 'Asia/Jakarta',
+              })
+            : String(rawDate);
+        const valStr = String(rawDate);
+        if (!datesMap[valStr]) {
+          datesMap[valStr] = { value: valStr, label: formatted };
+        }
+      }
+    }
+    const result = Object.values(datesMap);
+    if (result.length === 0) {
+      return [{ value: 'today', label: 'Hari Ini' }];
+    }
+    return result;
+  }, [availableMassSlots]);
+
+  const filteredMassSlots = useMemo(() => {
+    if (!massPickupDate || massPickupDate === 'today') return availableMassSlots;
+    return availableMassSlots.filter((s) => String(s.date) === massPickupDate);
+  }, [availableMassSlots, massPickupDate]);
+
+  const nearestBranch = useMemo(() => {
+    const list = activeShippingParams?.dropoff?.branch_list ?? [];
+    if (massBranchId !== null) {
+      const found = list.find((b) => b.branch_id === massBranchId);
+      if (found) return found;
+    }
+    return list[0] ?? null;
+  }, [activeShippingParams, massBranchId]);
+
+  const massDropoffNeedsSenderRealName = Boolean(
+    activeShippingParams?.info_needed?.dropoff?.includes('sender_real_name')
+  );
 
   const handleAddressChange = (nextAddressId: number) => {
     setSelectedAddressId(nextAddressId);
@@ -407,7 +670,7 @@ export default function ShipOrderModal({
         if (isMountedRef.current) setCopiedTracking(false);
       }, 2000);
     } catch {
-      // Clipboard API blocked
+      // Clipboard blocked
     }
   };
 
@@ -498,11 +761,7 @@ export default function ShipOrderModal({
       if (selectedPickupTimeId) {
         payload.pickup_time_id = selectedPickupTimeId;
       }
-      if (needsPickupTrackingNo) {
-        if (!trackingNumber.trim()) {
-          setSubmitError('Nomor resi wajib diisi untuk metode kurir ini.');
-          return;
-        }
+      if (needsPickupTrackingNo && trackingNumber.trim()) {
         payload.tracking_number = trackingNumber.trim();
       }
     } else if (selectedMethod === 'dropoff') {
@@ -573,36 +832,49 @@ export default function ShipOrderModal({
     onSuccess?.(result.data);
   };
 
-  const handleMassSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (submitting || targetMassOrders.length === 0) return;
+  const handleExecuteMassShip = async (method: 'pickup' | 'dropoff') => {
+    if (submitting || targetOrdersToShip.length === 0) return;
 
     setSubmitError(null);
+    setMassExecutingMethod(method);
 
     const payload: Record<string, unknown> = {
-      order_sns: targetMassOrders.map((o) => o.order_sn),
-      preferred_method: massMethod,
+      order_sns: targetOrdersToShip.map((o) => o.order_sn),
+      preferred_method: method,
     };
-    if (massMethod === 'dropoff' && massSenderName.trim()) {
-      payload.sender_real_name = massSenderName.trim();
+
+    if (method === 'pickup') {
+      if (massAddressId !== null) payload.address_id = massAddressId;
+      if (massPickupTimeId) payload.pickup_time_id = massPickupTimeId;
+    } else if (method === 'dropoff') {
+      if (massBranchId !== null) payload.branch_id = massBranchId;
+      if (massSenderName.trim()) payload.sender_real_name = massSenderName.trim();
     }
 
     const result = await submitJsonPost<ShopeeMassShipResult>(
       `${baseRoute}/mass-ship`,
       payload,
-      'Gagal menjalankan atur pengiriman massal',
+      `Gagal mengatur pengiriman massal (${method})`,
       'Gagal menghubungi server saat proses pengiriman massal.'
     );
+
+    setMassExecutingMethod(null);
     if (!result || result.isStale()) return;
 
     setMassResult(result.data);
+
+    if (result.data.succeeded && result.data.succeeded.length > 0) {
+      const succeededSet = new Set(result.data.succeeded.map((s) => s.order_sn));
+      setPendingMassOrders((prev) => prev.filter((o) => !succeededSet.has(o.order_sn)));
+    }
+
     onMassShipped?.(result.data);
     onSuccess?.(result.data);
   };
 
   const modalTitle =
     mode === 'mass'
-      ? `Atur Pengiriman Massal (${targetMassOrders.length} Pesanan)`
+      ? `Pengiriman Massal ${platformName}`
       : order
         ? `Atur Pengiriman — ${order.order_sn}`
         : `Atur Pengiriman ${platformName}`;
@@ -620,7 +892,7 @@ export default function ShipOrderModal({
         if (!submitting) onClose();
       }}
       title={modalTitle}
-      maxWidth="lg"
+      maxWidth={mode === 'mass' ? '6xl' : 'lg'}
     >
       {mode === 'single' ? (
         !order ? (
@@ -670,450 +942,268 @@ export default function ShipOrderModal({
                     <span className="font-mono font-bold text-slate-900">{singleResult.tracking_number}</span>
                     <button
                       type="button"
-                      onClick={() => handleCopyTracking(singleResult.tracking_number!)}
+                      onClick={() => handleCopyTracking(singleResult.tracking_number ?? '')}
                       className="rounded-lg border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
                     >
-                      {copiedTracking ? 'Disalin' : 'Salin'}
+                      {copiedTracking ? 'Tersalin!' : 'Salin'}
                     </button>
                   </div>
                 ) : (
-                  <span className="font-medium text-amber-700">Sedang diproses kurir</span>
+                  <span className="text-slate-500 italic">Dihasilkan oleh kurir / sedang diproses</span>
                 )}
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Tutup
-              </button>
+            <div className="flex items-center justify-end gap-2.5 pt-2">
               {canPrintAfterSingleShip && (
                 <button
                   type="button"
                   onClick={() => {
-                    const target = singleResult.order ?? order;
-                    onClose();
-                    onPrintWaybill?.(target);
+                    const fallbackOrder: ShopeeOrderRecord = {
+                      id: order.id,
+                      shopee_account_id: order.shopee_account_id,
+                      order_sn: singleResult.order_sn,
+                      package_number: order.package_number,
+                      order_status: singleResult.order_status,
+                      logistics_status: order.logistics_status,
+                      shipping_carrier: order.shipping_carrier,
+                      tracking_number: singleResult.tracking_number ?? order.tracking_number,
+                      fulfillment_method: singleResult.fulfillment_method,
+                      buyer_user_id: order.buyer_user_id,
+                      buyer_username: order.buyer_username,
+                      buyer_note: order.buyer_note,
+                      recipient_data: order.recipient_data,
+                      items_json: order.items_json,
+                      package_list_json: order.package_list_json,
+                      payment_method: order.payment_method,
+                      is_cod: order.is_cod,
+                      total_amount: order.total_amount,
+                      estimated_shipping_fee: order.estimated_shipping_fee,
+                      cancel_by: order.cancel_by,
+                      cancel_reason: order.cancel_reason,
+                      buyer_cancel_reason: order.buyer_cancel_reason,
+                      order_created_at: order.order_created_at,
+                      ship_by_date: order.ship_by_date,
+                      shipping_arranged_at: new Date().toISOString(),
+                      label_document_status: 'READY',
+                      label_printed_at: order.label_printed_at,
+                      label_print_count: order.label_print_count,
+                      last_synced_at: order.last_synced_at,
+                    };
+                    onPrintWaybill?.(singleResult.order ?? fallbackOrder);
                   }}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#0B132B] px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                  className="rounded-xl border border-[#EE4D2D] bg-orange-50 px-4 py-2 text-xs font-semibold text-[#EE4D2D] hover:bg-orange-100"
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={1.75}
-                    stroke="currentColor"
-                    className="h-4 w-4"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z"
-                    />
-                  </svg>
-                  Cetak Resi Sekarang
+                  Cetak Dokumen Pengiriman (Resi)
                 </button>
               )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-xl bg-[#0B132B] px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+              >
+                Selesai & Tutup
+              </button>
             </div>
           </div>
         ) : (
           <form onSubmit={handleSingleSubmit} className="space-y-4">
-            {/* Ringkasan pesanan target */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-slate-900">{order.order_sn}</span>
-                    {order.package_number && (
-                      <span className="rounded bg-slate-200/70 px-1.5 py-0.5 font-mono text-[11px] text-slate-600">
-                        {order.package_number}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-slate-600">
-                    Pembeli: <span className="font-semibold text-slate-800">{order.buyer_username ? `@${order.buyer_username}` : '-'}</span>
-                  </p>
-                </div>
-                <div className="text-right">
-                  <span className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-800">
-                    {order.shipping_carrier || `Kurir ${platformName}`}
-                  </span>
-                </div>
-              </div>
-            </div>
-
             {loadingParams ? (
-              <div className="flex flex-col items-center justify-center gap-2.5 rounded-xl border border-slate-200 bg-white py-10 text-center">
+              <div className="flex flex-col items-center justify-center py-10 space-y-2">
                 <SpinnerIcon className="h-6 w-6 text-[#EE4D2D]" />
-                <p className="text-xs font-medium text-slate-600">
-                  Mengambil parameter alamat & jadwal kurir dari {platformName}...
-                </p>
+                <p className="text-xs text-slate-500">Mengambil opsi pengiriman dari {platformName}...</p>
               </div>
             ) : paramsError ? (
-              <div className="space-y-3 rounded-xl border border-rose-200 bg-rose-50 p-4">
-                <div className="flex items-start gap-2.5 text-xs text-rose-800">
+              <div className="space-y-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-800">
+                <div className="flex items-start gap-2.5">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
                     viewBox="0 0 24 24"
                     strokeWidth={1.75}
                     stroke="currentColor"
-                    className="mt-0.5 h-4 w-4 shrink-0 text-rose-600"
+                    className="h-4 w-4 shrink-0 text-rose-600 mt-0.5"
                   >
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+                      d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
                     />
                   </svg>
-                  <span>{paramsError}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-rose-900">Gagal Memuat Parameter Pengiriman</p>
+                    <p className="mt-1">{paramsError}</p>
+                  </div>
                 </div>
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    Tutup
-                  </button>
+                <div className="flex justify-end pt-1">
                   <button
                     type="button"
                     onClick={() => setRetryCounter((c) => c + 1)}
-                    className="rounded-xl bg-[#0B132B] px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+                    className="rounded-lg border border-rose-300 bg-white px-3 py-1 text-xs font-semibold text-rose-800 hover:bg-rose-50"
                   >
-                    Coba Muat Ulang
+                    Coba Lagi
                   </button>
                 </div>
               </div>
             ) : shippingParams ? (
               <>
-                {supportedTabs.length === 0 ? (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
-                    {platformName} tidak mengembalikan metode pengiriman (Pick-up / Drop-off / Non-Integrated) untuk pesanan ini.
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Kurir Pengiriman</span>
+                    <span className="font-semibold text-slate-900">{order.shipping_carrier || 'Kurir Standar'}</span>
                   </div>
-                ) : (
-                  <>
-                    {/* Tab Seller Center */}
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {order.buyer_username && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Pembeli</span>
+                      <span className="text-slate-700">@{order.buyer_username}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Pilih Metode Pengiriman
+                  </label>
+                  {supportedTabs.length === 0 ? (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                      Tidak ada opsi metode pengiriman yang didukung oleh kurir ini melalui API.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2">
                       {supportedTabs.map((tab) => {
                         const active = selectedMethod === tab.key;
                         return (
-                          <button
+                          <label
                             key={tab.key}
-                            type="button"
-                            onClick={() => {
-                              setSelectedMethod(tab.key);
-                              setSubmitError(null);
-                            }}
-                            className={`rounded-xl border px-3.5 py-2.5 text-left transition-colors ${
+                            className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 text-xs transition-colors ${
                               active
-                                ? 'border-[#EE4D2D] bg-orange-50/60 ring-1 ring-[#EE4D2D]'
-                                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                                ? 'border-[#EE4D2D] bg-orange-50/50 ring-1 ring-[#EE4D2D]'
+                                : 'border-slate-200 bg-white hover:border-slate-300'
                             }`}
                           >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className={`text-xs font-bold ${active ? 'text-[#EE4D2D]' : 'text-slate-900'}`}>
+                            <input
+                              type="radio"
+                              name="fulfillment_method"
+                              checked={active}
+                              onChange={() => setSelectedMethod(tab.key)}
+                              className="mt-0.5 accent-[#EE4D2D]"
+                            />
+                            <div>
+                              <div className={`font-bold ${active ? 'text-[#EE4D2D]' : 'text-slate-900'}`}>
                                 {tab.label}
-                              </span>
-                              <span
-                                className={`h-2.5 w-2.5 rounded-full ${
-                                  active ? 'bg-[#EE4D2D]' : 'border border-slate-300 bg-white'
-                                }`}
-                              />
+                              </div>
+                              <div className="mt-0.5 text-[11px] text-slate-500">{tab.hint}</div>
                             </div>
-                            <p className="mt-0.5 text-[11px] text-slate-500">{tab.hint}</p>
-                          </button>
+                          </label>
                         );
                       })}
                     </div>
+                  )}
+                </div>
 
-                    {/* Konten metode Pick-up */}
-                    {selectedMethod === 'pickup' && (
-                      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-                        {pickupAddresses.length === 0 ? (
-                          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                            Alamat penjemputan belum diatur pada akun Seller Centre {platformName} Anda.
-                          </div>
-                        ) : (
-                          <>
-                            <div className="space-y-1.5">
-                              <div className="flex items-center justify-between">
-                                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                                  Alamat Penjemputan
-                                </label>
-                                {otherAddresses.length > 0 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowOtherAddresses((v) => !v)}
-                                    className="cursor-pointer text-[11px] font-semibold text-[#EE4D2D] hover:underline"
-                                  >
-                                    {showOtherAddresses
-                                      ? 'Tampilkan Alamat Utama Saja'
-                                      : `Pilih alamat lain (${otherAddresses.length})`}
-                                  </button>
-                                )}
-                              </div>
-
-                              {!showOtherAddresses && selectedAddress ? (
-                                <div className="rounded-xl border border-emerald-300 bg-emerald-50/40 p-3 text-xs">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
-                                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3">
-                                        <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
-                                      </svg>
-                                      Alamat Utama
-                                    </span>
-                                    {selectedAddress.address_id !== defaultAddress?.address_id && (
-                                      <span className="text-[10px] font-semibold text-slate-500">(Alamat Pilihan)</span>
-                                    )}
-                                  </div>
-                                  <p className="mt-1 font-medium leading-relaxed text-slate-800">
-                                    {formatPickupAddressLabel(selectedAddress)}
-                                  </p>
-                                </div>
-                              ) : (
-                                <div className="max-h-40 space-y-2 overflow-y-auto pr-1">
-                                  {pickupAddresses.map((addr) => {
-                                    const isSelected = addr.address_id === selectedAddressId;
-                                    const flags = Array.isArray(addr.address_flag) ? addr.address_flag : [];
-                                    const isDefault =
-                                      flags.includes('default_address') || Boolean(addr.default) || Boolean(addr.is_default);
-                                    return (
-                                      <label
-                                        key={addr.address_id}
-                                        className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-2.5 text-xs transition-colors ${
-                                          isSelected
-                                            ? 'border-[#EE4D2D] bg-orange-50/40'
-                                            : 'border-slate-200 hover:border-slate-300'
-                                        }`}
-                                      >
-                                        <input
-                                          type="radio"
-                                          name="shopee_pickup_address"
-                                          checked={isSelected}
-                                          onChange={() => handleAddressChange(addr.address_id)}
-                                          className="mt-0.5 accent-[#EE4D2D]"
-                                        />
-                                        <div className="min-w-0 flex-1">
-                                          <div className="flex flex-wrap items-center gap-1.5">
-                                            {isDefault ? (
-                                              <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
-                                                Alamat Utama
-                                              </span>
-                                            ) : (
-                                              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
-                                                Alamat Alternatif
-                                              </span>
-                                            )}
-                                          </div>
-                                          <p className="mt-0.5 text-slate-800">{formatPickupAddressLabel(addr)}</p>
-                                        </div>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="space-y-1.5">
-                              <label
-                                htmlFor="shopee-pickup-slot"
-                                className="block text-[11px] font-bold uppercase tracking-wider text-slate-500"
-                              >
-                                Slot Waktu Penjemputan
-                              </label>
-                              {pickupTimeSlots.length > 0 ? (
-                                <select
-                                  id="shopee-pickup-slot"
-                                  value={selectedPickupTimeId}
-                                  onChange={(e) => setSelectedPickupTimeId(e.target.value)}
-                                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-900 tabular-nums focus:border-[#EE4D2D] focus:outline-none focus:ring-1 focus:ring-[#EE4D2D]"
-                                >
-                                  {pickupTimeSlots.map((slot) => (
-                                    <option key={slot.pickup_time_id} value={slot.pickup_time_id}>
-                                      {formatPickupSlotLabel(slot)}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                                  Kurir akan menjemput pada jadwal otomatis terdekat (tanpa pilihan slot manual).
-                                </p>
-                              )}
-                            </div>
-
-                            {needsPickupTrackingNo && (
-                              <div className="space-y-1.5">
-                                <label
-                                  htmlFor="shopee-pickup-tracking"
-                                  className="block text-[11px] font-bold uppercase tracking-wider text-slate-500"
-                                >
-                                  Nomor Resi
-                                </label>
-                                <input
-                                  id="shopee-pickup-tracking"
-                                  type="text"
-                                  value={trackingNumber}
-                                  onChange={(e) => setTrackingNumber(e.target.value)}
-                                  placeholder="Masukkan nomor resi kurir"
-                                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-mono text-xs text-slate-900 focus:border-[#EE4D2D] focus:outline-none focus:ring-1 focus:ring-[#EE4D2D]"
-                                />
-                              </div>
-                            )}
-                          </>
+                {selectedMethod === 'pickup' && (
+                  <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/50 p-3.5">
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                        <span>Alamat Penjemputan Toko</span>
+                        {otherAddresses.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowOtherAddresses(!showOtherAddresses)}
+                            className="text-xs font-semibold text-[#EE4D2D] hover:underline"
+                          >
+                            {showOtherAddresses ? 'Selesai' : 'Ganti Alamat'}
+                          </button>
                         )}
                       </div>
-                    )}
-
-                    {/* Konten metode Drop-off */}
-                    {selectedMethod === 'dropoff' && (
-                      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-                        {needsBranchId && (
-                          <div className="space-y-1.5">
-                            <label
-                              htmlFor="shopee-dropoff-branch"
-                              className="block text-[11px] font-bold uppercase tracking-wider text-slate-500"
-                            >
-                              Cabang / Counter Drop-off
-                            </label>
-                            {dropoffBranches.length > 0 ? (
-                              <select
-                                id="shopee-dropoff-branch"
-                                value={selectedBranchId ?? ''}
-                                onChange={(e) =>
-                                  setSelectedBranchId(e.target.value ? Number(e.target.value) : null)
-                                }
-                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-[#EE4D2D] focus:outline-none focus:ring-1 focus:ring-[#EE4D2D]"
-                              >
-                                {!dropoffInfoNeeded.includes('branch_id') && (
-                                  <option value="">-- Otomatis / Counter Terdekat --</option>
-                                )}
-                                {dropoffBranches.map((branch) => (
-                                  <option key={branch.branch_id} value={branch.branch_id}>
-                                    {formatDropoffBranchLabel(branch)}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <input
-                                id="shopee-dropoff-branch"
-                                type="number"
-                                min={1}
-                                value={manualBranchId}
-                                onChange={(e) => setManualBranchId(e.target.value)}
-                                placeholder="Masukkan ID Cabang (branch_id)"
-                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-mono text-xs text-slate-900 focus:border-[#EE4D2D] focus:outline-none focus:ring-1 focus:ring-[#EE4D2D]"
-                              />
-                            )}
-                          </div>
-                        )}
-
-                        {needsSlug && (
-                          <div className="space-y-1.5">
-                            <label
-                              htmlFor="shopee-dropoff-slug"
-                              className="block text-[11px] font-bold uppercase tracking-wider text-slate-500"
-                            >
-                              Layanan Counter (Slug)
-                            </label>
-                            {dropoffSlugs.length > 0 ? (
-                              <select
-                                id="shopee-dropoff-slug"
-                                value={selectedSlug}
-                                onChange={(e) => setSelectedSlug(e.target.value)}
-                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-[#EE4D2D] focus:outline-none focus:ring-1 focus:ring-[#EE4D2D]"
-                              >
-                                {dropoffSlugs.map((s) => (
-                                  <option key={s.slug} value={s.slug}>
-                                    {s.slug_name || s.slug}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <input
-                                id="shopee-dropoff-slug"
-                                type="text"
-                                value={selectedSlug}
-                                onChange={(e) => setSelectedSlug(e.target.value)}
-                                placeholder="Masukkan slug counter kurir (mis. jne_reg)"
-                                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-mono text-xs text-slate-900 focus:border-[#EE4D2D] focus:outline-none focus:ring-1 focus:ring-[#EE4D2D]"
-                              />
-                            )}
-                          </div>
-                        )}
-
-                        {needsSenderRealName && (
-                          <div className="space-y-1.5">
-                            <label
-                              htmlFor="shopee-sender-name"
-                              className="block text-[11px] font-bold uppercase tracking-wider text-slate-500"
-                            >
-                              Nama Asli Pengirim
-                            </label>
-                            <input
-                              id="shopee-sender-name"
-                              type="text"
-                              maxLength={120}
-                              value={senderRealName}
-                              onChange={(e) => setSenderRealName(e.target.value)}
-                              placeholder="Nama pengirim di gerai kurir"
-                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-[#EE4D2D] focus:outline-none focus:ring-1 focus:ring-[#EE4D2D]"
-                            />
-                          </div>
-                        )}
-
-                        {needsDropoffTrackingNo && (
-                          <div className="space-y-1.5">
-                            <label
-                              htmlFor="shopee-dropoff-tracking"
-                              className="block text-[11px] font-bold uppercase tracking-wider text-slate-500"
-                            >
-                              Nomor Resi
-                            </label>
-                            <input
-                              id="shopee-dropoff-tracking"
-                              type="text"
-                              maxLength={100}
-                              value={trackingNumber}
-                              onChange={(e) => setTrackingNumber(e.target.value)}
-                              placeholder="Masukkan nomor resi kurir"
-                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-mono text-xs text-slate-900 focus:border-[#EE4D2D] focus:outline-none focus:ring-1 focus:ring-[#EE4D2D]"
-                            />
-                          </div>
-                        )}
-
-                        {!needsBranchId && !needsSlug && !needsSenderRealName && !needsDropoffTrackingNo && (
-                          <p className="text-xs leading-relaxed text-slate-600">
-                            Serahkan paket ke counter kurir terdekat setelah nomor resi terbit. Tidak ada parameter tambahan yang diminta oleh kurir ini.
+                      {selectedAddress ? (
+                        <div className="rounded-xl border border-slate-200 bg-white p-2.5 text-xs text-slate-700">
+                          <p className="font-semibold text-slate-900">{selectedAddress.address}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            {[selectedAddress.district, selectedAddress.city, selectedAddress.state, selectedAddress.zipcode]
+                              .filter(Boolean)
+                              .join(', ')}
                           </p>
-                        )}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-rose-600">Alamat penjemputan belum diatur pada toko ini.</p>
+                      )}
+                      {showOtherAddresses && otherAddresses.length > 0 && (
+                        <select
+                          value={selectedAddressId ?? ''}
+                          onChange={(e) => handleAddressChange(Number(e.target.value))}
+                          className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-[#EE4D2D] focus:ring-1 focus:ring-[#EE4D2D]"
+                        >
+                          {pickupAddresses.map((a) => (
+                            <option key={a.address_id} value={a.address_id}>
+                              {formatPickupAddressLabel(a)}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+
+                    {pickupTimeSlots.length > 0 && (
+                      <div className="space-y-1">
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                          Slot Waktu Pickup
+                        </label>
+                        <select
+                          value={selectedPickupTimeId}
+                          onChange={(e) => setSelectedPickupTimeId(e.target.value)}
+                          className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-[#EE4D2D] focus:ring-1 focus:ring-[#EE4D2D]"
+                        >
+                          {pickupTimeSlots.map((slot) => (
+                            <option key={slot.pickup_time_id} value={slot.pickup_time_id}>
+                              {formatPickupSlotLabel(slot)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {selectedMethod === 'dropoff' && (
+                  <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/50 p-3.5">
+                    {dropoffBranches.length > 0 ? (
+                      <div className="space-y-1">
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                          Pilih Cabang / Gerai Drop-off
+                        </label>
+                        <select
+                          value={selectedBranchId ?? ''}
+                          onChange={(e) => setSelectedBranchId(Number(e.target.value))}
+                          className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-[#EE4D2D] focus:ring-1 focus:ring-[#EE4D2D]"
+                        >
+                          {dropoffBranches.map((b) => (
+                            <option key={b.branch_id} value={b.branch_id}>
+                              {formatDropoffBranchLabel(b)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-slate-200 bg-white p-2.5 text-xs text-slate-600">
+                        Anda dapat menyerahkan paket ke counter atau gerai {order.shipping_carrier || 'kurir'} terdekat dari lokasi Anda.
                       </div>
                     )}
 
-                    {/* Konten metode Non-Integrated */}
-                    {selectedMethod === 'non_integrated' && (
-                      <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-4">
-                        <label
-                          htmlFor="shopee-nonint-tracking"
-                          className="block text-[11px] font-bold uppercase tracking-wider text-slate-500"
-                        >
-                          Nomor Resi Pengiriman {needsNonIntegratedTrackingNo ? '(Wajib)' : '(Opsional)'}
+                    {needsSenderRealName && (
+                      <div className="space-y-1">
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                          Nama Pengirim (Wajib)
                         </label>
                         <input
-                          id="shopee-nonint-tracking"
                           type="text"
-                          maxLength={100}
-                          value={trackingNumber}
-                          onChange={(e) => setTrackingNumber(e.target.value)}
-                          placeholder="Masukkan nomor resi kurir non-integrated"
-                          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-mono text-xs text-slate-900 focus:border-[#EE4D2D] focus:outline-none focus:ring-1 focus:ring-[#EE4D2D]"
+                          value={senderRealName}
+                          onChange={(e) => setSenderRealName(e.target.value)}
+                          placeholder="Nama lengkap pengirim toko"
+                          className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-[#EE4D2D] focus:ring-1 focus:ring-[#EE4D2D]"
                         />
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
 
                 {submitError && (
@@ -1145,10 +1235,11 @@ export default function ShipOrderModal({
           </form>
         )
       ) : massResult ? (
+        /* Result State for Mass Ship */
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-2.5 text-center">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Diproses</p>
               <p className="mt-1 text-lg font-bold text-slate-900 tabular-nums">{massResult.total}</p>
             </div>
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
@@ -1161,9 +1252,11 @@ export default function ShipOrderModal({
             </div>
           </div>
 
-          <p className="text-xs font-medium text-slate-700">{massResult.message}</p>
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-xs font-medium text-slate-700">
+            {massResult.message}
+          </div>
 
-          <div className="max-h-60 space-y-2 overflow-y-auto pr-1">
+          <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
             {massResult.succeeded.map((item) => (
               <div
                 key={`ok-${item.order_sn}`}
@@ -1191,7 +1284,34 @@ export default function ShipOrderModal({
             ))}
           </div>
 
-          <div className="flex justify-end pt-1">
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+            {pendingMassOrders.length > 0 ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500">
+                  Tersisa <strong className="text-slate-900">{pendingMassOrders.length}</strong> pesanan lain.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMassResult(null);
+                    const remainingCouriers = Array.from(
+                      new Set(pendingMassOrders.map((o) => (o.shipping_carrier || 'Lainnya').trim()))
+                    );
+                    if (remainingCouriers.length > 0) {
+                      setActiveCourier(remainingCouriers[0]);
+                    }
+                  }}
+                  className="rounded-xl border border-orange-200 bg-orange-50 px-3.5 py-1.5 text-xs font-bold text-[#EE4D2D] hover:bg-orange-100 transition-colors"
+                >
+                  Lanjut Atur Ekspedisi Lainnya
+                </button>
+              </div>
+            ) : (
+              <div className="text-xs text-emerald-700 font-medium">
+                Semua pesanan terpilih telah selesai diatur pengirimannya!
+              </div>
+            )}
+
             <button
               type="button"
               onClick={onClose}
@@ -1202,151 +1322,428 @@ export default function ShipOrderModal({
           </div>
         </div>
       ) : (
-        <form onSubmit={handleMassSubmit} className="space-y-4">
-          {(ineligibleMassCount > 0 || truncatedMassCount > 0) && (
-            <div className="space-y-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900">
-              {ineligibleMassCount > 0 && (
-                <p>
-                  <span className="font-semibold tabular-nums">{ineligibleMassCount}</span> pesanan dilewati
-                  karena statusnya bukan Belum Diproses / Atur Ulang.
-                </p>
-              )}
-              {truncatedMassCount > 0 && (
-                <p>
-                  {platformName} membatasi maksimal 50 pesanan per batch.{' '}
-                  <span className="font-semibold tabular-nums">{truncatedMassCount}</span> pesanan valid
-                  lainnya tidak disertakan dalam batch ini.
-                </p>
-              )}
+        /* Mass Ship Configuration View (Shopee Seller Centre Style) */
+        <div className="space-y-4">
+          {/* Ekspedisi / Jasa Kirim Filter Chips */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              <span>Pilih Jasa Kirim / Ekspedisi</span>
+              <span className="text-slate-400 font-normal">
+                Total {eligibleMassOrders.length} pesanan siap dikirim
+              </span>
             </div>
-          )}
 
-          {/* Pilihan preferensi metode massal */}
-          <div className="space-y-2">
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Preferensi Metode Pengiriman Massal
-            </label>
-            <div className="grid grid-cols-1 gap-2">
-              {[
-                {
-                  key: 'auto' as MassPreferredMethod,
-                  title: 'Otomatis / Pick-up Slot Terdekat',
-                  desc: 'Prioritaskan Pick-up dengan alamat utama & slot terdekat; otomatis pakai Drop-off bila kurir tidak mendukung Pick-up.',
-                },
-                {
-                  key: 'pickup' as MassPreferredMethod,
-                  title: 'Pick-up (Jemput Kurir)',
-                  desc: 'Paksa penjemputan kurir ke alamat utama toko untuk seluruh pesanan terpilih.',
-                },
-                {
-                  key: 'dropoff' as MassPreferredMethod,
-                  title: 'Antar ke Counter (Drop-off)',
-                  desc: 'Paksa serahkan paket ke gerai/cabang kurir terdekat.',
-                },
-              ].map((opt) => {
-                const active = massMethod === opt.key;
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setActiveCourier('all')}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border transition-all ${
+                  activeCourier === 'all'
+                    ? 'border-[#EE4D2D] bg-orange-50 text-[#EE4D2D] ring-1 ring-[#EE4D2D]'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                Semua Jasa Kirim ({eligibleMassOrders.length})
+              </button>
+
+              {courierKeys.map((courier) => {
+                const count = courierGroups[courier]?.length ?? 0;
+                const isActive = activeCourier === courier;
                 return (
-                  <label
-                    key={opt.key}
-                    className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 text-xs transition-colors ${
-                      active
-                        ? 'border-[#EE4D2D] bg-orange-50/50 ring-1 ring-[#EE4D2D]'
-                        : 'border-slate-200 bg-white hover:border-slate-300'
+                  <button
+                    key={courier}
+                    type="button"
+                    onClick={() => setActiveCourier(courier)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border transition-all ${
+                      isActive
+                        ? 'border-[#EE4D2D] bg-orange-50 text-[#EE4D2D] ring-1 ring-[#EE4D2D]'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
                     }`}
                   >
-                    <input
-                      type="radio"
-                      name="shopee_mass_method"
-                      checked={active}
-                      onChange={() => setMassMethod(opt.key)}
-                      className="mt-0.5 accent-[#EE4D2D]"
-                    />
-                    <div>
-                      <div className={`font-bold ${active ? 'text-[#EE4D2D]' : 'text-slate-900'}`}>
-                        {opt.title}
-                      </div>
-                      <div className="mt-0.5 text-[11px] text-slate-500">{opt.desc}</div>
-                    </div>
-                  </label>
+                    {courier} ({count})
+                  </button>
                 );
               })}
             </div>
           </div>
 
-          {massMethod === 'dropoff' && (
-            <div className="space-y-1.5">
-              <label
-                htmlFor="shopee-mass-sender"
-                className="block text-[11px] font-bold uppercase tracking-wider text-slate-500"
-              >
-                Nama Pengirim (Opsional, bila diminta kurir Drop-off)
-              </label>
-              <input
-                id="shopee-mass-sender"
-                type="text"
-                maxLength={120}
-                value={massSenderName}
-                onChange={(e) => setMassSenderName(e.target.value)}
-                placeholder="Kosongkan jika tidak diperlukan"
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-[#EE4D2D] focus:outline-none focus:ring-1 focus:ring-[#EE4D2D]"
-              />
-            </div>
-          )}
-
-          {/* Daftar ringkas order terpilih */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              <span>Pesanan Akan Diproses</span>
-              <span className="tabular-nums">{targetMassOrders.length} pesanan</span>
-            </div>
-            {targetMassOrders.length === 0 ? (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center text-xs text-slate-500">
-                Tidak ada pesanan berstatus Perlu Dikirim (Belum Diproses) yang valid untuk diproses.
+          {/* 2-Column Layout: Left Order Table & Right Action Sidebar */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+            {/* Left Column: Daftar Paket Pesanan */}
+            <div className="lg:col-span-7 xl:col-span-8 space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-600 px-1">
+                <span>
+                  Menampilkan <strong className="text-slate-900">{displayedMassOrders.length}</strong> pesanan
+                  {activeCourier !== 'all' ? ` (${activeCourier})` : ''}
+                </span>
+                <span className="text-[11px] text-slate-500 font-medium">
+                  <strong className="text-[#EE4D2D]">{targetOrdersToShip.length}</strong> dipilih untuk diproses
+                </span>
               </div>
-            ) : (
-              <div className="max-h-48 divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/60">
-                {targetMassOrders.map((item) => (
-                  <div key={item.order_sn} className="flex items-center justify-between gap-3 px-3.5 py-2 text-xs">
-                    <div className="min-w-0">
-                      <span className="font-mono font-semibold text-slate-900">{item.order_sn}</span>
-                      {item.buyer_username && (
-                        <span className="ml-2 text-slate-500">@{item.buyer_username}</span>
-                      )}
-                    </div>
-                    <span className="shrink-0 text-[11px] font-medium text-slate-600">
-                      {item.shipping_carrier || 'Kurir'}
-                    </span>
+
+              {displayedMassOrders.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center text-xs text-slate-500">
+                  Tidak ada pesanan siap kirim pada kategori jasa kirim ini.
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
+                  <div className="max-h-[460px] overflow-y-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-xs border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                        <tr>
+                          <th className="py-2.5 px-3 w-10 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isAllVisibleSelected}
+                              onChange={toggleSelectAllVisible}
+                              className="rounded border-slate-300 text-[#EE4D2D] focus:ring-[#EE4D2D] accent-[#EE4D2D]"
+                              title="Pilih Semua Pesanan di Tampilan Ini"
+                            />
+                          </th>
+                          <th className="py-2.5 px-3">Produk</th>
+                          <th className="py-2.5 px-3">No. Pesanan & Pembeli</th>
+                          <th className="py-2.5 px-3">Jasa Kirim</th>
+                          <th className="py-2.5 px-3">Batas Kirim</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {displayedMassOrders.map((item) => {
+                          const isChecked = selectedMassSns.includes(item.order_sn);
+                          const firstItem = item.items_json?.[0];
+                          return (
+                            <tr
+                              key={item.order_sn}
+                              className={`transition-colors hover:bg-slate-50/80 ${
+                                isChecked ? 'bg-orange-50/20' : ''
+                              }`}
+                            >
+                              <td className="py-2.5 px-3 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => toggleOrderSelection(item.order_sn)}
+                                  className="rounded border-slate-300 text-[#EE4D2D] focus:ring-[#EE4D2D] accent-[#EE4D2D]"
+                                />
+                              </td>
+                              <td className="py-2.5 px-3 min-w-[180px]">
+                                <div className="flex items-center gap-2.5">
+                                  {firstItem?.image_url ? (
+                                    <img
+                                      src={firstItem.image_url}
+                                      alt={firstItem.item_name || 'Produk'}
+                                      className="h-10 w-10 shrink-0 rounded-lg object-cover border border-slate-200 bg-white"
+                                    />
+                                  ) : (
+                                    <div className="h-10 w-10 shrink-0 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400">
+                                      <PackageIcon className="h-5 w-5" />
+                                    </div>
+                                  )}
+                                  <div className="min-w-0 flex-1">
+                                    <p
+                                      className="truncate font-medium text-slate-900 text-xs"
+                                      title={firstItem?.item_name || 'Produk Pesanan'}
+                                    >
+                                      {firstItem?.item_name || 'Produk Pesanan'}
+                                    </p>
+                                    <p className="text-[11px] text-slate-500 truncate">
+                                      {firstItem?.model_name ? `Variasi: ${firstItem.model_name}` : ''}
+                                      {item.items_json && item.items_json.length > 1
+                                        ? ` (+${item.items_json.length - 1} item)`
+                                        : ''}
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3 min-w-[130px]">
+                                <div className="font-mono font-bold text-slate-900">{item.order_sn}</div>
+                                {item.buyer_username && (
+                                  <div className="text-[11px] text-slate-500 truncate">
+                                    @{item.buyer_username}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 whitespace-nowrap">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-800 border border-slate-200">
+                                  {item.shipping_carrier || 'Standar'}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 whitespace-nowrap text-[11px] text-slate-600">
+                                <div>{formatOrderDate(item.ship_by_date || item.order_created_at)}</div>
+                                <div className="text-[10px] text-amber-600 font-medium">Siap Dikirim</div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {submitError && (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-800">
-              {submitError}
+                </div>
+              )}
             </div>
-          )}
 
-          <div className="flex items-center justify-end gap-2.5 pt-1">
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={onClose}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            >
-              Batal
-            </button>
-            <button
-              type="submit"
-              disabled={submitting || targetMassOrders.length === 0}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#EE4D2D] px-4 py-2 text-xs font-semibold text-white hover:bg-[#d94122] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {submitting && <SpinnerIcon className="h-3.5 w-3.5" />}
-              {submitting ? 'Memproses Batch...' : `Proses ${targetMassOrders.length} Pengiriman`}
-            </button>
+            {/* Right Column: Atur Pengiriman Massal Sidebar (Shopee-Style Cards) */}
+            <div className="lg:col-span-5 xl:col-span-4 space-y-3.5">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/90 p-4 space-y-4">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900">Atur Pengiriman Massal</h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Paket akan dikirim, terdiri dari{' '}
+                    <strong className="text-slate-900">{targetOrdersToShip.length}</strong> pesanan terpilih.
+                  </p>
+                </div>
+
+                {loadingCourierParams && (
+                  <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50/50 p-2.5 text-xs text-blue-700">
+                    <SpinnerIcon className="h-4 w-4 shrink-0" />
+                    <span>Memeriksa dukungan kurir {activeCourier}...</span>
+                  </div>
+                )}
+
+                {courierParamsError && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+                    {courierParamsError}
+                  </div>
+                )}
+
+                {/* Box 1: Pick-up (Jemput Kurir) */}
+                <div className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-3 shadow-2xs">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900">
+                      <TruckIcon className="h-4 w-4 text-[#EE4D2D]" />
+                      <span>Pick-up</span>
+                      <span className="text-[11px] text-slate-400 font-normal">(Jemput Kurir)</span>
+                    </div>
+                    {activeShippingParams?.pickup_supported === false ? (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                        Tidak Didukung
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
+                        Tersedia
+                      </span>
+                    )}
+                  </div>
+
+                  {activeShippingParams?.pickup_supported === false ? (
+                    <p className="text-xs text-slate-500 italic">
+                      Kurir {activeCourier !== 'all' ? activeCourier : 'ini'} tidak mendukung penjemputan (Pick-up). Silakan gunakan Drop-off di bawah.
+                    </p>
+                  ) : (
+                    <>
+                      {/* Alamat Toko */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                          <span>Alamat Toko</span>
+                          {(activeShippingParams?.pickup?.address_list?.length ?? 0) > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => setShowMassAddressPicker(!showMassAddressPicker)}
+                              className="text-xs font-semibold text-[#EE4D2D] hover:underline"
+                            >
+                              {showMassAddressPicker ? 'Selesai' : 'Ganti'}
+                            </button>
+                          )}
+                        </div>
+                        {currentMassAddress ? (
+                          <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 text-xs text-slate-700 leading-relaxed">
+                            <p className="font-semibold text-slate-900">
+                              {currentMassAddress.address || 'Alamat Toko Utama'}
+                            </p>
+                            <p className="text-[11px] text-slate-600 mt-0.5">
+                              {[
+                                currentMassAddress.district,
+                                currentMassAddress.city,
+                                currentMassAddress.state,
+                                currentMassAddress.zipcode,
+                              ]
+                                .filter(Boolean)
+                                .join(', ')}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-500 italic">Memuat alamat toko utama...</p>
+                        )}
+                        {showMassAddressPicker && (
+                          <select
+                            value={massAddressId ?? ''}
+                            onChange={(e) => setMassAddressId(Number(e.target.value))}
+                            className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-[#EE4D2D] focus:ring-1 focus:ring-[#EE4D2D]"
+                          >
+                            {(activeShippingParams?.pickup?.address_list ?? []).map((addr) => (
+                              <option key={addr.address_id} value={addr.address_id}>
+                                {formatPickupAddressLabel(addr)}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+
+                      {/* Tanggal & Waktu Slot */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                            Tanggal
+                          </label>
+                          <select
+                            value={massPickupDate}
+                            onChange={(e) => {
+                              setMassPickupDate(e.target.value);
+                              const matchedSlot = availableMassSlots.find(
+                                (s) => String(s.date) === e.target.value
+                              );
+                              if (matchedSlot) setMassPickupTimeId(matchedSlot.pickup_time_id);
+                            }}
+                            className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-[#EE4D2D] focus:ring-1 focus:ring-[#EE4D2D]"
+                          >
+                            {massDateOptions.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                            Waktu Slot
+                          </label>
+                          <select
+                            value={massPickupTimeId}
+                            onChange={(e) => setMassPickupTimeId(e.target.value)}
+                            className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-[#EE4D2D] focus:ring-1 focus:ring-[#EE4D2D]"
+                          >
+                            {filteredMassSlots.length > 0 ? (
+                              filteredMassSlots.map((slot) => (
+                                <option key={slot.pickup_time_id} value={slot.pickup_time_id}>
+                                  {slot.time_text || `Slot ${slot.pickup_time_id}`}
+                                </option>
+                              ))
+                            ) : (
+                              <option value="">Slot Terdekat</option>
+                            )}
+                          </select>
+                        </div>
+                      </div>
+
+                      <p className="text-[11px] text-slate-500 leading-normal">
+                        Jam Pickup oleh Kurir digunakan Kurir agar mengetahui waktu yang tersedia untuk mengambil pesananmu.
+                      </p>
+
+                      <button
+                        type="button"
+                        disabled={submitting || targetOrdersToShip.length === 0}
+                        onClick={() => handleExecuteMassShip('pickup')}
+                        className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#EE4D2D] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#d94122] disabled:cursor-not-allowed disabled:opacity-50 shadow-xs transition-colors"
+                      >
+                        {submitting && massExecutingMethod === 'pickup' ? (
+                          <>
+                            <SpinnerIcon className="h-4 w-4" />
+                            <span>Memproses Pickup...</span>
+                          </>
+                        ) : (
+                          <span>Atur Pickup Massal ({targetOrdersToShip.length})</span>
+                        )}
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {/* Box 2: Drop off (Antar ke Counter) */}
+                <div className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-3 shadow-2xs">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900">
+                      <StoreIcon className="h-4 w-4 text-[#EE4D2D]" />
+                      <span>Drop off</span>
+                      <span className="text-[11px] text-slate-400 font-normal">(Antar ke Counter)</span>
+                    </div>
+                    {activeShippingParams?.dropoff_supported === false ? (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                        Tidak Didukung
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
+                        Tersedia
+                      </span>
+                    )}
+                  </div>
+
+                  {activeShippingParams?.dropoff_supported === false ? (
+                    <p className="text-xs text-slate-500 italic">
+                      Kurir {activeCourier !== 'all' ? activeCourier : 'ini'} tidak mendukung antar counter (Drop-off). Silakan gunakan Pick-up di atas.
+                    </p>
+                  ) : (
+                    <>
+                      {/* Cabang Terdekat / Info Counter */}
+                      <div className="space-y-1">
+                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                          Cabang Terdekat / Gerai Counter
+                        </label>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 text-xs text-slate-700 leading-relaxed">
+                          {nearestBranch ? (
+                            <>
+                              <p className="font-semibold text-slate-900">{nearestBranch.branch_name}</p>
+                              <p className="text-[11px] text-slate-600 mt-0.5">
+                                {[nearestBranch.address, nearestBranch.district, nearestBranch.city]
+                                  .filter(Boolean)
+                                  .join(', ')}
+                              </p>
+                            </>
+                          ) : (
+                            <p className="text-slate-600">
+                              Serahkan paket ke gerai atau counter kurir{' '}
+                              <strong>{activeCourier !== 'all' ? activeCourier : 'terpilih'}</strong> terdekat.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {massDropoffNeedsSenderRealName && (
+                        <div className="space-y-1">
+                          <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                            Nama Pengirim (Wajib untuk kurir ini)
+                          </label>
+                          <input
+                            type="text"
+                            maxLength={120}
+                            value={massSenderName}
+                            onChange={(e) => setMassSenderName(e.target.value)}
+                            placeholder="Nama pengirim toko"
+                            className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-[#EE4D2D] focus:ring-1 focus:ring-[#EE4D2D]"
+                          />
+                        </div>
+                      )}
+
+                      <p className="text-[11px] text-slate-500 leading-normal">
+                        Bawa paket yang sudah ditempel label pengiriman (resi) ke counter atau gerai kurir terdekat dari lokasi Anda.
+                      </p>
+
+                      <button
+                        type="button"
+                        disabled={submitting || targetOrdersToShip.length === 0}
+                        onClick={() => handleExecuteMassShip('dropoff')}
+                        className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#EE4D2D] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#d94122] disabled:cursor-not-allowed disabled:opacity-50 shadow-xs transition-colors"
+                      >
+                        {submitting && massExecutingMethod === 'dropoff' ? (
+                          <>
+                            <SpinnerIcon className="h-4 w-4" />
+                            <span>Memproses Drop-off...</span>
+                          </>
+                        ) : (
+                          <span>Atur Antar ke Counter Massal ({targetOrdersToShip.length})</span>
+                        )}
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {submitError && (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-800">
+                    {submitError}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        </form>
+        </div>
       )}
     </Modal>
   );
