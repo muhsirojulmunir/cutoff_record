@@ -41,7 +41,7 @@ export default function WaybillPreviewModal({
 
   const modalContent = (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto p-3 sm:p-6"
+      className="fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto p-3 sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-label={title}

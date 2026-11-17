@@ -31,6 +31,7 @@ export interface ShipOrderModalProps {
   onMassShipped?: (result: ShopeeMassShipResult) => void;
   onSuccess?: (result: ShopeeShipResult | ShopeeMassShipResult) => void;
   onPrintWaybill?: (order: ShopeeOrderRecord) => void;
+  onPrintMassWaybill?: (orders: ShopeeOrderRecord[]) => void;
 }
 
 type MassPreferredMethod = 'auto' | 'pickup' | 'dropoff';
@@ -167,6 +168,14 @@ function PackageIcon({ className = 'h-4 w-4' }: { className?: string }) {
   );
 }
 
+function PrinterIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor" className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" />
+    </svg>
+  );
+}
+
 export default function ShipOrderModal({
   show,
   mode,
@@ -178,6 +187,7 @@ export default function ShipOrderModal({
   onMassShipped,
   onSuccess,
   onPrintWaybill,
+  onPrintMassWaybill,
 }: ShipOrderModalProps) {
   const isTiktok = baseRoute.includes('tiktok');
   const platformName = isTiktok ? 'TikTok Shop' : 'Shopee';
@@ -830,6 +840,40 @@ export default function ShipOrderModal({
     setSingleResult(result.data);
     onShipped?.(result.data);
     onSuccess?.(result.data);
+
+    // Langsung buka dokumen cetak resi otomatis
+    const targetOrder: ShopeeOrderRecord = result.data.order ?? {
+      id: order.id,
+      shopee_account_id: order.shopee_account_id,
+      order_sn: result.data.order_sn,
+      package_number: order.package_number,
+      order_status: result.data.order_status || 'PROCESSED',
+      logistics_status: order.logistics_status,
+      shipping_carrier: order.shipping_carrier,
+      tracking_number: result.data.tracking_number || order.tracking_number,
+      fulfillment_method: result.data.fulfillment_method || selectedMethod,
+      buyer_user_id: order.buyer_user_id,
+      buyer_username: order.buyer_username,
+      buyer_note: order.buyer_note,
+      recipient_data: order.recipient_data,
+      items_json: order.items_json,
+      package_list_json: order.package_list_json,
+      payment_method: order.payment_method,
+      is_cod: order.is_cod,
+      total_amount: order.total_amount,
+      estimated_shipping_fee: order.estimated_shipping_fee,
+      cancel_by: order.cancel_by,
+      cancel_reason: order.cancel_reason,
+      buyer_cancel_reason: order.buyer_cancel_reason,
+      order_created_at: order.order_created_at,
+      ship_by_date: order.ship_by_date,
+      shipping_arranged_at: new Date().toISOString(),
+      label_document_status: 'READY',
+      label_printed_at: order.label_printed_at,
+      label_print_count: order.label_print_count,
+      last_synced_at: order.last_synced_at,
+    };
+    onPrintWaybill?.(targetOrder);
   };
 
   const handleExecuteMassShip = async (method: 'pickup' | 'dropoff') => {
@@ -866,6 +910,21 @@ export default function ShipOrderModal({
     if (result.data.succeeded && result.data.succeeded.length > 0) {
       const succeededSet = new Set(result.data.succeeded.map((s) => s.order_sn));
       setPendingMassOrders((prev) => prev.filter((o) => !succeededSet.has(o.order_sn)));
+
+      // Kumpulkan pesanan yang berhasil diatur untuk langsung dicetak resinya
+      const succeededOrders: ShopeeOrderRecord[] = targetOrdersToShip
+        .filter((o) => succeededSet.has(o.order_sn))
+        .map((o) => {
+          const resItem = result.data.succeeded.find((s) => s.order_sn === o.order_sn);
+          return {
+            ...o,
+            order_status: resItem?.order_status || 'PROCESSED',
+            tracking_number: resItem?.tracking_number || o.tracking_number,
+            fulfillment_method: resItem?.fulfillment_method || method,
+          };
+        });
+
+      onPrintMassWaybill?.(succeededOrders);
     }
 
     onMassShipped?.(result.data);
@@ -1312,13 +1371,69 @@ export default function ShipOrderModal({
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-xl bg-[#0B132B] px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
-            >
-              Selesai & Tutup
-            </button>
+            <div className="flex items-center gap-2">
+              {massResult.succeeded.length > 0 && onPrintMassWaybill && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const succeededOrders: ShopeeOrderRecord[] = massResult.succeeded.map((item) => {
+                      const found = orders.find((o) => o.order_sn === item.order_sn);
+                      if (found) {
+                        return {
+                          ...found,
+                          order_status: item.order_status || 'PROCESSED',
+                          tracking_number: item.tracking_number || found.tracking_number,
+                          fulfillment_method: item.fulfillment_method || found.fulfillment_method,
+                        };
+                      }
+                      return {
+                        id: 0,
+                        shopee_account_id: 0,
+                        order_sn: item.order_sn,
+                        package_number: null,
+                        order_status: item.order_status || 'PROCESSED',
+                        logistics_status: null,
+                        shipping_carrier: null,
+                        tracking_number: item.tracking_number,
+                        fulfillment_method: item.fulfillment_method,
+                        buyer_user_id: null,
+                        buyer_username: null,
+                        buyer_note: null,
+                        recipient_data: null,
+                        items_json: null,
+                        package_list_json: null,
+                        payment_method: null,
+                        is_cod: false,
+                        total_amount: 0,
+                        estimated_shipping_fee: 0,
+                        cancel_by: null,
+                        cancel_reason: null,
+                        buyer_cancel_reason: null,
+                        order_created_at: null,
+                        ship_by_date: null,
+                        shipping_arranged_at: new Date().toISOString(),
+                        label_document_status: 'READY',
+                        label_printed_at: null,
+                        label_print_count: 0,
+                        last_synced_at: null,
+                      };
+                    });
+                    onPrintMassWaybill(succeededOrders);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#EE4D2D] bg-orange-50 px-3.5 py-2 text-xs font-bold text-[#EE4D2D] hover:bg-orange-100 transition-colors shadow-2xs"
+                >
+                  <PrinterIcon className="h-4 w-4" />
+                  <span>Cetak Dokumen Resi ({massResult.succeeded.length})</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-xl bg-[#0B132B] px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+              >
+                Selesai & Tutup
+              </button>
+            </div>
           </div>
         </div>
       ) : (
