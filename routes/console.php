@@ -24,5 +24,5 @@ Schedule::command('shopee:sync-products')
 Schedule::call(function () {
     app(\App\Services\CustomerServiceManager::class)->syncTiktokChat();
     app(\App\Services\CustomerServiceManager::class)->syncShopeeChat();
-})->everyMinute()->withoutOverlapping(2)->runInBackground();
+})->name('sync-customer-service-chat')->everyMinute()->withoutOverlapping(2);
 

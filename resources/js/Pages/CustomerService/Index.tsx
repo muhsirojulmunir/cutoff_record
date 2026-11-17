@@ -20,6 +20,7 @@ interface BuyerOrder {
   status_detail?: string;
   carrier: string;
   tracking_number: string | null;
+  image_url?: string | null;
 }
 
 interface Conversation {
@@ -148,6 +149,8 @@ export default function CustomerServiceIndex({
   const [isLiveActive, setIsLiveActive] = useState(true);
   const [countdown, setCountdown] = useState(6);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
+  const [previewImage, setPreviewImage] = useState<{ src: string; title: string } | null>(null);
 
   const { flash } = usePage<{ flash?: { success?: string; error?: string; warning?: string } }>().props;
 
@@ -816,16 +819,40 @@ export default function CustomerServiceIndex({
                       </span>
                       <span className="font-mono text-slate-900 font-semibold">{activeConv.order.order_sn}</span>
                     </div>
-                    <div className="mt-2 flex items-start gap-3">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400 border border-slate-200">
-                        👟
-                      </div>
+                    <div className="mt-2.5 flex items-start gap-3">
+                      {activeConv.order.image_url && !failedImages[`chat-${activeConv.order.order_sn}`] ? (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewImage({ src: activeConv.order.image_url!, title: activeConv.order.product_name })}
+                          title="Klik untuk memperbesar gambar produk"
+                          className="group relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-slate-200/90 bg-slate-50 shadow-2xs transition-all hover:scale-105 hover:shadow-md cursor-pointer"
+                        >
+                          <img
+                            src={activeConv.order.image_url}
+                            alt={activeConv.order.product_name}
+                            loading="lazy"
+                            onError={() => setFailedImages((prev) => ({ ...prev, [`chat-${activeConv.order.order_sn}`]: true }))}
+                            className="h-full w-full object-cover transition-transform group-hover:scale-110"
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity group-hover:opacity-100">
+                            <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
+                            </svg>
+                          </div>
+                        </button>
+                      ) : (
+                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 text-slate-400 shadow-2xs">
+                          <svg className="h-6 w-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                      )}
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-semibold text-slate-900 leading-snug">
+                        <p className="truncate text-xs font-semibold text-slate-900 leading-snug" title={activeConv.order.product_name}>
                           {activeConv.order.product_name}
                         </p>
                         <p className="text-[11px] text-slate-500 mt-0.5">
-                          Variasi: <span className="text-slate-700 font-medium">{activeConv.order.variation}</span>
+                          Variasi: <span className="text-slate-700 font-medium">{activeConv.order.variation || '-'}</span>
                         </p>
                         <div className="mt-1 flex items-center justify-between">
                           <span className="text-xs font-bold text-[#EE4D2D]">
@@ -1062,17 +1089,46 @@ export default function CustomerServiceIndex({
                   </div>
                 </div>
 
-                {/* Product Detail */}
-                <div className="space-y-1 text-xs">
-                  <p className="font-semibold text-slate-900 leading-snug">
-                    {activeConv.order.product_name}
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    Variasi: <span className="font-medium text-slate-800">{activeConv.order.variation}</span>
-                  </p>
-                  <p className="text-[11px] font-mono text-slate-400">
-                    SKU: {activeConv.order.sku}
-                  </p>
+                {/* Product Detail with Photo Thumbnail */}
+                <div className="flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
+                  {activeConv.order.image_url && !failedImages[`right-${activeConv.order.order_sn}`] ? (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewImage({ src: activeConv.order.image_url!, title: activeConv.order.product_name })}
+                      title="Klik untuk memperbesar gambar produk"
+                      className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xs transition-all hover:scale-105 hover:shadow-md cursor-pointer"
+                    >
+                      <img
+                        src={activeConv.order.image_url}
+                        alt={activeConv.order.product_name}
+                        loading="lazy"
+                        onError={() => setFailedImages((prev) => ({ ...prev, [`right-${activeConv.order.order_sn}`]: true }))}
+                        className="h-full w-full object-cover transition-transform group-hover:scale-110"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/25 opacity-0 transition-opacity group-hover:opacity-100">
+                        <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
+                        </svg>
+                      </div>
+                    </button>
+                  ) : (
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 shadow-2xs">
+                      <svg className="h-7 w-7 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1 space-y-1 text-xs">
+                    <p className="font-semibold text-slate-900 leading-snug line-clamp-2" title={activeConv.order.product_name}>
+                      {activeConv.order.product_name}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      Variasi: <span className="font-medium text-slate-800">{activeConv.order.variation || '-'}</span>
+                    </p>
+                    <p className="text-[11px] font-mono text-slate-400 truncate" title={activeConv.order.sku}>
+                      SKU: {activeConv.order.sku || '-'}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Price & Shipping */}
@@ -1321,6 +1377,52 @@ export default function CustomerServiceIndex({
               >
                 Tutup
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Preview Gambar Produk Full-Size */}
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div
+            className="relative max-w-lg w-full overflow-hidden rounded-2xl bg-white p-4 shadow-2xl border border-slate-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h4 className="text-xs font-bold text-slate-900 truncate max-w-[85%]">
+                {previewImage.title}
+              </h4>
+              <button
+                type="button"
+                onClick={() => setPreviewImage(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors cursor-pointer"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="mt-3 flex items-center justify-center overflow-hidden rounded-xl bg-slate-50 border border-slate-200/80 p-2">
+              <img
+                src={previewImage.src}
+                alt={previewImage.title}
+                className="max-h-[70vh] w-full object-contain rounded-lg"
+              />
+            </div>
+            <div className="mt-3 flex items-center justify-between text-[11px] text-slate-500">
+              <span>Foto Produk Resmi Marketplace</span>
+              <a
+                href={previewImage.src}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-violet-600 hover:text-violet-700 underline"
+              >
+                Buka Gambar Asli ↗
+              </a>
             </div>
           </div>
         </div>

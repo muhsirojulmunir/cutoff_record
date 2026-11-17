@@ -481,7 +481,7 @@ class TiktokSyncService
                             'model_quantity_purchased' => max(1, (int) ($li['quantity'] ?? 1)),
                             'model_original_price'     => (float) ($li['original_price'] ?? 0),
                             'model_discounted_price'   => (float) ($li['sale_price'] ?? $li['original_price'] ?? 0),
-                            'image_url'                => $li['sku_image'] ?? $li['product_image'] ?? null,
+                            'image_url'                => $li['sku_image'] ?? $li['product_image'] ?? $li['sku_image_url'] ?? $li['image_url'] ?? $li['main_image_url'] ?? null,
                         ];
                     }
 
@@ -658,6 +658,127 @@ class TiktokSyncService
             'updated'       => $updatedCount,
             'message'       => "Sinkronisasi TikTok berhasil! {$createdCount} pesanan baru ditambahkan, {$updatedCount} diperbarui.",
         ];
+    }
+
+    /**
+     * Ambil detail satu pesanan spesifik langsung dari TikTok Shop API dan simpan ke tabel tiktok_orders.
+     */
+    public function fetchSingleOrder(TiktokAccount $account, string $orderId): ?TiktokOrder
+    {
+        $orderId = trim($orderId);
+        if ($orderId === '' || $orderId === '-') {
+            return null;
+        }
+
+        try {
+            $this->ensureValidAccessToken($account);
+            if (empty($account->shop_cipher)) {
+                $this->fetchAuthorizedShops($account);
+            }
+
+            $shopCipher = $account->shop_cipher;
+            if (empty($shopCipher)) {
+                return null;
+            }
+
+            $path = '/order/202309/orders';
+            $timestamp = time();
+            $queryParams = [
+                'app_key'     => $account->app_key,
+                'timestamp'   => (string) $timestamp,
+                'shop_cipher' => $shopCipher,
+                'ids'         => $orderId,
+            ];
+
+            $sign = $this->generateSignature($path, $queryParams, $account->app_secret, '');
+            $queryParams['sign'] = $sign;
+
+            $url = $this->openHost . $path . '?' . http_build_query($queryParams);
+
+            $response = Http::timeout(15)
+                ->withHeaders([
+                    'x-tts-access-token' => $account->access_token,
+                    'Content-Type'       => 'application/json',
+                ])
+                ->get($url);
+
+            if (! $response->successful()) {
+                return null;
+            }
+
+            $json = $response->json();
+            $orders = $json['data']['orders'] ?? [];
+            if (empty($orders)) {
+                return null;
+            }
+
+            $order = $orders[0];
+            $lineItems = $order['line_items'] ?? [];
+            $orderItemsJson = [];
+            foreach ($lineItems as $li) {
+                $orderItemsJson[] = [
+                    'item_id'                  => $li['product_id'] ?? null,
+                    'item_name'                => $li['product_name'] ?? 'Produk TikTok Shop',
+                    'model_id'                 => $li['sku_id'] ?? null,
+                    'model_name'               => $li['sku_name'] ?? null,
+                    'model_sku'                => $li['seller_sku'] ?? $li['sku_id'] ?? null,
+                    'model_quantity_purchased' => max(1, (int) ($li['quantity'] ?? 1)),
+                    'model_original_price'     => (float) ($li['original_price'] ?? 0),
+                    'model_discounted_price'   => (float) ($li['sale_price'] ?? $li['original_price'] ?? 0),
+                    'image_url'                => $li['sku_image'] ?? $li['product_image'] ?? $li['sku_image_url'] ?? $li['image_url'] ?? $li['main_image_url'] ?? null,
+                ];
+            }
+
+            $payment = $order['payment'] ?? [];
+            $productPrice = (float) ($payment['original_total_product_price'] ?? $payment['total_amount'] ?? 0);
+            $recip = $order['recipient_address'] ?? [];
+            $statusRaw = (string) ($order['status'] ?? '');
+            $createTime = $order['create_time'] ?? null;
+            $orderDate = $createTime
+                ? Carbon::createFromTimestamp((int) $createTime, 'Asia/Jakarta')->format('Y-m-d H:i:s')
+                : now('Asia/Jakarta')->toDateTimeString();
+
+            $paymentMethod = $order['payment_method_name'] ?? $payment['payment_method_name'] ?? null;
+            if (! empty($order['is_cod']) || stripos((string) $paymentMethod, 'cod') !== false) {
+                $paymentMethod = 'COD (Bayar di Tempat)';
+            }
+
+            return TiktokOrder::updateOrCreate(
+                [
+                    'tiktok_account_id' => $account->id,
+                    'order_sn'          => (string) ($order['id'] ?? $orderId),
+                ],
+                [
+                    'package_number'         => $order['package_list'][0]['id'] ?? 'PKG-' . $orderId,
+                    'order_status'           => strtoupper($statusRaw) ?: 'READY_TO_SHIP',
+                    'logistics_status'       => $order['fulfillment_type'] ?? null,
+                    'shipping_carrier'       => $order['shipping_provider'] ?? $order['delivery_option_name'] ?? 'J&T Express',
+                    'tracking_number'        => $order['tracking_number'] ?? null,
+                    'fulfillment_method'     => 'pickup',
+                    'buyer_user_id'          => $order['buyer_uid'] ?? null,
+                    'buyer_username'         => $order['buyer_email'] ?? $recip['name'] ?? $order['buyer_uid'] ?? null,
+                    'buyer_note'             => $order['buyer_message'] ?? null,
+                    'recipient_data'         => [
+                        'name'         => $recip['name'] ?? null,
+                        'phone'        => $recip['phone'] ?? null,
+                        'full_address' => $recip['full_address'] ?? $recip['address_detail'] ?? null,
+                        'city'         => $recip['city'] ?? null,
+                        'province'     => $recip['region'] ?? $recip['state'] ?? null,
+                    ],
+                    'items_json'             => $orderItemsJson,
+                    'package_list_json'      => $order['package_list'] ?? [],
+                    'payment_method'         => $paymentMethod,
+                    'is_cod'                 => ! empty($order['is_cod']),
+                    'total_amount'           => $productPrice,
+                    'order_created_at'       => $orderDate,
+                    'raw_payload'            => json_encode($order),
+                    'last_synced_at'         => now(),
+                ]
+            );
+        } catch (\Throwable $e) {
+            Log::warning("TiktokSyncService fetchSingleOrder error ({$orderId}): " . $e->getMessage());
+            return null;
+        }
     }
 
     /**

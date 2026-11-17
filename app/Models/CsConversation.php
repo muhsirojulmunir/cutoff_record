@@ -74,6 +74,16 @@ class CsConversation extends Model
                 $order = ShopeeOrder::where('order_sn', $this->order_sn)->first();
                 if ($order) {
                     $item = $order->items_json[0] ?? [];
+                    $imageUrl = $item['image_url'] ?? $item['item_image'] ?? null;
+                    if (! $imageUrl && ! empty($item['item_id'])) {
+                        $shopeeProd = ShopeeProduct::where('item_id', $item['item_id'])->first();
+                        $imageUrl = $shopeeProd?->raw_data['image']['image_url_list'][0] ?? null;
+                    }
+                    if (! $imageUrl && ! empty($item['model_sku'])) {
+                        $localProd = Product::where('sku', $item['model_sku'])->first();
+                        $imageUrl = $localProd?->photo_url;
+                    }
+
                     return [
                         'order_sn'        => $order->order_sn,
                         'product_name'    => $item['item_name'] ?? 'Produk Shopee',
@@ -84,12 +94,49 @@ class CsConversation extends Model
                         'status_detail'   => $order->logistics_status_label ?? 'Pesanan Shopee',
                         'carrier'         => $order->shipping_carrier ?? 'SPX Standard',
                         'tracking_number' => $order->tracking_number,
+                        'image_url'       => $imageUrl,
                     ];
                 }
             } elseif ($this->channel === 'tiktok') {
                 $order = TiktokOrder::where('order_sn', $this->order_sn)->first();
+
+                // Jika belum ada di tabel lokal, coba ambil langsung dari TikTok API
+                if (! $order && ! empty($this->order_sn) && $this->order_sn !== '-') {
+                    try {
+                        $account = TiktokAccount::first();
+                        if ($account && ! empty($account->access_token)) {
+                            $order = app(\App\Services\TiktokSyncService::class)->fetchSingleOrder($account, $this->order_sn);
+                        }
+                    } catch (\Throwable $e) {
+                        \Illuminate\Support\Facades\Log::warning('CsConversation resolveOrderContext fetchSingleOrder error: ' . $e->getMessage());
+                    }
+                }
+
                 if ($order) {
                     $item = $order->items_json[0] ?? [];
+                    $imageUrl = $item['image_url'] ?? $item['sku_image'] ?? $item['product_image'] ?? $item['sku_image_url'] ?? null;
+
+                    if (! $imageUrl && ! empty($order->raw_payload)) {
+                        $raw = is_array($order->raw_payload) ? $order->raw_payload : json_decode((string) $order->raw_payload, true);
+                        if (is_array($raw)) {
+                            $rawLi = $raw['line_items'][0] ?? [];
+                            $imageUrl = $rawLi['sku_image'] ?? $rawLi['product_image'] ?? $rawLi['sku_image_url'] ?? null;
+                        }
+                    }
+
+                    if (! $imageUrl && ! empty($item['item_id'])) {
+                        $ttProd = TiktokProduct::where('item_id', $item['item_id'])->first();
+                        $imageUrl = $ttProd?->raw_data['main_images'][0]['url_list'][0]
+                            ?? $ttProd?->raw_data['main_images'][0]['urls'][0]
+                            ?? $ttProd?->raw_data['sku_image']
+                            ?? null;
+                    }
+
+                    if (! $imageUrl && ! empty($item['model_sku'])) {
+                        $localProd = Product::where('sku', $item['model_sku'])->first();
+                        $imageUrl = $localProd?->photo_url;
+                    }
+
                     return [
                         'order_sn'        => $order->order_sn,
                         'product_name'    => $item['item_name'] ?? 'Produk TikTok Shop',
@@ -100,6 +147,7 @@ class CsConversation extends Model
                         'status_detail'   => $order->logistics_status_label ?? 'Pesanan TikTok Shop',
                         'carrier'         => $order->shipping_carrier ?? 'J&T Express',
                         'tracking_number' => $order->tracking_number,
+                        'image_url'       => $imageUrl,
                     ];
                 }
             }
@@ -107,6 +155,12 @@ class CsConversation extends Model
             // Fallback ke CutOffOrder
             $cutoff = CutOffOrder::where('order_number', $this->order_sn)->first();
             if ($cutoff) {
+                $imageUrl = null;
+                if (! empty($cutoff->sku_utama)) {
+                    $localProd = Product::where('sku', $cutoff->sku_utama)->first();
+                    $imageUrl = $localProd?->photo_url;
+                }
+
                 return [
                     'order_sn'        => $cutoff->order_number,
                     'product_name'    => $cutoff->product_name ?? 'Produk Toko',
@@ -117,6 +171,7 @@ class CsConversation extends Model
                     'status_detail'   => 'Pesanan Cut Off (' . $cutoff->channel . ')',
                     'carrier'         => $cutoff->shipping_courier ?? 'Reguler',
                     'tracking_number' => $cutoff->tracking_number,
+                    'image_url'       => $imageUrl,
                 ];
             }
 
@@ -131,6 +186,7 @@ class CsConversation extends Model
                 'status_detail'   => 'Pembeli Menanyakan Pesanan Ini',
                 'carrier'         => $this->channel === 'tiktok' ? 'TikTok Shipping' : 'Shopee Express',
                 'tracking_number' => null,
+                'image_url'       => null,
             ];
         }
 
@@ -165,6 +221,7 @@ class CsConversation extends Model
             'status_detail'   => 'Calon Pembeli / Tanya Produk',
             'carrier'         => '-',
             'tracking_number' => null,
+            'image_url'       => null,
         ];
     }
 }
