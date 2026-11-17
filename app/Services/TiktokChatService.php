@@ -250,7 +250,8 @@ class TiktokChatService
                     'x-tts-access-token' => $account->access_token,
                     'Content-Type'       => 'application/json',
                 ])
-                ->post($url);
+                ->withBody('{}', 'application/json')
+                ->send('POST', $url);
 
             return [
                 'success' => $response->successful(),

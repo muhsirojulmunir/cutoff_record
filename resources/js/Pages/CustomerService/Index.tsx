@@ -36,6 +36,7 @@ interface Conversation {
   last_message: string;
   last_message_time: string;
   status: 'unread' | 'read' | 'resolved';
+  manual_unread?: boolean;
   group?: 'unread' | 'manual' | 'auto';
   order: BuyerOrder;
   notes: string;
@@ -234,6 +235,27 @@ export default function CustomerServiceIndex({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeConv?.messages]);
 
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLongPressRef = useRef(false);
+
+  // Automatically clear unread badge for the currently open conversation
+  useEffect(() => {
+    if (activeConv && activeConv.unread_count > 0 && !activeConv.manual_unread) {
+      setConversations((prev) =>
+        prev.map((c) => (c.id === activeConv.id ? { ...c, unread_count: 0, status: 'read' } : c))
+      );
+      const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content;
+      fetch(`/customer-service/${activeConv.id}/read`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(csrfToken ? { 'X-CSRF-TOKEN': csrfToken } : {}),
+        },
+      }).catch(() => {});
+    }
+  }, [activeConv?.id]);
+
   // Real-time polling live refresh every 6 seconds
   useEffect(() => {
     if (!isLiveActive) return;
@@ -247,7 +269,13 @@ export default function CustomerServiceIndex({
             .then((res) => (res.ok ? res.json() : null))
             .then((data) => {
               if (data?.conversations && Array.isArray(data.conversations)) {
-                setConversations(data.conversations);
+                setConversations(
+                  data.conversations.map((c: Conversation) =>
+                    c.id === selectedConvId && !c.manual_unread
+                      ? { ...c, unread_count: 0, status: 'read' }
+                      : c
+                  )
+                );
               }
             })
             .catch(() => {});
@@ -305,9 +333,9 @@ export default function CustomerServiceIndex({
   // Select conversation and mark as read
   const handleSelectConversation = (conv: Conversation) => {
     setSelectedConvId(conv.id);
-    if (conv.unread_count > 0) {
+    if (conv.unread_count > 0 || conv.status === 'unread') {
       setConversations((prev) =>
-        prev.map((c) => (c.id === conv.id ? { ...c, unread_count: 0, status: 'read' } : c))
+        prev.map((c) => (c.id === conv.id ? { ...c, unread_count: 0, status: 'read', manual_unread: false } : c))
       );
       const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content;
       fetch(`/customer-service/${conv.id}/read`, {
@@ -318,6 +346,59 @@ export default function CustomerServiceIndex({
           ...(csrfToken ? { 'X-CSRF-TOKEN': csrfToken } : {}),
         },
       }).catch(() => {});
+    }
+  };
+
+  // Toggle Unread manual (Tekan tahan / klik tombol tandai)
+  const handleToggleUnread = async (conv: Conversation, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    const willBeUnread = conv.status === 'read' || conv.unread_count === 0;
+    const newStatus: 'unread' | 'read' = willBeUnread ? 'unread' : 'read';
+    const newCount = willBeUnread ? 1 : 0;
+
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === conv.id
+          ? { ...c, unread_count: newCount, status: newStatus, manual_unread: willBeUnread }
+          : c
+      )
+    );
+
+    try {
+      const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content;
+      await fetch(`/customer-service/${conv.id}/toggle-unread`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(csrfToken ? { 'X-CSRF-TOKEN': csrfToken } : {}),
+        },
+      });
+    } catch {
+      // fallback
+    }
+  };
+
+  const handleStartPress = (conv: Conversation) => {
+    isLongPressRef.current = false;
+    handleCancelPress();
+    longPressTimerRef.current = setTimeout(() => {
+      isLongPressRef.current = true;
+      handleToggleUnread(conv);
+      if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+        try {
+          navigator.vibrate(40);
+        } catch {}
+      }
+    }, 550);
+  };
+
+  const handleCancelPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
     }
   };
 
@@ -687,8 +768,23 @@ export default function CustomerServiceIndex({
                   return (
                     <div
                       key={conv.id}
-                      onClick={() => handleSelectConversation(conv)}
-                      className={`group flex cursor-pointer items-start gap-3 p-3 transition-colors ${
+                      onMouseDown={() => handleStartPress(conv)}
+                      onMouseUp={handleCancelPress}
+                      onMouseLeave={handleCancelPress}
+                      onTouchStart={() => handleStartPress(conv)}
+                      onTouchEnd={handleCancelPress}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        handleToggleUnread(conv);
+                      }}
+                      onClick={() => {
+                        if (isLongPressRef.current) {
+                          isLongPressRef.current = false;
+                          return;
+                        }
+                        handleSelectConversation(conv);
+                      }}
+                      className={`group flex cursor-pointer select-none items-start gap-3 p-3 transition-colors ${
                         isSelected
                           ? 'border-l-4 border-slate-900 bg-slate-100/90 font-medium'
                           : 'hover:bg-slate-50'
@@ -733,19 +829,44 @@ export default function CustomerServiceIndex({
                         <p className="text-[11px] text-slate-500">@{formatBuyerDisplay(conv).username}</p>
                         <p
                           className={`mt-1 truncate text-xs ${
-                            conv.unread_count > 0 ? 'font-semibold text-slate-900' : 'text-slate-500'
+                            conv.unread_count > 0 && conv.status === 'unread' ? 'font-semibold text-slate-900' : 'text-slate-500'
                           }`}
                         >
                           {formatMessageText(conv.last_message)}
                         </p>
                       </div>
 
-                      {/* Unread Pill */}
-                      {conv.unread_count > 0 && (
-                        <span className="shrink-0 rounded-full bg-[#EE4D2D] px-1.5 py-0.5 text-[10px] font-bold text-white tabular-nums shadow-xs">
-                          {conv.unread_count}
-                        </span>
-                      )}
+                      {/* Action & Unread Pill */}
+                      <div className="flex items-center gap-1 shrink-0 self-center">
+                        {/* Quick hover toggle button */}
+                        <button
+                          type="button"
+                          onClick={(e) => handleToggleUnread(conv, e)}
+                          title={conv.unread_count > 0 || conv.status === 'unread' ? 'Tandai sudah dibaca' : 'Tandai belum dibaca (atau tekan tahan)'}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-slate-800 hover:bg-slate-200/70 rounded-md cursor-pointer"
+                        >
+                          {conv.unread_count > 0 || conv.status === 'unread' ? (
+                            <svg className="h-3.5 w-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          ) : (
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                            </svg>
+                          )}
+                        </button>
+
+                        {/* Unread Pill: HANYA tampil jika chat belum dibaca dan BUKAN chat yang sedang aktif dibuka */}
+                        {conv.unread_count > 0 && conv.status === 'unread' && conv.id !== activeConv?.id && (
+                          <span
+                            onClick={(e) => handleToggleUnread(conv, e)}
+                            title="Klik untuk menandai sudah dibaca"
+                            className="rounded-full bg-[#EE4D2D] px-1.5 py-0.5 text-[10px] font-bold text-white tabular-nums shadow-xs hover:bg-rose-700 transition-colors cursor-pointer"
+                          >
+                            {conv.unread_count}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   );
                 })
@@ -799,7 +920,35 @@ export default function CustomerServiceIndex({
                     </div>
                   </div>
 
-
+                  {/* Header Actions: Toggle Read / Unread Status */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleUnread(activeConv)}
+                      title={activeConv.status === 'unread' || activeConv.unread_count > 0 ? 'Tandai percakapan ini sudah dibaca' : 'Tandai percakapan ini belum dibaca (supaya ada notif pengingat)'}
+                      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+                        activeConv.status === 'unread' || activeConv.unread_count > 0
+                          ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 shadow-2xs'
+                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 shadow-2xs'
+                      }`}
+                    >
+                      {activeConv.status === 'unread' || activeConv.unread_count > 0 ? (
+                        <>
+                          <svg className="h-3.5 w-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          <span>Tandai Sudah Dibaca</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                          <span>Tandai Belum Dibaca</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </header>
 
                 {/* Chat Messages Thread */}

@@ -359,6 +359,11 @@ class CustomerServiceManager
                 ];
             }
 
+            $isUnread = ($conv->status === 'unread' && $conv->last_message_sender !== 'seller');
+            $effectiveUnreadCount = $isUnread ? max(1, (int) $conv->unread_count) : 0;
+            $effectiveStatus = $isUnread ? 'unread' : 'read';
+            $isManualUnread = (bool) ($conv->extra_data['manual_unread'] ?? false);
+
             return [
                 'id'                => (string) $conv->id,
                 'external_conv_id'  => $conv->external_conv_id,
@@ -367,10 +372,11 @@ class CustomerServiceManager
                 'shop_name'         => $conv->shop_name ?: ($conv->channel === 'shopee' ? 'Record Shoes Official Shop' : 'Record Shoes Official TikTok'),
                 'buyer_username'    => $buyerUsername,
                 'buyer_name'        => $buyerName ?: $buyerUsername,
-                'unread_count'      => (int) $conv->unread_count,
+                'unread_count'      => $effectiveUnreadCount,
                 'last_message'      => $lastMessage ?: '',
                 'last_message_time' => $conv->last_message_time ? $conv->last_message_time->diffForHumans() : '-',
-                'status'            => $conv->status,
+                'status'            => $effectiveStatus,
+                'manual_unread'     => $isManualUnread,
                 'group'             => $conv->group,
                 'is_demo'           => str_starts_with($conv->external_conv_id, 'conv-'),
                 'order'             => $conv->resolveOrderContext(),
@@ -422,6 +428,21 @@ class CustomerServiceManager
                 $lastMsgTs = ! empty($apiConv['last_message_timestamp']) 
                     ? Carbon::createFromTimestamp($apiConv['last_message_timestamp'], 'Asia/Jakarta') 
                     : now('Asia/Jakarta');
+                $lastMsgSender = ($apiConv['latest_message_from_id'] ?? 0) == $toId ? 'buyer' : 'seller';
+
+                $existing = CsConversation::where('external_conv_id', 'sh_' . $convId)->first();
+
+                // Logika unread: jika seller mengirim pesan terakhir, chat otomatis read (sudah dibalas)
+                $finalStatus = 'read';
+                $finalUnread = 0;
+                if ($lastMsgSender === 'buyer') {
+                    $isNewBuyerMessage = ! $existing || $existing->last_message !== $lastMsgContent;
+                    $isManualUnread = (bool) ($existing?->extra_data['manual_unread'] ?? false);
+                    if ($isNewBuyerMessage || $isManualUnread || ($existing?->status === 'unread')) {
+                        $finalStatus = 'unread';
+                        $finalUnread = max(1, $unread);
+                    }
+                }
 
                 $conv = CsConversation::updateOrCreate(
                     [
@@ -434,11 +455,11 @@ class CustomerServiceManager
                         'buyer_id'            => (string) $toId,
                         'buyer_username'      => $toName,
                         'buyer_name'          => $toName,
-                        'unread_count'        => $unread,
+                        'unread_count'        => $finalUnread,
                         'last_message'        => $lastMsgContent,
                         'last_message_time'   => $lastMsgTs,
-                        'last_message_sender' => ($apiConv['latest_message_from_id'] ?? 0) == $toId ? 'buyer' : 'seller',
-                        'status'              => $unread > 0 ? 'unread' : 'read',
+                        'last_message_sender' => $lastMsgSender,
+                        'status'              => $finalStatus,
                         'api_synced_at'       => now(),
                     ]
                 );
@@ -645,6 +666,20 @@ class CustomerServiceManager
                 $lastSenderRole = strtoupper((string) ($lastSenderObj['role'] ?? $lastMsg['sender_role'] ?? 'BUYER'));
                 $lastMsgSender = in_array($lastSenderRole, ['BUYER', 'USER'], true) ? 'buyer' : 'seller';
 
+                $existing = CsConversation::where('external_conv_id', 'tt_' . $convId)->first();
+
+                // Logika unread: jika seller yang mengirim pesan terakhir, chat otomatis berstatus read (sudah dibalas)
+                $finalStatus = 'read';
+                $finalUnread = 0;
+                if ($lastMsgSender === 'buyer') {
+                    $isNewBuyerMessage = ! $existing || $existing->last_message !== $lastMsgText;
+                    $isManualUnread = (bool) ($existing?->extra_data['manual_unread'] ?? false);
+                    if ($isNewBuyerMessage || $isManualUnread || ($existing?->status === 'unread')) {
+                        $finalStatus = 'unread';
+                        $finalUnread = max(1, $unread);
+                    }
+                }
+
                 $conv = CsConversation::updateOrCreate(
                     [
                         'external_conv_id' => 'tt_' . $convId,
@@ -657,11 +692,11 @@ class CustomerServiceManager
                         'buyer_username'      => $buyerUsername,
                         'buyer_name'          => $buyerName,
                         'buyer_avatar'        => $buyerAvatar ?: null,
-                        'unread_count'        => $unread,
+                        'unread_count'        => $finalUnread,
                         'last_message'        => $lastMsgText,
                         'last_message_time'   => $lastMsgTs,
                         'last_message_sender' => $lastMsgSender,
-                        'status'              => $unread > 0 ? 'unread' : 'read',
+                        'status'              => $finalStatus,
                         'order_sn'            => $detectedOrderSn ?: null,
                         'api_synced_at'       => now(),
                     ]
@@ -807,7 +842,14 @@ class CustomerServiceManager
         $conv = CsConversation::find($conversationId);
         if (! $conv) return false;
 
-        $conv->update(['unread_count' => 0, 'status' => 'read']);
+        $extra = is_array($conv->extra_data) ? $conv->extra_data : [];
+        $extra['manual_unread'] = false;
+
+        $conv->update([
+            'unread_count' => 0,
+            'status'       => 'read',
+            'extra_data'   => $extra,
+        ]);
 
         if ($conv->channel === 'shopee') {
             $shopeeAccount = ShopeeAccount::where('status', 'active')->first() ?: ShopeeAccount::first();
@@ -828,6 +870,55 @@ class CustomerServiceManager
         }
 
         return true;
+    }
+
+    /**
+     * Beralih status baca / belum dibaca (Toggle Unread) secara manual oleh CS (tekan tahan / tombol tandai).
+     */
+    public function toggleUnread(int|string $conversationId): string
+    {
+        $this->ensureSchema();
+        $conv = CsConversation::find($conversationId);
+        if (! $conv) return 'read';
+
+        $extra = is_array($conv->extra_data) ? $conv->extra_data : [];
+
+        if ($conv->status === 'unread' || (int) $conv->unread_count > 0) {
+            // Ubah menjadi sudah dibaca
+            $extra['manual_unread'] = false;
+            $conv->update([
+                'unread_count' => 0,
+                'status'       => 'read',
+                'extra_data'   => $extra,
+            ]);
+
+            // Kirim konfirmasi baca ke marketplace API
+            if ($conv->channel === 'shopee') {
+                $shopeeAccount = ShopeeAccount::where('status', 'active')->first() ?: ShopeeAccount::first();
+                if ($shopeeAccount && ! empty($shopeeAccount->access_token)) {
+                    $cleanConvId = str_starts_with($conv->external_conv_id, 'sh_') ? substr($conv->external_conv_id, 3) : $conv->external_conv_id;
+                    $this->shopeeChatService->readConversation($shopeeAccount, $cleanConvId);
+                }
+            } elseif ($conv->channel === 'tiktok') {
+                $tiktokAccount = TiktokAccount::first();
+                if ($tiktokAccount && ! empty($tiktokAccount->access_token)) {
+                    $cleanConvId = str_starts_with($conv->external_conv_id, 'tt_') ? substr($conv->external_conv_id, 3) : $conv->external_conv_id;
+                    $this->tiktokChatService->readConversation($tiktokAccount, $cleanConvId);
+                }
+            }
+
+            return 'read';
+        } else {
+            // Ubah menjadi belum dibaca
+            $extra['manual_unread'] = true;
+            $conv->update([
+                'unread_count' => 1,
+                'status'       => 'unread',
+                'extra_data'   => $extra,
+            ]);
+
+            return 'unread';
+        }
     }
 
     /**

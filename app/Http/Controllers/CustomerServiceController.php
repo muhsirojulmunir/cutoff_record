@@ -251,6 +251,18 @@ class CustomerServiceController extends Controller
     }
 
     /**
+     * Beralih status baca / belum dibaca (Toggle Unread).
+     */
+    public function toggleUnread(Request $request, int|string $id): JsonResponse
+    {
+        $status = $this->csManager->toggleUnread($id);
+        return response()->json([
+            'success' => true,
+            'status'  => $status,
+        ]);
+    }
+
+    /**
      * Simpan catatan internal CS untuk percakapan ini.
      */
     public function saveNotes(Request $request, int|string $id): JsonResponse

@@ -110,6 +110,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/customer-service/clear-demo', [\App\Http\Controllers\CustomerServiceController::class, 'clearDemo'])->name('customer-service.clear-demo');
     Route::post('/customer-service/send-message', [\App\Http\Controllers\CustomerServiceController::class, 'sendMessage'])->name('customer-service.send-message');
     Route::post('/customer-service/{id}/read', [\App\Http\Controllers\CustomerServiceController::class, 'markAsRead'])->name('customer-service.read');
+    Route::post('/customer-service/{id}/toggle-unread', [\App\Http\Controllers\CustomerServiceController::class, 'toggleUnread'])->name('customer-service.toggle-unread');
     Route::post('/customer-service/{id}/notes', [\App\Http\Controllers\CustomerServiceController::class, 'saveNotes'])->name('customer-service.notes');
 
     // Pesanan Saya Shopee (Eksklusif Super Admin - Fulfillment & Cetak Resi A4)
