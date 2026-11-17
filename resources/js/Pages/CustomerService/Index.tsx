@@ -71,8 +71,72 @@ interface CustomerServiceProps {
   };
 }
 
+export const isIgnoredMessage = (raw?: string | null): boolean => {
+  if (!raw) return true;
+  let text = raw.trim();
+  if (
+    !text ||
+    text === '""' ||
+    text === '{}' ||
+    text === '{"content":""}' ||
+    text === '{"text":""}' ||
+    text === 'null'
+  ) {
+    return true;
+  }
+
+  // Unpack nested JSON jika ada pembungkus berulang dari TikTok API
+  for (let i = 0; i < 3; i++) {
+    if (text.startsWith('{') && text.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed.order_id || parsed.product_id || parsed.url) {
+          return false;
+        }
+        if (typeof parsed.content === 'string') {
+          text = parsed.content.trim();
+          continue;
+        }
+        if (typeof parsed.text === 'string') {
+          text = parsed.text.trim();
+          continue;
+        }
+        if (Object.keys(parsed).length === 0) {
+          return true;
+        }
+        break;
+      } catch {
+        break;
+      }
+    } else {
+      break;
+    }
+  }
+
+  if (
+    !text ||
+    text === '""' ||
+    text === '{}' ||
+    text === '{"content":""}' ||
+    text === 'null'
+  ) {
+    return true;
+  }
+
+  const lower = text.toLowerCase();
+  const systemPhrases = [
+    'has been assigned to',
+    'the chat has been assigned',
+    'the customer has requested manual customer service',
+    'assigned to agent',
+    'customer service queue',
+  ];
+
+  return systemPhrases.some((phrase) => lower.includes(phrase));
+};
+
 export const formatMessageText = (raw?: string | null): string => {
-  if (!raw) return '';
+  if (!raw || isIgnoredMessage(raw)) return '';
   let text = raw.trim();
 
   // Buka nested JSON jika ada pembungkus berulang dari TikTok API
@@ -110,7 +174,7 @@ export const formatMessageText = (raw?: string | null): string => {
     }
   }
 
-  return text;
+  return isIgnoredMessage(text) ? '' : text;
 };
 
 export const formatBuyerDisplay = (conv: Conversation): { name: string; username: string } => {
@@ -222,6 +286,12 @@ export default function CustomerServiceIndex({
     return conversations.find((c) => c.id === selectedConvId) || conversations[0] || null;
   }, [conversations, selectedConvId]);
 
+  // Filter out unwanted system routing notices and empty technical payloads
+  const visibleMessages = useMemo(() => {
+    if (!activeConv?.messages) return [];
+    return activeConv.messages.filter((msg) => !isIgnoredMessage(msg.text));
+  }, [activeConv?.messages]);
+
   // Sync internal note when active conversation changes
   useEffect(() => {
     if (activeConv) {
@@ -233,7 +303,7 @@ export default function CustomerServiceIndex({
   // Auto scroll to bottom of chat
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [activeConv?.messages]);
+  }, [visibleMessages]);
 
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPressRef = useRef(false);
@@ -1016,14 +1086,14 @@ export default function CustomerServiceIndex({
                   </div>
 
                   {/* Message Bubbles */}
-                  {activeConv.messages.length === 0 ? (
+                  {visibleMessages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 text-center text-slate-400">
                       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-xl mb-2">
                         💬
                       </div>
                       <p className="text-xs font-semibold text-slate-600">Belum ada riwayat pesan tersimpan</p>
                       <p className="text-[11px] text-slate-400 mt-1 max-w-xs">
-                        {activeConv.last_message ? (
+                        {activeConv.last_message && !isIgnoredMessage(activeConv.last_message) ? (
                           <>Pesan terakhir: <span className="font-medium text-slate-700">{formatMessageText(activeConv.last_message)}</span></>
                         ) : (
                           'Klik tombol "Sinkronkan Chat" di pojok kanan atas untuk mengambil riwayat pesan.'
@@ -1031,7 +1101,7 @@ export default function CustomerServiceIndex({
                       </p>
                     </div>
                   ) : (
-                    activeConv.messages.map((msg) => {
+                    visibleMessages.map((msg) => {
                       const isBuyer = msg.sender === 'buyer';
 
                       return (

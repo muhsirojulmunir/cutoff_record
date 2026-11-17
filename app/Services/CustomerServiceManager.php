@@ -78,6 +78,37 @@ class CustomerServiceManager
             if (CsConversation::count() === 0 && ! \Illuminate\Support\Facades\Cache::get('cs_demo_cleared')) {
                 $this->seedInitialConversations();
             }
+
+            // Bersihkan data sampah sistem / event internal router TikTok dari database lokal
+            CsMessage::where('text', 'like', '%has been assigned to%')
+                ->orWhere('text', 'like', '%The chat has been assigned%')
+                ->orWhere('text', 'like', '%The customer has requested manual customer service%')
+                ->orWhere('text', 'like', '%{"content":""}%')
+                ->orWhere('text', 'like', '%{"text":""}%')
+                ->orWhere('text', '{}')
+                ->orWhere('text', '""')
+                ->orWhere('text', '')
+                ->delete();
+
+            // Perbaiki last_message percakapan jika sempat terisi pesan sistem/teknis kosong
+            $corruptedConvs = CsConversation::where('last_message', 'like', '%has been assigned to%')
+                ->orWhere('last_message', 'like', '%The chat has been assigned%')
+                ->orWhere('last_message', 'like', '%The customer has requested manual customer service%')
+                ->orWhere('last_message', 'like', '%{"content":""}%')
+                ->orWhere('last_message', '{}')
+                ->orWhere('last_message', '""')
+                ->orWhere('last_message', '')
+                ->get();
+
+            foreach ($corruptedConvs as $c) {
+                $lastRealMsg = $c->messages()->orderByDesc('sent_at')->orderByDesc('id')->first();
+                if ($lastRealMsg) {
+                    $c->update([
+                        'last_message'        => $lastRealMsg->text,
+                        'last_message_sender' => $lastRealMsg->sender,
+                    ]);
+                }
+            }
         } catch (\Throwable $e) {
             Log::warning('CustomerServiceManager ensureSchema notice: ' . $e->getMessage());
         }
@@ -208,16 +239,87 @@ class CustomerServiceManager
     }
 
     /**
+     * Cek apakah pesan merupakan notifikasi teknis sistem (seperti router penugasan agen TikTok/Shopee) atau payload kosong.
+     */
+    public static function isIgnoredSystemOrEmptyMessage(string|array|null $content, string $senderRole = '', string $messageType = ''): bool
+    {
+        if ($content === null) {
+            return true;
+        }
+
+        $raw = is_array($content) ? json_encode($content) : trim((string) $content);
+        if ($raw === '' || $raw === '""' || $raw === 'null') {
+            return true;
+        }
+
+        // Cek jika sender role secara eksplisit adalah SYSTEM, ROBOT, atau EVENT routing
+        $normalizedRole = strtoupper(trim($senderRole));
+        if (in_array($normalizedRole, ['SYSTEM', 'ROBOT', 'EVENT', 'ROUTING'], true)) {
+            return true;
+        }
+
+        $cleanText = $raw;
+        for ($i = 0; $i < 4; $i++) {
+            if (str_starts_with($cleanText, '{') && str_ends_with($cleanText, '}')) {
+                $decoded = json_decode($cleanText, true);
+                if (is_array($decoded)) {
+                    if (empty($decoded)) {
+                        return true;
+                    }
+                    // Jika merupakan card pesanan atau produk, ini adalah pesan valid dari pembeli
+                    if (! empty($decoded['order_id']) || ! empty($decoded['product_id']) || ! empty($decoded['url'])) {
+                        return false;
+                    }
+                    if (isset($decoded['content'])) {
+                        $cleanText = trim((string) $decoded['content']);
+                        continue;
+                    }
+                    if (isset($decoded['text'])) {
+                        $cleanText = trim((string) $decoded['text']);
+                        continue;
+                    }
+                }
+            }
+            break;
+        }
+
+        $trimmed = trim($cleanText);
+        if ($trimmed === '' || $trimmed === '""' || $trimmed === 'null' || $trimmed === '{}' || $trimmed === '{"content":""}' || $trimmed === '{"text":""}') {
+            return true;
+        }
+
+        // Pola notifikasi sistem TikTok / Shopee
+        $systemPatterns = [
+            'has been assigned to',
+            'The chat has been assigned',
+            'The customer has requested manual customer service',
+            'Customer Service queue',
+            'chat transfer',
+            'assigned to agent',
+        ];
+
+        foreach ($systemPatterns as $pat) {
+            if (stripos($trimmed, $pat) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Parse dan bersihkan isi pesan chat (mendukung format JSON dari API TikTok/Shopee seperti Order Card, Product Card, Image, System Message).
      */
     public static function parseChatMessageContent(string|array $content): array
     {
         if (is_array($content)) {
             if (isset($content['text'])) {
+                $isIgnored = self::isIgnoredSystemOrEmptyMessage($content['text']);
                 return [
-                    'text'     => (string) $content['text'],
-                    'order_sn' => null,
-                    'type'     => 'text',
+                    'text'       => $isIgnored ? '' : (string) $content['text'],
+                    'order_sn'   => null,
+                    'type'       => 'text',
+                    'is_ignored' => $isIgnored,
                 ];
             }
             $content = json_encode($content);
@@ -246,8 +348,12 @@ class CustomerServiceManager
                         $displayText = '📷 [Lampiran Gambar]';
                         $type = 'image';
                         break;
-                    } elseif (! empty($decoded['content'])) {
+                    } elseif (isset($decoded['content'])) {
                         $sub = trim((string) $decoded['content']);
+                        if ($sub === '' || $sub === '{}') {
+                            $displayText = '';
+                            break;
+                        }
                         if (str_contains($sub, 'Please check this message in TikTok app') || str_contains($sub, '[Other]')) {
                             $displayText = '💬 Pesan Khusus Aplikasi TikTok';
                             $type = 'system';
@@ -256,20 +362,26 @@ class CustomerServiceManager
                         $displayText = $sub;
                         $type = 'text';
                         continue;
-                    } elseif (! empty($decoded['text'])) {
+                    } elseif (isset($decoded['text'])) {
                         $displayText = trim((string) $decoded['text']);
                         $type = 'text';
                         continue;
+                    } else {
+                        $displayText = '';
+                        break;
                     }
                 }
             }
             break;
         }
 
+        $isIgnored = self::isIgnoredSystemOrEmptyMessage($displayText);
+
         return [
-            'text'     => $displayText,
-            'order_sn' => $orderSn,
-            'type'     => $type,
+            'text'       => $isIgnored ? '' : $displayText,
+            'order_sn'   => $orderSn,
+            'type'       => $type,
+            'is_ignored' => $isIgnored,
         ];
     }
 
@@ -296,7 +408,7 @@ class CustomerServiceManager
 
         return $records->map(function (CsConversation $conv) {
             $parsedLast = self::parseChatMessageContent($conv->last_message ?: '');
-            $lastMessage = $parsedLast['text'];
+            $lastMessage = $parsedLast['is_ignored'] ? '' : $parsedLast['text'];
 
             // Isi order_sn otomatis jika sebelumnya belum tersimpan
             if ((empty($conv->order_sn) || $conv->order_sn === '-') && ! empty($parsedLast['order_sn'])) {
@@ -329,18 +441,37 @@ class CustomerServiceManager
                 }
             }
 
-            $messages = $conv->messages->map(function (CsMessage $m) {
-                $parsed = CustomerServiceManager::parseChatMessageContent($m->text);
-                return [
-                    'id'        => (string) $m->id,
-                    'sender'    => $m->sender,
-                    'text'      => $parsed['text'],
-                    'timestamp' => $m->sent_at ? $m->sent_at->format('H.i') . ' WIB' : 'Baru saja',
-                    'status'    => $m->status,
-                ];
-            })->values()->all();
+            // Filter out system messages / empty packets from conversation history
+            $messages = $conv->messages
+                ->filter(function (CsMessage $m) {
+                    if (CustomerServiceManager::isIgnoredSystemOrEmptyMessage($m->text, '', $m->message_type)) {
+                        return false;
+                    }
+                    $parsed = CustomerServiceManager::parseChatMessageContent($m->text);
+                    return ! $parsed['is_ignored'] && trim($parsed['text']) !== '';
+                })
+                ->map(function (CsMessage $m) {
+                    $parsed = CustomerServiceManager::parseChatMessageContent($m->text);
+                    return [
+                        'id'        => (string) $m->id,
+                        'sender'    => $m->sender,
+                        'text'      => $parsed['text'],
+                        'timestamp' => $m->sent_at ? $m->sent_at->format('H.i') . ' WIB' : 'Baru saja',
+                        'status'    => $m->status,
+                    ];
+                })
+                ->values()
+                ->all();
 
-            // Pastikan pesan terakhir pembeli selalu hadir di daftar pesan obrolan (paling bawah)
+            // Jika lastMessage kosong karena terfilter sebagai pesan sistem, ambil dari pesan valid terakhir di riwayat
+            if (empty($lastMessage) && ! empty($messages)) {
+                $lastMsgItem = end($messages);
+                if ($lastMsgItem && ! empty($lastMsgItem['text'])) {
+                    $lastMessage = $lastMsgItem['text'];
+                }
+            }
+
+            // Pastikan pesan terakhir pembeli selalu hadir di daftar pesan obrolan (paling bawah) jika valid
             $hasLatestMessage = false;
             foreach ($messages as $m) {
                 if (trim((string) $m['text']) === trim((string) $lastMessage)) {
@@ -349,7 +480,7 @@ class CustomerServiceManager
                 }
             }
 
-            if (! $hasLatestMessage && ! empty($lastMessage)) {
+            if (! $hasLatestMessage && ! empty($lastMessage) && ! CustomerServiceManager::isIgnoredSystemOrEmptyMessage($lastMessage)) {
                 $messages[] = [
                     'id'        => 'latest_' . $conv->id,
                     'sender'    => $conv->last_message_sender ?: 'buyer',
@@ -578,8 +709,21 @@ class CustomerServiceManager
 
                 $unread = (int) ($apiConv['unread_count'] ?? 0);
                 $lastMsg = $apiConv['latest_message'] ?? [];
-                $parsedLast = self::parseChatMessageContent($lastMsg['content'] ?? '');
-                $lastMsgText = $parsedLast['text'];
+                $lastRawContent = $lastMsg['content'] ?? '';
+                $lastSenderObj = $lastMsg['sender'] ?? [];
+                $lastSenderRole = strtoupper((string) ($lastSenderObj['role'] ?? $lastMsg['sender_role'] ?? 'BUYER'));
+                $lastApiType = (string) ($lastMsg['type'] ?? $lastMsg['message_type'] ?? 'text');
+
+                $isLastIgnored = self::isIgnoredSystemOrEmptyMessage($lastRawContent, $lastSenderRole, $lastApiType);
+                if ($isLastIgnored) {
+                    $parsedLast = ['text' => '', 'order_sn' => null, 'type' => 'text', 'is_ignored' => true];
+                    $lastMsgText = '';
+                    $lastMsgSender = 'buyer';
+                } else {
+                    $parsedLast = self::parseChatMessageContent($lastRawContent);
+                    $lastMsgText = $parsedLast['text'];
+                    $lastMsgSender = in_array($lastSenderRole, ['BUYER', 'USER'], true) ? 'buyer' : 'seller';
+                }
                 $detectedOrderSn = $parsedLast['order_sn'];
 
                 $lastMsgTs = ! empty($lastMsg['create_time'])
@@ -593,20 +737,32 @@ class CustomerServiceManager
                     // Balik urutan pesan dari TikTok (DESC) menjadi kronologis urut waktu (ASC: terlama ke terbaru)
                     $chronologicalMessages = array_reverse($msgRes['messages']);
                     foreach ($chronologicalMessages as $apiMsg) {
-                        $msgId = (string) ($apiMsg['id'] ?? $apiMsg['message_id'] ?? '');
-                        $parsedMsg = self::parseChatMessageContent($apiMsg['content'] ?? '');
+                        $rawContent = $apiMsg['content'] ?? '';
+                        $senderObj = $apiMsg['sender'] ?? [];
+                        $senderRole = strtoupper((string) ($senderObj['role'] ?? $apiMsg['sender_role'] ?? 'BUYER'));
+                        $apiType = (string) ($apiMsg['type'] ?? $apiMsg['message_type'] ?? 'text');
+
+                        // Lewati jika pesan merupakan notifikasi teknis sistem atau kosong
+                        if (self::isIgnoredSystemOrEmptyMessage($rawContent, $senderRole, $apiType)) {
+                            continue;
+                        }
+
+                        $parsedMsg = self::parseChatMessageContent($rawContent);
+                        if ($parsedMsg['is_ignored'] || trim($parsedMsg['text']) === '') {
+                            continue;
+                        }
+
                         if (empty($detectedOrderSn) && ! empty($parsedMsg['order_sn'])) {
                             $detectedOrderSn = $parsedMsg['order_sn'];
                         }
 
-                        $senderObj = $apiMsg['sender'] ?? [];
-                        $senderRole = strtoupper((string) ($senderObj['role'] ?? $apiMsg['sender_role'] ?? 'BUYER'));
+                        $msgId = (string) ($apiMsg['id'] ?? $apiMsg['message_id'] ?? '');
                         $msgSender = in_array($senderRole, ['BUYER', 'USER'], true) ? 'buyer' : 'seller';
 
                         $savedMessages[] = [
                             'msg_id'  => $msgId,
                             'sender'  => $msgSender,
-                            'type'    => $parsedMsg['type'] ?: ($apiMsg['type'] ?? 'text'),
+                            'type'    => $parsedMsg['type'] ?: $apiType,
                             'text'    => $parsedMsg['text'],
                             'sent_at' => ! empty($apiMsg['create_time'])
                                 ? Carbon::createFromTimestamp($apiMsg['create_time'], 'Asia/Jakarta')
@@ -615,7 +771,16 @@ class CustomerServiceManager
                     }
                 }
 
-                // Pastikan pesan terakhir pembeli (latest message) selalu hadir di daftar riwayat
+                // Jika latest_message TikTok terfilter sebagai pesan sistem, ambil pesan terakhir yang valid dari savedMessages
+                if (empty($lastMsgText) && ! empty($savedMessages)) {
+                    $lastSaved = end($savedMessages);
+                    if ($lastSaved && ! empty($lastSaved['text'])) {
+                        $lastMsgText = $lastSaved['text'];
+                        $lastMsgSender = $lastSaved['sender'];
+                    }
+                }
+
+                // Pastikan pesan terakhir pembeli (latest message) selalu hadir di daftar riwayat jika valid
                 $hasLatestInSaved = false;
                 foreach ($savedMessages as $s) {
                     if (trim((string) $s['text']) === trim((string) $lastMsgText)) {
@@ -624,11 +789,7 @@ class CustomerServiceManager
                     }
                 }
 
-                if (! $hasLatestInSaved && ! empty($lastMsgText)) {
-                    $lastSenderObj = $lastMsg['sender'] ?? [];
-                    $lastSenderRole = strtoupper((string) ($lastSenderObj['role'] ?? $lastMsg['sender_role'] ?? 'BUYER'));
-                    $lastMsgSender = in_array($lastSenderRole, ['BUYER', 'USER'], true) ? 'buyer' : 'seller';
-
+                if (! $hasLatestInSaved && ! empty($lastMsgText) && ! self::isIgnoredSystemOrEmptyMessage($lastMsgText)) {
                     $savedMessages[] = [
                         'msg_id'  => 'last_tt_' . ($lastMsg['message_id'] ?? $lastMsg['id'] ?? md5($convId . $lastMsgText)),
                         'sender'  => $lastMsgSender,
