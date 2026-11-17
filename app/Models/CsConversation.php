@@ -43,7 +43,9 @@ class CsConversation extends Model
 
     public function messages(): HasMany
     {
-        return $this->hasMany(CsMessage::class, 'conversation_id')->orderBy('id', 'asc');
+        return $this->hasMany(CsMessage::class, 'conversation_id')
+            ->orderBy('sent_at', 'asc')
+            ->orderBy('id', 'asc');
     }
 
     public function scopeByChannel(Builder $query, ?string $channel): Builder

@@ -228,31 +228,42 @@ class CustomerServiceManager
         $type = 'text';
         $displayText = $raw;
 
-        if (str_starts_with($raw, '{') && str_ends_with($raw, '}')) {
-            $decoded = json_decode($raw, true);
-            if (is_array($decoded)) {
-                if (! empty($decoded['order_id'])) {
-                    $orderSn = (string) $decoded['order_id'];
-                    $displayText = "📦 Menanyakan Pesanan #{$orderSn}";
-                    $type = 'order_card';
-                } elseif (! empty($decoded['product_id'])) {
-                    $displayText = '👟 Menanyakan Produk';
-                    $type = 'product_card';
-                } elseif (! empty($decoded['content'])) {
-                    $sub = (string) $decoded['content'];
-                    if (str_contains($sub, 'Please check this message in TikTok app') || str_contains($sub, '[Other]')) {
-                        $displayText = '💬 Pesan Khusus Aplikasi TikTok';
-                    } else {
+        // Unpack nested JSON format dari TikTok (bisa bersarang sampai 3 lapis)
+        for ($i = 0; $i < 3; $i++) {
+            if (str_starts_with($displayText, '{') && str_ends_with($displayText, '}')) {
+                $decoded = json_decode($displayText, true);
+                if (is_array($decoded)) {
+                    if (! empty($decoded['order_id'])) {
+                        $orderSn = (string) $decoded['order_id'];
+                        $displayText = "📦 Menanyakan Pesanan #{$orderSn}";
+                        $type = 'order_card';
+                        break;
+                    } elseif (! empty($decoded['product_id'])) {
+                        $displayText = '👟 Menanyakan Produk';
+                        $type = 'product_card';
+                        break;
+                    } elseif (! empty($decoded['url'])) {
+                        $displayText = '📷 [Lampiran Gambar]';
+                        $type = 'image';
+                        break;
+                    } elseif (! empty($decoded['content'])) {
+                        $sub = trim((string) $decoded['content']);
+                        if (str_contains($sub, 'Please check this message in TikTok app') || str_contains($sub, '[Other]')) {
+                            $displayText = '💬 Pesan Khusus Aplikasi TikTok';
+                            $type = 'system';
+                            break;
+                        }
                         $displayText = $sub;
+                        $type = 'text';
+                        continue;
+                    } elseif (! empty($decoded['text'])) {
+                        $displayText = trim((string) $decoded['text']);
+                        $type = 'text';
+                        continue;
                     }
-                    $type = 'system';
-                } elseif (! empty($decoded['text'])) {
-                    $displayText = (string) $decoded['text'];
-                } elseif (! empty($decoded['url'])) {
-                    $displayText = '📷 [Lampiran Gambar]';
-                    $type = 'image';
                 }
             }
+            break;
         }
 
         return [
@@ -329,16 +340,22 @@ class CustomerServiceManager
                 ];
             })->values()->all();
 
-            // Jika percakapan memiliki pesan terakhir tapi messages belum terisi di DB, jadikan last_message sebagai pesan awal
-            if (empty($messages) && ! empty($lastMessage)) {
-                $messages = [
-                    [
-                        'id'        => 'fallback_' . $conv->id,
-                        'sender'    => $conv->last_message_sender ?: 'buyer',
-                        'text'      => $lastMessage,
-                        'timestamp' => $conv->last_message_time ? $conv->last_message_time->format('H.i') . ' WIB' : 'Baru saja',
-                        'status'    => 'received',
-                    ],
+            // Pastikan pesan terakhir pembeli selalu hadir di daftar pesan obrolan (paling bawah)
+            $hasLatestMessage = false;
+            foreach ($messages as $m) {
+                if (trim((string) $m['text']) === trim((string) $lastMessage)) {
+                    $hasLatestMessage = true;
+                    break;
+                }
+            }
+
+            if (! $hasLatestMessage && ! empty($lastMessage)) {
+                $messages[] = [
+                    'id'        => 'latest_' . $conv->id,
+                    'sender'    => $conv->last_message_sender ?: 'buyer',
+                    'text'      => $lastMessage,
+                    'timestamp' => $conv->last_message_time ? $conv->last_message_time->format('H.i') . ' WIB' : 'Baru saja',
+                    'status'    => 'received',
                 ];
             }
 
@@ -552,7 +569,9 @@ class CustomerServiceManager
                 $savedMessages = [];
                 $msgRes = $this->tiktokChatService->getMessages($account, $convId, 10);
                 if ($msgRes['success'] && ! empty($msgRes['messages'])) {
-                    foreach ($msgRes['messages'] as $apiMsg) {
+                    // Balik urutan pesan dari TikTok (DESC) menjadi kronologis urut waktu (ASC: terlama ke terbaru)
+                    $chronologicalMessages = array_reverse($msgRes['messages']);
+                    foreach ($chronologicalMessages as $apiMsg) {
                         $msgId = (string) ($apiMsg['id'] ?? $apiMsg['message_id'] ?? '');
                         $parsedMsg = self::parseChatMessageContent($apiMsg['content'] ?? '');
                         if (empty($detectedOrderSn) && ! empty($parsedMsg['order_sn'])) {
@@ -575,8 +594,16 @@ class CustomerServiceManager
                     }
                 }
 
-                // Jika riwayat getMessages kosong, pastikan pesan terakhir (inquiry/chat awal) tetap tersimpan sebagai pesan pertama
-                if (empty($savedMessages) && ! empty($lastMsgText)) {
+                // Pastikan pesan terakhir pembeli (latest message) selalu hadir di daftar riwayat
+                $hasLatestInSaved = false;
+                foreach ($savedMessages as $s) {
+                    if (trim((string) $s['text']) === trim((string) $lastMsgText)) {
+                        $hasLatestInSaved = true;
+                        break;
+                    }
+                }
+
+                if (! $hasLatestInSaved && ! empty($lastMsgText)) {
                     $lastSenderObj = $lastMsg['sender'] ?? [];
                     $lastSenderRole = strtoupper((string) ($lastSenderObj['role'] ?? $lastMsg['sender_role'] ?? 'BUYER'));
                     $lastMsgSender = in_array($lastSenderRole, ['BUYER', 'USER'], true) ? 'buyer' : 'seller';

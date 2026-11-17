@@ -71,34 +71,44 @@ interface CustomerServiceProps {
 
 export const formatMessageText = (raw?: string | null): string => {
   if (!raw) return '';
-  const trimmed = raw.trim();
-  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (parsed.order_id) {
-        return `📦 Menanyakan Pesanan #${parsed.order_id}`;
-      }
-      if (parsed.product_id) {
-        return '👟 Menanyakan Produk Sepatu';
-      }
-      if (parsed.content) {
-        const sub = String(parsed.content);
-        if (sub.includes('Please check this message in TikTok app') || sub.includes('[Other]')) {
-          return '💬 Pesan Khusus (Buka di Aplikasi TikTok)';
+  let text = raw.trim();
+
+  // Buka nested JSON jika ada pembungkus berulang dari TikTok API
+  for (let i = 0; i < 3; i++) {
+    if (text.startsWith('{') && text.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed.order_id) {
+          return `📦 Menanyakan Pesanan #${parsed.order_id}`;
         }
-        return sub;
+        if (parsed.product_id) {
+          return '👟 Menanyakan Produk Sepatu';
+        }
+        if (parsed.url) {
+          return '📷 [Lampiran Gambar]';
+        }
+        if (parsed.content) {
+          const sub = String(parsed.content).trim();
+          if (sub.includes('Please check this message in TikTok app') || sub.includes('[Other]')) {
+            return '💬 Pesan Khusus (Buka di Aplikasi TikTok)';
+          }
+          text = sub;
+          continue;
+        }
+        if (parsed.text) {
+          text = String(parsed.text).trim();
+          continue;
+        }
+        break;
+      } catch {
+        break;
       }
-      if (parsed.text) {
-        return String(parsed.text);
-      }
-      if (parsed.url) {
-        return '📷 [Lampiran Gambar]';
-      }
-    } catch {
-      // not json
+    } else {
+      break;
     }
   }
-  return raw;
+
+  return text;
 };
 
 export const formatBuyerDisplay = (conv: Conversation): { name: string; username: string } => {
