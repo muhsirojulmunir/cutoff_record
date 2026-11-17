@@ -113,8 +113,14 @@ Route::middleware('auth')->group(function () {
     Route::post('/customer-service/{id}/toggle-unread', [\App\Http\Controllers\CustomerServiceController::class, 'toggleUnread'])->name('customer-service.toggle-unread');
     Route::post('/customer-service/{id}/notes', [\App\Http\Controllers\CustomerServiceController::class, 'saveNotes'])->name('customer-service.notes');
 
+    // Export Logs & Download Riwayat
+    Route::get('/export-logs', [\App\Http\Controllers\ExportLogController::class, 'index'])->name('export-logs.index');
+    Route::post('/export-logs', [\App\Http\Controllers\ExportLogController::class, 'store'])->name('export-logs.store');
+    Route::get('/export-logs/{exportLog}/download', [\App\Http\Controllers\ExportLogController::class, 'download'])->name('export-logs.download');
+
     // Pesanan Saya Shopee (Eksklusif Super Admin - Fulfillment & Cetak Resi A4)
     Route::get('/shopee-orders', [\App\Http\Controllers\ShopeeOrderController::class, 'index'])->name('shopee-orders.index');
+    Route::get('/shopee-orders/export-data', [\App\Http\Controllers\ShopeeOrderController::class, 'exportData'])->name('shopee-orders.export-data');
     Route::post('/shopee-orders/sync', [\App\Http\Controllers\ShopeeOrderController::class, 'sync'])->name('shopee-orders.sync');
     Route::post('/shopee-orders/auto-sync', [\App\Http\Controllers\ShopeeOrderController::class, 'autoSync'])->name('shopee-orders.auto-sync');
     Route::post('/shopee-orders/sync-chunk', [\App\Http\Controllers\ShopeeOrderController::class, 'syncChunk'])->name('shopee-orders.sync-chunk');

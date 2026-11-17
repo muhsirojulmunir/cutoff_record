@@ -13,6 +13,8 @@ interface ExportLog {
 interface Props {
   /** Dinaikkan setiap kali ada unduhan baru agar panel ikut menyegarkan isinya. */
   refreshKey?: number;
+  /** Tema tampilan tombol dan lencana. */
+  variant?: 'default' | 'shopee';
 }
 
 const fmtDate = (value: string) =>
@@ -45,13 +47,14 @@ function groupByDate(logs: ExportLog[]): { label: string; items: ExportLog[] }[]
  * jamnya. Data diambil saat panel dibuka, jadi tidak membebani pemuatan
  * halaman yang belum tentu dipakai.
  */
-export default function DownloadHistory({ refreshKey = 0 }: Props) {
+export default function DownloadHistory({ refreshKey = 0, variant = 'default' }: Props) {
   const [open, setOpen] = useState(false);
   const [logs, setLogs] = useState<ExportLog[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isShopee = variant === 'shopee';
   const containerRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -112,18 +115,26 @@ export default function DownloadHistory({ refreshKey = 0 }: Props) {
       <button
         type="button"
         onClick={toggle}
-        className={`relative inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${
-          open
-            ? 'bg-teal-50 text-teal-700 border-teal-400'
-            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+        className={`relative inline-flex items-center gap-2 rounded-xl font-semibold border transition-all ${
+          isShopee
+            ? open
+              ? 'bg-[#FFF5F2] text-[#EE4D2D] border-[#EE4D2D] px-3.5 py-2 text-xs shadow-xs'
+              : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50 px-3.5 py-2 text-xs shadow-xs'
+            : open
+              ? 'bg-teal-50 text-teal-700 border-teal-400 px-4 py-2 text-sm'
+              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400 px-4 py-2 text-sm'
         }`}
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        Riwayat Download
+        <span>Riwayat Download</span>
         {total > 0 && (
-          <span className="min-w-[20px] h-5 px-1.5 inline-flex items-center justify-center rounded-full bg-teal-600 text-white text-[10px] font-bold">
+          <span
+            className={`min-w-[1.25rem] h-4.5 px-1.5 inline-flex items-center justify-center rounded-full text-white text-[10px] font-bold ${
+              isShopee ? 'bg-[#EE4D2D]' : 'bg-teal-600'
+            }`}
+          >
             {total > 99 ? '99+' : total}
           </span>
         )}
@@ -199,7 +210,9 @@ export default function DownloadHistory({ refreshKey = 0 }: Props) {
                             <a
                               href={`/export-logs/${log.id}/download`}
                               title="Unduh ulang berkas ini"
-                              className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-[11px] font-semibold transition-all"
+                              className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-white text-[11px] font-semibold transition-all ${
+                                isShopee ? 'bg-[#EE4D2D] hover:bg-[#d94122]' : 'bg-teal-600 hover:bg-teal-500'
+                              }`}
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />

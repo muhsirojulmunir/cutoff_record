@@ -6,6 +6,8 @@ import DualCalendarRangePicker, { formatDateIndo } from '../../Components/DualCa
 import ShipOrderModal from '../../Components/Shopee/ShipOrderModal';
 import WaybillPreviewModal from '../../Components/Shopee/WaybillPreviewModal';
 import OrderDetailDrawer from '../../Components/Shopee/OrderDetailDrawer';
+import DownloadHistory from '../../Components/DownloadHistory';
+import ShopeeOrderExportModal from '../../Components/ShopeeOrderExportModal';
 import {
   ACTIVE_DEADLINE_STATUSES,
   SpinnerIcon,
@@ -498,6 +500,10 @@ export default function ShopeeOrdersPage({
   const [printingTarget, setPrintingTarget] = useState<string | null>(null);
   const [refreshingOrderSn, setRefreshingOrderSn] = useState<string | null>(null);
   const [cancellingOrderSn, setCancellingOrderSn] = useState<string | null>(null);
+
+  // Export & Riwayat Download state
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportRefreshKey, setExportRefreshKey] = useState(0);
 
   const revokeActiveBlobUrl = useCallback(() => {
     if (activeBlobUrlRef.current) {
@@ -2037,44 +2043,73 @@ export default function ShopeeOrdersPage({
 
         {/* Seller Center Tabs, Filters & Bulk Action Deck */}
         <section className="rounded-2xl border border-slate-200 bg-white shadow-xs">
-          {/* Main Seller Center Tabs */}
-          <div className="overflow-x-auto border-b border-slate-200 px-3 sm:px-5">
-            <nav className="flex min-w-max items-center gap-1 sm:gap-2" aria-label="Status pesanan Shopee">
-              {mainTabs.map((t) => {
-                const isActive = filters.tab === t.key;
-                return (
-                  <button
-                    key={t.key}
-                    type="button"
-                    onClick={() =>
-                      navigateWithFilters({
-                        tab: t.key,
-                        sub_tab: t.key === 'to_ship' ? 'unprocessed' : 'all',
-                        order_type: 'all',
-                        print_status: 'all',
-                        logistics_status: 'all',
-                      })
-                    }
-                    className={`relative inline-flex cursor-pointer items-center gap-2 border-b-2 px-3.5 py-3.5 text-xs transition-colors whitespace-nowrap ${
-                      isActive
-                        ? 'border-[#EE4D2D] font-bold text-[#EE4D2D]'
-                        : 'border-transparent font-medium text-slate-500 hover:border-slate-300 hover:text-slate-800'
-                    }`}
-                  >
-                    <span>{t.label}</span>
-                    <span
-                      className={`inline-flex min-w-[1.5rem] items-center justify-center rounded-full border px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${
+          {/* Main Seller Center Tabs + Export & Riwayat Download */}
+          <div className="flex flex-col gap-2 border-b border-slate-200 px-3 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="overflow-x-auto">
+              <nav className="flex min-w-max items-center gap-1 sm:gap-2" aria-label="Status pesanan Shopee">
+                {mainTabs.map((t) => {
+                  const isActive = filters.tab === t.key;
+                  return (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() =>
+                        navigateWithFilters({
+                          tab: t.key,
+                          sub_tab: t.key === 'to_ship' ? 'unprocessed' : 'all',
+                          order_type: 'all',
+                          print_status: 'all',
+                          logistics_status: 'all',
+                        })
+                      }
+                      className={`relative inline-flex cursor-pointer items-center gap-2 border-b-2 px-3.5 py-3.5 text-xs transition-colors whitespace-nowrap ${
                         isActive
-                          ? 'border-orange-200 bg-[#FFF5F2] text-[#EE4D2D]'
-                          : 'border-slate-200 bg-slate-100 text-slate-600'
+                          ? 'border-[#EE4D2D] font-bold text-[#EE4D2D]'
+                          : 'border-transparent font-medium text-slate-500 hover:border-slate-300 hover:text-slate-800'
                       }`}
                     >
-                      {t.count.toLocaleString('id-ID')}
-                    </span>
-                  </button>
-                );
-              })}
-            </nav>
+                      <span>{t.label}</span>
+                      <span
+                        className={`inline-flex min-w-[1.5rem] items-center justify-center rounded-full border px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${
+                          isActive
+                            ? 'border-orange-200 bg-[#FFF5F2] text-[#EE4D2D]'
+                            : 'border-slate-200 bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        {t.count.toLocaleString('id-ID')}
+                      </span>
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+
+            {/* Action Buttons: Export & Riwayat Download (Identik Shopee Seller Centre) */}
+            <div className="flex items-center gap-2 py-2 sm:py-2.5 lg:py-0 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsExportModalOpen(true)}
+                className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-xs transition-colors hover:border-slate-300 hover:bg-slate-50"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.8}
+                  stroke="currentColor"
+                  className="h-4 w-4 text-[#EE4D2D]"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+                  />
+                </svg>
+                <span>Export</span>
+              </button>
+
+              <DownloadHistory refreshKey={exportRefreshKey} variant="shopee" />
+            </div>
           </div>
 
           {/* Row 1: Tipe Pesanan (Shopee Seller Center Gambar 2) */}
@@ -3236,6 +3271,22 @@ export default function ShopeeOrdersPage({
           </div>,
           document.body
         )}
+
+      {/* Modal Export Pesanan Shopee */}
+      <ShopeeOrderExportModal
+        show={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        carriers={carriers}
+        currentTab={filters.tab}
+        onExportSuccess={() => {
+          setExportRefreshKey((prev) => prev + 1);
+          setToast({
+            id: Date.now(),
+            type: 'success',
+            message: 'Pesanan Shopee berhasil diexport dan disimpan di Riwayat Download.',
+          });
+        }}
+      />
     </AppLayout>
   );
 }

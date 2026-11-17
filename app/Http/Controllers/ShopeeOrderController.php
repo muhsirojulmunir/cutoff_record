@@ -925,4 +925,287 @@ class ShopeeOrderController extends Controller
 
         return 502;
     }
+
+    /**
+     * Export data pesanan Shopee ke format 49 kolom resmi Shopee Seller Centre.
+     */
+    public function exportData(Request $request): JsonResponse
+    {
+        $this->authorizeSuperAdmin($request);
+        $this->orderService->ensureSchema();
+
+        $account = $this->resolveShopeeAccount();
+        if (! $account) {
+            return response()->json(['error' => 'Akun Shopee tidak ditemukan.'], 404);
+        }
+
+        $rawTab = strtolower(trim((string) $request->input('tab', 'all')));
+        $tab = in_array($rawTab, self::VALID_TABS, true) ? $rawTab : 'all';
+
+        $subTab = strtolower(trim((string) $request->input('sub_tab', 'all')));
+        $orderType = strtolower(trim((string) $request->input('order_type', 'all')));
+        $search = trim((string) $request->input('search', ''));
+        $courier = trim((string) $request->input('courier', ''));
+        $dateFrom = $this->normalizeDateInput($request->input('date_from'));
+        $dateTo = $this->normalizeDateInput($request->input('date_to'));
+        $dateType = trim((string) $request->input('date_type', 'created'));
+
+        if ($dateFrom !== '' && $dateTo !== '' && $dateFrom > $dateTo) {
+            [$dateFrom, $dateTo] = [$dateTo, $dateFrom];
+        }
+
+        $query = ShopeeOrder::query()->where('shopee_account_id', $account->id);
+
+        if ($tab !== 'all') {
+            $query->forTab($tab, $subTab);
+        }
+        if ($orderType !== 'all') {
+            $query->forOrderType($orderType);
+        }
+        if ($courier !== '' && strtolower($courier) !== 'all') {
+            $query->where('shipping_carrier', $courier);
+        }
+        if ($search !== '') {
+            $likePattern = '%' . $this->escapeLike($search) . '%';
+            $query->where(function (Builder $q) use ($likePattern): void {
+                $first = true;
+                foreach (['order_sn', 'tracking_number', 'buyer_username'] as $column) {
+                    $clause = "{$column} LIKE ? ESCAPE '!'";
+                    if ($first) {
+                        $q->whereRaw($clause, [$likePattern]);
+                        $first = false;
+                    } else {
+                        $q->orWhereRaw($clause, [$likePattern]);
+                    }
+                }
+            });
+        }
+
+        $dateColumn = match ($dateType) {
+            'ship_by'  => 'ship_by_date',
+            'arranged' => 'shipping_arranged_at',
+            default    => 'order_created_at',
+        };
+
+        if ($dateFrom !== '') {
+            $query->where($dateColumn, '>=', $dateFrom . ' 00:00:00');
+        }
+        if ($dateTo !== '') {
+            $query->where($dateColumn, '<=', $dateTo . ' 23:59:59');
+        }
+
+        $query->orderByDesc('order_created_at');
+
+        /** @var \Illuminate\Database\Eloquent\Collection<int, ShopeeOrder> $orders */
+        $orders = $query->limit(3000)->get();
+
+        $headers = [
+            'No. Pesanan',
+            'Status Pesanan',
+            'Status Pembatalan/ Pengembalian',
+            'No. Resi',
+            'Opsi Pengiriman',
+            'Antar ke counter/ pick-up',
+            'Pesanan Harus Dikirimkan Sebelum (Menghindari keterlambatan)',
+            'Waktu Pengiriman Diatur',
+            'Waktu Pesanan Dibuat',
+            'Waktu Pembayaran Dilakukan',
+            'Tipe Pesanan',
+            'Metode Pembayaran',
+            'SKU Induk',
+            'Nama Produk',
+            'Nomor Referensi SKU',
+            'Nama Variasi',
+            'Harga Awal',
+            'Harga Setelah Diskon',
+            'Jumlah',
+            'Returned quantity',
+            'Subtotal Pesanan',
+            'Total Diskon',
+            'Diskon Dari Penjual',
+            'Diskon Dari Shopee',
+            'Berat Produk',
+            'Jumlah Produk di Pesan',
+            'Total Berat',
+            'Voucher Ditanggung Penjual',
+            'Cashback Koin',
+            'Voucher Ditanggung Shopee',
+            'Paket Diskon',
+            'Paket Diskon (Diskon dari Shopee)',
+            'Paket Diskon (Diskon dari Penjual)',
+            'Potongan Koin Shopee',
+            'Diskon Kartu Kredit',
+            'Ongkos Kirim Dibayar oleh Pembeli',
+            'Estimasi Potongan Biaya Pengiriman',
+            'Ongkos Kirim Pengembalian Barang',
+            'Total Pembayaran',
+            'Perkiraan Ongkos Kirim',
+            'Catatan dari Pembeli',
+            'Catatan',
+            'Username (Pembeli)',
+            'Nama Penerima',
+            'No. Telepon',
+            'Alamat Pengiriman',
+            'Kota/Kabupaten',
+            'Provinsi',
+            'Waktu Pesanan Selesai',
+        ];
+
+        $advanceFulfilmentHeaders = [
+            'Booking SN',
+            'No. Resi',
+            'Opsi Pengiriman',
+            'Antar ke counter/ pick-up',
+            'Pesanan Harus Dikirimkan Sebelum (Menghindari keterlambatan)',
+            'Booking Creation Date',
+            'Waktu Pembayaran Dilakukan',
+            'Nama Produk',
+            'Nomor Referensi SKU',
+            'Nama Variasi',
+            'Alamat Pengiriman',
+        ];
+
+        $rows = [];
+        foreach ($orders as $order) {
+            $items = is_array($order->items_json) ? $order->items_json : [];
+            if (empty($items)) {
+                $items = [[
+                    'item_name'                => 'Pesanan Shopee #' . $order->order_sn,
+                    'item_sku'                 => '',
+                    'model_name'               => '',
+                    'model_sku'                => '',
+                    'model_original_price'     => (float) $order->total_amount,
+                    'model_discounted_price'   => (float) $order->total_amount,
+                    'model_quantity_purchased' => 1,
+                    'weight'                   => 450,
+                ]];
+            }
+
+            $totalOrderedQty = 0;
+            $totalOrderWeightGr = 0;
+            foreach ($items as $it) {
+                $q = (int) ($it['model_quantity_purchased'] ?? 1);
+                $totalOrderedQty += $q;
+                $w = isset($it['weight']) && (float) $it['weight'] > 0 ? (float) $it['weight'] : 450;
+                $totalOrderWeightGr += ($w * $q);
+            }
+
+            $rawPayload = is_array($order->raw_payload) ? $order->raw_payload : [];
+            $paymentInfo = is_array($rawPayload['payment_info'] ?? null) ? $rawPayload['payment_info'] : [];
+
+            $statusLabel = match (strtoupper((string) $order->order_status)) {
+                'UNPAID'                                  => 'Belum Bayar',
+                'READY_TO_SHIP', 'PROCESSED', 'RETRY_SHIP' => 'Perlu Dikirim',
+                'SHIPPED'                                 => 'Dikirim',
+                'TO_CONFIRM_RECEIVE', 'COMPLETED'          => 'Selesai',
+                'IN_CANCEL', 'CANCELLED'                  => 'Batal',
+                'TO_RETURN'                               => 'Pengembalian',
+                default                                   => (string) $order->order_status,
+            };
+
+            $fulfillmentLabel = match (strtolower((string) $order->fulfillment_method)) {
+                'pickup'  => 'Pick-up',
+                'dropoff' => 'Antar ke Counter',
+                default   => '',
+            };
+
+            $recipient = is_array($order->recipient_data) ? $order->recipient_data : [];
+            $recipientName = $recipient['name'] ?? '';
+            $recipientPhone = $recipient['phone'] ?? '';
+            $recipientAddress = $recipient['full_address'] ?? '';
+            $recipientCity = $recipient['city'] ?? '';
+            $recipientProvince = $recipient['state'] ?? $recipient['region'] ?? '';
+
+            $fmtDate = static fn (?Carbon $d) => $d ? $d->format('Y-m-d H:i') : '';
+
+            $createdAtStr = $fmtDate($order->order_created_at);
+            $shipByStr = $fmtDate($order->ship_by_date);
+            $arrangedAtStr = $fmtDate($order->shipping_arranged_at);
+
+            $paymentMethod = $order->payment_method ?? ($order->is_cod ? 'COD (Bayar di Tempat)' : '');
+            $totalPaymentFormatted = number_format((float) $order->total_amount, 0, ',', '.');
+            $estShippingFeeFormatted = number_format((float) ($order->estimated_shipping_fee ?? 0), 0, ',', '.');
+
+            foreach ($items as $item) {
+                $itemQty = (int) ($item['model_quantity_purchased'] ?? 1);
+                $origPrice = (float) ($item['model_original_price'] ?? 0);
+                $discPrice = (float) ($item['model_discounted_price'] ?? $origPrice);
+                $subtotalItem = $discPrice * $itemQty;
+                $totDiscItem = max(0, ($origPrice - $discPrice) * $itemQty);
+                $itemWeightGr = isset($item['weight']) && (float) $item['weight'] > 0 ? (float) $item['weight'] : 450;
+
+                $rows[] = [
+                    $order->order_sn,
+                    $statusLabel,
+                    $order->cancel_reason ?? '',
+                    $order->tracking_number ?? '',
+                    $order->shipping_carrier ?? '',
+                    $fulfillmentLabel,
+                    $shipByStr,
+                    $arrangedAtStr,
+                    $createdAtStr,
+                    $createdAtStr,
+                    '',
+                    $paymentMethod,
+                    $item['item_sku'] ?? '',
+                    $item['item_name'] ?? '',
+                    $item['model_sku'] ?? $item['item_sku'] ?? '',
+                    $item['model_name'] ?? '',
+                    number_format($origPrice, 0, ',', '.'),
+                    number_format($discPrice, 0, ',', '.'),
+                    (string) $itemQty,
+                    '0',
+                    number_format($subtotalItem, 0, ',', '.'),
+                    number_format($totDiscItem, 0, ',', '.'),
+                    number_format($totDiscItem, 0, ',', '.'),
+                    '0',
+                    round($itemWeightGr) . ' gr',
+                    (string) $totalOrderedQty,
+                    round($totalOrderWeightGr) . ' gr',
+                    number_format((float) ($paymentInfo['seller_voucher_code'] ?? 0), 0, ',', '.'),
+                    '0',
+                    number_format((float) ($paymentInfo['shopee_voucher'] ?? 0), 0, ',', '.'),
+                    'N',
+                    '0',
+                    '0',
+                    (string) ((int) ($paymentInfo['coin'] ?? 0)),
+                    '0',
+                    '0',
+                    $estShippingFeeFormatted,
+                    '0',
+                    $totalPaymentFormatted,
+                    $estShippingFeeFormatted,
+                    $order->buyer_note ?? '',
+                    '',
+                    $order->buyer_username ?? '',
+                    $recipientName,
+                    $recipientPhone,
+                    $recipientAddress,
+                    $recipientCity,
+                    $recipientProvince,
+                    '',
+                ];
+            }
+        }
+
+        $datePart = ($dateFrom ? str_replace('-', '', $dateFrom) : date('Ymd')) . '_' . ($dateTo ? str_replace('-', '', $dateTo) : date('Ymd'));
+        $tabSuffix = match ($tab) {
+            'to_ship'   => 'toship',
+            'shipped'   => 'shipped',
+            'completed' => 'completed',
+            'cancelled' => 'cancelled',
+            default     => 'all',
+        };
+        $fileName = "Order.{$tabSuffix}.{$datePart}.xlsx";
+
+        return response()->json([
+            'file_name'                  => $fileName,
+            'sheet_name'                 => 'orders',
+            'headers'                    => $headers,
+            'advance_fulfilment_headers' => $advanceFulfilmentHeaders,
+            'rows'                       => $rows,
+            'total_rows'                 => count($rows),
+            'total_orders'               => count($orders),
+        ]);
+    }
 }
