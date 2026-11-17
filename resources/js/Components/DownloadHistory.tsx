@@ -14,7 +14,7 @@ interface Props {
   /** Dinaikkan setiap kali ada unduhan baru agar panel ikut menyegarkan isinya. */
   refreshKey?: number;
   /** Tema tampilan tombol dan lencana. */
-  variant?: 'default' | 'shopee';
+  variant?: 'default' | 'shopee' | 'tiktok';
 }
 
 const fmtDate = (value: string) =>
@@ -55,6 +55,7 @@ export default function DownloadHistory({ refreshKey = 0, variant = 'default' }:
   const [error, setError] = useState<string | null>(null);
 
   const isShopee = variant === 'shopee';
+  const isTiktok = variant === 'tiktok';
   const containerRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -120,9 +121,13 @@ export default function DownloadHistory({ refreshKey = 0, variant = 'default' }:
             ? open
               ? 'bg-[#FFF5F2] text-[#EE4D2D] border-[#EE4D2D] px-3.5 py-2 text-xs shadow-xs'
               : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50 px-3.5 py-2 text-xs shadow-xs'
-            : open
-              ? 'bg-teal-50 text-teal-700 border-teal-400 px-4 py-2 text-sm'
-              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400 px-4 py-2 text-sm'
+            : isTiktok
+              ? open
+                ? 'bg-slate-900 text-white border-slate-900 px-3.5 py-2 text-xs shadow-xs'
+                : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50 px-3.5 py-2 text-xs shadow-xs'
+              : open
+                ? 'bg-teal-50 text-teal-700 border-teal-400 px-4 py-2 text-sm'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400 px-4 py-2 text-sm'
         }`}
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
@@ -132,7 +137,7 @@ export default function DownloadHistory({ refreshKey = 0, variant = 'default' }:
         {total > 0 && (
           <span
             className={`min-w-[1.25rem] h-4.5 px-1.5 inline-flex items-center justify-center rounded-full text-white text-[10px] font-bold ${
-              isShopee ? 'bg-[#EE4D2D]' : 'bg-teal-600'
+              isShopee ? 'bg-[#EE4D2D]' : isTiktok ? 'bg-[#FE2C55]' : 'bg-teal-600'
             }`}
           >
             {total > 99 ? '99+' : total}
@@ -211,7 +216,7 @@ export default function DownloadHistory({ refreshKey = 0, variant = 'default' }:
                               href={`/export-logs/${log.id}/download`}
                               title="Unduh ulang berkas ini"
                               className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-white text-[11px] font-semibold transition-all ${
-                                isShopee ? 'bg-[#EE4D2D] hover:bg-[#d94122]' : 'bg-teal-600 hover:bg-teal-500'
+                                isShopee ? 'bg-[#EE4D2D] hover:bg-[#d94122]' : isTiktok ? 'bg-[#FE2C55] hover:bg-[#e0264b]' : 'bg-teal-600 hover:bg-teal-500'
                               }`}
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3">

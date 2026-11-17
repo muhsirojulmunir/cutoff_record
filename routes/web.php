@@ -136,6 +136,7 @@ Route::middleware('auth')->group(function () {
 
     // Pesanan Saya TikTok (Eksklusif Super Admin - Fulfillment & Cetak Resi TikTok)
     Route::get('/tiktok-orders', [\App\Http\Controllers\TiktokOrderController::class, 'index'])->name('tiktok-orders.index');
+    Route::get('/tiktok-orders/export-data', [\App\Http\Controllers\TiktokOrderController::class, 'exportData'])->name('tiktok-orders.export-data');
     Route::post('/tiktok-orders/sync', [\App\Http\Controllers\TiktokOrderController::class, 'sync'])->name('tiktok-orders.sync');
     Route::post('/tiktok-orders/clear-sample', [\App\Http\Controllers\TiktokOrderController::class, 'clearSample'])->name('tiktok-orders.clear-sample');
     Route::post('/tiktok-orders/reset-sample', [\App\Http\Controllers\TiktokOrderController::class, 'resetSample'])->name('tiktok-orders.reset-sample');
