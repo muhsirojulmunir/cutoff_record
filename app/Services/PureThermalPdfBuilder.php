@@ -2,13 +2,6 @@
 
 namespace App\Services;
 
-/**
- * PureThermalPdfBuilder
- *
- * Generator PDF Resi Thermal 100x150 mm (A6) murni berbasis PDF 1.4 standar.
- * Tidak membutuhkan library eksternal (100% mandiri tanpa composer / vendor),
- * sehingga bekerja sempurna di lingkungan hosting cPanel maupun localhost.
- */
 class PureThermalPdfBuilder
 {
     private const CODE39_PATTERNS = [
@@ -25,20 +18,17 @@ class PureThermalPdfBuilder
         '/' => '010100010', '+' => '010001010', '%' => '000101010', '*' => '010010100',
     ];
 
-    /**
-     * Escape string untuk format teks PDF literal string: ( ... )
-     */
     private static function escapePdfText(string $text): string
     {
         $text = str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], $text);
         return preg_replace('/[^\x20-\x7E]/', '', $text) ?? '';
     }
 
-    /**
-     * Bungkus teks panjang menjadi array beberapa baris
-     *
-     * @return array<int, string>
-     */
+    private static function text(float $x, float $y, string $font, float $size, string $str): string
+    {
+        return "BT /" . $font . " " . $size . " Tf " . sprintf("%.2f %.2f", $x, $y) . " Td (" . self::escapePdfText($str) . ") Tj ET\n";
+    }
+
     public static function wrapText(string $text, int $maxChars): array
     {
         $clean = trim($text);
@@ -67,9 +57,6 @@ class PureThermalPdfBuilder
         return $lines;
     }
 
-    /**
-     * Render barcode Code 39 dalam instruksi vektor PDF asli (re f)
-     */
     private static function drawBarcode(string $code, float $centerX, float $bottomY, float $height, float $narrowWidth = 0.95, float $wideRatio = 2.2): string
     {
         $code = strtoupper(preg_replace('/[^A-Z0-9\-\. \$\/\+\%]/', '', $code));
@@ -93,7 +80,7 @@ class PureThermalPdfBuilder
             }
         }
 
-        $maxWidth = 245.0;
+        $maxWidth = 240.0;
         if ($totalWidth > $maxWidth && $totalWidth > 0) {
             $scale = $maxWidth / $totalWidth;
             $narrowWidth *= $scale;
@@ -104,7 +91,7 @@ class PureThermalPdfBuilder
 
         $startX = $centerX - ($totalWidth / 2.0);
         $currX = $startX;
-        $stream = "0 0 0 rg\n";
+        $stream = "0 0 0 rg 0 0 0 RG\n";
 
         for ($i = 0; $i < strlen($full); $i++) {
             $c = $full[$i];
@@ -124,9 +111,6 @@ class PureThermalPdfBuilder
         return $stream;
     }
 
-    /**
-     * Bangun stream perintah grafis & teks untuk 1 halaman thermal (100x150 mm)
-     */
     public static function buildPageStream(object $order): string
     {
         $carrier = strtoupper($order->shipping_carrier ?: 'J&T EXPRESS');
@@ -153,127 +137,109 @@ class PureThermalPdfBuilder
             $items = [];
         }
 
-        $s = "";
-        // 1. Kotak Luar Label (Margin 4mm = 11 pt)
-        $s .= "0.75 w 0 0 0 RG\n";
+        $s = "0 0 0 RG 0 0 0 rg\n";
+
+        // 1. Kotak Luar Label (Margin 4mm = 11 pt, Width: 261.46, Height: 403.20)
+        $s .= "0.75 w\n";
         $s .= "11.00 11.00 261.46 403.20 re S\n";
 
-        // 2. Header Area: Divider di y = 375
-        $s .= "11.00 375.00 m 272.46 375.00 l S\n";
+        // 2. Header Area: Divider di y = 372
+        $s .= "11.00 372.00 m 272.46 372.00 l S\n";
 
         // Brand & Subtitle
-        $s .= "BT\n";
-        $s .= "/F2 13 Tf 18.00 395.00 Td (" . self::escapePdfText('Thermal Waybill') . ") Tj\n";
-        $s .= "/F1 8 Tf 0 -12.00 Td (" . self::escapePdfText('Record Shoes Official') . ") Tj\n";
-        $s .= "ET\n";
+        $s .= self::text(18.00, 396.00, 'F2', 13.0, 'Thermal Waybill');
+        $s .= self::text(18.00, 382.00, 'F1', 8.5, 'Record Shoes Official');
 
-        // Nama Kurir Ekspedisi (Kanan atas)
-        $s .= "BT\n";
-        $s .= "/F2 12 Tf 180.00 395.00 Td (" . self::escapePdfText(substr($carrier, 0, 14)) . ") Tj\n";
-        $s .= "ET\n";
+        // Kurir (Kanan atas)
+        $s .= self::text(160.00, 396.00, 'F2', 12.0, substr($carrier, 0, 16));
 
         // Badge COD / NON-COD
         $codText = $isCod ? "COD" : "NON-COD";
-        $codW = $isCod ? 38.0 : 56.0;
+        $codW = $isCod ? 38.0 : 54.0;
         $codX = 272.46 - 8.0 - $codW;
-        $s .= sprintf("%.2f 380.00 %.2f 14.00 re S\n", $codX, $codW);
-        $s .= "BT\n";
-        $s .= sprintf("/F2 8 Tf %.2f 384.00 Td (%s) Tj\n", $codX + 5.0, $codText);
-        $s .= "ET\n";
+        $s .= sprintf("%.2f 378.00 %.2f 14.00 re S\n", $codX, $codW);
+        $s .= self::text($codX + 5.0, 382.00, 'F2', 8.5, $codText);
 
-        // 3. Barcode Box (y: 305 to 370)
+        // 3. Barcode Box (y: 300 to 366)
         $s .= "0.5 w [2 2] 0 d\n";
-        $s .= "16.00 305.00 251.46 64.00 re S\n";
+        $s .= "16.00 300.00 251.46 66.00 re S\n";
         $s .= "[] 0 d 0.75 w\n";
 
         // Draw Barcode Vektor
-        $barcodeHeight = 30.0;
-        $barcodeBottomY = 328.0;
+        $barcodeHeight = 32.0;
+        $barcodeBottomY = 324.0;
         $s .= self::drawBarcode($tracking, 141.73, $barcodeBottomY, $barcodeHeight, 0.95);
 
         // Teks Nomor Resi di bawah Barcode
-        $s .= "BT\n";
-        $s .= "/F2 11 Tf 75.00 312.00 Td (" . self::escapePdfText($tracking) . ") Tj\n";
-        $s .= "ET\n";
+        $s .= self::text(70.00, 308.00, 'F2', 11.0, $tracking);
 
-        // 4. Meta Area (PENERIMA & PENGIRIM) y: 195 to 300
-        $s .= "11.00 300.00 m 272.46 300.00 l S\n";
+        // 4. Meta Area (PENERIMA & PENGIRIM) y: 195 to 295
+        $s .= "11.00 295.00 m 272.46 295.00 l S\n";
         $s .= "11.00 195.00 m 272.46 195.00 l S\n";
-        // Garis Pembatas Vertikal antara Penerima (kiri) & Pengirim (kanan)
-        $s .= "155.00 195.00 m 155.00 300.00 l S\n";
+        $s .= "150.00 195.00 m 150.00 295.00 l S\n";
 
-        // Data Penerima
-        $s .= "BT\n";
-        $s .= "/F2 8 Tf 16.00 288.00 Td (" . self::escapePdfText('PENERIMA:') . ") Tj\n";
-        $s .= "/F2 8.5 Tf 0 -11.00 Td (" . self::escapePdfText(substr($recName, 0, 26)) . ") Tj\n";
-        $s .= "/F1 7.5 Tf 0 -9.00 Td (" . self::escapePdfText('Telp: ' . substr($recPhone, 0, 20)) . ") Tj\n";
+        // Data Penerima (Kiri)
+        $s .= self::text(16.00, 282.00, 'F2', 8.5, 'PENERIMA:');
+        $s .= self::text(16.00, 271.00, 'F2', 8.5, substr($recName, 0, 24));
+        $s .= self::text(16.00, 260.00, 'F1', 7.5, 'Telp: ' . substr($recPhone, 0, 20));
 
-        $addrLines = self::wrapText($recAddr, 30);
+        $addrLines = self::wrapText($recAddr, 28);
+        $addrY = 249.00;
         $maxAddrLines = min(4, count($addrLines));
         for ($i = 0; $i < $maxAddrLines; $i++) {
-            $s .= sprintf("0 -9.00 Td (%s) Tj\n", self::escapePdfText($addrLines[$i]));
+            $s .= self::text(16.00, $addrY, 'F1', 7.0, $addrLines[$i]);
+            $addrY -= 9.0;
         }
-        $s .= "ET\n";
 
-        // Data Pengirim
-        $s .= "BT\n";
-        $s .= "/F2 8 Tf 160.00 288.00 Td (" . self::escapePdfText('PENGIRIM:') . ") Tj\n";
-        $s .= "/F2 8 Tf 0 -11.00 Td (" . self::escapePdfText('Record Shoes Official') . ") Tj\n";
-        $s .= "/F1 7.5 Tf 0 -9.00 Td (" . self::escapePdfText('Telp: 0812-3456-7890') . ") Tj\n";
-        $s .= "/F1 7.5 Tf 0 -9.00 Td (" . self::escapePdfText('Kab. Bogor, Jawa Barat') . ") Tj\n";
-        $s .= "/F2 7.5 Tf 0 -14.00 Td (" . self::escapePdfText('Order ID:') . ") Tj\n";
-        $s .= "/F1 7.5 Tf 0 -9.00 Td (" . self::escapePdfText(substr($orderSn, 0, 22)) . ") Tj\n";
-        $s .= "ET\n";
+        // Data Pengirim (Kanan)
+        $s .= self::text(155.00, 282.00, 'F2', 8.5, 'PENGIRIM:');
+        $s .= self::text(155.00, 271.00, 'F2', 8.0, 'Record Shoes Official');
+        $s .= self::text(155.00, 260.00, 'F1', 7.5, 'Telp: 0812-3456-7890');
+        $s .= self::text(155.00, 249.00, 'F1', 7.5, 'Kab. Bogor, Jawa Barat');
+        $s .= self::text(155.00, 235.00, 'F2', 7.5, 'No. Pesanan:');
+        $s .= self::text(155.00, 224.00, 'F1', 7.5, substr($orderSn, 0, 22));
 
         // 5. Tabel Produk Pesanan (y: 35 to 195)
         $s .= "0.5 w\n";
         $s .= "11.00 182.00 m 272.46 182.00 l S\n";
-        $s .= "160.00 182.00 m 160.00 195.00 l S\n";
-        $s .= "235.00 182.00 m 235.00 195.00 l S\n";
 
-        $s .= "BT\n";
-        $s .= "/F2 7.5 Tf 16.00 186.00 Td (" . self::escapePdfText('Nama Produk') . ") Tj\n";
-        $s .= "/F2 7.5 Tf 164.00 186.00 Td (" . self::escapePdfText('Variasi / SKU') . ") Tj\n";
-        $s .= "/F2 7.5 Tf 242.00 186.00 Td (" . self::escapePdfText('Qty') . ") Tj\n";
-        $s .= "ET\n";
+        // Header Tabel
+        $s .= self::text(16.00, 186.00, 'F2', 7.5, 'Nama Produk');
+        $s .= self::text(164.00, 186.00, 'F2', 7.5, 'Variasi / SKU');
+        $s .= self::text(236.00, 186.00, 'F2', 7.5, 'Qty');
 
         $rowY = 170.0;
         $itemsToPrint = empty($items) ? [
             ['item_name' => 'RECORD SNEAKERS OFFICIAL', 'model_name' => 'Standard', 'model_quantity_purchased' => 1]
-        ] : array_slice($items, 0, 5);
+        ] : array_slice($items, 0, 6);
 
         foreach ($itemsToPrint as $it) {
-            if ($rowY < 48.0) {
+            if ($rowY < 45.0) {
                 break;
             }
             $pName = $it['item_name'] ?? $it['product_name'] ?? 'Sepatu';
             $pVar = $it['model_name'] ?? $it['variation'] ?? $it['sku_name'] ?? '-';
             $pQty = (string) ($it['model_quantity_purchased'] ?? $it['quantity'] ?? 1);
 
-            $s .= "BT\n";
-            $s .= sprintf("/F1 7 Tf 16.00 %.2f Td (%s) Tj\n", $rowY, self::escapePdfText(substr($pName, 0, 36)));
-            $s .= sprintf("/F1 7 Tf 164.00 %.2f Td (%s) Tj\n", $rowY, self::escapePdfText(substr($pVar, 0, 18)));
-            $s .= sprintf("/F2 7.5 Tf 246.00 %.2f Td (%s) Tj\n", $rowY, self::escapePdfText($pQty));
-            $s .= "ET\n";
+            $s .= self::text(16.00, $rowY, 'F1', 7.0, substr($pName, 0, 28));
+            $s .= self::text(164.00, $rowY, 'F1', 7.0, substr($pVar, 0, 14));
+            $s .= self::text(242.00, $rowY, 'F2', 7.5, $pQty);
 
             $rowY -= 14.0;
             $s .= sprintf("11.00 %.2f m 272.46 %.2f l S\n", $rowY + 4.0, $rowY + 4.0);
         }
 
+        $tableBottomY = max(35.0, $rowY + 4.0);
+        $s .= sprintf("160.00 %.2f m 160.00 195.00 l S\n", $tableBottomY);
+        $s .= sprintf("232.00 %.2f m 232.00 195.00 l S\n", $tableBottomY);
+
         // 6. Footer (y: 11 to 28)
         $s .= "11.00 28.00 m 272.46 28.00 l S\n";
-        $s .= "BT\n";
-        $s .= "/F1 6.5 Tf 35.00 18.00 Td (" . self::escapePdfText('Dicetak via ERP Koding Cutoff • Thermal Standard 100x150 mm (A6)') . ") Tj\n";
-        $s .= "ET\n";
+        $s .= self::text(28.00, 17.00, 'F1', 6.5, 'Dicetak via ERP Koding Cutoff • Thermal Standard 100x150 mm (A6)');
 
         return $s;
     }
 
-    /**
-     * Bangun dokumen PDF lengkap (multi-halaman sesuai jumlah pesanan)
-     *
-     * @param array<int, object> $orders
-     */
     public static function build(array $orders): string
     {
         if (empty($orders)) {
