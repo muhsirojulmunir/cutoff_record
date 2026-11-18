@@ -611,6 +611,30 @@ class ShopeeOrderController extends Controller
     }
 
     /**
+     * Tandai pesanan telah dicetak resinya secara fisik / via dialog cetak browser.
+     */
+    public function markPrinted(Request $request): JsonResponse
+    {
+        $this->authorizeSuperAdmin($request);
+
+        try {
+            $validated = $request->validate([
+                'order_sns'   => ['required', 'array', 'min:1', 'max:100'],
+                'order_sns.*' => ['required', 'string', 'max:64'],
+            ]);
+
+            $account = $this->requireConnectedAccount();
+            $result = $this->orderService->markOrdersAsPrinted($account, $validated['order_sns']);
+
+            return response()->json($result);
+        } catch (ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Throwable $e) {
+            return $this->actionErrorResponse($e);
+        }
+    }
+
+    /**
      * Terima (ACCEPT) atau tolak (REJECT) pengajuan pembatalan pembeli.
      */
     public function handleCancellation(Request $request, string $orderSn): JsonResponse

@@ -821,6 +821,34 @@ class ShopeeOrderService
     }
 
     /**
+     * Tandai pesanan telah dicetak resinya: increment label_print_count & update label_printed_at.
+     *
+     * @param  array<int, string>  $orderSns
+     * @return array{success: bool, count: int, order_sns: array<int, string>}
+     */
+    public function markOrdersAsPrinted(ShopeeAccount $account, array $orderSns): array
+    {
+        $this->ensureSchema();
+        $cleanSns = $this->normalizeOrderSnList($orderSns, 'konfirmasi cetak resi');
+
+        $now = now('Asia/Jakarta');
+
+        $updatedCount = ShopeeOrder::where('shopee_account_id', $account->id)
+            ->whereIn('order_sn', $cleanSns)
+            ->update([
+                'label_document_status' => 'PRINTED',
+                'label_printed_at'      => $now,
+                'label_print_count'     => DB::raw('COALESCE(label_print_count, 0) + 1'),
+            ]);
+
+        return [
+            'success'   => true,
+            'count'     => $updatedCount,
+            'order_sns' => $cleanSns,
+        ];
+    }
+
+    /**
      * Buat dan unduh dokumen resi PDF Thermal A6 (100x150 mm) resmi Shopee (THERMAL_AIR_WAYBILL) untuk 1..50 pesanan.
      *
      * @param  array<int, string>  $orderSns
@@ -1021,13 +1049,13 @@ class ShopeeOrderService
             throw new RuntimeException('Respon unduhan resi Shopee bukan dokumen PDF yang valid.');
         }
 
-        $printedAt = now('Asia/Jakarta');
+        $downloadedAt = now('Asia/Jakarta');
         $readyIds = array_map(static fn (ShopeeOrder $o): int => (int) $o->id, $readyOrders);
 
+        // Hanya tandai dokumen siap dipreview (READY). Status dicetak & hitungan cetak
+        // baru dinaikkan saat user benar-benar menekan tombol print di preview modal.
         ShopeeOrder::whereIn('id', $readyIds)->update([
             'label_document_status' => 'READY',
-            'label_printed_at'      => $printedAt,
-            'label_print_count'     => DB::raw('COALESCE(label_print_count, 0) + 1'),
         ]);
 
         $updatedOrdersMap = ShopeeOrder::whereIn('id', $readyIds)->get()->keyBy('order_sn');
@@ -1038,7 +1066,7 @@ class ShopeeOrderService
 
         $filename = count($orderedResult) === 1
             ? 'resi-shopee-' . $orderedResult[0]->order_sn . '-thermal-100x150.pdf'
-            : 'resi-shopee-massal-' . count($orderedResult) . '-pesanan-' . $printedAt->format('Ymd-His') . '-thermal.pdf';
+            : 'resi-shopee-massal-' . count($orderedResult) . '-pesanan-' . $downloadedAt->format('Ymd-His') . '-thermal.pdf';
 
         return [
             'pdf_binary' => $binary,

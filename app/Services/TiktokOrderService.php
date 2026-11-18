@@ -1011,6 +1011,34 @@ class TiktokOrderService
     }
 
     /**
+     * Tandai pesanan TikTok telah dicetak resinya: increment label_print_count & update label_printed_at.
+     *
+     * @param  array<int, string>  $orderSns
+     * @return array{success: bool, count: int, order_sns: array<int, string>}
+     */
+    public function markOrdersAsPrinted(TiktokAccount $account, array $orderSns): array
+    {
+        $this->ensureSchema();
+        $cleanSns = array_values(array_filter(array_map('trim', $orderSns)));
+
+        $now = now('Asia/Jakarta');
+
+        $updatedCount = TiktokOrder::where('tiktok_account_id', $account->id)
+            ->whereIn('order_sn', $cleanSns)
+            ->update([
+                'label_document_status' => 'PRINTED',
+                'label_printed_at'      => $now,
+                'label_print_count'     => DB::raw('COALESCE(label_print_count, 0) + 1'),
+            ]);
+
+        return [
+            'success'   => true,
+            'count'     => $updatedCount,
+            'order_sns' => $cleanSns,
+        ];
+    }
+
+    /**
      * Generate TikTok Waybill / Shipping Label PDF.
      */
     public function generateWaybillPdf(TiktokAccount $account, array $orderSns): string
@@ -1021,10 +1049,8 @@ class TiktokOrderService
             ->get();
 
         foreach ($orders as $order) {
-            $order->increment('label_print_count');
             $order->update([
-                'label_document_status' => 'PRINTED',
-                'label_printed_at'      => now(),
+                'label_document_status' => 'READY',
             ]);
         }
 
