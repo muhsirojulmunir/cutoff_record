@@ -126,6 +126,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/shopee-orders/sync-chunk', [\App\Http\Controllers\ShopeeOrderController::class, 'syncChunk'])->name('shopee-orders.sync-chunk');
     Route::post('/shopee-orders/mass-ship', [\App\Http\Controllers\ShopeeOrderController::class, 'massShip'])->name('shopee-orders.mass-ship');
     Route::post('/shopee-orders/mass-waybill-a4', [\App\Http\Controllers\ShopeeOrderController::class, 'massPrintWaybill'])->name('shopee-orders.mass-waybill');
+    Route::post('/shopee-orders/mark-printed', [\App\Http\Controllers\ShopeeOrderController::class, 'markPrinted'])->name('shopee-orders.mark-printed');
     Route::post('/shopee-orders/{orderSn}/refresh', [\App\Http\Controllers\ShopeeOrderController::class, 'refreshDetail'])->name('shopee-orders.refresh');
     Route::get('/shopee-orders/{orderSn}/escrow-detail', [\App\Http\Controllers\ShopeeOrderController::class, 'escrowDetail'])->name('shopee-orders.escrow-detail');
     Route::get('/shopee-orders/{orderSn}/tracking-info', [\App\Http\Controllers\ShopeeOrderController::class, 'trackingInfo'])->name('shopee-orders.tracking-info');
@@ -144,6 +145,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/tiktok-orders/sync-chunk', [\App\Http\Controllers\TiktokOrderController::class, 'syncChunk'])->name('tiktok-orders.sync-chunk');
     Route::post('/tiktok-orders/mass-ship', [\App\Http\Controllers\TiktokOrderController::class, 'massShip'])->name('tiktok-orders.mass-ship');
     Route::post('/tiktok-orders/mass-waybill-a4', [\App\Http\Controllers\TiktokOrderController::class, 'massPrintWaybill'])->name('tiktok-orders.mass-waybill');
+    Route::post('/tiktok-orders/mark-printed', [\App\Http\Controllers\TiktokOrderController::class, 'markPrinted'])->name('tiktok-orders.mark-printed');
     Route::post('/tiktok-orders/{orderSn}/refresh', [\App\Http\Controllers\TiktokOrderController::class, 'refreshDetail'])->name('tiktok-orders.refresh');
     Route::get('/tiktok-orders/{orderSn}/escrow-detail', [\App\Http\Controllers\TiktokOrderController::class, 'escrowDetail'])->name('tiktok-orders.escrow-detail');
     Route::get('/tiktok-orders/{orderSn}/tracking-info', [\App\Http\Controllers\TiktokOrderController::class, 'trackingInfo'])->name('tiktok-orders.tracking-info');

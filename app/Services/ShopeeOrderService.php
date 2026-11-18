@@ -1021,13 +1021,13 @@ class ShopeeOrderService
             throw new RuntimeException('Respon unduhan resi Shopee bukan dokumen PDF yang valid.');
         }
 
-        $printedAt = now('Asia/Jakarta');
+        $downloadedAt = now('Asia/Jakarta');
         $readyIds = array_map(static fn (ShopeeOrder $o): int => (int) $o->id, $readyOrders);
 
+        // Hanya tandai dokumen siap dipreview (READY). Status dicetak & hitungan cetak
+        // baru dinaikkan saat user benar-benar menekan tombol print di preview modal.
         ShopeeOrder::whereIn('id', $readyIds)->update([
             'label_document_status' => 'READY',
-            'label_printed_at'      => $printedAt,
-            'label_print_count'     => DB::raw('COALESCE(label_print_count, 0) + 1'),
         ]);
 
         $updatedOrdersMap = ShopeeOrder::whereIn('id', $readyIds)->get()->keyBy('order_sn');
@@ -1038,13 +1038,44 @@ class ShopeeOrderService
 
         $filename = count($orderedResult) === 1
             ? 'resi-shopee-' . $orderedResult[0]->order_sn . '-thermal-100x150.pdf'
-            : 'resi-shopee-massal-' . count($orderedResult) . '-pesanan-' . $printedAt->format('Ymd-His') . '-thermal.pdf';
+            : 'resi-shopee-massal-' . count($orderedResult) . '-pesanan-' . $downloadedAt->format('Ymd-His') . '-thermal.pdf';
 
         return [
             'pdf_binary' => $binary,
             'filename'   => $filename,
             'orders'     => $orderedResult,
             'warnings'   => array_values(array_unique($warnings)),
+        ];
+    }
+
+    /**
+     * Tandai pesanan telah dicetak resinya secara fisik / via dialog cetak browser.
+     *
+     * @param  array<int, string>  $orderSns
+     * @return array{success: bool, orders: array<int, array<string, mixed>>, printed_at: string}
+     */
+    public function markOrdersAsPrinted(ShopeeAccount $account, array $orderSns): array
+    {
+        $this->ensureSchema();
+        $orderSns = $this->normalizeOrderSnList($orderSns, 'tandai cetak');
+        $printedAt = now('Asia/Jakarta');
+
+        ShopeeOrder::where('shopee_account_id', $account->id)
+            ->whereIn('order_sn', $orderSns)
+            ->update([
+                'label_document_status' => 'PRINTED',
+                'label_printed_at'      => $printedAt,
+                'label_print_count'     => DB::raw('COALESCE(label_print_count, 0) + 1'),
+            ]);
+
+        $updated = ShopeeOrder::where('shopee_account_id', $account->id)
+            ->whereIn('order_sn', $orderSns)
+            ->get(['order_sn', 'label_document_status', 'label_printed_at', 'label_print_count']);
+
+        return [
+            'success'    => true,
+            'orders'     => $updated->toArray(),
+            'printed_at' => $printedAt->toIso8601String(),
         ];
     }
 

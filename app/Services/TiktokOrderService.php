@@ -1021,15 +1021,44 @@ class TiktokOrderService
             ->get();
 
         foreach ($orders as $order) {
-            $order->increment('label_print_count');
             $order->update([
-                'label_document_status' => 'PRINTED',
-                'label_printed_at'      => now(),
+                'label_document_status' => 'READY',
             ]);
         }
 
         // Buat PDF Waybill A4 / Thermal standar menggunakan DomPDF atau fallback generator
         return $this->renderWaybillHtmlToPdf($orders);
+    }
+
+    /**
+     * Tandai pesanan TikTok telah dicetak resinya secara fisik / via dialog cetak browser.
+     *
+     * @param  array<int, string>  $orderSns
+     * @return array{success: bool, orders: array<int, array<string, mixed>>, printed_at: string}
+     */
+    public function markOrdersAsPrinted(TiktokAccount $account, array $orderSns): array
+    {
+        $this->ensureSchema();
+        $cleanSns = array_values(array_filter(array_map('trim', $orderSns)));
+        $printedAt = now('Asia/Jakarta');
+
+        TiktokOrder::where('tiktok_account_id', $account->id)
+            ->whereIn('order_sn', $cleanSns)
+            ->update([
+                'label_document_status' => 'PRINTED',
+                'label_printed_at'      => $printedAt,
+                'label_print_count'     => DB::raw('COALESCE(label_print_count, 0) + 1'),
+            ]);
+
+        $updated = TiktokOrder::where('tiktok_account_id', $account->id)
+            ->whereIn('order_sn', $cleanSns)
+            ->get(['order_sn', 'label_document_status', 'label_printed_at', 'label_print_count']);
+
+        return [
+            'success'    => true,
+            'orders'     => $updated->toArray(),
+            'printed_at' => $printedAt->toIso8601String(),
+        ];
     }
 
     private function renderWaybillHtmlToPdf($orders): string

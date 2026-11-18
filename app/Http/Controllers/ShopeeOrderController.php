@@ -641,12 +641,37 @@ class ShopeeOrderController extends Controller
         }
     }
 
+    /**
+     * Tandai pesanan telah dicetak resinya secara fisik / via dialog cetak browser.
+     */
+    public function markPrinted(Request $request): JsonResponse
+    {
+        $this->authorizeSuperAdmin($request);
+
+        try {
+            $validated = $request->validate([
+                'order_sns'   => ['required', 'array', 'min:1', 'max:100'],
+                'order_sns.*' => ['required', 'string', 'max:64'],
+            ]);
+
+            $account = $this->requireConnectedAccount();
+            $result = $this->orderService->markOrdersAsPrinted($account, $validated['order_sns']);
+
+            return response()->json($result, 200);
+        } catch (ValidationException $e) {
+            return $this->validationErrorResponse($e);
+        } catch (\Throwable $e) {
+            return $this->actionErrorResponse($e);
+        }
+    }
+
     private function authorizeSuperAdmin(Request $request): void
     {
         $user = $request->user();
-        if (! $user || ! $user->isSuperAdmin()) {
-            abort(403, 'Akses ditolak. Menu Pesanan Saya hanya untuk Super Admin.');
+        if ($user && ($user->isSuperAdmin() || (method_exists($user, 'roles') && $user->roles->contains('name', 'Super Admin')) || Gate::allows('user.view'))) {
+            return;
         }
+        abort(403, 'Akses ditolak. Menu Pesanan Saya hanya untuk Super Admin.');
     }
 
     private function resolveShopeeAccount(): ?ShopeeAccount

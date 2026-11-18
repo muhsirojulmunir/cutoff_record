@@ -83,6 +83,7 @@ interface WaybillModalState {
   filename: string;
   orderCount: number;
   warnings: string[];
+  orderSns?: string[];
 }
 
 interface CancelTargetState {
@@ -1181,8 +1182,35 @@ export default function ShopeeOrdersPage({
       show: false,
       pdfUrl: null,
       warnings: [],
+      orderSns: [],
     }));
   }, [revokeActiveBlobUrl]);
+
+  const handleWaybillPrinted = useCallback(
+    async (orderSns: string[]) => {
+      if (!orderSns || orderSns.length === 0) return;
+      try {
+        const response = await fetch('/shopee-orders/mark-printed', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            'X-CSRF-TOKEN': getCsrfToken(),
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          body: JSON.stringify({ order_sns: orderSns }),
+        });
+
+        if (response.ok) {
+          router.reload({ only: ['orders', 'tabCounts'] });
+        }
+      } catch (err) {
+        console.error('Gagal memperbarui status cetak resi Shopee:', err);
+      }
+    },
+    []
+  );
 
   const openWaybillPdfStream = useCallback(
     async (targetOrders: ShopeeOrderRecord[], isMass: boolean) => {
@@ -1286,6 +1314,7 @@ export default function ShopeeOrdersPage({
           filename,
           orderCount: resolvedCount,
           warnings,
+          orderSns: capped.map((o) => o.order_sn),
         });
 
         showToast(
@@ -1294,8 +1323,6 @@ export default function ShopeeOrdersPage({
             ? `PDF Resi Thermal 100x150mm berhasil disiapkan untuk ${resolvedCount} pesanan.`
             : `PDF Resi Thermal 100x150mm untuk ${capped[0].order_sn} siap dicetak.`
         );
-
-        router.reload({ only: ['orders', 'tabCounts'] });
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
         if (isMountedRef.current) {
@@ -3152,8 +3179,10 @@ export default function ShopeeOrdersPage({
         title={waybillModal.title}
         filename={waybillModal.filename}
         orderCount={waybillModal.orderCount}
+        orderSns={waybillModal.orderSns}
         warnings={waybillModal.warnings}
         onClose={closeWaybillModal}
+        onPrintConfirmed={handleWaybillPrinted}
       />
 
       {/* Order Detail Slide-Over Drawer */}
