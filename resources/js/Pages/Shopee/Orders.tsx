@@ -756,10 +756,6 @@ export default function ShopeeOrdersPage({
           selectedCountRef.current === 0
         ) {
           reloadAfterSync();
-          showToast(
-            'success',
-            `Live Auto-Sync: ${payload.changed_orders} pesanan diperbarui.`
-          );
         }
       } catch (err: unknown) {
         if (
