@@ -415,7 +415,7 @@ class TiktokSyncService
             }
             if ($totalQty <= 0) $totalQty = 1;
 
-            $statusRaw  = (string) ($order['status'] ?? '');
+            $statusRaw  = (string) ($order['order_status'] ?? $order['status'] ?? '');
             $statusText = $this->mapOrderStatus($statusRaw);
 
             // Rumus ERP Khusus TikTok: Order Amount x 75%
@@ -492,10 +492,10 @@ class TiktokSyncService
                         ],
                         [
                             'package_number'         => $order['package_list'][0]['id'] ?? 'PKG-' . $orderId,
-                            'order_status'           => strtoupper($statusRaw) ?: 'READY_TO_SHIP',
+                            'order_status'           => strtoupper($statusRaw) ?: 'AWAITING_SHIPMENT',
                             'logistics_status'       => $order['fulfillment_type'] ?? null,
-                            'shipping_carrier'       => $order['shipping_provider'] ?? $order['delivery_option_name'] ?? 'J&T Express',
-                            'tracking_number'        => $order['tracking_number'] ?? null,
+                            'shipping_carrier'       => $order['shipping_provider'] ?? $order['delivery_option_name'] ?? ($order['package_list'][0]['shipping_provider_name'] ?? 'J&T Express'),
+                            'tracking_number'        => $order['tracking_number'] ?? ($order['package_list'][0]['tracking_number'] ?? null),
                             'fulfillment_method'     => 'pickup',
                             'buyer_user_id'          => $order['buyer_uid'] ?? null,
                             'buyer_username'         => $order['buyer_email'] ?? $recip['name'] ?? $order['buyer_uid'] ?? null,
@@ -511,7 +511,7 @@ class TiktokSyncService
                             'package_list_json'      => $order['package_list'] ?? [],
                             'payment_method'         => $paymentMethod,
                             'is_cod'                 => ! empty($order['is_cod']),
-                            'total_amount'           => $productPrice,
+                            'total_amount'           => $orderAmount,
                             'order_created_at'       => $orderDate,
                             'ship_by_date'           => $shipByDate,
                             'raw_payload'            => json_encode($order),
@@ -731,7 +731,7 @@ class TiktokSyncService
             $payment = $order['payment'] ?? [];
             $productPrice = (float) ($payment['original_total_product_price'] ?? $payment['total_amount'] ?? 0);
             $recip = $order['recipient_address'] ?? [];
-            $statusRaw = (string) ($order['status'] ?? '');
+            $statusRaw = (string) ($order['order_status'] ?? $order['status'] ?? '');
             $createTime = $order['create_time'] ?? null;
             $orderDate = $createTime
                 ? Carbon::createFromTimestamp((int) $createTime, 'Asia/Jakarta')->format('Y-m-d H:i:s')
@@ -749,10 +749,10 @@ class TiktokSyncService
                 ],
                 [
                     'package_number'         => $order['package_list'][0]['id'] ?? 'PKG-' . $orderId,
-                    'order_status'           => strtoupper($statusRaw) ?: 'READY_TO_SHIP',
+                    'order_status'           => strtoupper($statusRaw) ?: 'AWAITING_SHIPMENT',
                     'logistics_status'       => $order['fulfillment_type'] ?? null,
-                    'shipping_carrier'       => $order['shipping_provider'] ?? $order['delivery_option_name'] ?? 'J&T Express',
-                    'tracking_number'        => $order['tracking_number'] ?? null,
+                    'shipping_carrier'       => $order['shipping_provider'] ?? $order['delivery_option_name'] ?? ($order['package_list'][0]['shipping_provider_name'] ?? 'J&T Express'),
+                    'tracking_number'        => $order['tracking_number'] ?? ($order['package_list'][0]['tracking_number'] ?? null),
                     'fulfillment_method'     => 'pickup',
                     'buyer_user_id'          => $order['buyer_uid'] ?? null,
                     'buyer_username'         => $order['buyer_email'] ?? $recip['name'] ?? $order['buyer_uid'] ?? null,
@@ -776,6 +776,63 @@ class TiktokSyncService
             );
         } catch (\Throwable $e) {
             Log::warning("TiktokSyncService fetchSingleOrder error ({$orderId}): " . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Ambil histori dan status pelacakan ekspedisi real-time dari TikTok Shop Open API.
+     * Endpoint: GET /fulfillment/202309/orders/{order_id}/tracking
+     */
+    public function getOrderTracking(TiktokAccount $account, string $orderId): ?array
+    {
+        try {
+            $this->ensureValidAccessToken($account);
+
+            if (empty($account->shop_cipher)) {
+                $this->fetchAuthorizedShops($account);
+            }
+
+            $shopCipher = $account->shop_cipher;
+            if (empty($shopCipher)) {
+                return null;
+            }
+
+            $path = "/fulfillment/202309/orders/{$orderId}/tracking";
+            $timestamp = time();
+
+            $queryParams = [
+                'app_key'     => $account->app_key,
+                'timestamp'   => (string) $timestamp,
+                'shop_cipher' => $shopCipher,
+            ];
+
+            $sign = $this->generateSignature($path, $queryParams, $account->app_secret, '');
+            $queryParams['sign'] = $sign;
+
+            $url = $this->openHost . $path . '?' . http_build_query($queryParams);
+
+            $response = Http::timeout(15)
+                ->withHeaders([
+                    'x-tts-access-token' => $account->access_token,
+                    'Content-Type'       => 'application/json',
+                ])
+                ->get($url);
+
+            if (! $response->successful()) {
+                Log::info("TiktokSyncService getOrderTracking HTTP {$response->status()} ({$orderId}): " . $response->body());
+                return null;
+            }
+
+            $json = $response->json();
+            if (($json['code'] ?? -1) !== 0) {
+                Log::info("TiktokSyncService getOrderTracking API notice ({$orderId}): " . ($json['message'] ?? 'Error'));
+                return null;
+            }
+
+            return $json['data'] ?? null;
+        } catch (\Throwable $e) {
+            Log::warning("TiktokSyncService getOrderTracking error ({$orderId}): " . $e->getMessage());
             return null;
         }
     }

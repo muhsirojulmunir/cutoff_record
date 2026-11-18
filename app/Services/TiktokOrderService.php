@@ -858,53 +858,124 @@ class TiktokOrderService
             ->where('order_sn', $orderSn)
             ->firstOrFail();
 
+        // 1. Coba ambil tracking riil langsung dari TikTok Shop Open API (/fulfillment/202309/orders/{order_id}/tracking)
+        if ($account->isConnected() && ! empty($account->access_token)) {
+            try {
+                $apiData = $this->syncService->getOrderTracking($account, $orderSn);
+                if ($apiData && ! empty($apiData['track_list'])) {
+                    $trackingNumber = $apiData['tracking_number'] ?? $order->tracking_number;
+                    $transitStatus = $apiData['transit_status'] ?? $order->logistics_status;
+                    $carrierName = $apiData['shipping_provider_name'] ?? $order->shipping_carrier;
+
+                    $events = [];
+                    foreach ($apiData['track_list'] as $track) {
+                        $ts = (int) ($track['update_time'] ?? 0);
+                        $desc = trim((string) ($track['description'] ?? ''));
+                        if ($ts <= 0 && $desc === '') continue;
+
+                        $events[] = [
+                            'update_time'           => $ts,
+                            'update_time_formatted' => $ts > 0
+                                ? Carbon::createFromTimestamp($ts, 'Asia/Jakarta')->format('d M Y, H:i') . ' WIB'
+                                : '-',
+                            'description'           => $desc !== '' ? $desc : '-',
+                            'logistics_status'      => $track['stage'] ?? $transitStatus,
+                        ];
+                    }
+
+                    usort($events, static fn (array $a, array $b): int => $b['update_time'] <=> $a['update_time']);
+
+                    // Update order lokal dengan no resi dan status ekspedisi terbaru jika ada
+                    $updates = [];
+                    if (! empty($trackingNumber) && $order->tracking_number !== $trackingNumber) {
+                        $updates['tracking_number'] = $trackingNumber;
+                    }
+                    if (! empty($carrierName) && $order->shipping_carrier !== $carrierName) {
+                        $updates['shipping_carrier'] = $carrierName;
+                    }
+                    if (! empty($transitStatus) && $order->logistics_status !== $transitStatus) {
+                        $updates['logistics_status'] = $transitStatus;
+                    }
+                    if (! empty($updates)) {
+                        $order->update($updates);
+                    }
+
+                    return [
+                        'status'           => 'success',
+                        'order_sn'         => $order->order_sn,
+                        'tracking_number'  => $order->tracking_number,
+                        'shipping_carrier' => $order->shipping_carrier,
+                        'logistics_status' => $order->logistics_status,
+                        'tracking_info'    => $events,
+                        'order'            => $order->fresh()->makeHidden(['raw_payload']),
+                    ];
+                }
+            } catch (\Throwable $e) {
+                Log::info("TiktokOrderService getTrackingInfo API fallback ({$orderSn}): " . $e->getMessage());
+            }
+        }
+
+        // 2. Fallback event sintetis berbasis status pesanan lokal
         $events = [];
         if ($order->order_created_at) {
+            $ts = $order->order_created_at->timestamp;
             $events[] = [
-                'description' => 'Pesanan berhasil dibuat oleh pembeli TikTok Shop.',
-                'logistics_status' => 'ORDER_CREATED',
-                'timestamp'   => $order->order_created_at->timestamp,
+                'update_time'           => $ts,
+                'update_time_formatted' => Carbon::createFromTimestamp($ts, 'Asia/Jakarta')->format('d M Y, H:i') . ' WIB',
+                'description'           => 'Pesanan berhasil dibuat oleh pembeli TikTok Shop.',
+                'logistics_status'      => 'ORDER_CREATED',
             ];
         }
 
         if ($order->shipping_arranged_at) {
+            $ts = $order->shipping_arranged_at->timestamp;
             $events[] = [
-                'description' => "Pengiriman diatur via {$order->shipping_carrier}. Menunggu penyerahan paket ke kurir.",
-                'logistics_status' => 'LOGISTICS_READY',
-                'timestamp'   => $order->shipping_arranged_at->timestamp,
+                'update_time'           => $ts,
+                'update_time_formatted' => Carbon::createFromTimestamp($ts, 'Asia/Jakarta')->format('d M Y, H:i') . ' WIB',
+                'description'           => "Pengiriman diatur via {$order->shipping_carrier}. Menunggu penyerahan paket ke kurir.",
+                'logistics_status'      => 'LOGISTICS_READY',
             ];
         }
 
         if ($order->tracking_number) {
+            $ts = ($order->shipping_arranged_at ?? now())->timestamp + 300;
             $events[] = [
-                'description' => "No. Resi {$order->tracking_number} telah diterbitkan oleh {$order->shipping_carrier}.",
-                'logistics_status' => 'TRACKING_NUMBER_ASSIGNED',
-                'timestamp'   => ($order->shipping_arranged_at ?? now())->timestamp + 300,
+                'update_time'           => $ts,
+                'update_time_formatted' => Carbon::createFromTimestamp($ts, 'Asia/Jakarta')->format('d M Y, H:i') . ' WIB',
+                'description'           => "No. Resi {$order->tracking_number} telah diterbitkan oleh {$order->shipping_carrier}.",
+                'logistics_status'      => 'TRACKING_NUMBER_ASSIGNED',
             ];
         }
 
         if (in_array($order->order_status, ['SHIPPED', 'IN_TRANSIT'], true)) {
+            $ts = now()->subHours(5)->timestamp;
             $events[] = [
-                'description' => "Paket telah diterima oleh gerai kurir {$order->shipping_carrier} dan sedang dalam perjalanan ke alamat tujuan.",
-                'logistics_status' => 'IN_TRANSIT',
-                'timestamp'   => now()->subHours(5)->timestamp,
+                'update_time'           => $ts,
+                'update_time_formatted' => Carbon::createFromTimestamp($ts, 'Asia/Jakarta')->format('d M Y, H:i') . ' WIB',
+                'description'           => "Paket telah diterima oleh gerai kurir {$order->shipping_carrier} dan sedang dalam perjalanan ke alamat tujuan.",
+                'logistics_status'      => 'IN_TRANSIT',
             ];
         }
 
         if ($order->order_status === 'COMPLETED' || $order->order_status === 'DELIVERED') {
+            $ts = now()->subDays(1)->timestamp;
             $events[] = [
-                'description' => 'Paket telah berhasil diterima oleh pembeli.',
-                'logistics_status' => 'DELIVERED',
-                'timestamp'   => now()->subDays(1)->timestamp,
+                'update_time'           => $ts,
+                'update_time_formatted' => Carbon::createFromTimestamp($ts, 'Asia/Jakarta')->format('d M Y, H:i') . ' WIB',
+                'description'           => 'Paket telah berhasil diterima oleh pembeli.',
+                'logistics_status'      => 'DELIVERED',
             ];
         }
+
+        usort($events, static fn (array $a, array $b): int => $b['update_time'] <=> $a['update_time']);
 
         return [
             'status'           => 'success',
             'order_sn'         => $order->order_sn,
             'tracking_number'  => $order->tracking_number,
+            'shipping_carrier' => $order->shipping_carrier,
             'logistics_status' => $order->logistics_status,
-            'tracking_info'    => array_reverse($events),
+            'tracking_info'    => $events,
             'order'            => $order->fresh()->makeHidden(['raw_payload']),
         ];
     }

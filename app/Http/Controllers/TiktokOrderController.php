@@ -429,17 +429,43 @@ class TiktokOrderController extends Controller
 
     private function fetchTabCounts(int $accountId): array
     {
-        $base = TiktokOrder::query()->where('tiktok_account_id', $accountId);
+        $handedOverSql = TiktokOrder::handedOverPredicateSql();
+        $issueSql = TiktokOrder::issueLogisticsPredicateSql();
+        $pendingPickupSql = TiktokOrder::pendingPickupPredicateSql();
+
+        $row = TiktokOrder::query()
+            ->where('tiktok_account_id', $accountId)
+            ->selectRaw("
+                COUNT(*) as all_count,
+                COALESCE(SUM(CASE WHEN order_status = 'UNPAID' THEN 1 ELSE 0 END), 0) as unpaid,
+                COALESCE(SUM(CASE WHEN order_status IN ('READY_TO_SHIP', 'AWAITING_SHIPMENT', 'AWAITING_COLLECTION', 'PROCESSED', 'RETRY_SHIP') THEN 1 ELSE 0 END), 0) as to_ship,
+                COALESCE(SUM(CASE WHEN order_status IN ('READY_TO_SHIP', 'AWAITING_SHIPMENT', 'RETRY_SHIP') THEN 1 ELSE 0 END), 0) as to_ship_unprocessed,
+                COALESCE(SUM(CASE WHEN order_status IN ('PROCESSED', 'AWAITING_COLLECTION') THEN 1 ELSE 0 END), 0) as to_ship_processed,
+                COALESCE(SUM(CASE WHEN order_status IN ('SHIPPED', 'IN_TRANSIT') THEN 1 ELSE 0 END), 0) as shipped,
+                COALESCE(SUM(CASE WHEN order_status IN ('TO_CONFIRM_RECEIVE', 'DELIVERED', 'COMPLETED') THEN 1 ELSE 0 END), 0) as completed,
+                COALESCE(SUM(CASE WHEN order_status IN ('IN_CANCEL', 'CANCELLED', 'TO_RETURN', 'REFUNDED') THEN 1 ELSE 0 END), 0) as cancelled,
+                COALESCE(SUM(CASE WHEN COALESCE(label_print_count, 0) = 0 THEN 1 ELSE 0 END), 0) as unprinted,
+                COALESCE(SUM(CASE WHEN COALESCE(label_print_count, 0) > 0 THEN 1 ELSE 0 END), 0) as printed,
+                COALESCE(SUM(CASE WHEN {$pendingPickupSql} THEN 1 ELSE 0 END), 0) as logistics_pending_pickup,
+                COALESCE(SUM(CASE WHEN {$handedOverSql} THEN 1 ELSE 0 END), 0) as logistics_handed_over,
+                COALESCE(SUM(CASE WHEN {$issueSql} THEN 1 ELSE 0 END), 0) as logistics_issue
+            ")
+            ->first();
 
         return [
-            TiktokOrder::TAB_ALL       => (clone $base)->count(),
-            TiktokOrder::TAB_UNPAID    => (clone $base)->forTab(TiktokOrder::TAB_UNPAID)->count(),
-            TiktokOrder::TAB_TO_SHIP   => (clone $base)->forTab(TiktokOrder::TAB_TO_SHIP)->count(),
-            'to_ship_unprocessed'      => (clone $base)->forTab(TiktokOrder::TAB_TO_SHIP, TiktokOrder::SUBTAB_UNPROCESSED)->count(),
-            'to_ship_processed'        => (clone $base)->forTab(TiktokOrder::TAB_TO_SHIP, TiktokOrder::SUBTAB_PROCESSED)->count(),
-            TiktokOrder::TAB_SHIPPED   => (clone $base)->forTab(TiktokOrder::TAB_SHIPPED)->count(),
-            TiktokOrder::TAB_COMPLETED => (clone $base)->forTab(TiktokOrder::TAB_COMPLETED)->count(),
-            TiktokOrder::TAB_CANCELLED => (clone $base)->forTab(TiktokOrder::TAB_CANCELLED)->count(),
+            TiktokOrder::TAB_ALL       => (int) ($row->all_count ?? 0),
+            TiktokOrder::TAB_UNPAID    => (int) ($row->unpaid ?? 0),
+            TiktokOrder::TAB_TO_SHIP   => (int) ($row->to_ship ?? 0),
+            'to_ship_unprocessed'      => (int) ($row->to_ship_unprocessed ?? 0),
+            'to_ship_processed'        => (int) ($row->to_ship_processed ?? 0),
+            TiktokOrder::TAB_SHIPPED   => (int) ($row->shipped ?? 0),
+            TiktokOrder::TAB_COMPLETED => (int) ($row->completed ?? 0),
+            TiktokOrder::TAB_CANCELLED => (int) ($row->cancelled ?? 0),
+            'unprinted'                => (int) ($row->unprinted ?? 0),
+            'printed'                  => (int) ($row->printed ?? 0),
+            'logistics_pending_pickup' => (int) ($row->logistics_pending_pickup ?? 0),
+            'logistics_handed_over'    => (int) ($row->logistics_handed_over ?? 0),
+            'logistics_issue'          => (int) ($row->logistics_issue ?? 0),
         ];
     }
 
