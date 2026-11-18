@@ -548,7 +548,15 @@ class ShopeeOrderController extends Controller
                 $sharedOptions
             );
 
-            return response()->json(array_merge(['status' => 'success'], $result), 200);
+            $failCount = count($result['failed'] ?? []);
+            $succCount = count($result['succeeded'] ?? []);
+            $status = $failCount === 0 ? 'success' : ($succCount > 0 ? 'warning' : 'error');
+
+            if (ob_get_length()) {
+                ob_clean();
+            }
+
+            return response()->json(array_merge(['status' => $status], $result), 200);
         } catch (ValidationException $e) {
             return $this->validationErrorResponse($e);
         } catch (\Throwable $e) {

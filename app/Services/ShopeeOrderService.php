@@ -1776,7 +1776,20 @@ class ShopeeOrderService
 
             $selectedAddress = $this->pickDefaultAddress($addressList, $sharedOptions['address_id'] ?? null);
             $timeSlots = is_array($selectedAddress['time_slot_list'] ?? null) ? $selectedAddress['time_slot_list'] : [];
-            $pickupTimeId = $sharedOptions['pickup_time_id'] ?? ($timeSlots[0]['pickup_time_id'] ?? null);
+
+            // Cocokkan pickup_time_id ke daftar slot alamat pesanan ini agar tidak error slot tidak valid
+            $pickupTimeId = null;
+            if (! empty($sharedOptions['pickup_time_id'])) {
+                foreach ($timeSlots as $slot) {
+                    if (isset($slot['pickup_time_id']) && (string) $slot['pickup_time_id'] === (string) $sharedOptions['pickup_time_id']) {
+                        $pickupTimeId = (string) $slot['pickup_time_id'];
+                        break;
+                    }
+                }
+            }
+            if ($pickupTimeId === null && ! empty($timeSlots)) {
+                $pickupTimeId = (string) ($timeSlots[0]['pickup_time_id'] ?? '');
+            }
 
             return $this->filterNonEmpty([
                 'method'         => 'pickup',

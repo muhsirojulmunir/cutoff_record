@@ -226,7 +226,11 @@ class TiktokOrderController extends Controller
         $account = $this->resolveTiktokAccount();
         $result = $this->orderService->autoSync($account);
 
-        return response()->json($result);
+        if (ob_get_length()) {
+            ob_clean();
+        }
+
+        return response()->json($result, 200);
     }
 
     public function syncChunk(Request $request): JsonResponse
@@ -239,7 +243,11 @@ class TiktokOrderController extends Controller
 
         $result = $this->orderService->syncChunk($account, $date, $chunkIndex, $totalChunks);
 
-        return response()->json($result);
+        if (ob_get_length()) {
+            ob_clean();
+        }
+
+        return response()->json($result, 200);
     }
 
     public function massShip(Request $request): JsonResponse
@@ -259,7 +267,11 @@ class TiktokOrderController extends Controller
             $validated['preferred_method'] ?? 'auto'
         );
 
-        return response()->json($result);
+        if (ob_get_length()) {
+            ob_clean();
+        }
+
+        return response()->json($result, 200);
     }
 
     public function shippingParameters(string $orderSn): JsonResponse
@@ -267,7 +279,11 @@ class TiktokOrderController extends Controller
         $account = $this->resolveTiktokAccount();
         $result = $this->orderService->getShippingParameters($account, $orderSn);
 
-        return response()->json($result);
+        if (ob_get_length()) {
+            ob_clean();
+        }
+
+        return response()->json($result, 200);
     }
 
     public function ship(Request $request, string $orderSn): JsonResponse
@@ -289,7 +305,11 @@ class TiktokOrderController extends Controller
 
         $result = $this->orderService->ship($account, $orderSn, $validated);
 
-        return response()->json($result);
+        if (ob_get_length()) {
+            ob_clean();
+        }
+
+        return response()->json($result, 200);
     }
 
     public function refreshDetail(string $orderSn): JsonResponse
@@ -310,7 +330,11 @@ class TiktokOrderController extends Controller
         $account = $this->resolveTiktokAccount();
         $result = $this->orderService->getEscrowDetail($account, $orderSn);
 
-        return response()->json($result);
+        if (ob_get_length()) {
+            ob_clean();
+        }
+
+        return response()->json($result, 200);
     }
 
     public function trackingInfo(string $orderSn): JsonResponse
@@ -318,7 +342,11 @@ class TiktokOrderController extends Controller
         $account = $this->resolveTiktokAccount();
         $result = $this->orderService->getTrackingInfo($account, $orderSn);
 
-        return response()->json($result);
+        if (ob_get_length()) {
+            ob_clean();
+        }
+
+        return response()->json($result, 200);
     }
 
     public function handleCancellation(Request $request, string $orderSn): JsonResponse
@@ -332,7 +360,11 @@ class TiktokOrderController extends Controller
 
         $result = $this->orderService->handleBuyerCancellation($account, $orderSn, $validated['operation']);
 
-        return response()->json($result);
+        if (ob_get_length()) {
+            ob_clean();
+        }
+
+        return response()->json($result, 200);
     }
 
     public function printWaybill(string $orderSn): Response

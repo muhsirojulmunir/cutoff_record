@@ -36,26 +36,98 @@ export interface ShipOrderModalProps {
 
 type MassPreferredMethod = 'auto' | 'pickup' | 'dropoff';
 
-async function parseJsonSafe<T>(response: Response): Promise<T | null> {
+interface ParsedJsonResponse<T> {
+  data: T | null;
+  rawText: string;
+  cleanError?: string;
+}
+
+async function parseJsonSafe<T>(response: Response): Promise<ParsedJsonResponse<T>> {
+  let rawText = '';
   try {
-    return (await response.json()) as T;
+    rawText = await response.text();
   } catch {
-    return null;
+    return { data: null, rawText: '', cleanError: 'Tidak dapat membaca respons dari server.' };
+  }
+
+  if (!rawText || !rawText.trim()) {
+    return { data: null, rawText: '', cleanError: 'Respons server kosong.' };
+  }
+
+  // 1. Coba parse langsung sebagai JSON
+  try {
+    return { data: JSON.parse(rawText) as T, rawText };
+  } catch {
+    // 2. Jika ada PHP notice/warning sebelum atau sesudah JSON, coba cari substring {...}
+    const firstBrace = rawText.indexOf('{');
+    const lastBrace = rawText.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      try {
+        const jsonSlice = rawText.slice(firstBrace, lastBrace + 1);
+        return { data: JSON.parse(jsonSlice) as T, rawText };
+      } catch {
+        // Abaikan dan lanjut ke ekstraksi teks error
+      }
+    }
+
+    // 3. Ekstrak pesan bersih dari HTML bila server mengembalikan halaman HTML (misal 500/419/Fatal)
+    let cleanError = '';
+    const titleMatch = rawText.match(/<title>(.*?)<\/title>/i);
+    if (titleMatch && titleMatch[1]) {
+      cleanError = titleMatch[1].replace(/<[^>]+>/g, '').trim();
+    }
+    if (!cleanError) {
+      cleanError = rawText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+    }
+
+    return { data: null, rawText, cleanError };
   }
 }
 
-function extractErrorMessage(payload: Record<string, unknown> | null, status: number, fallback: string): string {
+function extractErrorMessage(
+  payload: Record<string, unknown> | null,
+  status: number,
+  fallback: string,
+  cleanError?: string
+): string {
   if (payload) {
+    // 1. Validation errors object or string
+    if (typeof payload.errors === 'string' && payload.errors.trim()) {
+      return payload.errors;
+    }
     if (payload.errors && typeof payload.errors === 'object') {
       const firstFieldErrors = Object.values(payload.errors as Record<string, unknown>)[0];
       if (Array.isArray(firstFieldErrors) && typeof firstFieldErrors[0] === 'string' && firstFieldErrors[0].trim()) {
         return firstFieldErrors[0];
       }
     }
+    // 2. Direct message
     if (typeof payload.message === 'string' && payload.message.trim() !== '') {
       return payload.message;
     }
+    // 3. Direct error string
+    if (typeof payload.error === 'string' && payload.error.trim() !== '') {
+      return payload.error;
+    }
+    // 4. Failed array from batch results (Shopee/TikTok)
+    if (Array.isArray(payload.failed) && payload.failed.length > 0) {
+      const firstFailed = payload.failed[0] as Record<string, unknown>;
+      const msg =
+        typeof firstFailed?.message === 'string' && firstFailed.message.trim() !== ''
+          ? firstFailed.message
+          : typeof firstFailed?.error === 'string' && firstFailed.error.trim() !== ''
+            ? firstFailed.error
+            : '';
+      if (msg) {
+        return firstFailed.order_sn ? `${firstFailed.order_sn}: ${msg}` : msg;
+      }
+    }
   }
+
+  if (cleanError && cleanError.trim()) {
+    return `${fallback}: ${cleanError}`;
+  }
+
   return `${fallback} (HTTP ${status})`;
 }
 
@@ -327,13 +399,14 @@ export default function ShipOrderModal({
       },
     })
       .then(async (res) => {
-        const data = await parseJsonSafe<ShopeeShippingParameterResponse & Record<string, unknown>>(res);
+        const { data, cleanError } = await parseJsonSafe<ShopeeShippingParameterResponse & Record<string, unknown>>(res);
         if (!res.ok || !data || data.status === 'error') {
           throw new Error(
             extractErrorMessage(
               data as Record<string, unknown> | null,
               res.status,
-              `Gagal memuat parameter pengiriman dari ${platformName}`
+              `Gagal memuat parameter pengiriman dari ${platformName}`,
+              cleanError
             )
           );
         }
@@ -550,12 +623,19 @@ export default function ShipOrderModal({
       },
     })
       .then(async (res) => {
-        const data = await parseJsonSafe<ShopeeShippingParameterResponse>(res);
+        const { data, cleanError } = await parseJsonSafe<ShopeeShippingParameterResponse>(res);
         if (controller.signal.aborted || !isMountedRef.current) return;
         if (res.ok && data) {
           setCourierParamsCache((prev) => ({ ...prev, [courierKey]: data }));
         } else {
-          setCourierParamsError('Gagal memuat parameter kurir.');
+          setCourierParamsError(
+            extractErrorMessage(
+              data as Record<string, unknown> | null,
+              res.status,
+              'Gagal memuat parameter kurir.',
+              cleanError
+            )
+          );
         }
       })
       .catch(() => {
@@ -711,12 +791,21 @@ export default function ShipOrderModal({
         body: JSON.stringify(payload),
       });
 
-      const data = await parseJsonSafe<T & Record<string, unknown>>(response);
+      const { data, cleanError } = await parseJsonSafe<T & Record<string, unknown>>(response);
       if (isStale()) return null;
 
-      if (!response.ok || !data || data.status === 'error') {
+      // Hasil batch pengiriman massal yang memiliki total dan array succeeded/failed
+      // dianggap hasil batch valid meskipun beberapa/semua pesanan di dalamnya gagal
+      const isMassShipResult =
+        data &&
+        typeof data === 'object' &&
+        'total' in data &&
+        (Array.isArray((data as Record<string, unknown>).succeeded) ||
+          Array.isArray((data as Record<string, unknown>).failed));
+
+      if (!response.ok || !data || (data.status === 'error' && !isMassShipResult)) {
         setSubmitError(
-          extractErrorMessage(data as Record<string, unknown> | null, response.status, fallbackError)
+          extractErrorMessage(data as Record<string, unknown> | null, response.status, fallbackError, cleanError)
         );
         return null;
       }
@@ -1338,7 +1427,9 @@ export default function ShipOrderModal({
                 className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs"
               >
                 <div className="font-mono font-bold text-rose-900">{item.order_sn}</div>
-                <div className="mt-0.5 text-[11px] text-rose-700">{item.message}</div>
+                <div className="mt-0.5 text-[11px] text-rose-700">
+                  {item.message || (item as unknown as { error?: string })?.error || 'Gagal mengatur pengiriman.'}
+                </div>
               </div>
             ))}
           </div>
