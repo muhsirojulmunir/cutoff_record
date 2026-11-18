@@ -100,9 +100,9 @@ export default function ShopeeOrderExportModal({
       // 1. Bangun workbook Excel persis Shopee Seller Centre (2 sheet: orders & Advance Fulfilment)
       const wb = XLSX.utils.book_new();
 
-      // Sheet 1: orders
+      // Sheet 1: orders -
       const wsOrders = XLSX.utils.aoa_to_sheet([data.headers, ...data.rows]);
-      XLSX.utils.book_append_sheet(wb, wsOrders, 'orders');
+      XLSX.utils.book_append_sheet(wb, wsOrders, data.sheet_name || 'orders -');
 
       // Sheet 2: Advance Fulfilment
       const wsAdvance = XLSX.utils.aoa_to_sheet([data.advance_fulfilment_headers || []]);

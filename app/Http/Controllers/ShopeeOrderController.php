@@ -1037,7 +1037,7 @@ class ShopeeOrderController extends Controller
             'Harga Setelah Diskon',
             'Jumlah',
             'Returned quantity',
-            'Subtotal Pesanan',
+            'Total Harga Produk',
             'Total Diskon',
             'Diskon Dari Penjual',
             'Diskon Dari Shopee',
@@ -1217,7 +1217,7 @@ class ShopeeOrderController extends Controller
 
         return response()->json([
             'file_name'                  => $fileName,
-            'sheet_name'                 => 'orders',
+            'sheet_name'                 => 'orders -',
             'headers'                    => $headers,
             'advance_fulfilment_headers' => $advanceFulfilmentHeaders,
             'rows'                       => $rows,

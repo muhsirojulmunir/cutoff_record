@@ -573,6 +573,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
         const rawHeaders = (rows[0] || []).map((h: any) => String(h || '').trim().toLowerCase());
         const isShopeeExport = rawHeaders.includes('no. pesanan') && (
           rawHeaders.includes('subtotal pesanan') ||
+          rawHeaders.includes('total harga produk') ||
           rawHeaders.includes('voucher ditanggung penjual') ||
           rawHeaders.includes('nomor referensi sku') ||
           rawHeaders.includes('opsi pengiriman')
