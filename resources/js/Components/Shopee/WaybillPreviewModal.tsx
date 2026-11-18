@@ -87,16 +87,24 @@ export default function WaybillPreviewModal({
     }
   };
 
-  const handleOpenNewTab = async () => {
-    if (!pdfUrl || isPrinting) return;
-    setIsPrinting(true);
+  const handleOpenNewTab = () => {
+    if (!pdfUrl) return;
     window.open(pdfUrl, '_blank');
-    try {
-      await triggerPrintConfirmed();
-    } finally {
-      setTimeout(() => setIsPrinting(false), 600);
-    }
   };
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        handlePrint();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, pdfUrl, isPrinting, orderSns]);
 
   const modalContent = (
     <div
@@ -142,13 +150,25 @@ export default function WaybillPreviewModal({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {hasPrinted && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+            {hasPrinted ? (
+              <span className="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                 </svg>
                 Tercatat Dicetak
               </span>
+            ) : (
+              <button
+                type="button"
+                onClick={triggerPrintConfirmed}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+                title="Klik ini jika Anda telah mencetak menggunakan tombol print di toolbar PDF Chrome"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-600" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+                Tandai Sudah Dicetak
+              </button>
             )}
 
             <button
@@ -156,7 +176,7 @@ export default function WaybillPreviewModal({
               disabled={!pdfUrl || isPrinting}
               onClick={handlePrint}
               className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Kirim dokumen ke printer dan catat status cetak pesanan"
+              title="Kirim langsung ke printer thermal & catat status cetak pesanan (Shortcut: Ctrl+P)"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -172,15 +192,15 @@ export default function WaybillPreviewModal({
                   d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z"
                 />
               </svg>
-              {isPrinting ? 'Menyiapkan Printer...' : 'Cetak / Print Resi'}
+              {isPrinting ? 'Menyiapkan Printer...' : 'Cetak / Print Resi (Ctrl+P)'}
             </button>
 
             <button
               type="button"
-              disabled={!pdfUrl || isPrinting}
+              disabled={!pdfUrl}
               onClick={handleOpenNewTab}
               className="inline-flex items-center gap-1.5 rounded-xl bg-[#0B132B] px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Buka PDF di tab baru & catat status cetak pesanan"
+              title="Buka PDF di tab baru untuk melihat tampilan penuh"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -322,10 +342,10 @@ export default function WaybillPreviewModal({
 
           {pdfUrl && (
             <p className="text-[11px] text-slate-500">
-              Format thermal standar <span className="font-mono font-semibold text-slate-700">100×150 mm (A6 Thermal)</span>. Gunakan tombol{' '}
-              <span className="font-semibold text-emerald-600">Cetak / Print Resi</span> atau{' '}
-              <span className="font-semibold text-slate-700">Buka Tab Penuh</span> untuk mencetak dokumen. Status pesanan akan otomatis terhitung sebagai{' '}
-              <span className="font-semibold text-emerald-600">Dicetak</span> hanya ketika salah satu tombol cetak tersebut ditekan.
+              Format thermal standar <span className="font-mono font-semibold text-slate-700">100×150 mm (A6 Thermal)</span>. Tekan tombol hijau{' '}
+              <span className="font-semibold text-emerald-600">Cetak / Print Resi</span> atau shortcut keyboard{' '}
+              <span className="font-semibold text-slate-700 font-mono">Ctrl + P</span> untuk mencetak langsung ke printer Anda. Jika mencetak melalui icon toolbar PDF bawaan browser, klik tombol{' '}
+              <span className="font-semibold text-emerald-600">Tandai Sudah Dicetak</span> untuk mencatat status pesanan.
             </p>
           )}
         </div>
