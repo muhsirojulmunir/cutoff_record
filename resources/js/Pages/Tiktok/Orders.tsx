@@ -1304,7 +1304,8 @@ export default function TiktokOrdersPage({
         const resolvedCount = Number.isFinite(headerCount) && headerCount > 0 ? headerCount : capped.length;
 
         revokeActiveBlobUrl();
-        const blobUrl = URL.createObjectURL(blob);
+        const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+        const blobUrl = URL.createObjectURL(pdfBlob);
         activeBlobUrlRef.current = blobUrl;
 
         setWaybillModal({

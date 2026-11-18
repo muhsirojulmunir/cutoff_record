@@ -874,8 +874,13 @@ class ShopeeOrderController extends Controller
             $safeFilename .= '.pdf';
         }
 
+        if (ob_get_length()) {
+            ob_clean();
+        }
+
         return response($result['pdf_binary'], 200, [
             'Content-Type'          => 'application/pdf',
+            'Content-Length'        => (string) strlen($result['pdf_binary']),
             'Content-Disposition'   => 'inline; filename="' . $safeFilename . '"',
             'X-Shopee-Orders-Count' => (string) count($result['orders']),
             'Cache-Control'         => 'no-store, no-cache, must-revalidate',
