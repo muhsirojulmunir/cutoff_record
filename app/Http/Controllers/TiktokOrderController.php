@@ -372,16 +372,10 @@ class TiktokOrderController extends Controller
         $account = $this->resolveTiktokAccount();
         $pdfBinary = $this->orderService->generateWaybillPdf($account, [$orderSn]);
 
-        if (ob_get_length()) {
-            ob_clean();
-        }
-
         return response($pdfBinary, 200, [
-            'Content-Type'          => 'application/pdf',
-            'Content-Length'        => (string) strlen($pdfBinary),
-            'Content-Disposition'   => "inline; filename=\"waybill-tiktok-{$orderSn}.pdf\"",
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => "inline; filename=\"waybill-tiktok-{$orderSn}.pdf\"",
             'x-shopee-orders-count' => 1,
-            'Cache-Control'         => 'no-store, no-cache, must-revalidate',
         ]);
     }
 
@@ -397,36 +391,11 @@ class TiktokOrderController extends Controller
 
         $pdfBinary = $this->orderService->generateWaybillPdf($account, $validated['order_sns']);
 
-        if (ob_get_length()) {
-            ob_clean();
-        }
-
         return response($pdfBinary, 200, [
-            'Content-Type'          => 'application/pdf',
-            'Content-Length'        => (string) strlen($pdfBinary),
-            'Content-Disposition'   => 'inline; filename="mass-waybill-tiktok.pdf"',
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="mass-waybill-tiktok.pdf"',
             'x-shopee-orders-count' => count($validated['order_sns']),
-            'Cache-Control'         => 'no-store, no-cache, must-revalidate',
         ]);
-    }
-
-    public function markPrinted(Request $request): JsonResponse
-    {
-        $this->authorizeAccess($request);
-        $account = $this->resolveTiktokAccount();
-
-        $validated = $request->validate([
-            'order_sns'   => ['required', 'array', 'min:1'],
-            'order_sns.*' => ['required', 'string'],
-        ]);
-
-        $result = $this->orderService->markOrdersAsPrinted($account, $validated['order_sns']);
-
-        if (ob_get_length()) {
-            ob_clean();
-        }
-
-        return response()->json($result, 200);
     }
 
     private function resolveTiktokAccount(): TiktokAccount

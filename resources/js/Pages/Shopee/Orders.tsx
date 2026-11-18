@@ -83,7 +83,6 @@ interface WaybillModalState {
   filename: string;
   orderCount: number;
   warnings: string[];
-  orderSns: string[];
 }
 
 interface CancelTargetState {
@@ -493,7 +492,6 @@ export default function ShopeeOrdersPage({
     filename: 'resi-shopee-A4.pdf',
     orderCount: 0,
     warnings: [],
-    orderSns: [],
   });
   const [cancelTarget, setCancelTarget] = useState<CancelTargetState | null>(null);
 
@@ -1183,7 +1181,6 @@ export default function ShopeeOrdersPage({
       show: false,
       pdfUrl: null,
       warnings: [],
-      orderSns: [],
     }));
   }, [revokeActiveBlobUrl]);
 
@@ -1277,8 +1274,7 @@ export default function ShopeeOrdersPage({
         const resolvedCount = Number.isFinite(headerCount) && headerCount > 0 ? headerCount : capped.length;
 
         revokeActiveBlobUrl();
-        const pdfBlob = new Blob([blob], { type: 'application/pdf' });
-        const blobUrl = URL.createObjectURL(pdfBlob);
+        const blobUrl = URL.createObjectURL(blob);
         activeBlobUrlRef.current = blobUrl;
 
         setWaybillModal({
@@ -1290,7 +1286,6 @@ export default function ShopeeOrdersPage({
           filename,
           orderCount: resolvedCount,
           warnings,
-          orderSns: capped.map((o) => o.order_sn),
         });
 
         showToast(
@@ -1299,6 +1294,8 @@ export default function ShopeeOrdersPage({
             ? `PDF Resi Thermal 100x150mm berhasil disiapkan untuk ${resolvedCount} pesanan.`
             : `PDF Resi Thermal 100x150mm untuk ${capped[0].order_sn} siap dicetak.`
         );
+
+        router.reload({ only: ['orders', 'tabCounts'] });
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
         if (isMountedRef.current) {
@@ -1317,34 +1314,6 @@ export default function ShopeeOrdersPage({
       }
     },
     [printingTarget, revokeActiveBlobUrl, showToast]
-  );
-
-  const handleWaybillPrinted = useCallback(
-    async (orderSns: string[]) => {
-      if (!orderSns || orderSns.length === 0) return;
-
-      try {
-        const response = await fetch('/shopee-orders/mark-printed', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-            'X-CSRF-TOKEN': getCsrfToken(),
-            'X-Requested-With': 'XMLHttpRequest',
-          },
-          body: JSON.stringify({ order_sns: orderSns }),
-        });
-
-        if (response.ok) {
-          showToast('success', `${orderSns.length} resi pesanan Shopee berhasil dicatat sebagai Dicetak.`);
-          router.reload({ only: ['orders', 'tabCounts'] });
-        }
-      } catch (e) {
-        console.error('Gagal mencatat status cetak resi Shopee:', e);
-      }
-    },
-    [showToast]
   );
 
   const handlePrintSingleWaybill = useCallback(
@@ -3184,8 +3153,6 @@ export default function ShopeeOrdersPage({
         filename={waybillModal.filename}
         orderCount={waybillModal.orderCount}
         warnings={waybillModal.warnings}
-        orderSns={waybillModal.orderSns}
-        onPrintConfirmed={handleWaybillPrinted}
         onClose={closeWaybillModal}
       />
 

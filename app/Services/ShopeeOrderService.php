@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\CutOffOrder;
 use App\Models\ShopeeAccount;
 use App\Models\ShopeeOrder;
-use App\Services\PureThermalPdfBuilder;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
@@ -822,34 +821,6 @@ class ShopeeOrderService
     }
 
     /**
-     * Tandai pesanan telah dicetak resinya: increment label_print_count & update label_printed_at.
-     *
-     * @param  array<int, string>  $orderSns
-     * @return array{success: bool, count: int, order_sns: array<int, string>}
-     */
-    public function markOrdersAsPrinted(ShopeeAccount $account, array $orderSns): array
-    {
-        $this->ensureSchema();
-        $cleanSns = $this->normalizeOrderSnList($orderSns, 'konfirmasi cetak resi');
-
-        $now = now('Asia/Jakarta');
-
-        $updatedCount = ShopeeOrder::where('shopee_account_id', $account->id)
-            ->whereIn('order_sn', $cleanSns)
-            ->update([
-                'label_document_status' => 'PRINTED',
-                'label_printed_at'      => $now,
-                'label_print_count'     => DB::raw('COALESCE(label_print_count, 0) + 1'),
-            ]);
-
-        return [
-            'success'   => true,
-            'count'     => $updatedCount,
-            'order_sns' => $cleanSns,
-        ];
-    }
-
-    /**
      * Buat dan unduh dokumen resi PDF Thermal A6 (100x150 mm) resmi Shopee (THERMAL_AIR_WAYBILL) untuk 1..50 pesanan.
      *
      * @param  array<int, string>  $orderSns
@@ -861,7 +832,8 @@ class ShopeeOrderService
         $this->ensureSchema();
         $account = $this->ensureConnectedAccount($account);
 
-        $ordersBySn = ShopeeOrder::whereIn('order_sn', $orderSns)
+        $ordersBySn = ShopeeOrder::where('shopee_account_id', $account->id)
+            ->whereIn('order_sn', $orderSns)
             ->get()
             ->keyBy('order_sn');
 
@@ -870,29 +842,7 @@ class ShopeeOrderService
         foreach ($orderSns as $sn) {
             $order = $ordersBySn->get($sn);
             if (! $order) {
-                $order = ShopeeOrder::where('order_sn', $sn)->first();
-            }
-            if (! $order) {
-                $order = new ShopeeOrder([
-                    'order_sn'              => $sn,
-                    'order_status'          => 'PROCESSED',
-                    'shipping_carrier'      => 'SiCepat REG',
-                    'tracking_number'       => '00' . substr($sn, -10),
-                    'buyer_username'        => 'Pelanggan Shopee',
-                    'recipient_data'        => [
-                        'name'         => 'Penerima Pesanan (' . $sn . ')',
-                        'phone'        => '0812-3456-7890',
-                        'full_address' => 'Jl. Jenderal Sudirman No. 45, Jakarta',
-                    ],
-                    'items_json'            => [
-                        [
-                            'item_name'                => 'RECORD SNEAKERS OFFICIAL SHOPEE',
-                            'model_name'               => 'Standard',
-                            'model_quantity_purchased' => 1,
-                        ],
-                    ],
-                    'label_document_status' => 'READY',
-                ]);
+                throw new RuntimeException("Pesanan {$sn} tidak ditemukan di database lokal. Silakan sinkronkan ulang.");
             }
             $orders[] = $order;
         }
@@ -932,15 +882,9 @@ class ShopeeOrderService
             }
         }
 
-        try {
-            $createResp = $this->postApi($account, '/api/v2/logistics/create_shipping_document', [
-                'order_list' => $this->buildWaybillOrderList($orders, true, true),
-            ]);
-        } catch (\Throwable $e) {
-            $errLower = strtolower($e->getMessage());
-            Log::info("Shopee create_shipping_document notice ({$e->getMessage()}). Tetap melanjutkan ke pengecekan/unduhan dokumen resi.");
-            $createResp = ['response' => ['result_list' => []]];
-        }
+        $createResp = $this->postApi($account, '/api/v2/logistics/create_shipping_document', [
+            'order_list' => $this->buildWaybillOrderList($orders, true, true),
+        ]);
 
         $failedSnMessages = [];
         foreach (($createResp['response']['result_list'] ?? []) as $entry) {
@@ -951,17 +895,6 @@ class ShopeeOrderService
             $failErr = trim((string) ($entry['fail_error'] ?? ''));
             $failMsg = trim((string) ($entry['fail_message'] ?? ''));
             if ($sn !== '' && ($failErr !== '' || $failMsg !== '')) {
-                $combined = strtolower($failErr . ' ' . $failMsg);
-                if (
-                    str_contains($combined, 'already') ||
-                    str_contains($combined, 'created') ||
-                    str_contains($combined, 'exist') ||
-                    str_contains($combined, 'duplicate')
-                ) {
-                    // Dokumen resi sudah pernah dibuat sebelumnya (misal Cetak Ulang Resi).
-                    // Tetap lanjutkan ke proses query status & unduh dokumen dari Shopee.
-                    continue;
-                }
                 $failedSnMessages[$sn] = trim($failErr . ($failErr && $failMsg ? ': ' : '') . $failMsg);
             }
         }
@@ -974,7 +907,9 @@ class ShopeeOrderService
         ));
 
         if (empty($eligibleOrders)) {
-            $eligibleOrders = $orders;
+            throw new RuntimeException(
+                'Gagal membuat dokumen resi di Shopee: ' . implode('; ', $failedSnMessages)
+            );
         }
 
         foreach ($failedSnMessages as $sn => $msg) {
@@ -985,14 +920,9 @@ class ShopeeOrderService
         $statusBySn = [];
 
         for ($attempt = 1; $attempt <= 5; $attempt++) {
-            try {
-                $resultResp = $this->postApi($account, '/api/v2/logistics/get_shipping_document_result', [
-                    'order_list' => $docQueryList,
-                ]);
-            } catch (\Throwable $e) {
-                // Jangan biarkan query status menggagalkan proses jika dokumen sebenarnya sudah siap
-                break;
-            }
+            $resultResp = $this->postApi($account, '/api/v2/logistics/get_shipping_document_result', [
+                'order_list' => $docQueryList,
+            ]);
 
             $resultList = $resultResp['response']['result_list'] ?? [];
             if (! is_array($resultList) || empty($resultList)) {
@@ -1012,14 +942,7 @@ class ShopeeOrderService
                 if ($status === 'FAILED' && $sn !== '') {
                     $failErr = trim((string) ($entry['fail_error'] ?? ''));
                     $failMsg = trim((string) ($entry['fail_message'] ?? ''));
-                    $combined = strtolower($failErr . ' ' . $failMsg);
-                    if (
-                        ! str_contains($combined, 'already') &&
-                        ! str_contains($combined, 'created') &&
-                        ! str_contains($combined, 'exist')
-                    ) {
-                        $failedSnMessages[$sn] = trim($failErr . ($failErr && $failMsg ? ': ' : '') . $failMsg) ?: 'Status dokumen FAILED';
-                    }
+                    $failedSnMessages[$sn] = trim($failErr . ($failErr && $failMsg ? ': ' : '') . $failMsg) ?: 'Status dokumen FAILED';
                 } elseif (in_array($status, ['PROCESSING', 'WAITING'], true)) {
                     $hasProcessing = true;
                 }
@@ -1064,41 +987,47 @@ class ShopeeOrderService
         }
 
         if (empty($readyOrders)) {
-            // Pada cetak ulang, Shopee terkadang tidak mengembalikan status READY di result_list
-            // namun dokumen sudah langsung tersedia di endpoint download.
-            $readyOrders = ! empty($eligibleOrders) ? $eligibleOrders : $orders;
-        }
-
-        $binary = '';
-        try {
-            $downloadResp = $this->postBinaryApi(
-                $account,
-                '/api/v2/logistics/download_shipping_document',
-                [
-                    'shipping_document_type' => self::WAYBILL_DOCUMENT_TYPE,
-                    'order_list'             => $this->buildWaybillOrderList($readyOrders, true, false),
-                ],
-                60
-            );
-
-            $rawBody = (string) $downloadResp->body();
-            if (str_starts_with($rawBody, '%PDF-')) {
-                $binary = $rawBody;
-            } else {
-                throw new RuntimeException('Respon unduhan resi Shopee bukan dokumen PDF yang valid.');
+            if (! empty($processingSns)) {
+                $errDetail = 'Dokumen resi Shopee masih dalam proses pembuatan setelah 5x pengecekan (' . implode(', ', $processingSns) . '). Silakan coba beberapa saat lagi.';
+                if (! empty($failedSnMessages)) {
+                    $errDetail .= ' Gagal: ' . implode('; ', $failedSnMessages);
+                }
+                throw new RuntimeException($errDetail);
             }
-        } catch (\Throwable $e) {
-            Log::warning("Shopee download_shipping_document fallback: {$e->getMessage()}. Menggunakan PureThermalPdfBuilder.");
-            $binary = PureThermalPdfBuilder::build($readyOrders);
+
+            throw new RuntimeException(
+                'Dokumen resi Shopee gagal disiapkan: ' . implode('; ', $failedSnMessages)
+            );
         }
 
-        $downloadedAt = now('Asia/Jakarta');
+        $downloadResp = $this->postBinaryApi(
+            $account,
+            '/api/v2/logistics/download_shipping_document',
+            [
+                'shipping_document_type' => self::WAYBILL_DOCUMENT_TYPE,
+                'order_list'             => $this->buildWaybillOrderList($readyOrders, false, false),
+            ],
+            60
+        );
+
+        $binary = (string) $downloadResp->body();
+        if (! str_starts_with($binary, '%PDF-')) {
+            $decoded = json_decode($binary, true);
+            if (is_array($decoded)) {
+                throw new RuntimeException(
+                    $this->formatShopeeApiError($decoded, $downloadResp->status(), '/api/v2/logistics/download_shipping_document')
+                );
+            }
+            throw new RuntimeException('Respon unduhan resi Shopee bukan dokumen PDF yang valid.');
+        }
+
+        $printedAt = now('Asia/Jakarta');
         $readyIds = array_map(static fn (ShopeeOrder $o): int => (int) $o->id, $readyOrders);
 
-        // Hanya tandai dokumen siap dipreview (READY). Status dicetak & hitungan cetak
-        // baru dinaikkan saat user benar-benar menekan tombol print di preview modal.
         ShopeeOrder::whereIn('id', $readyIds)->update([
             'label_document_status' => 'READY',
+            'label_printed_at'      => $printedAt,
+            'label_print_count'     => DB::raw('COALESCE(label_print_count, 0) + 1'),
         ]);
 
         $updatedOrdersMap = ShopeeOrder::whereIn('id', $readyIds)->get()->keyBy('order_sn');
@@ -1109,7 +1038,7 @@ class ShopeeOrderService
 
         $filename = count($orderedResult) === 1
             ? 'resi-shopee-' . $orderedResult[0]->order_sn . '-thermal-100x150.pdf'
-            : 'resi-shopee-massal-' . count($orderedResult) . '-pesanan-' . $downloadedAt->format('Ymd-His') . '-thermal.pdf';
+            : 'resi-shopee-massal-' . count($orderedResult) . '-pesanan-' . $printedAt->format('Ymd-His') . '-thermal.pdf';
 
         return [
             'pdf_binary' => $binary,

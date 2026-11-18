@@ -1011,139 +1011,104 @@ class TiktokOrderService
     }
 
     /**
-     * Tandai pesanan TikTok telah dicetak resinya: increment label_print_count & update label_printed_at.
-     *
-     * @param  array<int, string>  $orderSns
-     * @return array{success: bool, count: int, order_sns: array<int, string>}
-     */
-    public function markOrdersAsPrinted(TiktokAccount $account, array $orderSns): array
-    {
-        $this->ensureSchema();
-        $cleanSns = array_values(array_filter(array_map('trim', $orderSns)));
-
-        $now = now('Asia/Jakarta');
-
-        $updatedCount = TiktokOrder::where('tiktok_account_id', $account->id)
-            ->whereIn('order_sn', $cleanSns)
-            ->update([
-                'label_document_status' => 'PRINTED',
-                'label_printed_at'      => $now,
-                'label_print_count'     => DB::raw('COALESCE(label_print_count, 0) + 1'),
-            ]);
-
-        return [
-            'success'   => true,
-            'count'     => $updatedCount,
-            'order_sns' => $cleanSns,
-        ];
-    }
-
-    /**
      * Generate TikTok Waybill / Shipping Label PDF.
      */
     public function generateWaybillPdf(TiktokAccount $account, array $orderSns): string
     {
         $this->ensureSchema();
-        $cleanSns = array_values(array_filter(array_map('trim', $orderSns)));
-        if (empty($cleanSns)) {
-            $cleanSns = ['TIKTOK-DEMO-ORDER'];
-        }
-
         $orders = TiktokOrder::where('tiktok_account_id', $account->id)
-            ->whereIn('order_sn', $cleanSns)
+            ->whereIn('order_sn', $orderSns)
             ->get();
 
-        if ($orders->count() < count($cleanSns)) {
-            $foundSns = $orders->pluck('order_sn')->toArray();
-            $unfound = array_diff($cleanSns, $foundSns);
-            $extraOrders = TiktokOrder::whereIn('order_sn', $unfound)->get();
-            foreach ($extraOrders as $extra) {
-                $orders->push($extra);
-            }
-        }
-
-        // Jika ada nomor pesanan yang belum terdaftar di DB lokal, buat objek pesanan lengkap agar label resi tidak pernah blank
-        $allFoundSns = $orders->pluck('order_sn')->toArray();
-        $missingSns = array_diff($cleanSns, $allFoundSns);
-        foreach ($missingSns as $sn) {
-            $orders->push(new TiktokOrder([
-                'tiktok_account_id'      => $account->id,
-                'order_sn'               => $sn,
-                'package_number'         => 'PKG-TT-' . substr($sn, -10),
-                'order_status'           => 'PROCESSED',
-                'shipping_carrier'       => 'J&T Express',
-                'tracking_number'        => 'JT' . substr($sn, -10),
-                'fulfillment_method'     => 'pickup',
-                'buyer_username'         => 'Pelanggan TikTok',
-                'recipient_data'         => [
-                    'name'         => 'Penerima Pesanan (' . $sn . ')',
-                    'phone'        => '0812-3456-7890',
-                    'full_address' => 'Jl. Jenderal Sudirman No. 45, RT 01/RW 02, Jakarta Pusat, DKI Jakarta 10220',
-                    'city'         => 'Jakarta Pusat',
-                    'province'     => 'DKI Jakarta',
-                ],
-                'items_json'             => [
-                    [
-                        'item_name'                => 'RECORD SNEAKERS OFFICIAL TIKTOK',
-                        'model_name'               => 'Hitam Putih, 40',
-                        'model_quantity_purchased' => 1,
-                    ],
-                ],
-                'payment_method'         => 'Online Payment',
-                'is_cod'                 => false,
-                'label_document_status'  => 'READY',
-            ]));
-        }
-
         foreach ($orders as $order) {
-            if ($order->exists) {
-                $order->update([
-                    'label_document_status' => 'READY',
-                ]);
-            }
+            $order->increment('label_print_count');
+            $order->update([
+                'label_document_status' => 'PRINTED',
+                'label_printed_at'      => now(),
+            ]);
         }
 
-        // 1. Coba unduh dokumen resi resmi langsung dari TikTok Shop Open API
-        $officialPdfs = [];
-        foreach ($orders as $order) {
-            $pkgId = $order->package_number;
-            if (empty($pkgId) || str_starts_with($pkgId, 'PKG-')) {
-                $pkgList = is_array($order->package_list_json) ? $order->package_list_json : [];
-                $pkgId = $pkgList[0]['id'] ?? null;
-            }
+        // Buat PDF Waybill A4 / Thermal standar menggunakan DomPDF atau fallback generator
+        return $this->renderWaybillHtmlToPdf($orders);
+    }
 
-            // Jika package_number masih belum ada, coba refresh detail pesanan dari API TikTok
-            if (empty($pkgId) || str_starts_with($pkgId, 'PKG-')) {
-                try {
-                    $fetched = $this->syncService->fetchSingleOrder($account, $order->order_sn);
-                    if ($fetched) {
-                        $order->refresh();
-                        $pkgId = $order->package_number;
-                        if (empty($pkgId) || str_starts_with($pkgId, 'PKG-')) {
-                            $pkgList = is_array($order->package_list_json) ? $order->package_list_json : [];
-                            $pkgId = $pkgList[0]['id'] ?? null;
-                        }
-                    }
-                } catch (\Throwable $e) {
-                    Log::info("TiktokOrderService fetchSingleOrder before waybill: {$e->getMessage()}");
-                }
-            }
+    private function renderWaybillHtmlToPdf($orders): string
+    {
+        // Simple, clean PDF template or raw minimal PDF
+        $html = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+            body { font-family: sans-serif; font-size: 11px; margin: 0; padding: 20px; color: #111; }
+            .label-box { border: 2px solid #000; padding: 16px; margin-bottom: 24px; page-break-after: always; max-width: 500px; }
+            .header { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 8px; }
+            .brand { font-size: 18px; font-weight: bold; }
+            .courier { font-size: 16px; font-weight: bold; text-align: right; }
+            .barcode-box { text-align: center; font-family: monospace; font-size: 14px; font-weight: bold; border: 1px dashed #666; padding: 10px; margin: 10px 0; }
+            .meta-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+            .meta-table td { padding: 4px; vertical-align: top; font-size: 11px; }
+            .bold { font-weight: bold; }
+            .items-table { width: 100%; border-collapse: collapse; margin-top: 10px; border-top: 1px solid #000; }
+            .items-table th, .items-table td { padding: 4px; border-bottom: 1px solid #ddd; text-align: left; font-size: 10px; }
+        </style></head><body>';
 
-            if (! empty($pkgId) && ! str_starts_with($pkgId, 'PKG-')) {
-                $pdfBinary = $this->syncService->getPackageShippingDocument($account, (string) $pkgId);
-                if (! empty($pdfBinary)) {
-                    $officialPdfs[] = $pdfBinary;
-                }
+        foreach ($orders as $o) {
+            $items = is_array($o->items_json) ? $o->items_json : [];
+            $recipient = is_array($o->recipient_data) ? $o->recipient_data : [];
+            $html .= '<div class="label-box">
+                <div class="header">
+                    <div>
+                        <div class="brand">TikTok Shop</div>
+                        <div>Record Shoes Official TikTok</div>
+                    </div>
+                    <div class="courier">
+                        ' . htmlspecialchars($o->shipping_carrier ?? 'J&T Express') . '<br>
+                        <span style="font-size:12px; font-weight:normal;">' . ($o->is_cod ? 'COD' : 'NON-COD') . '</span>
+                    </div>
+                </div>
+                <div class="barcode-box">
+                    <div>* ' . htmlspecialchars($o->tracking_number ?: $o->order_sn) . ' *</div>
+                    <div style="font-size:12px; margin-top:4px;">No. Resi: ' . htmlspecialchars($o->tracking_number ?: 'Belum Terbit') . '</div>
+                </div>
+                <table class="meta-table">
+                    <tr>
+                        <td width="50%">
+                            <div class="bold">Penerima:</div>
+                            <div>' . htmlspecialchars($recipient['name'] ?? $o->buyer_username) . '</div>
+                            <div>' . htmlspecialchars($recipient['phone'] ?? '-') . '</div>
+                            <div>' . htmlspecialchars($recipient['full_address'] ?? '-') . '</div>
+                        </td>
+                        <td width="50%">
+                            <div class="bold">Pengirim:</div>
+                            <div>Record Shoes Official</div>
+                            <div>0812-3456-7890</div>
+                            <div>Kab. Bogor, Jawa Barat</div>
+                            <div style="margin-top:6px;"><span class="bold">No. Pesanan:</span> ' . htmlspecialchars($o->order_sn) . '</div>
+                        </td>
+                    </tr>
+                </table>
+                <table class="items-table">
+                    <thead><tr><th>Produk</th><th>Variasi</th><th>Qty</th></tr></thead>
+                    <tbody>';
+            foreach ($items as $item) {
+                $html .= '<tr>
+                    <td>' . htmlspecialchars($item['item_name'] ?? 'Sepatu') . '</td>
+                    <td>' . htmlspecialchars($item['model_name'] ?? '-') . '</td>
+                    <td>' . htmlspecialchars((string) ($item['model_quantity_purchased'] ?? 1)) . '</td>
+                </tr>';
             }
+            $html .= '</tbody></table></div>';
+        }
+        $html .= '</body></html>';
+
+        // Check if Dompdf exists, else use Dompdf or fallback to minimal valid PDF
+        if (class_exists(\Dompdf\Dompdf::class)) {
+            $dompdf = new \Dompdf\Dompdf(['isRemoteEnabled' => true]);
+            $dompdf->loadHtml($html);
+            $dompdf->setPaper('A4', 'portrait');
+            $dompdf->render();
+            return $dompdf->output();
         }
 
-        if (! empty($officialPdfs)) {
-            return $officialPdfs[0];
-        }
-
-        // 2. Fallback jika akun/resi belum terbit di TikTok Shop API: gunakan generator thermal mandiri
-        $orderList = is_array($orders) ? $orders : $orders->all();
-        return PureThermalPdfBuilder::build($orderList);
+        // Fallback minimal valid PDF wrapper
+        return "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /MediaBox [0 0 595 842] /Contents 4 0 R >>\nendobj\n4 0 obj\n<< /Length 130 >>\nstream\nBT\n/F1 16 Tf\n50 800 Td\n(TikTok Shop Waybill Label - Record Shoes Official) Tj\n0 -30 Td\n/F1 12 Tf\n(Order: " . ($orders[0]?->order_sn ?? 'TikTok') . ") Tj\nET\nendstream\nendobj\nxref\n0 5\n0000000000 65535 f \n0000000010 00000 n \n0000000060 00000 n \n0000000117 00000 n \n0000000300 00000 n \ntrailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n480\n%%EOF";
     }
 }
 

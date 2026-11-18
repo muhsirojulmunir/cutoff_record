@@ -86,7 +86,6 @@ interface WaybillModalState {
   filename: string;
   orderCount: number;
   warnings: string[];
-  orderSns: string[];
 }
 
 interface CancelTargetState {
@@ -524,7 +523,6 @@ export default function TiktokOrdersPage({
     filename: 'resi-tiktok-A4.pdf',
     orderCount: 0,
     warnings: [],
-    orderSns: [],
   });
   const [cancelTarget, setCancelTarget] = useState<CancelTargetState | null>(null);
 
@@ -1210,7 +1208,6 @@ export default function TiktokOrdersPage({
       show: false,
       pdfUrl: null,
       warnings: [],
-      orderSns: [],
     }));
   }, [revokeActiveBlobUrl]);
 
@@ -1234,7 +1231,7 @@ export default function TiktokOrdersPage({
       }
       if (truncatedCount > 0) {
         warnings.push(
-          `TikTok membatasi maksimal ${MAX_SHOPEE_BATCH} pesanan per PDF massal; ${truncatedCount} pesanan sisanya tidak disertakan pada batch ini.`
+          `Shopee membatasi maksimal ${MAX_SHOPEE_BATCH} pesanan per PDF massal; ${truncatedCount} pesanan sisanya tidak disertakan pada batch ini.`
         );
       }
 
@@ -1275,7 +1272,7 @@ export default function TiktokOrdersPage({
 
         const contentType = response.headers.get('content-type') ?? '';
         if (!response.ok || !contentType.toLowerCase().includes('application/pdf')) {
-          let errMessage = `Gagal menyiapkan PDF Resi TikTok (HTTP ${response.status}).`;
+          let errMessage = `Gagal menyiapkan PDF Resi Shopee (HTTP ${response.status}).`;
           try {
             const payload = (await response.json()) as { message?: string };
             if (payload?.message) errMessage = payload.message;
@@ -1289,13 +1286,13 @@ export default function TiktokOrdersPage({
         const blob = await response.blob();
         if (controller.signal.aborted || !isMountedRef.current) return;
         if (blob.size === 0) {
-          showToast('error', 'Dokumen PDF Resi kosong dari TikTok.');
+          showToast('error', 'Dokumen PDF Resi kosong dari Shopee.');
           return;
         }
 
         const fallbackFilename = isMass
-          ? `resi-tiktok-massal-${capped.length}-pesanan-thermal.pdf`
-          : `resi-tiktok-${capped[0].order_sn}-thermal-100x150.pdf`;
+          ? `resi-shopee-massal-${capped.length}-pesanan-thermal.pdf`
+          : `resi-shopee-${capped[0].order_sn}-thermal-100x150.pdf`;
         const filename = extractFilenameFromHeader(
           response.headers.get('content-disposition'),
           fallbackFilename
@@ -1304,8 +1301,7 @@ export default function TiktokOrdersPage({
         const resolvedCount = Number.isFinite(headerCount) && headerCount > 0 ? headerCount : capped.length;
 
         revokeActiveBlobUrl();
-        const pdfBlob = new Blob([blob], { type: 'application/pdf' });
-        const blobUrl = URL.createObjectURL(pdfBlob);
+        const blobUrl = URL.createObjectURL(blob);
         activeBlobUrlRef.current = blobUrl;
 
         setWaybillModal({
@@ -1317,7 +1313,6 @@ export default function TiktokOrdersPage({
           filename,
           orderCount: resolvedCount,
           warnings,
-          orderSns: capped.map((o) => o.order_sn),
         });
 
         showToast(
@@ -1326,6 +1321,8 @@ export default function TiktokOrdersPage({
             ? `PDF Resi Thermal 100x150mm berhasil disiapkan untuk ${resolvedCount} pesanan.`
             : `PDF Resi Thermal 100x150mm untuk ${capped[0].order_sn} siap dicetak.`
         );
+
+        router.reload({ only: ['orders', 'tabCounts'] });
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
         if (isMountedRef.current) {
@@ -1344,34 +1341,6 @@ export default function TiktokOrdersPage({
       }
     },
     [printingTarget, revokeActiveBlobUrl, showToast]
-  );
-
-  const handleWaybillPrinted = useCallback(
-    async (orderSns: string[]) => {
-      if (!orderSns || orderSns.length === 0) return;
-
-      try {
-        const response = await fetch('/tiktok-orders/mark-printed', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-            'X-CSRF-TOKEN': getCsrfToken(),
-            'X-Requested-With': 'XMLHttpRequest',
-          },
-          body: JSON.stringify({ order_sns: orderSns }),
-        });
-
-        if (response.ok) {
-          showToast('success', `${orderSns.length} resi pesanan TikTok berhasil dicatat sebagai Dicetak.`);
-          router.reload({ only: ['orders', 'tabCounts'] });
-        }
-      } catch (e) {
-        console.error('Gagal mencatat status cetak resi TikTok:', e);
-      }
-    },
-    [showToast]
   );
 
   const handlePrintSingleWaybill = useCallback(
@@ -3299,8 +3268,6 @@ export default function TiktokOrdersPage({
         filename={waybillModal.filename}
         orderCount={waybillModal.orderCount}
         warnings={waybillModal.warnings}
-        orderSns={waybillModal.orderSns}
-        onPrintConfirmed={handleWaybillPrinted}
         onClose={closeWaybillModal}
       />
 
