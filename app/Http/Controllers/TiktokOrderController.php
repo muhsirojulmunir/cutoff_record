@@ -140,12 +140,20 @@ class TiktokOrderController extends Controller
         $orders = $query->paginate(20)->withQueryString();
         $orders->getCollection()->each->makeHidden(['raw_payload']);
 
+        $allMatchingOrderSns = (clone $query)->limit(2000)->pluck('order_sn')->values()->all();
+        $allMatchingOrders = [];
+        if ($orders->total() <= 200) {
+            $allMatchingOrders = (clone $query)->limit(200)->get()->each->makeHidden(['raw_payload'])->values()->all();
+        }
+
         return Inertia::render('Tiktok/Orders', [
-            'account'         => $account?->toSafeArray(),
-            'orders'          => $orders,
-            'tabCounts'       => $tabCounts,
-            'orderTypeCounts' => $orderTypeCounts,
-            'carriers'        => $carriers,
+            'account'             => $account?->toSafeArray(),
+            'orders'              => $orders,
+            'allMatchingOrderSns' => $allMatchingOrderSns,
+            'allMatchingOrders'   => $allMatchingOrders,
+            'tabCounts'           => $tabCounts,
+            'orderTypeCounts'     => $orderTypeCounts,
+            'carriers'            => $carriers,
             'hasDummyData'    => TiktokOrder::whereIn('order_sn', TiktokOrderService::DUMMY_ORDER_SNS)->exists(),
             'filters'         => [
                 'tab'              => $tab,

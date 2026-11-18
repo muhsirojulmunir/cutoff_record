@@ -365,6 +365,8 @@ export interface PaginatedShopeeOrders {
 export interface ShopeeOrdersPageProps extends PageProps {
   account: ShopeeAccountSummary | null;
   orders: PaginatedShopeeOrders;
+  allMatchingOrderSns?: string[];
+  allMatchingOrders?: ShopeeOrderRecord[];
   tabCounts: ShopeeTabCounts;
   orderTypeCounts: ShopeeOrderTypeCounts;
   carriers: string[];

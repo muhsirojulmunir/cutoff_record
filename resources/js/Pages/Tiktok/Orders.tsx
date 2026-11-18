@@ -420,6 +420,8 @@ function buildFilterParams(next: ShopeeOrderFilters): Record<string, string> {
 export default function TiktokOrdersPage({
   account,
   orders,
+  allMatchingOrderSns = [],
+  allMatchingOrders = [],
   tabCounts,
   orderTypeCounts,
   carriers,
@@ -593,7 +595,7 @@ export default function TiktokOrdersPage({
     setDismissedFlashKey(null);
   }, [flashSignature]);
 
-  // Clear selections on tab/filter/page navigation and prune stale order_sn values on reload
+  // Clear selections on tab/filter navigation (TIDAK reset saat pindah halaman page)
   const filterScopeKey = JSON.stringify({
     tab: filters.tab,
     sub_tab: filters.sub_tab,
@@ -604,20 +606,11 @@ export default function TiktokOrdersPage({
     date_from: filters.date_from,
     date_to: filters.date_to,
     sort: filters.sort,
-    page: orders.current_page,
   });
 
   useEffect(() => {
     setSelectedOrderSns([]);
   }, [filterScopeKey]);
-
-  useEffect(() => {
-    const visibleSet = new Set(orders.data.map((o) => o.order_sn));
-    setSelectedOrderSns((prev) => {
-      const next = prev.filter((sn) => visibleSet.has(sn));
-      return next.length === prev.length ? prev : next;
-    });
-  }, [orders.data]);
 
   // Sync open drawer record when Inertia reloads orders list
   useEffect(() => {
@@ -1109,12 +1102,74 @@ export default function TiktokOrdersPage({
     }
   };
 
-  // Selection computed sets
+  // Selection computed sets across all pages
+  const allAvailableSns = useMemo(() => {
+    if (allMatchingOrderSns && allMatchingOrderSns.length > 0) {
+      return allMatchingOrderSns;
+    }
+    return orders.data.map((o) => o.order_sn);
+  }, [allMatchingOrderSns, orders.data]);
+
+  const totalMatchingCount = orders.total ?? allAvailableSns.length;
+
+  const orderMap = useMemo(() => {
+    const map = new Map<string, ShopeeOrderRecord>();
+    if (allMatchingOrders && allMatchingOrders.length > 0) {
+      for (const o of allMatchingOrders) {
+        map.set(o.order_sn, o);
+      }
+    }
+    for (const o of orders.data) {
+      map.set(o.order_sn, o);
+    }
+    return map;
+  }, [allMatchingOrders, orders.data]);
+
   const selectedSet = useMemo(() => new Set(selectedOrderSns), [selectedOrderSns]);
-  const selectedOrders = useMemo(
-    () => orders.data.filter((o) => selectedSet.has(o.order_sn)),
-    [orders.data, selectedSet]
-  );
+
+  const selectedOrders = useMemo(() => {
+    const result: ShopeeOrderRecord[] = [];
+    for (const sn of selectedOrderSns) {
+      const record = orderMap.get(sn);
+      if (record) {
+        result.push(record);
+      } else {
+        result.push({
+          id: 0,
+          shopee_account_id: account?.id ?? 0,
+          order_sn: sn,
+          package_number: null,
+          order_status: 'READY_TO_SHIP',
+          logistics_status: null,
+          shipping_carrier: null,
+          tracking_number: null,
+          fulfillment_method: null,
+          buyer_user_id: null,
+          buyer_username: null,
+          buyer_note: null,
+          recipient_data: null,
+          items_json: null,
+          package_list_json: null,
+          payment_method: null,
+          is_cod: false,
+          total_amount: 0,
+          estimated_shipping_fee: 0,
+          cancel_by: null,
+          cancel_reason: null,
+          buyer_cancel_reason: null,
+          order_created_at: null,
+          ship_by_date: null,
+          shipping_arranged_at: null,
+          label_document_status: 'NONE',
+          label_printed_at: null,
+          label_print_count: 0,
+          last_synced_at: null,
+        });
+      }
+    }
+    return result;
+  }, [selectedOrderSns, orderMap, account?.id]);
+
   const selectedShippableOrders = useMemo(
     () => selectedOrders.filter((o) => isShippableOrderStatus(o.order_status)),
     [selectedOrders]
@@ -1124,22 +1179,22 @@ export default function TiktokOrdersPage({
     [selectedOrders]
   );
 
-  const visibleSelectedCount = selectedOrders.length;
-  const allVisibleSelected = orders.data.length > 0 && visibleSelectedCount === orders.data.length;
-  const someVisibleSelected = visibleSelectedCount > 0 && !allVisibleSelected;
+  const totalSelectedCount = selectedOrderSns.length;
+  const isAllSelected = allAvailableSns.length > 0 && totalSelectedCount >= allAvailableSns.length;
+  const isSomeSelected = totalSelectedCount > 0 && !isAllSelected;
 
   useEffect(() => {
     if (masterCheckboxRef.current) {
-      masterCheckboxRef.current.indeterminate = someVisibleSelected;
+      masterCheckboxRef.current.indeterminate = isSomeSelected;
     }
-  }, [someVisibleSelected]);
+  }, [isSomeSelected]);
 
-  const toggleSelectAllVisible = () => {
-    if (orders.data.length === 0) return;
-    if (allVisibleSelected) {
+  const toggleSelectAllOrders = () => {
+    if (allAvailableSns.length === 0) return;
+    if (isAllSelected) {
       setSelectedOrderSns([]);
     } else {
-      setSelectedOrderSns(orders.data.map((o) => o.order_sn));
+      setSelectedOrderSns([...allAvailableSns]);
     }
   };
 
@@ -2523,19 +2578,19 @@ export default function TiktokOrdersPage({
                   <input
                     ref={masterCheckboxRef}
                     type="checkbox"
-                    checked={allVisibleSelected}
-                    disabled={orders.data.length === 0}
-                    onChange={toggleSelectAllVisible}
-                    className="h-4 w-4 rounded border-slate-300 text-[#EE4D2D] focus:ring-[#EE4D2D]"
+                    checked={isAllSelected}
+                    disabled={allAvailableSns.length === 0}
+                    onChange={toggleSelectAllOrders}
+                    className="h-4 w-4 rounded border-slate-300 text-[#FE2C55] focus:ring-[#FE2C55]"
                   />
-                  <span>Pilih Semua di Halaman Ini</span>
+                  <span>Pilih Semua Pesanan</span>
                 </label>
 
                 <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600 tabular-nums">
-                  {visibleSelectedCount} / {orders.data.length} dipilih
+                  {totalSelectedCount} / {totalMatchingCount} dipilih
                 </span>
 
-                {visibleSelectedCount > 0 && (
+                {totalSelectedCount > 0 && (
                   <button
                     type="button"
                     onClick={() => setSelectedOrderSns([])}

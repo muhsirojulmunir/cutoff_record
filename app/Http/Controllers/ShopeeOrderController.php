@@ -101,6 +101,8 @@ class ShopeeOrderController extends Controller
         $tabCounts = $this->emptyTabCounts();
         $orderTypeCounts = $this->emptyOrderTypeCounts();
         $carriers = [];
+        $allMatchingOrderSns = [];
+        $allMatchingOrders = [];
 
         if (! $account) {
             $orders = ShopeeOrder::query()
@@ -170,14 +172,21 @@ class ShopeeOrderController extends Controller
 
             $orders = $query->paginate(20)->withQueryString();
             $orders->getCollection()->each->makeHidden(['raw_payload']);
+
+            $allMatchingOrderSns = (clone $query)->limit(2000)->pluck('order_sn')->values()->all();
+            if ($orders->total() <= 200) {
+                $allMatchingOrders = (clone $query)->limit(200)->get()->each->makeHidden(['raw_payload'])->values()->all();
+            }
         }
 
         return Inertia::render('Shopee/Orders', [
-            'account'         => $account?->toSafeArray(),
-            'orders'          => $orders,
-            'tabCounts'       => $tabCounts,
-            'orderTypeCounts' => $orderTypeCounts,
-            'carriers'        => $carriers,
+            'account'             => $account?->toSafeArray(),
+            'orders'              => $orders,
+            'allMatchingOrderSns' => $allMatchingOrderSns,
+            'allMatchingOrders'   => $allMatchingOrders,
+            'tabCounts'           => $tabCounts,
+            'orderTypeCounts'     => $orderTypeCounts,
+            'carriers'            => $carriers,
             'filters'         => [
                 'tab'              => $tab,
                 'sub_tab'          => $subTab,
