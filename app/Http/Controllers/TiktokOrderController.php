@@ -398,21 +398,6 @@ class TiktokOrderController extends Controller
         ]);
     }
 
-    public function markPrinted(Request $request): JsonResponse
-    {
-        $this->authorizeAccess($request);
-        $account = $this->resolveTiktokAccount();
-
-        $validated = $request->validate([
-            'order_sns'   => ['required', 'array', 'min:1'],
-            'order_sns.*' => ['required', 'string'],
-        ]);
-
-        $result = $this->orderService->markOrdersAsPrinted($account, $validated['order_sns']);
-
-        return response()->json($result, 200);
-    }
-
     private function resolveTiktokAccount(): TiktokAccount
     {
         return TiktokAccount::firstOrCreate(
