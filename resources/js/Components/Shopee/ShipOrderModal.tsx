@@ -1030,7 +1030,7 @@ export default function ShipOrderModal({
   const canPrintAfterSingleShip = Boolean(
     singleResult &&
       onPrintWaybill &&
-      !isWaybillBlockedStatus(singleResult.order_status)
+      !isWaybillBlockedStatus(singleResult.order_status, order?.shipping_carrier)
   );
 
   return (

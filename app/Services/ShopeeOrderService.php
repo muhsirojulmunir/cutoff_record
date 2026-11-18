@@ -847,9 +847,12 @@ class ShopeeOrderService
             $orders[] = $order;
         }
 
-        $blockedStatuses = ['UNPAID', 'READY_TO_SHIP', 'RETRY_SHIP', 'CANCELLED'];
         $invalidReasons = [];
         foreach ($orders as $order) {
+            $blockedStatuses = $order->isInstant()
+                ? ['UNPAID', 'CANCELLED']
+                : ['UNPAID', 'READY_TO_SHIP', 'RETRY_SHIP', 'CANCELLED'];
+
             if (in_array($order->order_status, $blockedStatuses, true)) {
                 $label = ShopeeOrder::statusLabel($order->order_status);
                 $invalidReasons[] = "{$order->order_sn} ({$label})";

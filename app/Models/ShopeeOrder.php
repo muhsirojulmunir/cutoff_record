@@ -281,6 +281,18 @@ class ShopeeOrder extends Model
         ];
     }
 
+    public function isInstant(): bool
+    {
+        $carrier = strtolower((string) $this->shipping_carrier);
+
+        return str_contains($carrier, 'instan')
+            || str_contains($carrier, 'instant')
+            || str_contains($carrier, 'sameday')
+            || str_contains($carrier, 'same day')
+            || str_contains($carrier, 'gosend')
+            || str_contains($carrier, 'grab');
+    }
+
     public static function statusLabel(string $rawStatus): string
     {
         return match (strtoupper($rawStatus)) {

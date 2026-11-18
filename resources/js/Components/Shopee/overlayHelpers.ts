@@ -102,8 +102,20 @@ export function isShippableOrderStatus(status: ShopeeOrderStatus | null | undefi
   return SHIPPABLE_STATUSES.has(normalizeOrderStatus(status));
 }
 
-export function isWaybillBlockedStatus(status: ShopeeOrderStatus | null | undefined): boolean {
-  return WAYBILL_BLOCKED_STATUSES.has(normalizeOrderStatus(status));
+export function isInstantCarrier(carrier: string | null | undefined): boolean {
+  if (!carrier) return false;
+  return /instan|instant|same\s*day|sameday|gosend|grab/i.test(carrier);
+}
+
+export function isWaybillBlockedStatus(
+  status: ShopeeOrderStatus | null | undefined,
+  carrier?: string | null
+): boolean {
+  const normalized = normalizeOrderStatus(status);
+  if (carrier && isInstantCarrier(carrier)) {
+    return normalized === 'UNPAID' || normalized === 'CANCELLED';
+  }
+  return WAYBILL_BLOCKED_STATUSES.has(normalized);
 }
 
 export function getOrderStatusMeta(status: ShopeeOrderStatus | null | undefined): OrderStatusMeta {

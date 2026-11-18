@@ -48,8 +48,8 @@ export interface TiktokOrdersPageProps extends ShopeeOrdersPageProps {
 
 const MAX_SHOPEE_BATCH = 50;
 const URGENT_DEADLINE_MS = 6 * 60 * 60 * 1000;
-const LIVE_AUTO_SYNC_INTERVAL_SEC = 30;
-const INITIAL_AUTO_SYNC_STALE_MS = 20_000;
+const LIVE_AUTO_SYNC_INTERVAL_SEC = 5;
+const INITIAL_AUTO_SYNC_STALE_MS = 4_000;
 
 interface ToastMessage {
   id: number;
@@ -1175,7 +1175,7 @@ export default function TiktokOrdersPage({
     [selectedOrders]
   );
   const selectedPrintableOrders = useMemo(
-    () => selectedOrders.filter((o) => !isWaybillBlockedStatus(o.order_status)),
+    () => selectedOrders.filter((o) => !isWaybillBlockedStatus(o.order_status, o.shipping_carrier)),
     [selectedOrders]
   );
 
@@ -1219,7 +1219,7 @@ export default function TiktokOrdersPage({
     async (targetOrders: ShopeeOrderRecord[], isMass: boolean) => {
       if (printingTarget !== null) return;
 
-      const eligible = targetOrders.filter((o) => !isWaybillBlockedStatus(o.order_status));
+      const eligible = targetOrders.filter((o) => !isWaybillBlockedStatus(o.order_status, o.shipping_carrier));
       if (eligible.length === 0) {
         showToast('error', 'Pesanan yang dipilih belum diproses atau dibatalkan sehingga resi belum dapat dicetak.');
         return;
@@ -3123,7 +3123,21 @@ export default function TiktokOrdersPage({
                         </button>
                       )}
 
-                      {isProcessed && (
+                      {isInstant && isProcessed && (
+                        <button
+                          type="button"
+                          onClick={() => openOrderDrawer(order, true)}
+                          className="inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-[#EE4D2D] shadow-xs transition-colors hover:bg-orange-100"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="h-4 w-4">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+                          </svg>
+                          <span>Lihat Rincian Pickup</span>
+                        </button>
+                      )}
+
+                      {(isInstant ? (!['UNPAID', 'CANCELLED'].includes(normalizedStatus) && !isInCancel && !isShipped) : isProcessed) && (
                         <button
                           type="button"
                           disabled={printingTarget !== null}
