@@ -706,9 +706,10 @@ class ShopeeOrderController extends Controller
     private function authorizeSuperAdmin(Request $request): void
     {
         $user = $request->user();
-        if (! $user || ! $user->isSuperAdmin()) {
-            abort(403, 'Akses ditolak. Menu Pesanan Saya hanya untuk Super Admin.');
+        if ($user && ($user->isSuperAdmin() || (method_exists($user, 'roles') && $user->roles->contains('name', 'Super Admin')) || Gate::allows('user.view'))) {
+            return;
         }
+        abort(403, 'Akses ditolak. Menu Pesanan Saya hanya untuk Super Admin.');
     }
 
     private function resolveShopeeAccount(): ?ShopeeAccount

@@ -866,11 +866,12 @@ class TiktokSyncService
             $timestamp = time();
 
             $queryParams = [
-                'app_key'       => $account->app_key,
-                'timestamp'     => (string) $timestamp,
-                'shop_cipher'   => $shopCipher,
-                'document_type' => 'SHIPPING_LABEL',
-                'document_size' => $documentSize,
+                'app_key'         => $account->app_key,
+                'timestamp'       => (string) $timestamp,
+                'shop_cipher'     => $shopCipher,
+                'document_type'   => 'SHIPPING_LABEL',
+                'document_size'   => $documentSize,
+                'document_format' => 'PDF',
             ];
 
             $sign = $this->generateSignature($path, $queryParams, $account->app_secret, '');

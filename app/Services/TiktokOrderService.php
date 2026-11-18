@@ -1109,7 +1109,24 @@ class TiktokOrderService
             $pkgId = $order->package_number;
             if (empty($pkgId) || str_starts_with($pkgId, 'PKG-')) {
                 $pkgList = is_array($order->package_list_json) ? $order->package_list_json : [];
-                $pkgId = $pkgList[0]['id'] ?? $pkgId;
+                $pkgId = $pkgList[0]['id'] ?? null;
+            }
+
+            // Jika package_number masih belum ada, coba refresh detail pesanan dari API TikTok
+            if (empty($pkgId) || str_starts_with($pkgId, 'PKG-')) {
+                try {
+                    $fetched = $this->syncService->fetchSingleOrder($account, $order->order_sn);
+                    if ($fetched) {
+                        $order->refresh();
+                        $pkgId = $order->package_number;
+                        if (empty($pkgId) || str_starts_with($pkgId, 'PKG-')) {
+                            $pkgList = is_array($order->package_list_json) ? $order->package_list_json : [];
+                            $pkgId = $pkgList[0]['id'] ?? null;
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    Log::info("TiktokOrderService fetchSingleOrder before waybill: {$e->getMessage()}");
+                }
             }
 
             if (! empty($pkgId) && ! str_starts_with($pkgId, 'PKG-')) {

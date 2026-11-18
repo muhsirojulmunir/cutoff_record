@@ -301,18 +301,12 @@ export default function WaybillPreviewModal({
           )}
 
           {pdfUrl ? (
-            <object
-              data={pdfUrl}
-              type="application/pdf"
+            <iframe
+              ref={iframeRef}
+              src={pdfUrl}
+              title={title}
               className="h-[72vh] w-full rounded-xl border border-slate-200 bg-slate-100"
-            >
-              <iframe
-                ref={iframeRef}
-                src={pdfUrl}
-                title={title}
-                className="h-full w-full rounded-xl border-none"
-              />
-            </object>
+            />
           ) : (
             <div className="flex h-[52vh] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-400">

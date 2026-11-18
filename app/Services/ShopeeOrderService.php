@@ -938,17 +938,8 @@ class ShopeeOrderService
             ]);
         } catch (\Throwable $e) {
             $errLower = strtolower($e->getMessage());
-            if (
-                str_contains($errLower, 'already') ||
-                str_contains($errLower, 'created') ||
-                str_contains($errLower, 'exist') ||
-                str_contains($errLower, 'duplicate')
-            ) {
-                // Dokumen resi sudah pernah dibuat sebelumnya (Cetak Ulang Resi). Lanjutkan ke unduhan.
-                $createResp = ['response' => ['result_list' => []]];
-            } else {
-                throw $e;
-            }
+            Log::info("Shopee create_shipping_document notice ({$e->getMessage()}). Tetap melanjutkan ke pengecekan/unduhan dokumen resi.");
+            $createResp = ['response' => ['result_list' => []]];
         }
 
         $failedSnMessages = [];
@@ -1085,7 +1076,7 @@ class ShopeeOrderService
                 '/api/v2/logistics/download_shipping_document',
                 [
                     'shipping_document_type' => self::WAYBILL_DOCUMENT_TYPE,
-                    'order_list'             => $this->buildWaybillOrderList($readyOrders, false, false),
+                    'order_list'             => $this->buildWaybillOrderList($readyOrders, true, false),
                 ],
                 60
             );
