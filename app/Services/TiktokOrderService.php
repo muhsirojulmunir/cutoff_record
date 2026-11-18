@@ -1103,12 +1103,28 @@ class TiktokOrderService
             }
         }
 
-        // Buat PDF Waybill Thermal standar menggunakan generator mandiri (bekerja 100% di cPanel hosting)
-        return $this->renderWaybillHtmlToPdf($orders);
-    }
+        // 1. Coba unduh dokumen resi resmi langsung dari TikTok Shop Open API
+        $officialPdfs = [];
+        foreach ($orders as $order) {
+            $pkgId = $order->package_number;
+            if (empty($pkgId) || str_starts_with($pkgId, 'PKG-')) {
+                $pkgList = is_array($order->package_list_json) ? $order->package_list_json : [];
+                $pkgId = $pkgList[0]['id'] ?? $pkgId;
+            }
 
-    private function renderWaybillHtmlToPdf($orders): string
-    {
+            if (! empty($pkgId) && ! str_starts_with($pkgId, 'PKG-')) {
+                $pdfBinary = $this->syncService->getPackageShippingDocument($account, (string) $pkgId);
+                if (! empty($pdfBinary)) {
+                    $officialPdfs[] = $pdfBinary;
+                }
+            }
+        }
+
+        if (! empty($officialPdfs)) {
+            return $officialPdfs[0];
+        }
+
+        // 2. Fallback jika akun/resi belum terbit di TikTok Shop API: gunakan generator thermal mandiri
         $orderList = is_array($orders) ? $orders : $orders->all();
         return PureThermalPdfBuilder::build($orderList);
     }
