@@ -994,11 +994,10 @@ export default function ShipOrderModal({
     setMassExecutingMethod(null);
     if (!result || result.isStale()) return;
 
-    setMassResult(result.data);
-
     if (result.data.succeeded && result.data.succeeded.length > 0) {
       const succeededSet = new Set(result.data.succeeded.map((s) => s.order_sn));
-      setPendingMassOrders((prev) => prev.filter((o) => !succeededSet.has(o.order_sn)));
+      const remainingOrders = pendingMassOrders.filter((o) => !succeededSet.has(o.order_sn));
+      setPendingMassOrders(remainingOrders);
 
       // Kumpulkan pesanan yang berhasil diatur untuk langsung dicetak resinya
       const succeededOrders: ShopeeOrderRecord[] = targetOrdersToShip
@@ -1014,6 +1013,27 @@ export default function ShipOrderModal({
         });
 
       onPrintMassWaybill?.(succeededOrders);
+
+      const remainingCouriers = Array.from(
+        new Set(remainingOrders.map((o) => (o.shipping_carrier || 'Lainnya').trim()))
+      );
+
+      // Jika tidak ada pesanan yang gagal (semua pesanan kurir ini berhasil diatur):
+      // Langsung kembalikan tampilan ke halaman pengiriman massal untuk kurir berikutnya (ekspedisi yang baru selesai sudah otomatis hilang)
+      if (!result.data.failed || result.data.failed.length === 0) {
+        setMassResult(null);
+        if (remainingCouriers.length > 0) {
+          setActiveCourier(remainingCouriers[0]);
+        } else {
+          // Semua pesanan massal selesai
+          onClose();
+        }
+      } else {
+        // Tampilkan modal hasil jika ada pesanan yang gagal agar seller bisa melihat error pesanan yang gagal
+        setMassResult(result.data);
+      }
+    } else {
+      setMassResult(result.data);
     }
 
     onMassShipped?.(result.data);
@@ -1510,6 +1530,17 @@ export default function ShipOrderModal({
                       };
                     });
                     onPrintMassWaybill(succeededOrders);
+
+                    // Kembalikan ke halaman pengiriman massal lagi (tanpa kurir yang sudah dicetak)
+                    const remainingCouriers = Array.from(
+                      new Set(pendingMassOrders.map((o) => (o.shipping_carrier || 'Lainnya').trim()))
+                    );
+                    setMassResult(null);
+                    if (remainingCouriers.length > 0) {
+                      setActiveCourier(remainingCouriers[0]);
+                    } else {
+                      onClose();
+                    }
                   }}
                   className="inline-flex items-center gap-1.5 rounded-xl border border-[#EE4D2D] bg-orange-50 px-3.5 py-2 text-xs font-bold text-[#EE4D2D] hover:bg-orange-100 transition-colors shadow-2xs"
                 >

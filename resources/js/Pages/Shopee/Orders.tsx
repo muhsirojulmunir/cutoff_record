@@ -1513,51 +1513,6 @@ export default function ShopeeOrdersPage({
     if (succeededCount > 0) {
       const succeededSet = new Set(result.succeeded.map((s) => s.order_sn));
       setSelectedOrderSns((prev) => prev.filter((sn) => !succeededSet.has(sn)));
-
-      const succeededOrders: ShopeeOrderRecord[] = result.succeeded.map((item) => {
-        const found = orders.data.find((o) => o.order_sn === item.order_sn);
-        if (found) {
-          return {
-            ...found,
-            order_status: item.order_status || 'PROCESSED',
-            tracking_number: item.tracking_number || found.tracking_number,
-            fulfillment_method: item.fulfillment_method || found.fulfillment_method,
-          };
-        }
-        return {
-          id: 0,
-          shopee_account_id: 0,
-          order_sn: item.order_sn,
-          package_number: null,
-          order_status: item.order_status || 'PROCESSED',
-          logistics_status: null,
-          shipping_carrier: null,
-          tracking_number: item.tracking_number,
-          fulfillment_method: item.fulfillment_method,
-          buyer_user_id: null,
-          buyer_username: null,
-          buyer_note: null,
-          recipient_data: null,
-          items_json: null,
-          package_list_json: null,
-          payment_method: null,
-          is_cod: false,
-          total_amount: 0,
-          estimated_shipping_fee: 0,
-          cancel_by: null,
-          cancel_reason: null,
-          buyer_cancel_reason: null,
-          order_created_at: null,
-          ship_by_date: null,
-          shipping_arranged_at: new Date().toISOString(),
-          label_document_status: 'READY',
-          label_printed_at: null,
-          label_print_count: 0,
-          last_synced_at: null,
-        };
-      });
-
-      void openWaybillPdfStream(succeededOrders, true);
     }
     router.reload({ only: ['orders', 'tabCounts', 'orderTypeCounts', 'carriers'] });
   };
