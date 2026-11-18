@@ -107,6 +107,9 @@ export default function WaybillPreviewModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, pdfUrl, isPrinting, orderSns]);
 
+  // Sembunyikan toolbar hitam atas dan panel navigasi bawaan Google Chrome
+  const viewerPdfUrl = pdfUrl ? `${pdfUrl}#toolbar=0&navpanes=0` : null;
+
   const modalContent = (
     <div
       className="fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto p-3 sm:p-6"
@@ -288,10 +291,10 @@ export default function WaybillPreviewModal({
             </div>
           )}
 
-          {pdfUrl ? (
+          {viewerPdfUrl ? (
             <iframe
               ref={iframeRef}
-              src={pdfUrl}
+              src={viewerPdfUrl}
               title={title}
               className="h-[72vh] w-full rounded-xl border border-slate-200 bg-slate-100"
             />
