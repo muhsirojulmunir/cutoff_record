@@ -310,6 +310,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
   // Modal Edit State
   const [editingRow, setEditingRow] = useState<ReturnRow | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [fisikSelection, setFisikSelection] = useState<string>('');
 
   const copyToClipboard = (text: string | null | undefined, fieldKey: string) => {
     if (!text) return;
@@ -340,6 +341,15 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
 
   function openEditModal(row: ReturnRow) {
     setEditingRow(row);
+    const currentFisik = row.nama_barang_fisik ?? '';
+    if (currentFisik === 'Sesuai' || currentFisik === 'Tidak Sesuai') {
+      setFisikSelection(currentFisik);
+    } else if (currentFisik) {
+      setFisikSelection('Lainnya');
+    } else {
+      setFisikSelection('');
+    }
+
     editForm.setData({
       marketplace: row.marketplace ?? '',
       tgl_input_mp: row.tgl_input_mp ?? '',
@@ -350,11 +360,11 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
       no_retur: row.no_retur ?? '',
       tgl_rj: row.tgl_rj ?? '',
       tgl_terima_brg: row.tgl_terima_brg ?? '',
-      nama_barang_fisik: row.nama_barang_fisik ?? '',
+      nama_barang_fisik: currentFisik,
       jml_brg_fisik: row.jml_brg_fisik !== null ? String(row.jml_brg_fisik) : '',
       keterangan: row.keterangan ?? '',
       barcode: row.barcode ?? '',
-      tgl_banding: row.tgl_banding ?? '',
+      tgl_banding: row.tgl_banding || 'Belum Dibanding',
       due_date: row.due_date ? String(row.due_date).slice(0, 16) : '',
       no_pengajuan: row.no_pengajuan ?? '',
       no_pesanan_baru: row.no_pesanan_baru ?? '',
@@ -1031,7 +1041,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                   <th className="py-3 px-3 text-center w-12">No</th>
                   <th className="py-3 px-4">MP & Tanggal</th>
                   <th className="py-3 px-4">Pengembalian & Pesanan</th>
-                  <th className="py-3 px-4">SKU Barang (MP)</th>
+                  <th className="py-3 px-4">SKU Barang</th>
                   <th className="py-3 px-4">Pengecekan Fisik Gudang</th>
                   <th className="py-3 px-4">Keterangan & Banding</th>
                   <th className="py-3 px-4">Pengajuan & Pesanan Baru</th>
@@ -1109,7 +1119,23 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                       {/* Pengecekan Fisik Gudang */}
                       <td className="py-3.5 px-4 max-w-[220px]">
                         <p className="font-medium text-slate-800 truncate" title={row.nama_barang_fisik ?? ''}>
-                          {row.nama_barang_fisik ? row.nama_barang_fisik : <span className="text-slate-400">— Fisik Belum Diisi</span>}
+                          {row.nama_barang_fisik ? (
+                            <span
+                              className={`inline-flex items-center gap-1 font-bold text-xs ${
+                                row.nama_barang_fisik === 'Sesuai'
+                                  ? 'text-emerald-700'
+                                  : row.nama_barang_fisik === 'Tidak Sesuai'
+                                  ? 'text-rose-600'
+                                  : 'text-amber-800'
+                              }`}
+                            >
+                              {row.nama_barang_fisik === 'Sesuai' && <span>✓</span>}
+                              {row.nama_barang_fisik === 'Tidak Sesuai' && <span>✕</span>}
+                              {row.nama_barang_fisik}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">— Fisik Belum Diisi</span>
+                          )}
                         </p>
                         <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500 font-sans">
                           {row.jml_brg_fisik !== null && (
@@ -1164,7 +1190,14 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                         })()}
 
                         {row.tgl_banding && (
-                          <span className="inline-block mt-1 text-[10px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 truncate max-w-[180px]" title={`Banding: ${row.tgl_banding}`}>
+                          <span
+                            className={`inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded border truncate max-w-[180px] ${
+                              row.tgl_banding.toLowerCase().includes('sudah')
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                : 'bg-amber-50 text-amber-800 border-amber-200'
+                            }`}
+                            title={`Status Banding: ${row.tgl_banding}`}
+                          >
                             {row.tgl_banding}
                           </span>
                         )}
@@ -1440,13 +1473,15 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-2">
-                    <label className="block font-bold text-slate-700 uppercase mb-1">SKU Barang (Data MP)</label>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">SKU Barang</label>
                     <input
                       type="text"
                       value={editForm.data.nama_barang_mp}
-                      onChange={(e) => editForm.setData('nama_barang_mp', e.target.value)}
-                      placeholder="Misal: SKP19-MH-31..."
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
+                      readOnly
+                      disabled
+                      placeholder="SKU Barang..."
+                      className="w-full px-3 py-2 rounded-xl bg-slate-100 text-slate-700 font-semibold border border-slate-200 cursor-not-allowed select-all font-mono"
+                      title="SKU Barang dari Marketplace (tidak dapat diubah)"
                     />
                   </div>
                   <div>
@@ -1455,6 +1490,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                       type="number"
                       value={editForm.data.jml_produk_mp}
                       readOnly
+                      disabled
                       className="w-full px-3 py-2 rounded-xl bg-slate-100 text-slate-600 font-bold border border-slate-200 cursor-not-allowed select-all"
                       title="Qty MP otomatis dari Marketplace dan tidak dapat diubah"
                     />
@@ -1463,13 +1499,42 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-2">
-                    <label className="block font-bold text-slate-700 uppercase mb-1">Nama Barang (Fisik Dicek Gudang)</label>
-                    <input
-                      type="text"
-                      value={editForm.data.nama_barang_fisik}
-                      onChange={(e) => editForm.setData('nama_barang_fisik', e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
-                    />
+                    <label className="block font-bold text-slate-700 uppercase mb-1">Nama Barang (Fisik Cek Gudang)</label>
+                    <select
+                      value={fisikSelection}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFisikSelection(val);
+                        if (val === 'Sesuai' || val === 'Tidak Sesuai') {
+                          editForm.setData('nama_barang_fisik', val);
+                        } else if (val === 'Lainnya') {
+                          if (editForm.data.nama_barang_fisik === 'Sesuai' || editForm.data.nama_barang_fisik === 'Tidak Sesuai') {
+                            editForm.setData('nama_barang_fisik', '');
+                          }
+                        } else {
+                          editForm.setData('nama_barang_fisik', '');
+                        }
+                      }}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 font-semibold text-slate-800 focus:outline-none focus:border-[#0B132B]"
+                    >
+                      <option value="">-- Pilih Fisik Cek Gudang --</option>
+                      <option value="Sesuai">Sesuai</option>
+                      <option value="Tidak Sesuai">Tidak Sesuai</option>
+                      <option value="Lainnya">Lainnya (Isi Sendiri, misal: isi kain)</option>
+                    </select>
+
+                    {fisikSelection === 'Lainnya' && (
+                      <div className="mt-2">
+                        <input
+                          type="text"
+                          value={editForm.data.nama_barang_fisik}
+                          onChange={(e) => editForm.setData('nama_barang_fisik', e.target.value)}
+                          placeholder="Tuliskan kondisi fisik barang (misal: isi kain, barang rusak, salah size)..."
+                          className="w-full px-3 py-2 rounded-xl bg-amber-50/60 border border-amber-300 text-xs text-slate-800 focus:outline-none focus:border-amber-500 font-medium placeholder:text-slate-400"
+                          autoFocus
+                        />
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="block font-bold text-slate-700 uppercase mb-1">Qty Fisik</label>
@@ -1489,21 +1554,28 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                     <input
                       type="text"
                       value={editForm.data.keterangan}
-                      onChange={(e) => editForm.setData('keterangan', e.target.value)}
-                      placeholder="tukar size, batal kirim, salah warna..."
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
+                      readOnly
+                      disabled
+                      placeholder="Keterangan marketplace..."
+                      className="w-full px-3 py-2 rounded-xl bg-slate-100 text-slate-700 border border-slate-200 cursor-not-allowed select-all"
+                      title="Keterangan/alasan pengajuan dari marketplace (tidak dapat diubah)"
                     />
                   </div>
 
                   <div>
                     <label className="block font-bold text-slate-700 uppercase mb-1">Status Banding MP</label>
-                    <input
-                      type="text"
-                      value={editForm.data.tgl_banding}
+                    <select
+                      value={
+                        (editForm.data.tgl_banding || '').toLowerCase().includes('sudah')
+                          ? 'Sudah Dibanding'
+                          : 'Belum Dibanding'
+                      }
                       onChange={(e) => editForm.setData('tgl_banding', e.target.value)}
-                      placeholder="tukar size / tgl banding..."
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
-                    />
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 font-semibold text-slate-800 focus:outline-none focus:border-[#0B132B]"
+                    >
+                      <option value="Belum Dibanding">Belum Dibanding</option>
+                      <option value="Sudah Dibanding">Sudah Dibanding</option>
+                    </select>
                   </div>
                 </div>
 
@@ -1519,17 +1591,6 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                   <p className="text-[10px] text-slate-400 mt-1">
                     Batas waktu respon dari Shopee/TikTok. Menampilkan hitungan mundur "Kurang X Hari Y Jam" di tabel.
                   </p>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">No. Pengajuan MP</label>
-                  <input
-                    type="text"
-                    value={editForm.data.no_pengajuan}
-                    onChange={(e) => editForm.setData('no_pengajuan', e.target.value)}
-                    placeholder="25091107YSQ3RXK..."
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
-                  />
                 </div>
 
                 <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
@@ -1636,7 +1697,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-2">
-                    <label className="block font-bold text-slate-700 uppercase mb-1">SKU Barang (Data MP) *</label>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">SKU Barang *</label>
                     <input
                       type="text"
                       required
@@ -1660,7 +1721,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-2">
-                    <label className="block font-bold text-slate-700 uppercase mb-1">Nama Barang (Fisik Gudang)</label>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">Nama Barang (Fisik Cek Gudang)</label>
                     <input
                       type="text"
                       value={createForm.data.nama_barang_fisik}
