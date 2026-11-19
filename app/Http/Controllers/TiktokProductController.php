@@ -723,6 +723,8 @@ class TiktokProductController extends Controller
             'item_code'     => 'required|string|max:50',
         ]);
 
+        $this->syncService->ensureProductSchema();
+
         $itemCode = strtoupper(trim($validated['item_code']));
         $productIds = $validated['product_ids'];
 

@@ -89,7 +89,8 @@ export default function BulkMapItemCodeModal({
       try {
         const url = `${searchEndpoint}?q=${encodeURIComponent(trimmed)}`;
         const resp = await fetch(url, {
-          headers: { credentials: 'same-origin', Accept: 'application/json' },
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
         });
         const json = await resp.json();
         if (json.status === 'success' && Array.isArray(json.data)) {
@@ -131,12 +132,13 @@ export default function BulkMapItemCodeModal({
       try {
         const url = `${searchMasterEndpoint}?q=${encodeURIComponent(trimmed)}`;
         const resp = await fetch(url, {
-          headers: { credentials: 'same-origin', Accept: 'application/json' },
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
         });
         const json = await resp.json();
         const items: MasterStockItem[] = json.data || json.items || [];
         const exact = items.find(
-          (m) => m.item_code.trim().toUpperCase() === trimmed
+          (m) => m?.item_code?.trim().toUpperCase() === trimmed
         ) || items[0] || null;
         setVerifiedMasterItem(exact);
       } catch {
@@ -200,6 +202,7 @@ export default function BulkMapItemCodeModal({
         document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
       const resp = await fetch(bulkMapEndpoint, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/json',
           'X-CSRF-TOKEN': csrfToken,
