@@ -1012,7 +1012,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                 <tr className="bg-slate-900 text-white font-semibold uppercase tracking-wider text-[11px]">
                   <th className="py-3 px-3 text-center w-12">No</th>
                   <th className="py-3 px-4">MP & Tanggal</th>
-                  <th className="py-3 px-4">Retur & Invoice</th>
+                  <th className="py-3 px-4">Retur & Pesanan</th>
                   <th className="py-3 px-4">Barang (Data MP)</th>
                   <th className="py-3 px-4">Pengecekan Fisik Gudang</th>
                   <th className="py-3 px-4">Keterangan & Banding</th>
@@ -1313,20 +1313,24 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                     <input
                       type="text"
                       value={editForm.data.no_retur}
-                      onChange={(e) => editForm.setData('no_retur', e.target.value)}
+                      disabled
+                      readOnly
                       placeholder="RJ/..."
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 cursor-not-allowed select-all font-mono"
+                      title="No. Retur otomatis dari Marketplace dan tidak dapat diubah"
                     />
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">No. Invoice MP</label>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">No. Pesanan</label>
                     <input
                       type="text"
                       value={editForm.data.no_invoice_mp}
-                      onChange={(e) => editForm.setData('no_invoice_mp', e.target.value)}
-                      placeholder="JL/..."
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
+                      disabled
+                      readOnly
+                      placeholder="No. Pesanan..."
+                      className="w-full px-3 py-2 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 cursor-not-allowed select-all font-mono"
+                      title="No. Pesanan otomatis dari Marketplace dan tidak dapat diubah"
                     />
                   </div>
 
@@ -1538,12 +1542,12 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">No. Invoice MP</label>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">No. Pesanan</label>
                     <input
                       type="text"
                       value={createForm.data.no_invoice_mp}
                       onChange={(e) => createForm.setData('no_invoice_mp', e.target.value)}
-                      placeholder="JL/0008..."
+                      placeholder="No. Pesanan..."
                       className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
                     />
                   </div>
