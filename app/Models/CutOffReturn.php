@@ -58,8 +58,10 @@ class CutOffReturn extends Model
      */
     public function getSellerCenterUrlAttribute(): ?string
     {
-        $mp = strtoupper(trim((string) $this->marketplace));
-        $keyword = trim((string) ($this->no_retur ?: $this->no_invoice_mp));
+        $mp = strtoupper(trim((string) ($this->attributes['marketplace'] ?? $this->marketplace ?? '')));
+        $noRetur = trim((string) ($this->attributes['no_retur'] ?? $this->no_retur ?? ''));
+        $noInv   = trim((string) ($this->attributes['no_invoice_mp'] ?? $this->no_invoice_mp ?? ''));
+        $keyword = $noRetur ?: $noInv;
         if (! $keyword) {
             return null;
         }
@@ -120,7 +122,13 @@ class CutOffReturn extends Model
 
         $query->when($filters['needs_action'] ?? null, function ($q, $needsAction) {
             if ($needsAction === '1' || $needsAction === true || $needsAction === 'true') {
-                $q->where('needs_action', true);
+                try {
+                    if (\Illuminate\Support\Facades\Schema::hasColumn('cut_off_returns', 'needs_action')) {
+                        $q->where('needs_action', true);
+                    }
+                } catch (\Throwable) {
+                    // Abaikan jika tabel atau kolom belum tersedia
+                }
             }
         });
 

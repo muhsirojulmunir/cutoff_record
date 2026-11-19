@@ -6,6 +6,7 @@ use App\Models\CutOffReturn;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -36,40 +37,78 @@ class CutOffReturnController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
-        $rawSummary = DB::table('cut_off_returns')
-            ->whereNull('deleted_at')
-            ->selectRaw("
-                COUNT(*) as total_retur,
-                COALESCE(SUM(CASE WHEN marketplace = 'SH' THEN 1 ELSE 0 END), 0) as total_shopee,
-                COALESCE(SUM(CASE WHEN marketplace = 'TT' THEN 1 ELSE 0 END), 0) as total_tokopedia,
-                COALESCE(SUM(CASE WHEN no_pesanan_baru IS NOT NULL AND no_pesanan_baru != '' THEN 1 ELSE 0 END), 0) as total_pesanan_baru,
-                COALESCE(SUM(CASE WHEN needs_action = 1 THEN 1 ELSE 0 END), 0) as total_needs_action,
-                COALESCE(SUM(CASE WHEN marketplace IS NOT NULL AND marketplace NOT IN ('SH', 'TT') THEN 1 ELSE 0 END), 0) as total_lainnya
-            ")
-            ->first();
+        $hasNeedsAction = false;
+        $hasDueDate     = false;
+        try {
+            $hasNeedsAction = Schema::hasColumn('cut_off_returns', 'needs_action');
+            $hasDueDate     = Schema::hasColumn('cut_off_returns', 'due_date');
+        } catch (\Throwable $e) {
+            // Abaikan error schema check
+        }
 
-        $summary = [
-            'total_retur'        => (int) ($rawSummary->total_retur ?? 0),
-            'total_shopee'       => (int) ($rawSummary->total_shopee ?? 0),
-            'total_tokopedia'    => (int) ($rawSummary->total_tokopedia ?? 0),
-            'total_pesanan_baru' => (int) ($rawSummary->total_pesanan_baru ?? 0),
-            'total_needs_action' => (int) ($rawSummary->total_needs_action ?? 0),
-            'total_lainnya'      => (int) ($rawSummary->total_lainnya ?? 0),
-        ];
+        $needsActionSql = $hasNeedsAction
+            ? "COALESCE(SUM(CASE WHEN needs_action = 1 THEN 1 ELSE 0 END), 0) as total_needs_action,"
+            : "0 as total_needs_action,";
+
+        try {
+            $rawSummary = DB::table('cut_off_returns')
+                ->whereNull('deleted_at')
+                ->selectRaw("
+                    COUNT(*) as total_retur,
+                    COALESCE(SUM(CASE WHEN marketplace = 'SH' THEN 1 ELSE 0 END), 0) as total_shopee,
+                    COALESCE(SUM(CASE WHEN marketplace = 'TT' THEN 1 ELSE 0 END), 0) as total_tokopedia,
+                    COALESCE(SUM(CASE WHEN no_pesanan_baru IS NOT NULL AND no_pesanan_baru != '' THEN 1 ELSE 0 END), 0) as total_pesanan_baru,
+                    {$needsActionSql}
+                    COALESCE(SUM(CASE WHEN marketplace IS NOT NULL AND marketplace NOT IN ('SH', 'TT') THEN 1 ELSE 0 END), 0) as total_lainnya
+                ")
+                ->first();
+
+            $summary = [
+                'total_retur'        => (int) ($rawSummary->total_retur ?? 0),
+                'total_shopee'       => (int) ($rawSummary->total_shopee ?? 0),
+                'total_tokopedia'    => (int) ($rawSummary->total_tokopedia ?? 0),
+                'total_pesanan_baru' => (int) ($rawSummary->total_pesanan_baru ?? 0),
+                'total_needs_action' => (int) ($rawSummary->total_needs_action ?? 0),
+                'total_lainnya'      => (int) ($rawSummary->total_lainnya ?? 0),
+            ];
+        } catch (\Throwable $e) {
+            $summary = [
+                'total_retur'        => 0,
+                'total_shopee'       => 0,
+                'total_tokopedia'    => 0,
+                'total_pesanan_baru' => 0,
+                'total_needs_action' => 0,
+                'total_lainnya'      => 0,
+            ];
+        }
 
         // Ambil daftar kasus retur/sengketa yang butuh respon / memiliki batas waktu aktif
-        $disputeTasks = CutOffReturn::query()
-            ->where(function ($q) {
-                $q->where('needs_action', true)
-                  ->orWhere(function ($sub) {
-                      $sub->whereNotNull('due_date')
-                          ->where('due_date', '>=', now()->subDay());
-                  });
-            })
-            ->orderByRaw('CASE WHEN due_date IS NOT NULL AND due_date >= NOW() THEN 0 ELSE 1 END ASC')
-            ->orderBy('due_date', 'asc')
-            ->take(15)
-            ->get();
+        $disputeTasks = collect();
+        if ($hasNeedsAction || $hasDueDate) {
+            try {
+                $disputeTasks = CutOffReturn::query()
+                    ->where(function ($q) use ($hasNeedsAction, $hasDueDate) {
+                        if ($hasNeedsAction) {
+                            $q->where('needs_action', true);
+                        }
+                        if ($hasDueDate) {
+                            $method = $hasNeedsAction ? 'orWhere' : 'where';
+                            $q->{$method}(function ($sub) {
+                                $sub->whereNotNull('due_date')
+                                    ->where('due_date', '>=', now()->subDay());
+                            });
+                        }
+                    })
+                    ->when($hasDueDate, function ($q) {
+                        $q->orderByRaw('CASE WHEN due_date IS NOT NULL AND due_date >= NOW() THEN 0 ELSE 1 END ASC')
+                          ->orderBy('due_date', 'asc');
+                    })
+                    ->take(15)
+                    ->get();
+            } catch (\Throwable $e) {
+                $disputeTasks = collect();
+            }
+        }
 
         $marketplaces = CutOffReturn::query()
             ->select('marketplace', DB::raw('count(*) as count'))
