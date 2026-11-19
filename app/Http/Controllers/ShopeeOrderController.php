@@ -1005,16 +1005,34 @@ class ShopeeOrderController extends Controller
         };
 
         if ($dateFrom !== '') {
-            $query->where($dateColumn, '>=', $dateFrom . ' 00:00:00');
+            if ($dateColumn === 'order_created_at') {
+                $query->whereRaw('COALESCE(order_created_at, created_at) >= ?', [$dateFrom . ' 00:00:00']);
+            } else {
+                $query->where($dateColumn, '>=', $dateFrom . ' 00:00:00');
+            }
         }
         if ($dateTo !== '') {
-            $query->where($dateColumn, '<=', $dateTo . ' 23:59:59');
+            if ($dateColumn === 'order_created_at') {
+                $query->whereRaw('COALESCE(order_created_at, created_at) <= ?', [$dateTo . ' 23:59:59']);
+            } else {
+                $query->where($dateColumn, '<=', $dateTo . ' 23:59:59');
+            }
         }
 
-        $query->orderByDesc('order_created_at');
+        // Urutkan pesanan dari yang paling baru masuk di paling atas (Newest First)
+        $query->orderByRaw('COALESCE(order_created_at, created_at) DESC')->orderByDesc('id');
 
         /** @var \Illuminate\Database\Eloquent\Collection<int, ShopeeOrder> $orders */
         $orders = $query->limit(3000)->get();
+
+        $orders = $orders->sort(function ($a, $b) {
+            $timeA = $a->order_created_at?->timestamp ?? $a->created_at?->timestamp ?? 0;
+            $timeB = $b->order_created_at?->timestamp ?? $b->created_at?->timestamp ?? 0;
+            if ($timeA !== $timeB) {
+                return $timeB <=> $timeA;
+            }
+            return (int) $b->id <=> (int) $a->id;
+        })->values();
 
         $headers = [
             'No. Pesanan',
@@ -1135,7 +1153,7 @@ class ShopeeOrderController extends Controller
 
             $fmtDate = static fn (?Carbon $d) => $d ? $d->format('Y-m-d H:i') : '';
 
-            $createdAtStr = $fmtDate($order->order_created_at);
+            $createdAtStr = $fmtDate($order->order_created_at ?: $order->created_at);
             $shipByStr = $fmtDate($order->ship_by_date);
             $arrangedAtStr = $fmtDate($order->shipping_arranged_at);
 

@@ -354,7 +354,7 @@ export default function TiktokOrderExportModal({
         {/* Modal Actions */}
         <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-6 py-4">
           <p className="text-[11px] text-slate-500">
-            Export otomatis tercatat di <strong className="text-slate-700">Riwayat Download</strong>.
+            Export otomatis diurutkan dari <strong>pesanan paling baru masuk di bagian atas</strong> & tercatat di <strong className="text-slate-700">Riwayat Download</strong>.
           </p>
           <div className="flex items-center gap-2">
             <button

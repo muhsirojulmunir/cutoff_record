@@ -348,7 +348,7 @@ export default function ShopeeOrderExportModal({
               <span>Format Ekspor 100% Identik Shopee</span>
             </div>
             <p className="mt-1 leading-relaxed text-slate-500">
-              File otomatis berisi 2 sheet (<strong>orders</strong> & <strong>Advance Fulfilment</strong>) dengan 49 kolom resmi. Setiap pesanan multi-item akan terpecah menjadi 1 baris per produk sesuai standar Shopee Seller Centre.
+              File otomatis berisi 2 sheet (<strong>orders</strong> & <strong>Advance Fulfilment</strong>) dengan 49 kolom resmi. Urutan data otomatis disusun dari <strong>pesanan yang paling baru masuk di bagian atas</strong> agar admin mudah membaca dan memproses pesanan.
             </p>
           </div>
         </div>

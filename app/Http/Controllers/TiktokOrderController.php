@@ -548,16 +548,34 @@ class TiktokOrderController extends Controller
         };
 
         if ($dateFrom !== '') {
-            $query->where($dateColumn, '>=', $dateFrom . ' 00:00:00');
+            if ($dateColumn === 'order_created_at') {
+                $query->whereRaw('COALESCE(order_created_at, created_at) >= ?', [$dateFrom . ' 00:00:00']);
+            } else {
+                $query->where($dateColumn, '>=', $dateFrom . ' 00:00:00');
+            }
         }
         if ($dateTo !== '') {
-            $query->where($dateColumn, '<=', $dateTo . ' 23:59:59');
+            if ($dateColumn === 'order_created_at') {
+                $query->whereRaw('COALESCE(order_created_at, created_at) <= ?', [$dateTo . ' 23:59:59']);
+            } else {
+                $query->where($dateColumn, '<=', $dateTo . ' 23:59:59');
+            }
         }
 
-        $query->orderByDesc('order_created_at');
+        // Urutkan pesanan dari yang paling baru masuk di paling atas (Newest First)
+        $query->orderByRaw('COALESCE(order_created_at, created_at) DESC')->orderByDesc('id');
 
         /** @var \Illuminate\Database\Eloquent\Collection<int, TiktokOrder> $orders */
         $orders = $query->limit(3000)->get();
+
+        $orders = $orders->sort(function ($a, $b) {
+            $timeA = $a->order_created_at?->timestamp ?? $a->created_at?->timestamp ?? 0;
+            $timeB = $b->order_created_at?->timestamp ?? $b->created_at?->timestamp ?? 0;
+            if ($timeA !== $timeB) {
+                return $timeB <=> $timeA;
+            }
+            return (int) $b->id <=> (int) $a->id;
+        })->values();
 
         $headers = [
             'Order ID',
@@ -777,7 +795,7 @@ class TiktokOrderController extends Controller
                 }
             };
 
-            $createdAtStr = $fmtTime($order->order_created_at);
+            $createdAtStr = $fmtTime($order->order_created_at ?: $order->created_at);
             $rtsAtStr = $fmtTime($order->shipping_arranged_at ?: ($rawPayload['rts_time'] ?? null));
             $paidAtStr = $fmtTime($rawPayload['paid_time'] ?? (! $order->is_cod ? $order->order_created_at : null));
             $shippedAtStr = $fmtTime($rawPayload['shipped_time'] ?? null);
