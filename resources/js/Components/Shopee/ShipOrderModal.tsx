@@ -248,120 +248,6 @@ function PrinterIcon({ className = 'h-4 w-4' }: { className?: string }) {
   );
 }
 
-interface CourierTheme {
-  active: string;
-  idle: string;
-  badge: string;
-  dot: string;
-}
-
-function getCourierTheme(courierName: string): CourierTheme {
-  const name = courierName.toLowerCase();
-
-  // SPX / Shopee Xpress -> Bright Shopee Orange
-  if (name.includes('spx') || name.includes('shopee express')) {
-    return {
-      active: 'border-[#EE4D2D] bg-[#FFF5F2] text-[#EE4D2D] ring-2 ring-[#EE4D2D] shadow-2xs font-bold',
-      idle: 'border-orange-300 bg-orange-50/50 text-orange-950 hover:border-[#EE4D2D] hover:bg-orange-50 font-semibold',
-      badge: 'bg-[#EE4D2D] text-white',
-      dot: 'bg-[#EE4D2D]',
-    };
-  }
-
-  // SiCepat -> Signature Rose / Crimson
-  if (name.includes('sicepat')) {
-    return {
-      active: 'border-rose-600 bg-rose-50 text-rose-950 ring-2 ring-rose-600 shadow-2xs font-bold',
-      idle: 'border-rose-300 bg-rose-50/50 text-rose-950 hover:border-rose-500 hover:bg-rose-50 font-semibold',
-      badge: 'bg-rose-600 text-white',
-      dot: 'bg-rose-600',
-    };
-  }
-
-  // Anteraja -> Signature Purple / Magenta / Fuchsia
-  if (name.includes('anteraja')) {
-    return {
-      active: 'border-purple-600 bg-purple-50 text-purple-950 ring-2 ring-purple-600 shadow-2xs font-bold',
-      idle: 'border-purple-300 bg-purple-50/50 text-purple-950 hover:border-purple-500 hover:bg-purple-50 font-semibold',
-      badge: 'bg-purple-600 text-white',
-      dot: 'bg-purple-600',
-    };
-  }
-
-  // J&T Express -> Signature Bright Red
-  if (name.includes('j&t') || name.includes('jnt')) {
-    return {
-      active: 'border-red-600 bg-red-50 text-red-950 ring-2 ring-red-600 shadow-2xs font-bold',
-      idle: 'border-red-300 bg-red-50/50 text-red-950 hover:border-red-500 hover:bg-red-50 font-semibold',
-      badge: 'bg-red-600 text-white',
-      dot: 'bg-red-600',
-    };
-  }
-
-  // JNE -> Signature Royal Blue
-  if (name.includes('jne')) {
-    return {
-      active: 'border-blue-600 bg-blue-50 text-blue-950 ring-2 ring-blue-600 shadow-2xs font-bold',
-      idle: 'border-blue-300 bg-blue-50/50 text-blue-950 hover:border-blue-500 hover:bg-blue-50 font-semibold',
-      badge: 'bg-blue-600 text-white',
-      dot: 'bg-blue-600',
-    };
-  }
-
-  // ID Express -> Signature Amber / Golden
-  if (name.includes('id express') || name.includes('idx')) {
-    return {
-      active: 'border-amber-500 bg-amber-50 text-amber-950 ring-2 ring-amber-500 shadow-2xs font-bold',
-      idle: 'border-amber-300 bg-amber-50/50 text-amber-950 hover:border-amber-500 hover:bg-amber-50 font-semibold',
-      badge: 'bg-amber-600 text-white',
-      dot: 'bg-amber-500',
-    };
-  }
-
-  // Ninja Van -> Deep Crimson / Red-Wine
-  if (name.includes('ninja')) {
-    return {
-      active: 'border-red-900 bg-red-50 text-red-950 ring-2 ring-red-900 shadow-2xs font-bold',
-      idle: 'border-red-400 bg-red-50/50 text-red-950 hover:border-red-800 hover:bg-red-50 font-semibold',
-      badge: 'bg-red-900 text-white',
-      dot: 'bg-red-800',
-    };
-  }
-
-  // Pos Indonesia -> Warm Pos Orange / Amber
-  if (name.includes('pos')) {
-    return {
-      active: 'border-amber-700 bg-amber-50 text-amber-950 ring-2 ring-amber-700 shadow-2xs font-bold',
-      idle: 'border-amber-400 bg-amber-50/50 text-amber-950 hover:border-amber-600 hover:bg-amber-50 font-semibold',
-      badge: 'bg-amber-700 text-white',
-      dot: 'bg-amber-700',
-    };
-  }
-
-  // Grab / GoSend / Instant / SameDay -> Emerald Green
-  if (
-    name.includes('grab') ||
-    name.includes('gosend') ||
-    name.includes('instant') ||
-    name.includes('sameday')
-  ) {
-    return {
-      active: 'border-emerald-600 bg-emerald-50 text-emerald-950 ring-2 ring-emerald-600 shadow-2xs font-bold',
-      idle: 'border-emerald-300 bg-emerald-50/50 text-emerald-950 hover:border-emerald-500 hover:bg-emerald-50 font-semibold',
-      badge: 'bg-emerald-600 text-white',
-      dot: 'bg-emerald-600',
-    };
-  }
-
-  // Default / Other Couriers -> Indigo
-  return {
-    active: 'border-indigo-600 bg-indigo-50 text-indigo-950 ring-2 ring-indigo-600 shadow-2xs font-bold',
-    idle: 'border-indigo-300 bg-indigo-50/50 text-indigo-950 hover:border-indigo-500 hover:bg-indigo-50 font-semibold',
-    badge: 'bg-indigo-600 text-white',
-    dot: 'bg-indigo-600',
-  };
-}
-
 export default function ShipOrderModal({
   show,
   mode,
@@ -416,7 +302,7 @@ export default function ShipOrderModal({
 
   // Mass-mode dynamic state
   const [pendingMassOrders, setPendingMassOrders] = useState<ShopeeOrderRecord[]>([]);
-  const [activeCourier, setActiveCourier] = useState<string>('all');
+  const [activeCourier, setActiveCourier] = useState<string>('');
   const [selectedMassSns, setSelectedMassSns] = useState<string[]>([]);
   const [courierParamsCache, setCourierParamsCache] = useState<
     Record<string, ShopeeShippingParameterResponse | null>
@@ -434,6 +320,7 @@ export default function ShipOrderModal({
   const [massResult, setMassResult] = useState<ShopeeMassShipResult | null>(null);
   const [printedOrderSns, setPrintedOrderSns] = useState<Set<string>>(new Set());
   const [isPreparingWaybill, setIsPreparingWaybill] = useState(false);
+  const [waybillLoadingMessage, setWaybillLoadingMessage] = useState<string | null>(null);
   const [shipSuccessNotice, setShipSuccessNotice] = useState<string | null>(null);
 
   // Shared submit state
@@ -701,18 +588,18 @@ export default function ShipOrderModal({
   useEffect(() => {
     if (mode !== 'mass') return;
     if (courierKeys.length > 0) {
-      if (activeCourier === 'all' || !courierKeys.includes(activeCourier)) {
+      if (!activeCourier || !courierKeys.includes(activeCourier)) {
         setActiveCourier(courierKeys[0]);
       }
     } else {
-      setActiveCourier('all');
+      setActiveCourier('');
     }
   }, [mode, courierKeys, activeCourier]);
 
   // Orders displayed in the active view
   const displayedMassOrders = useMemo(() => {
-    if (activeCourier === 'all') return eligibleMassOrders;
-    return courierGroups[activeCourier] ?? [];
+    if (!activeCourier) return eligibleMassOrders;
+    return courierGroups[activeCourier] ?? eligibleMassOrders;
   }, [activeCourier, eligibleMassOrders, courierGroups]);
 
   // Auto-select all displayed orders on active courier change
@@ -1150,7 +1037,20 @@ export default function ShipOrderModal({
     if (result.data.succeeded && result.data.succeeded.length > 0) {
       const succeededMap = new Map(result.data.succeeded.map((s) => [s.order_sn, s]));
 
-      // Update orders in pendingMassOrders with their new status and tracking_number
+      // 1. Kumpulkan pesanan yang baru saja berhasil diatur pengirimannya
+      const succeededOrdersToPrint: ShopeeOrderRecord[] = targetOrdersToShip
+        .filter((o) => succeededMap.has(o.order_sn))
+        .map((o) => {
+          const resItem = succeededMap.get(o.order_sn);
+          return {
+            ...o,
+            order_status: resItem?.order_status || 'PROCESSED',
+            tracking_number: resItem?.tracking_number || o.tracking_number,
+            fulfillment_method: resItem?.fulfillment_method || method,
+          };
+        });
+
+      // 2. Update orders in pendingMassOrders with their new status and tracking_number
       setPendingMassOrders((prev) =>
         prev.map((o) => {
           const resItem = succeededMap.get(o.order_sn);
@@ -1164,18 +1064,43 @@ export default function ShipOrderModal({
         })
       );
 
-      // Keep succeeded orders selected so the user can immediately click "Cetak Resi & Simpan"
+      // Keep succeeded orders selected
       const succeededSns = result.data.succeeded.map((s) => s.order_sn);
       setSelectedMassSns(succeededSns);
-
-      setShipSuccessNotice(
-        `Pengiriman ${result.data.succeeded.length} pesanan berhasil diatur! Nomor resi telah terbit. Silakan klik "Cetak Resi & Simpan" di panel kanan.`
-      );
 
       if (result.data.failed && result.data.failed.length > 0) {
         setMassResult(result.data);
       } else {
         setMassResult(null);
+      }
+
+      // 3. AUTO CETAK RESI + TAMPILKAN LOADING DI TENGAH LAYAR
+      if (succeededOrdersToPrint.length > 0 && onPrintMassWaybill) {
+        setIsPreparingWaybill(true);
+        setWaybillLoadingMessage(
+          `Pengiriman berhasil diatur! Sedang memuat resi thermal untuk ${succeededOrdersToPrint.length} pesanan... Mohon tunggu sebentar.`
+        );
+        try {
+          await onPrintMassWaybill(succeededOrdersToPrint);
+          setPrintedOrderSns((prev) => {
+            const next = new Set(prev);
+            succeededOrdersToPrint.forEach((o) => next.add(o.order_sn));
+            return next;
+          });
+          setShipSuccessNotice(
+            `Pengiriman berhasil diatur dan resi thermal (${succeededOrdersToPrint.length} pesanan) telah dibuka untuk dicetak. Selesai cetak Anda tetap berada di halaman pengiriman massal.`
+          );
+        } catch (err: any) {
+          console.error('Auto print waybill error:', err);
+          setSubmitError(err instanceof Error ? err.message : 'Gagal menyiapkan PDF resi thermal otomatis.');
+        } finally {
+          setIsPreparingWaybill(false);
+          setWaybillLoadingMessage(null);
+        }
+      } else {
+        setShipSuccessNotice(
+          `Pengiriman ${result.data.succeeded.length} pesanan berhasil diatur! Nomor resi telah terbit.`
+        );
       }
     } else {
       setMassResult(result.data);
@@ -1192,6 +1117,9 @@ export default function ShipOrderModal({
     if (ordersToPrint.length === 0 || isPreparingWaybill) return;
 
     setIsPreparingWaybill(true);
+    setWaybillLoadingMessage(
+      `Sedang memuat dokumen resi thermal untuk ${ordersToPrint.length} pesanan... Mohon tunggu sebentar.`
+    );
     setSubmitError(null);
     try {
       await onPrintMassWaybill?.(ordersToPrint);
@@ -1207,6 +1135,7 @@ export default function ShipOrderModal({
       setSubmitError(err instanceof Error ? err.message : 'Gagal menyiapkan PDF resi thermal.');
     } finally {
       setIsPreparingWaybill(false);
+      setWaybillLoadingMessage(null);
     }
   };
 
@@ -1651,69 +1580,36 @@ export default function ShipOrderModal({
             </div>
 
             <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-              {/* Pill: Semua Jasa Kirim */}
-              {(() => {
-                const stats = getCourierStats('all');
-                const isActive = activeCourier === 'all';
-                return (
-                  <button
-                    type="button"
-                    onClick={() => setActiveCourier('all')}
-                    className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border transition-all cursor-pointer ${
-                      stats.isAllPrinted
-                        ? isActive
-                          ? 'border-slate-400 bg-slate-100 text-slate-700 ring-2 ring-slate-400 opacity-90'
-                          : 'border-slate-200 bg-slate-50/80 text-slate-400 opacity-60 hover:opacity-90'
-                        : isActive
-                          ? 'border-[#EE4D2D] bg-[#FFF5F2] text-[#EE4D2D] ring-2 ring-[#EE4D2D] shadow-2xs'
-                          : 'border-orange-300 bg-white text-slate-800 hover:border-[#EE4D2D] hover:bg-orange-50/40'
-                    }`}
-                  >
-                    <span>Semua Jasa Kirim</span>
-                    {stats.isAllPrinted ? (
-                      <span className="inline-flex items-center rounded-full bg-slate-200 px-1.5 py-0.2 text-[10px] font-medium text-slate-600">
-                        ✓ Selesai ({stats.total})
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center justify-center rounded-full bg-[#EE4D2D] px-1.5 py-0.2 text-[10px] font-extrabold text-white shadow-2xs tabular-nums">
-                        {stats.unprinted}
-                      </span>
-                    )}
-                  </button>
-                );
-              })()}
-
-              {/* Pills: Ekspedisi Masing-Masing dengan Warna Khusus Tiap Ekspedisi */}
               {courierKeys.map((courier) => {
                 const stats = getCourierStats(courier);
                 const isActive = activeCourier === courier;
-                const theme = getCourierTheme(courier);
                 return (
                   <button
                     key={courier}
                     type="button"
                     onClick={() => setActiveCourier(courier)}
-                    className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs whitespace-nowrap border transition-all cursor-pointer ${
+                    className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs whitespace-nowrap border transition-colors cursor-pointer ${
                       stats.isAllPrinted
                         ? isActive
-                          ? 'border-slate-300 bg-slate-100 text-slate-600 ring-2 ring-slate-300 opacity-60 font-medium'
-                          : 'border-slate-200 bg-slate-50/80 text-slate-400 opacity-40 hover:opacity-70 font-normal'
+                          ? 'border-slate-300 bg-slate-100 text-slate-500 font-medium'
+                          : 'border-slate-200 bg-slate-50 text-slate-400 opacity-60 font-normal'
                         : isActive
-                          ? theme.active
-                          : theme.idle
+                          ? 'border-[#EE4D2D] bg-[#FFF5F2] text-[#EE4D2D] font-bold shadow-2xs'
+                          : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400 font-medium'
                     }`}
                   >
-                    {!stats.isAllPrinted && (
-                      <span className={`h-2 w-2 rounded-full shrink-0 ${theme.dot}`} />
-                    )}
                     <span>{courier}</span>
                     {stats.isAllPrinted ? (
-                      <span className="inline-flex items-center gap-0.5 rounded-full bg-slate-200/80 px-1.5 py-0.2 text-[10px] font-medium text-slate-500">
+                      <span className="inline-flex items-center rounded-full bg-slate-200 px-1.5 py-0.2 text-[10px] font-medium text-slate-500">
                         ✓ Selesai
                       </span>
                     ) : (
                       <span
-                        className={`inline-flex items-center justify-center rounded-full px-1.5 py-0.2 text-[10px] font-extrabold shadow-2xs tabular-nums ${theme.badge}`}
+                        className={`inline-flex items-center justify-center rounded-full px-1.5 py-0.2 text-[10px] font-bold tabular-nums ${
+                          isActive
+                            ? 'bg-[#EE4D2D] text-white'
+                            : 'bg-slate-100 text-slate-700 border border-slate-200'
+                        }`}
                       >
                         {stats.unprinted}
                       </span>
@@ -1731,7 +1627,7 @@ export default function ShipOrderModal({
               <div className="flex items-center justify-between text-xs text-slate-600 px-1">
                 <span>
                   Menampilkan <strong className="text-slate-900">{displayedMassOrders.length}</strong> pesanan
-                  {activeCourier !== 'all' ? ` (${activeCourier})` : ''}
+                  {activeCourier ? ` (${activeCourier})` : ''}
                 </span>
                 <span className="text-[11px] text-slate-500 font-medium">
                   <strong className="text-[#EE4D2D]">{targetOrdersToShip.length}</strong> dipilih
@@ -2005,13 +1901,6 @@ export default function ShipOrderModal({
                         </div>
                       )}
 
-                      {loadingCourierParams && (
-                        <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50/50 p-2.5 text-xs text-blue-700">
-                          <SpinnerIcon className="h-4 w-4 shrink-0" />
-                          <span>Memeriksa dukungan kurir {activeCourier}...</span>
-                        </div>
-                      )}
-
                       {courierParamsError && (
                         <div className="rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
                           {courierParamsError}
@@ -2276,6 +2165,28 @@ export default function ShipOrderModal({
             >
               Tutup & Kembali ke Pesanan
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Overlay Loading di Tengah Layar saat Tunggu Cetak Resi */}
+      {isPreparingWaybill && (
+        <div className="fixed inset-0 z-[10001] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl p-6 shadow-2xl border border-slate-200 max-w-sm w-full text-center space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="w-14 h-14 rounded-2xl bg-orange-50 border border-orange-200 text-[#EE4D2D] mx-auto flex items-center justify-center">
+              <SpinnerIcon className="h-7 w-7 text-[#EE4D2D]" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-slate-900">
+                Menyiapkan Cetak Resi Thermal
+              </h4>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                {waybillLoadingMessage || 'Sedang menyiapkan dokumen label resi thermal, mohon tunggu sebentar...'}
+              </p>
+            </div>
+            <div className="rounded-xl bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-600 font-medium">
+              Pratinjau cetak akan terbuka otomatis. Selesai mencetak Anda tetap berada di halaman pengiriman massal.
+            </div>
           </div>
         </div>
       )}
