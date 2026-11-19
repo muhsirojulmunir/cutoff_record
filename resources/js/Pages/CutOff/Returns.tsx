@@ -120,33 +120,42 @@ function parseDateVal(v: unknown): string {
   return s;
 }
 
+function getMarketplaceLabel(code: string | null | undefined): string {
+  if (!code) return '—';
+  const c = code.toUpperCase();
+  if (c === 'SH') return 'Shopee';
+  if (c === 'TT') return 'TikTok';
+  if (c === 'LZD') return 'Lazada';
+  return code;
+}
+
 // Badge channel/MP dengan palet terstruktur & solid
 function ChannelBadge({ mp }: { mp: string | null }) {
   if (!mp) return <span className="text-slate-400 text-xs">—</span>;
   const code = mp.toUpperCase();
   if (code === 'SH') {
     return (
-      <span className="inline-block px-2.5 py-1 rounded-md bg-[#EE4D2D] text-white font-bold text-[10px] tracking-wide mb-1">
-        SHOPEE (SH)
+      <span className="inline-block px-2.5 py-1 rounded-md bg-[#EE4D2D] text-white font-bold text-[10px] tracking-wide mb-1 shadow-xs">
+        Shopee
       </span>
     );
   }
   if (code === 'TT') {
     return (
-      <span className="inline-block px-2.5 py-1 rounded-md bg-[#000000] text-white font-bold text-[10px] tracking-wide mb-1 border border-slate-700">
-        TIKTOK (TT)
+      <span className="inline-block px-2.5 py-1 rounded-md bg-[#000000] text-white font-bold text-[10px] tracking-wide mb-1 border border-slate-700 shadow-xs">
+        TikTok
       </span>
     );
   }
   if (code === 'LZD') {
     return (
-      <span className="inline-block px-2.5 py-1 rounded-md bg-rose-700 text-white font-bold text-[10px] tracking-wide mb-1">
-        LAZADA (LZD)
+      <span className="inline-block px-2.5 py-1 rounded-md bg-rose-700 text-white font-bold text-[10px] tracking-wide mb-1 shadow-xs">
+        Lazada
       </span>
     );
   }
   return (
-    <span className="inline-block px-2.5 py-1 rounded-md bg-[#0B132B] text-white font-bold text-[10px] tracking-wide mb-1">
+    <span className="inline-block px-2.5 py-1 rounded-md bg-[#0B132B] text-white font-bold text-[10px] tracking-wide mb-1 shadow-xs">
       {code}
     </span>
   );
@@ -300,6 +309,15 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
 
   // Modal Edit State
   const [editingRow, setEditingRow] = useState<ReturnRow | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const copyToClipboard = (text: string | null | undefined, fieldKey: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedField(fieldKey);
+      setTimeout(() => setCopiedField(null), 2000);
+    });
+  };
   const editForm = useForm({
     marketplace: '',
     tgl_input_mp: '',
@@ -917,7 +935,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
-                {m.name} ({m.count.toLocaleString('id-ID')})
+                {getMarketplaceLabel(m.name)} ({m.count.toLocaleString('id-ID')})
               </button>
             ))}
           </div>
@@ -1012,7 +1030,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                 <tr className="bg-slate-900 text-white font-semibold uppercase tracking-wider text-[11px]">
                   <th className="py-3 px-3 text-center w-12">No</th>
                   <th className="py-3 px-4">MP & Tanggal</th>
-                  <th className="py-3 px-4">Retur & Pesanan</th>
+                  <th className="py-3 px-4">Pengembalian & Pesanan</th>
                   <th className="py-3 px-4">Barang (Data MP)</th>
                   <th className="py-3 px-4">Pengecekan Fisik Gudang</th>
                   <th className="py-3 px-4">Keterangan & Banding</th>
@@ -1285,53 +1303,108 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
               </div>
 
               <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block font-bold text-slate-700 uppercase mb-1">Marketplace</label>
                     <input
                       type="text"
-                      value={editForm.data.marketplace}
-                      onChange={(e) => editForm.setData('marketplace', e.target.value.toUpperCase())}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
+                      value={getMarketplaceLabel(editForm.data.marketplace)}
+                      readOnly
+                      className="w-full px-3 py-2 rounded-xl bg-slate-100 text-slate-800 font-bold border border-slate-200 cursor-not-allowed select-all"
+                      title="Marketplace asal pesanan"
                     />
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">Tgl Terima Barang Fisik</label>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">Status Fisik Barang</label>
+                    <select
+                      value={editForm.data.tgl_terima_brg ? 'sudah' : 'belum'}
+                      onChange={(e) => {
+                        if (e.target.value === 'sudah') {
+                          const today = new Date().toISOString().split('T')[0];
+                          editForm.setData('tgl_terima_brg', editForm.data.tgl_terima_brg || today);
+                        } else {
+                          editForm.setData('tgl_terima_brg', '');
+                        }
+                      }}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 font-semibold text-slate-800 focus:outline-none focus:border-[#0B132B]"
+                    >
+                      <option value="belum">Belum Diterima</option>
+                      <option value="sudah">Sudah Diterima</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">Tgl Terima Fisik</label>
                     <input
                       type="date"
                       value={editForm.data.tgl_terima_brg}
+                      disabled={!editForm.data.tgl_terima_brg}
                       onChange={(e) => editForm.setData('tgl_terima_brg', e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B] disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">No. Retur</label>
-                    <input
-                      type="text"
-                      value={editForm.data.no_retur}
-                      disabled
-                      readOnly
-                      placeholder="RJ/..."
-                      className="w-full px-3 py-2 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 cursor-not-allowed select-all font-mono"
-                      title="No. Retur otomatis dari Marketplace dan tidak dapat diubah"
-                    />
+                    <label className="block font-bold text-slate-700 uppercase mb-1">No. Pengembalian</label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={editForm.data.no_retur}
+                        readOnly
+                        placeholder="No. Pengembalian..."
+                        className="w-full pl-3 pr-8 py-2 rounded-xl bg-slate-100 text-slate-800 border border-slate-200 select-all font-mono font-medium focus:outline-none"
+                        title="No. Pengembalian (bisa disalin)"
+                      />
+                      {editForm.data.no_retur && (
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(editForm.data.no_retur, 'retur')}
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-md transition-colors cursor-pointer"
+                          title="Salin No. Pengembalian"
+                        >
+                          {copiedField === 'retur' ? (
+                            <span className="text-[10px] font-bold text-emerald-600 px-0.5">Tersalin!</span>
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                          )}
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div>
                     <label className="block font-bold text-slate-700 uppercase mb-1">No. Pesanan</label>
-                    <input
-                      type="text"
-                      value={editForm.data.no_invoice_mp}
-                      disabled
-                      readOnly
-                      placeholder="No. Pesanan..."
-                      className="w-full px-3 py-2 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 cursor-not-allowed select-all font-mono"
-                      title="No. Pesanan otomatis dari Marketplace dan tidak dapat diubah"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={editForm.data.no_invoice_mp}
+                        readOnly
+                        placeholder="No. Pesanan..."
+                        className="w-full pl-3 pr-8 py-2 rounded-xl bg-slate-100 text-slate-800 border border-slate-200 select-all font-mono font-medium focus:outline-none"
+                        title="No. Pesanan (bisa disalin)"
+                      />
+                      {editForm.data.no_invoice_mp && (
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(editForm.data.no_invoice_mp, 'invoice')}
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-md transition-colors cursor-pointer"
+                          title="Salin No. Pesanan"
+                        >
+                          {copiedField === 'invoice' ? (
+                            <span className="text-[10px] font-bold text-emerald-600 px-0.5">Tersalin!</span>
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                          )}
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div>
@@ -1359,10 +1432,10 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                     <label className="block font-bold text-slate-700 uppercase mb-1">Qty MP</label>
                     <input
                       type="number"
-                      min="1"
                       value={editForm.data.jml_produk_mp}
-                      onChange={(e) => editForm.setData('jml_produk_mp', parseInt(e.target.value, 10) || 1)}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
+                      readOnly
+                      className="w-full px-3 py-2 rounded-xl bg-slate-100 text-slate-600 font-bold border border-slate-200 cursor-not-allowed select-all"
+                      title="Qty MP otomatis dari Marketplace dan tidak dapat diubah"
                     />
                   </div>
                 </div>
@@ -1531,12 +1604,12 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">No. Retur</label>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">No. Pengembalian</label>
                     <input
                       type="text"
                       value={createForm.data.no_retur}
                       onChange={(e) => createForm.setData('no_retur', e.target.value)}
-                      placeholder="RJ/00017..."
+                      placeholder="No. Pengembalian / RJ..."
                       className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
                     />
                   </div>
