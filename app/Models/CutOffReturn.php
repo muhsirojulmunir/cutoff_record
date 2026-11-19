@@ -21,6 +21,7 @@ class CutOffReturn extends Model
         'no_invoice_mp',
         'no_invoice_baru',
         'no_retur',
+        'no_rj',
         'tgl_rj',
         'tgl_terima_brg',
         'nama_barang_fisik',
@@ -93,6 +94,7 @@ class CutOffReturn extends Model
                     ->orWhere('no_pesanan_baru', 'like', "%{$term}%")
                     ->orWhere('no_invoice_mp', 'like', "%{$term}%")
                     ->orWhere('no_retur', 'like', "%{$term}%")
+                    ->orWhere('no_rj', 'like', "%{$term}%")
                     ->orWhere('no_pengajuan', 'like', "%{$term}%")
                     ->orWhere('nama_barang_mp', 'like', "%{$term}%")
                     ->orWhere('nama_barang_fisik', 'like', "%{$term}%")
