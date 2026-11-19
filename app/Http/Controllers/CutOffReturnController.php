@@ -19,6 +19,7 @@ class CutOffReturnController extends Controller
         $filters = $request->only([
             'search',
             'marketplace',
+            'needs_action',
             'date_from',
             'date_to',
             'per_page',
@@ -42,6 +43,7 @@ class CutOffReturnController extends Controller
                 COALESCE(SUM(CASE WHEN marketplace = 'SH' THEN 1 ELSE 0 END), 0) as total_shopee,
                 COALESCE(SUM(CASE WHEN marketplace = 'TT' THEN 1 ELSE 0 END), 0) as total_tokopedia,
                 COALESCE(SUM(CASE WHEN no_pesanan_baru IS NOT NULL AND no_pesanan_baru != '' THEN 1 ELSE 0 END), 0) as total_pesanan_baru,
+                COALESCE(SUM(CASE WHEN needs_action = 1 THEN 1 ELSE 0 END), 0) as total_needs_action,
                 COALESCE(SUM(CASE WHEN marketplace IS NOT NULL AND marketplace NOT IN ('SH', 'TT') THEN 1 ELSE 0 END), 0) as total_lainnya
             ")
             ->first();
@@ -51,8 +53,23 @@ class CutOffReturnController extends Controller
             'total_shopee'       => (int) ($rawSummary->total_shopee ?? 0),
             'total_tokopedia'    => (int) ($rawSummary->total_tokopedia ?? 0),
             'total_pesanan_baru' => (int) ($rawSummary->total_pesanan_baru ?? 0),
+            'total_needs_action' => (int) ($rawSummary->total_needs_action ?? 0),
             'total_lainnya'      => (int) ($rawSummary->total_lainnya ?? 0),
         ];
+
+        // Ambil daftar kasus retur/sengketa yang butuh respon / memiliki batas waktu aktif
+        $disputeTasks = CutOffReturn::query()
+            ->where(function ($q) {
+                $q->where('needs_action', true)
+                  ->orWhere(function ($sub) {
+                      $sub->whereNotNull('due_date')
+                          ->where('due_date', '>=', now()->subDay());
+                  });
+            })
+            ->orderByRaw('CASE WHEN due_date IS NOT NULL AND due_date >= NOW() THEN 0 ELSE 1 END ASC')
+            ->orderBy('due_date', 'asc')
+            ->take(15)
+            ->get();
 
         $marketplaces = CutOffReturn::query()
             ->select('marketplace', DB::raw('count(*) as count'))
@@ -72,6 +89,7 @@ class CutOffReturnController extends Controller
             'returns'      => $returns,
             'filters'      => $filters,
             'summary'      => $summary,
+            'disputeTasks' => $disputeTasks,
             'marketplaces' => $marketplaces,
         ]);
     }

@@ -957,6 +957,15 @@ class TiktokSyncService
 
                 $reason = trim((string) ($ret['return_reason'] ?? $ret['reason'] ?? ''));
                 $status = trim((string) ($ret['return_status'] ?? $ret['status'] ?? ''));
+                $statusUpper = strtoupper($status);
+                $dueDateEpoch = ! empty($ret['deadline']) ? (int) $ret['deadline'] : (! empty($ret['due_date']) ? (int) $ret['due_date'] : null);
+                $dueDate = $dueDateEpoch ? Carbon::createFromTimestamp($dueDateEpoch, 'Asia/Jakarta') : null;
+                $refundAmount = ! empty($ret['refund_amount'])
+                    ? (float) $ret['refund_amount']
+                    : (! empty($ret['return_amount']) ? (float) $ret['return_amount'] : null);
+                $needsAction = in_array($statusUpper, ['REQUESTED', 'AWAITING_SELLER_REVIEW', 'AWAITING_SELLER_APPROVAL', 'PENDING_SELLER_RESPONSE'], true)
+                    || ($dueDateEpoch && $dueDateEpoch > time() && ! in_array($statusUpper, ['COMPLETED', 'CANCELLED', 'CLOSED', 'REJECTED'], true));
+
                 $keteranganParts = [];
                 if (! empty($status)) $keteranganParts[] = "[{$status}]";
                 if (! empty($reason)) $keteranganParts[] = $reason;
@@ -981,6 +990,10 @@ class TiktokSyncService
                         'barcode'        => $trackingNumber ?: $existing->barcode,
                         'no_retur'       => $returnId ?: $existing->no_retur,
                         'no_invoice_mp'  => $orderId ?: $existing->no_invoice_mp,
+                        'due_date'       => $dueDate ?: $existing->due_date,
+                        'return_status'  => $status ?: $existing->return_status,
+                        'needs_action'   => $needsAction,
+                        'refund_amount'  => $refundAmount ?: $existing->refund_amount,
                     ]);
                     $updatedCount++;
                 } else {
@@ -996,6 +1009,10 @@ class TiktokSyncService
                         'tgl_rj'         => $returnDate,
                         'keterangan'     => $keterangan,
                         'barcode'        => $trackingNumber,
+                        'due_date'       => $dueDate,
+                        'return_status'  => $status ?: null,
+                        'needs_action'   => $needsAction,
+                        'refund_amount'  => $refundAmount,
                     ]);
                     $createdCount++;
                 }

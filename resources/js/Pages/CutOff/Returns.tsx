@@ -27,6 +27,12 @@ interface ReturnRow {
   tgl_banding: string | null;
   no_pengajuan: string | null;
   no_pesanan_baru: string | null;
+  due_date?: string | null;
+  return_status?: string | null;
+  needs_action?: boolean | null;
+  refund_amount?: number | null;
+  seller_solution?: string | null;
+  seller_center_url?: string | null;
 }
 
 interface PaginationLinks {
@@ -49,6 +55,7 @@ interface Props {
   filters: {
     search?: string;
     marketplace?: string;
+    needs_action?: string;
     date_from?: string;
     date_to?: string;
     per_page?: string;
@@ -58,8 +65,10 @@ interface Props {
     total_shopee: number;
     total_tokopedia: number;
     total_pesanan_baru: number;
+    total_needs_action?: number;
     total_lainnya: number;
   };
+  disputeTasks?: ReturnRow[];
   marketplaces: { name: string; count: number }[];
   flash?: {
     success?: string;
@@ -144,9 +153,73 @@ function ChannelBadge({ mp }: { mp: string | null }) {
 }
 
 // ---------------------------------------------------------------------------
+// Komponen Countdown Durasi Batas Waktu Adu Banding
+// ---------------------------------------------------------------------------
+function DisputeCountdown({ dueDateStr, compact = false }: { dueDateStr: string | null | undefined; compact?: boolean }) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  if (!dueDateStr) return null;
+
+  const dueTime = new Date(dueDateStr).getTime();
+  if (isNaN(dueTime)) return null;
+
+  const diffMs = dueTime - now;
+
+  if (diffMs <= 0) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+        <span>⏱️</span>
+        <span>Batas Waktu Habis</span>
+      </span>
+    );
+  }
+
+  const seconds = Math.floor((diffMs / 1000) % 60);
+  const minutes = Math.floor((diffMs / (1000 * 60)) % 60);
+  const hours = Math.floor((diffMs / (1000 * 60 * 60)) % 24);
+  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  const isUrgent = diffMs < 12 * 3600 * 1000; // < 12 jam
+  const isWarning = diffMs < 24 * 3600 * 1000; // < 24 jam
+
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  const timeString = days > 0
+    ? `${days}h ${pad(hours)}j ${pad(minutes)}m ${pad(seconds)}d`
+    : `${pad(hours)}j ${pad(minutes)}m ${pad(seconds)}d`;
+
+  const colorClass = isUrgent
+    ? 'bg-rose-50 text-rose-700 border-rose-300 animate-pulse'
+    : isWarning
+    ? 'bg-amber-50 text-amber-800 border-amber-300'
+    : 'bg-emerald-50 text-emerald-800 border-emerald-300';
+
+  if (compact) {
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${colorClass}`} title={`Batas Akhir: ${formatDate(dueDateStr)}`}>
+        <span>⏳</span>
+        <span>{timeString}</span>
+      </span>
+    );
+  }
+
+  return (
+    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold border ${colorClass}`}>
+      <span className="text-[10px]">⏳</span>
+      <span>Sisa Waktu: {timeString}</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
-export default function Returns({ returns, filters, summary, marketplaces, flash }: Props) {
+export default function Returns({ returns, filters, summary, disputeTasks = [], marketplaces, flash }: Props) {
   const { auth } = usePage<any>().props;
   const isManagement = auth?.user?.role?.name === 'Management';
   const canManage = !isManagement;
@@ -164,6 +237,7 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
 
   const [search, setSearch] = useState(filters.search ?? '');
   const [selectedMp, setSelectedMp] = useState(filters.marketplace ?? 'all');
+  const [needsActionFilter, setNeedsActionFilter] = useState(filters.needs_action ?? '');
   const [dateFrom, setDateFrom] = useState(filters.date_from ?? '');
   const [dateTo, setDateTo] = useState(filters.date_to ?? '');
 
@@ -457,6 +531,7 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
       ...filters,
       search,
       marketplace: selectedMp,
+      needs_action: needsActionFilter,
       date_from: dateFrom,
       date_to: dateTo,
       ...newFilters,
@@ -464,6 +539,9 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
 
     if (nextFilters.marketplace === 'all' || !nextFilters.marketplace) {
       delete nextFilters.marketplace;
+    }
+    if (!nextFilters.needs_action) {
+      delete nextFilters.needs_action;
     }
     if (!nextFilters.search) {
       delete nextFilters.search;
@@ -597,8 +675,8 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
           </div>
         </div>
 
-        {/* 4 Metric Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* 5 Metric Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
           {/* Card 1: Total Retur */}
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
             <div className="flex items-center justify-between">
@@ -654,7 +732,116 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
             <p className="text-2xl font-extrabold text-emerald-600 mt-3">{summary.total_pesanan_baru.toLocaleString('id-ID')}</p>
             <p className="text-xs text-slate-500 mt-1">Retur yang sudah diproses tukar/kirim ulang</p>
           </div>
+
+          {/* Card 5: Task Adu Banding / Respon */}
+          <div
+            onClick={() => {
+              const nextVal = needsActionFilter === '1' ? '' : '1';
+              setNeedsActionFilter(nextVal);
+              applyFilters({ needs_action: nextVal });
+            }}
+            className={`cursor-pointer border rounded-2xl p-5 shadow-xs transition-all ${
+              needsActionFilter === '1'
+                ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20'
+                : (summary.total_needs_action ?? 0) > 0
+                ? 'bg-white border-amber-300 hover:border-amber-400'
+                : 'bg-white border-slate-200 hover:border-slate-300'
+            }`}
+            title="Klik untuk filter kasus retur yang butuh tindakan / respon"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Adu Banding / Respon</span>
+              <span className={`p-2 rounded-xl ${(summary.total_needs_action ?? 0) > 0 ? 'bg-amber-100 text-amber-700 animate-pulse' : 'bg-slate-100 text-slate-500'}`}>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </span>
+            </div>
+            <p className={`text-2xl font-extrabold mt-3 ${(summary.total_needs_action ?? 0) > 0 ? 'text-amber-600' : 'text-slate-900'}`}>
+              {(summary.total_needs_action ?? 0).toLocaleString('id-ID')}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">
+              {(summary.total_needs_action ?? 0) > 0 ? '⚠️ Butuh respon penjual' : 'Semua respon aman'}
+            </p>
+          </div>
         </div>
+
+        {/* Widget Task Adu Banding & Respon Retur Marketplace */}
+        {disputeTasks && disputeTasks.length > 0 && (
+          <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-transparent border border-amber-500/30 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-3 w-3 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                </span>
+                <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                  Task Adu Banding & Respon Retur Marketplace
+                  <span className="px-2 py-0.5 rounded-full text-xs font-extrabold bg-amber-500 text-slate-950">
+                    {disputeTasks.length} Kasus
+                  </span>
+                </h2>
+              </div>
+              <p className="text-xs text-slate-500">
+                Segera tanggapi sebelum batas waktu berakhir agar dana tidak otomatis dikembalikan ke pembeli.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {disputeTasks.map((task) => (
+                <div key={task.id} className="bg-white border border-amber-200/90 rounded-xl p-3.5 shadow-xs flex flex-col justify-between gap-3 hover:border-amber-400 transition-all">
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <ChannelBadge mp={task.marketplace} />
+                        <span className="text-xs font-mono font-bold text-slate-800 select-all truncate max-w-[130px]" title={task.no_retur || task.no_invoice_mp || ''}>
+                          {task.no_retur || task.no_invoice_mp}
+                        </span>
+                      </div>
+                      <DisputeCountdown dueDateStr={task.due_date} compact />
+                    </div>
+
+                    <p className="text-xs font-semibold text-slate-900 truncate" title={task.nama_barang_mp ?? ''}>
+                      {task.nama_barang_mp ?? 'Produk Retur'}
+                    </p>
+
+                    <div className="flex items-center justify-between mt-1 text-[11px] text-slate-500">
+                      <span>Qty: <strong className="text-slate-800">{task.jml_produk_mp ?? 1} pcs</strong></span>
+                      {task.refund_amount ? (
+                        <span className="font-bold text-rose-600">Rp {Number(task.refund_amount).toLocaleString('id-ID')}</span>
+                      ) : null}
+                    </div>
+
+                    {task.keterangan && (
+                      <p className="text-[11px] text-slate-600 line-clamp-2 mt-1.5 bg-slate-50 p-1.5 rounded border border-slate-100 italic" title={task.keterangan}>
+                        "{task.keterangan}"
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate max-w-[120px]">
+                      {task.return_status ? `Status: ${task.return_status}` : 'Menunggu Tindakan'}
+                    </span>
+                    {task.seller_center_url && (
+                      <a
+                        href={task.seller_center_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 transition-all shadow-xs shrink-0 cursor-pointer"
+                      >
+                        <span>Buka Seller Center</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                        </svg>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Filter Pills Channel / Toko & Search Row */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-4">
@@ -885,6 +1072,12 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
                           <span className="text-slate-400 text-[11px]">—</span>
                         )}
 
+                        {row.due_date && (
+                          <div className="mt-1">
+                            <DisputeCountdown dueDateStr={row.due_date} compact />
+                          </div>
+                        )}
+
                         {row.tgl_banding && (
                           <span className="inline-block mt-1 text-[10px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 truncate max-w-[180px]" title={`Banding: ${row.tgl_banding}`}>
                             {row.tgl_banding}
@@ -916,6 +1109,19 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
                       {canManage && (
                         <td className="py-3.5 px-3 text-center whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1.5">
+                            {row.seller_center_url && (
+                              <a
+                                href={row.seller_center_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1.5 rounded-lg text-orange-600 hover:text-white hover:bg-[#EE4D2D] transition-all border border-orange-200 cursor-pointer"
+                                title={`Buka di ${row.marketplace === 'SH' ? 'Shopee' : 'TikTok'} Seller Center`}
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                                </svg>
+                              </a>
+                            )}
                             <button
                               onClick={() => openEditModal(row)}
                               className="p-1.5 rounded-lg text-slate-600 hover:text-white hover:bg-[#0B132B] transition-all border border-slate-200 cursor-pointer"

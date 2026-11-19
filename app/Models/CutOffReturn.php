@@ -30,16 +30,50 @@ class CutOffReturn extends Model
         'tgl_banding',
         'no_pengajuan',
         'no_pesanan_baru',
+        'due_date',
+        'return_status',
+        'needs_action',
+        'refund_amount',
+        'seller_solution',
+    ];
+
+    protected $appends = [
+        'seller_center_url',
     ];
 
     protected $casts = [
         'tgl_input_mp'    => 'date',
         'tgl_rj'          => 'date',
         'tgl_terima_brg'  => 'date',
+        'due_date'        => 'datetime',
+        'needs_action'    => 'boolean',
+        'refund_amount'   => 'float',
         'no_urut'         => 'integer',
         'jml_produk_mp'   => 'integer',
         'jml_brg_fisik'   => 'integer',
     ];
+
+    /**
+     * Link langsung ke kasus retur/sengketa di Shopee atau TikTok Seller Center.
+     */
+    public function getSellerCenterUrlAttribute(): ?string
+    {
+        $mp = strtoupper(trim((string) $this->marketplace));
+        $keyword = trim((string) ($this->no_retur ?: $this->no_invoice_mp));
+        if (! $keyword) {
+            return null;
+        }
+
+        if ($mp === 'SH' || str_contains($mp, 'SHOPEE')) {
+            return 'https://seller.shopee.co.id/portal/sale/return?keyword=' . urlencode($keyword);
+        }
+
+        if ($mp === 'TT' || str_contains($mp, 'TIKTOK')) {
+            return 'https://seller-id.tiktok.com/order/reverse-order?search=' . urlencode($keyword);
+        }
+
+        return null;
+    }
 
     /**
      * Scope filter pencarian & marketplace.
@@ -82,6 +116,12 @@ class CutOffReturn extends Model
 
         $query->when($filters['date_to'] ?? null, function ($q, $date) {
             $q->where('tgl_terima_brg', '<=', $date);
+        });
+
+        $query->when($filters['needs_action'] ?? null, function ($q, $needsAction) {
+            if ($needsAction === '1' || $needsAction === true || $needsAction === 'true') {
+                $q->where('needs_action', true);
+            }
         });
 
         return $query;

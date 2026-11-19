@@ -2125,6 +2125,15 @@ class ShopeeSyncService
 
                 $reason = trim((string) ($ret['text_reason'] ?? $ret['reason'] ?? ''));
                 $status = trim((string) ($ret['status'] ?? ''));
+                $statusUpper = strtoupper($status);
+                $dueDateEpoch = ! empty($ret['due_date']) ? (int) $ret['due_date'] : null;
+                $dueDate = $dueDateEpoch ? \Carbon\Carbon::createFromTimestamp($dueDateEpoch, 'Asia/Jakarta') : null;
+                $refundAmount = ! empty($ret['amount_before_discount'])
+                    ? (float) $ret['amount_before_discount']
+                    : (! empty($ret['refund_amount']) ? (float) $ret['refund_amount'] : null);
+                $needsAction = in_array($statusUpper, ['REQUESTED', 'SELLER_DISPUTE_PENDING', 'AWAITING_SELLER_REVIEW', 'PENDING_SELLER_CONFIRMATION'], true)
+                    || ($dueDateEpoch && $dueDateEpoch > time() && ! in_array($statusUpper, ['ACCEPTED', 'CANCELLED', 'CLOSED', 'REFUND_PAID', 'SELLER_DISPUTE'], true));
+
                 $keteranganParts = [];
                 if (! empty($status)) {
                     $keteranganParts[] = "[{$status}]";
@@ -2154,6 +2163,10 @@ class ShopeeSyncService
                         'barcode'        => $trackingNumber ?: $existing->barcode,
                         'no_retur'       => $returnSn ?: $existing->no_retur,
                         'no_invoice_mp'  => $orderSn ?: $existing->no_invoice_mp,
+                        'due_date'       => $dueDate ?: $existing->due_date,
+                        'return_status'  => $status ?: $existing->return_status,
+                        'needs_action'   => $needsAction,
+                        'refund_amount'  => $refundAmount ?: $existing->refund_amount,
                     ]);
                     $updatedCount++;
                 } else {
@@ -2169,6 +2182,10 @@ class ShopeeSyncService
                         'tgl_rj'         => $returnDate,
                         'keterangan'     => $keterangan,
                         'barcode'        => $trackingNumber,
+                        'due_date'       => $dueDate,
+                        'return_status'  => $status ?: null,
+                        'needs_action'   => $needsAction,
+                        'refund_amount'  => $refundAmount,
                     ]);
                     $createdCount++;
                 }

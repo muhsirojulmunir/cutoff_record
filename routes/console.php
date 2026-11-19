@@ -8,10 +8,16 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Auto-sync pesanan dan retur Cut Off (Shopee & TikTok) setiap 1 menit (Realtime)
-Schedule::command('cutoff:sync --days=2')
-    ->everyMinute()
+// Auto-sync pesanan Cut Off (Shopee & TikTok) setiap 2 menit (menangkap pembatalan cepat secara realtime)
+Schedule::command('cutoff:sync --type=orders --days=2')
+    ->everyTwoMinutes()
     ->withoutOverlapping(5)
+    ->runInBackground();
+
+// Auto-sync retur & adu banding marketplace (Shopee & TikTok) setiap 15 menit di latar belakang
+Schedule::command('cutoff:sync --type=returns --days=14')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping(10)
     ->runInBackground();
 
 // Auto-sync katalog produk & stok Shopee setiap 10 menit

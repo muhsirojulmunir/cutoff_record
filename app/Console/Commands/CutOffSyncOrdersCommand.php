@@ -13,7 +13,8 @@ class CutOffSyncOrdersCommand extends Command
 {
     protected $signature = 'cutoff:sync
                             {--days=3 : Jumlah hari ke belakang yang akan ditarik}
-                            {--channel=all : Channel marketplace yang ingin disinkronkan (all, shopee, tiktok)}';
+                            {--channel=all : Channel marketplace yang ingin disinkronkan (all, shopee, tiktok)}
+                            {--type=all : Tipe data yang disinkronkan (all, orders, returns)}';
 
     protected $description = 'Otomatis sinkronkan pesanan & retur marketplace (Shopee / TikTok) ke tabel Cut Off.';
 
@@ -26,12 +27,15 @@ class CutOffSyncOrdersCommand extends Command
 
     public function handle(): int
     {
-        $days     = max(1, min(30, (int) $this->option('days')));
-        $channel  = strtolower((string) $this->option('channel'));
-        $timeTo   = time();
-        $timeFrom = $timeTo - ($days * 86400);
+        $days        = max(1, min(30, (int) $this->option('days')));
+        $channel     = strtolower((string) $this->option('channel'));
+        $type        = strtolower((string) $this->option('type'));
+        $timeTo      = time();
+        $timeFrom    = $timeTo - ($days * 86400);
+        $syncOrders  = in_array($type, ['all', 'orders', 'order'], true);
+        $syncReturns = in_array($type, ['all', 'returns', 'return'], true);
 
-        $this->info("Memulai sinkronisasi otomatis Cut Off ({$days} hari terakhir)...");
+        $this->info("Memulai sinkronisasi otomatis Cut Off (Tipe: {$type}, {$days} hari terakhir)...");
 
         // 1. Sync Shopee
         if (in_array($channel, ['all', 'shopee', 'sh'], true)) {
@@ -40,22 +44,26 @@ class CutOffSyncOrdersCommand extends Command
                 ->first();
 
             if ($shopeeAccount) {
-                $this->info("Menarik data pesanan Shopee: {$shopeeAccount->account_name}...");
-                try {
-                    $orderRes = $this->shopeeService->syncOrdersToCutOff($shopeeAccount, $timeFrom, $timeTo, true);
-                    $this->info("  Shopee Orders: {$orderRes['message']}");
-                } catch (\Throwable $e) {
-                    $this->error("  Gagal sync Shopee orders: {$e->getMessage()}");
-                    Log::error("[CutOffSync] Shopee orders error: " . $e->getMessage());
+                if ($syncOrders) {
+                    $this->info("Menarik data pesanan Shopee: {$shopeeAccount->account_name}...");
+                    try {
+                        $orderRes = $this->shopeeService->syncOrdersToCutOff($shopeeAccount, $timeFrom, $timeTo, true);
+                        $this->info("  Shopee Orders: {$orderRes['message']}");
+                    } catch (\Throwable $e) {
+                        $this->error("  Gagal sync Shopee orders: {$e->getMessage()}");
+                        Log::error("[CutOffSync] Shopee orders error: " . $e->getMessage());
+                    }
                 }
 
-                $this->info("Menarik data retur Shopee...");
-                try {
-                    $returnRes = $this->shopeeService->syncReturnsToCutOff($shopeeAccount, $timeFrom, $timeTo);
-                    $this->info("  Shopee Returns: {$returnRes['message']}");
-                } catch (\Throwable $e) {
-                    $this->error("  Gagal sync Shopee returns: {$e->getMessage()}");
-                    Log::error("[CutOffSync] Shopee returns error: " . $e->getMessage());
+                if ($syncReturns) {
+                    $this->info("Menarik data retur Shopee...");
+                    try {
+                        $returnRes = $this->shopeeService->syncReturnsToCutOff($shopeeAccount, $timeFrom, $timeTo);
+                        $this->info("  Shopee Returns: {$returnRes['message']}");
+                    } catch (\Throwable $e) {
+                        $this->error("  Gagal sync Shopee returns: {$e->getMessage()}");
+                        Log::error("[CutOffSync] Shopee returns error: " . $e->getMessage());
+                    }
                 }
             } else {
                 $this->warn("Toko Shopee belum terhubung.");
@@ -69,22 +77,26 @@ class CutOffSyncOrdersCommand extends Command
                 ->first();
 
             if ($tiktokAccount) {
-                $this->info("Menarik data pesanan TikTok Shop: {$tiktokAccount->account_name}...");
-                try {
-                    $ttRes = $this->tiktokService->syncOrdersToCutOff($tiktokAccount, $timeFrom, $timeTo);
-                    $this->info("  TikTok Orders: {$ttRes['message']}");
-                } catch (\Throwable $e) {
-                    $this->error("  Gagal sync TikTok orders: {$e->getMessage()}");
-                    Log::error("[CutOffSync] TikTok orders error: " . $e->getMessage());
+                if ($syncOrders) {
+                    $this->info("Menarik data pesanan TikTok Shop: {$tiktokAccount->account_name}...");
+                    try {
+                        $ttRes = $this->tiktokService->syncOrdersToCutOff($tiktokAccount, $timeFrom, $timeTo);
+                        $this->info("  TikTok Orders: {$ttRes['message']}");
+                    } catch (\Throwable $e) {
+                        $this->error("  Gagal sync TikTok orders: {$e->getMessage()}");
+                        Log::error("[CutOffSync] TikTok orders error: " . $e->getMessage());
+                    }
                 }
 
-                $this->info("Menarik data retur TikTok Shop...");
-                try {
-                    $ttReturnRes = $this->tiktokService->syncReturnsToCutOff($tiktokAccount, $timeFrom, $timeTo);
-                    $this->info("  TikTok Returns: {$ttReturnRes['message']}");
-                } catch (\Throwable $e) {
-                    $this->error("  Gagal sync TikTok returns: {$e->getMessage()}");
-                    Log::error("[CutOffSync] TikTok returns error: " . $e->getMessage());
+                if ($syncReturns) {
+                    $this->info("Menarik data retur TikTok Shop...");
+                    try {
+                        $ttReturnRes = $this->tiktokService->syncReturnsToCutOff($tiktokAccount, $timeFrom, $timeTo);
+                        $this->info("  TikTok Returns: {$ttReturnRes['message']}");
+                    } catch (\Throwable $e) {
+                        $this->error("  Gagal sync TikTok returns: {$e->getMessage()}");
+                        Log::error("[CutOffSync] TikTok returns error: " . $e->getMessage());
+                    }
                 }
             } else {
                 $this->warn("Toko TikTok belum terhubung.");
