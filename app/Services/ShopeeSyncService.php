@@ -2135,7 +2135,18 @@ class ShopeeSyncService
                     $totalQty = 1;
                 }
 
-                $itemName = (string) ($firstItem['name'] ?? $firstItem['item_sku'] ?? 'Produk Shopee');
+                // Ambil SKU Produk/Variasi MP (prioritaskan model_sku / item_sku atau dari cut_off_orders)
+                $itemSku = ! empty($firstItem['model_sku'])
+                    ? trim((string) $firstItem['model_sku'])
+                    : (! empty($firstItem['item_sku'])
+                        ? trim((string) $firstItem['item_sku'])
+                        : (! empty($firstItem['variation_sku']) ? trim((string) $firstItem['variation_sku']) : null));
+
+                if (empty($itemSku) && ! empty($orderSn)) {
+                    $itemSku = CutOffOrder::where('order_number', $orderSn)->value('sku_utama');
+                }
+
+                $itemName = ! empty($itemSku) ? $itemSku : (string) ($firstItem['name'] ?? 'Produk Shopee');
                 if (count($items) > 1) {
                     $itemName .= ' (+' . (count($items) - 1) . ' item lainnya)';
                 }

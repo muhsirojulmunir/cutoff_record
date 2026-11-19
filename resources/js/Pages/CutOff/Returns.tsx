@@ -1031,7 +1031,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                   <th className="py-3 px-3 text-center w-12">No</th>
                   <th className="py-3 px-4">MP & Tanggal</th>
                   <th className="py-3 px-4">Pengembalian & Pesanan</th>
-                  <th className="py-3 px-4">Barang (Data MP)</th>
+                  <th className="py-3 px-4">SKU Barang (MP)</th>
                   <th className="py-3 px-4">Pengecekan Fisik Gudang</th>
                   <th className="py-3 px-4">Keterangan & Banding</th>
                   <th className="py-3 px-4">Pengajuan & Pesanan Baru</th>
@@ -1440,11 +1440,12 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-2">
-                    <label className="block font-bold text-slate-700 uppercase mb-1">Nama Barang (Data MP)</label>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">SKU Barang (Data MP)</label>
                     <input
                       type="text"
                       value={editForm.data.nama_barang_mp}
                       onChange={(e) => editForm.setData('nama_barang_mp', e.target.value)}
+                      placeholder="Misal: SKP19-MH-31..."
                       className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
                     />
                   </div>
@@ -1635,13 +1636,13 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-2">
-                    <label className="block font-bold text-slate-700 uppercase mb-1">Nama Barang (Data MP) *</label>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">SKU Barang (Data MP) *</label>
                     <input
                       type="text"
                       required
                       value={createForm.data.nama_barang_mp}
                       onChange={(e) => createForm.setData('nama_barang_mp', e.target.value)}
-                      placeholder="Misal: CARSON-HH-36"
+                      placeholder="Misal: SKP19-MH-31"
                       className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
                     />
                   </div>

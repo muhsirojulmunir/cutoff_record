@@ -37,33 +37,41 @@ class CutOffReturnController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
-        // Otomatis cari Nomer JL dari cut_off_orders jika belum tersimpan di cut_off_returns
+        // Otomatis cari Nomer JL dan SKU Marketplace dari cut_off_orders
         try {
             if (Schema::hasTable('cut_off_orders')) {
                 $orderNumbers = collect();
                 foreach ($returns->items() as $item) {
-                    if (empty($item->no_invoice_baru)) {
-                        if (! empty($item->no_pesanan_baru)) {
-                            $orderNumbers->push($item->no_pesanan_baru);
-                        }
-                        if (! empty($item->no_invoice_mp)) {
-                            $orderNumbers->push($item->no_invoice_mp);
-                        }
+                    if (! empty($item->no_pesanan_baru)) {
+                        $orderNumbers->push($item->no_pesanan_baru);
+                    }
+                    if (! empty($item->no_invoice_mp)) {
+                        $orderNumbers->push($item->no_invoice_mp);
                     }
                 }
 
                 if ($orderNumbers->isNotEmpty()) {
-                    $matchedJls = DB::table('cut_off_orders')
+                    $matchedOrders = DB::table('cut_off_orders')
                         ->whereIn('order_number', $orderNumbers->unique())
-                        ->whereNotNull('jl_number')
-                        ->where('jl_number', '!=', '')
-                        ->pluck('jl_number', 'order_number');
+                        ->select(['order_number', 'jl_number', 'sku_utama'])
+                        ->get()
+                        ->keyBy('order_number');
 
                     foreach ($returns->items() as $item) {
-                        if (empty($item->no_invoice_baru)) {
-                            $item->no_invoice_baru = $matchedJls[$item->no_pesanan_baru]
-                                ?? $matchedJls[$item->no_invoice_mp]
-                                ?? null;
+                        $matched = $matchedOrders[$item->no_pesanan_baru]
+                            ?? $matchedOrders[$item->no_invoice_mp]
+                            ?? null;
+
+                        // Otomatis pasang Nomer JL jika belum tersimpan di data retur
+                        if (empty($item->no_invoice_baru) && $matched && ! empty($matched->jl_number)) {
+                            $item->no_invoice_baru = $matched->jl_number;
+                        }
+
+                        // Otomatis ganti Nama Barang MP dengan SKU singkat marketplace jika tersedia
+                        if ($matched && ! empty($matched->sku_utama)) {
+                            if (empty($item->nama_barang_mp) || strlen($item->nama_barang_mp) > 30 || stripos($item->nama_barang_mp, 'RECORD') !== false) {
+                                $item->nama_barang_mp = $matched->sku_utama;
+                            }
                         }
                     }
                 }
