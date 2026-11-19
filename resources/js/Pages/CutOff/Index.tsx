@@ -1498,6 +1498,7 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                 <option value="dikirim">Dikirim / Dalam Pengiriman</option>
                 <option value="selesai">Transaksi Selesai</option>
                 <option value="rj">Retur Jual (RJ)</option>
+                <option value="batal">Dibatalkan Pembeli</option>
               </select>
             </div>
 
@@ -1606,11 +1607,17 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                       <tr
                         key={order.id}
                         className={`group transition-colors ${
-                          isPendingInstant ? 'bg-amber-50/30 hover:bg-amber-50/50' : 'hover:bg-slate-50/80'
+                          isCancelled
+                            ? 'bg-rose-50/50 hover:bg-rose-100/60'
+                            : isPendingInstant
+                            ? 'bg-amber-50/30 hover:bg-amber-50/50'
+                            : 'hover:bg-slate-50/80'
                         }`}
                       >
                         {/* No */}
-                        <td className="py-2.5 px-2 text-center text-xs font-bold text-slate-500 whitespace-nowrap w-10">
+                        <td className={`py-2.5 px-2 text-center text-xs font-bold whitespace-nowrap w-10 ${
+                          isCancelled ? 'text-rose-600 border-l-4 border-l-rose-600 bg-rose-50/60' : 'text-slate-500'
+                        }`}>
                           {rowNumber}
                         </td>
 
@@ -1660,13 +1667,37 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
 
                         {/* Pesanan & Pengiriman */}
                         <td className="py-2.5 px-3 font-mono max-w-[190px]">
-                          <p className="font-bold text-slate-900 hover:text-blue-600 transition-colors cursor-pointer select-all truncate" title={order.order_number}>
-                            {order.order_number}
-                          </p>
-                          {order.jl_number && (
-                            <p className="text-blue-700 font-semibold text-[11px] mt-0.5 truncate" title={order.jl_number}>
-                              {order.jl_number}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p
+                              className={`font-bold transition-colors select-all truncate ${
+                                isCancelled ? 'text-rose-800 line-through' : 'text-slate-900 hover:text-blue-600 cursor-pointer'
+                              }`}
+                              title={order.order_number}
+                            >
+                              {order.order_number}
                             </p>
+                            {isCancelled && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-rose-600 text-white tracking-wider uppercase">
+                                BATAL
+                              </span>
+                            )}
+                          </div>
+                          {order.jl_number && (
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <p
+                                className={`font-semibold text-[11px] truncate ${
+                                  isCancelled ? 'text-rose-600 line-through' : 'text-blue-700'
+                                }`}
+                                title={order.jl_number}
+                              >
+                                {order.jl_number}
+                              </p>
+                              {isCancelled && (
+                                <span className="text-[10px] font-extrabold text-rose-600 tracking-tight">
+                                  (JANGAN KIRIM)
+                                </span>
+                              )}
+                            </div>
                           )}
                           {order.buyer_username && (
                             <p className="text-slate-500 font-sans text-[11px] truncate mt-0.5" title={order.buyer_username}>
@@ -1820,17 +1851,17 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                         </td>
 
                         {/* Status Pesanan */}
-                        <td className="py-2.5 px-3 max-w-[160px] align-top">
+                        <td className="py-2.5 px-3 max-w-[170px] align-top">
                           {order.order_status ? (
                             <div>
                               <span
-                                className={`inline-block whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                                  isRj
+                                className={`inline-flex items-center gap-1 whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                  isCancelled
+                                    ? 'bg-rose-600 text-white border border-rose-700 shadow-xs font-extrabold tracking-wide'
+                                    : isRj
                                     ? 'bg-amber-100 text-amber-800 border border-amber-200'
                                     : orderStatusLower.includes('selesai')
                                     ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                                    : isCancelled
-                                    ? 'bg-rose-100 text-rose-800 border border-rose-200'
                                     : isOrderCod
                                     ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs font-bold'
                                     : isInstantOrder && isProcessed
@@ -1838,27 +1869,43 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                                     : 'bg-slate-100 text-slate-700'
                                 }`}
                               >
-                                {isOrderCod && (order.order_status === 'Belum Bayar' || orderStatusLower.includes('belum bayar'))
-                                  ? 'Perlu Dikirim [COD]'
-                                  : isInstantOrder && isProcessed
-                                  ? 'Menunggu Kurir'
-                                  : order.order_status}
+                                {isCancelled ? (
+                                  <>
+                                    <span>🛑</span>
+                                    <span>DIBATALKAN PEMBELI</span>
+                                  </>
+                                ) : isOrderCod && (order.order_status === 'Belum Bayar' || orderStatusLower.includes('belum bayar')) ? (
+                                  'Perlu Dikirim [COD]'
+                                ) : isInstantOrder && isProcessed ? (
+                                  'Menunggu Kurir'
+                                ) : (
+                                  order.order_status
+                                )}
                               </span>
 
+                              {isCancelled && (
+                                <div className="mt-1 font-extrabold text-[10px] text-rose-700 uppercase tracking-tight flex items-center gap-1">
+                                  <span>⚠️</span>
+                                  <span>JANGAN DIKIRIM KE KURIR</span>
+                                </div>
+                              )}
+
                               {/* Label Keterangan Metode Pembayaran */}
-                              {isOrderCod ? (
-                                <span className="block mt-0.5 text-[10px] font-bold text-amber-700 tracking-tight whitespace-nowrap">
-                                  💵 COD
-                                </span>
-                              ) : order.payment_method ? (
-                                <span className="block mt-0.5 text-[10px] text-slate-500 font-medium truncate max-w-[130px]" title={order.payment_method}>
-                                  💳 {order.payment_method}
-                                </span>
-                              ) : null}
+                              {!isCancelled && (
+                                isOrderCod ? (
+                                  <span className="block mt-0.5 text-[10px] font-bold text-amber-700 tracking-tight whitespace-nowrap">
+                                    💵 COD
+                                  </span>
+                                ) : order.payment_method ? (
+                                  <span className="block mt-0.5 text-[10px] text-slate-500 font-medium truncate max-w-[130px]" title={order.payment_method}>
+                                    💳 {order.payment_method}
+                                  </span>
+                                ) : null
+                              )}
 
                               {(order.cancel_reason || order.cancel_by) && (
                                 <div
-                                  className="mt-1 text-[10px] text-rose-600 leading-snug whitespace-normal break-words max-w-[140px]"
+                                  className="mt-1 text-[10px] text-rose-600 leading-snug whitespace-normal break-words max-w-[150px]"
                                   title={order.cancel_reason || ''}
                                 >
                                   {order.cancel_by && <span className="font-bold text-rose-700">[{order.cancel_by}] </span>}
@@ -1879,7 +1926,9 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                             onMouseLeave={() => setHoveredBreakdown(null)}
                           >
                             <div className="inline-flex items-center gap-1">
-                              <span className="font-semibold text-slate-900 underline decoration-dotted decoration-slate-300 underline-offset-4 group-hover/bd:text-blue-700 group-hover/bd:decoration-blue-400 transition-colors">
+                              <span className={`font-semibold underline decoration-dotted underline-offset-4 transition-colors ${
+                                isCancelled ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-900 decoration-slate-300 group-hover/bd:text-blue-700 group-hover/bd:decoration-blue-400'
+                              }`}>
                                 {formatRupiah(order.est_net_income)}
                               </span>
                               <svg

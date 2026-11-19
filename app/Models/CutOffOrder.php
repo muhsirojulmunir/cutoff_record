@@ -135,21 +135,12 @@ class CutOffOrder extends Model
     }
 
     /**
-     * Tentukan apakah status pesanan belum diproses / dibatalkan sehingga
-     * tidak boleh masuk ke daftar Pesanan Cut Off.
-     * Pesanan Cut Off hanya menampung status "Diproses" dan seterusnya.
+     * Tentukan apakah status pesanan dibatalkan (baik dari statusText maupun rawStatus).
      */
-    public static function isExcludedStatus(?string $statusText, ?string $rawStatus = null): bool
+    public static function isCancelledStatus(?string $statusText, ?string $rawStatus = null): bool
     {
         $raw = strtoupper(trim((string) $rawStatus));
-        if ($raw !== '' && in_array($raw, [
-            'UNPAID',
-            'READY_TO_SHIP',
-            'IN_CANCEL',
-            'CANCELLED',
-            'ON_HOLD',
-            'AWAITING_SHIPMENT',
-        ], true)) {
+        if ($raw !== '' && in_array($raw, ['CANCELLED', 'IN_CANCEL'], true)) {
             return true;
         }
 
@@ -158,9 +149,37 @@ class CutOffOrder extends Model
             return false;
         }
 
+        return str_contains($text, 'batal') || str_contains($text, 'cancel');
+    }
+
+    /**
+     * Tentukan apakah status pesanan belum diproses / dibatalkan sebelum diproses sehingga
+     * tidak boleh masuk ke daftar Pesanan Cut Off.
+     * Jika pesanan pernah diproses ($wasProcessed = true) lalu dibatalkan pembeli, pesanan
+     * TETAP dimasukkan ke Cut Off agar admin gudang mengetahui pembatalan dan tidak salah kirim.
+     */
+    public static function isExcludedStatus(?string $statusText, ?string $rawStatus = null, bool $wasProcessed = false): bool
+    {
+        $raw = strtoupper(trim((string) $rawStatus));
+        if ($raw !== '') {
+            if (in_array($raw, ['UNPAID', 'READY_TO_SHIP', 'ON_HOLD', 'AWAITING_SHIPMENT'], true)) {
+                return true;
+            }
+            if (in_array($raw, ['CANCELLED', 'IN_CANCEL'], true)) {
+                return ! $wasProcessed;
+            }
+        }
+
+        $text = mb_strtolower(trim((string) $statusText));
+        if ($text === '') {
+            return false;
+        }
+
+        if (str_contains($text, 'batal') || str_contains($text, 'cancel')) {
+            return ! $wasProcessed;
+        }
+
         foreach ([
-            'batal',
-            'cancel',
             'belum bayar',
             'perlu dikirim',
             'tertahan',
@@ -179,20 +198,76 @@ class CutOffOrder extends Model
     }
 
     /**
-     * Batasi query agar hanya menyertakan pesanan Cut Off yang sudah diproses dan seterusnya.
+     * Batasi query agar hanya menyertakan pesanan Cut Off yang sudah diproses dan seterusnya,
+     * serta pesanan yang sempat diproses lalu dibatalkan pembeli (agar admin gudang tidak salah kirim).
      */
     public static function applyProcessedOnlyConstraint($query): void
     {
         $query->where(function ($sub) {
             $sub->whereNull('order_status')
                 ->orWhere(function ($s) {
-                    $s->where('order_status', 'not like', '%Batal%')
-                        ->where('order_status', 'not like', '%Cancel%')
-                        ->where('order_status', 'not like', '%Belum Bayar%')
+                    $s->where('order_status', 'not like', '%Belum Bayar%')
                         ->where('order_status', 'not like', '%Perlu Dikirim%')
-                        ->where('order_status', 'not like', '%Tertahan%');
+                        ->where('order_status', 'not like', '%Tertahan%')
+                        ->where(function ($c) {
+                            $c->where(function ($nb) {
+                                $nb->where('order_status', 'not like', '%Batal%')
+                                    ->where('order_status', 'not like', '%Cancel%');
+                            })
+                            ->orWhere(function ($b) {
+                                $b->where(function ($orBatal) {
+                                    $orBatal->where('order_status', 'like', '%Batal%')
+                                        ->orWhere('order_status', 'like', '%Cancel%');
+                                })
+                                ->where(function ($hasProc) {
+                                    $hasProc->whereNotNull('processed_at')
+                                        ->orWhere(function ($hasJl) {
+                                            $hasJl->whereNotNull('jl_number')->where('jl_number', '!=', '');
+                                        });
+                                });
+                            });
+                        });
                 });
         });
+    }
+
+    /**
+     * Pulihkan pesanan cut off yang sempat diproses tetapi dibatalkan pembeli
+     * (memiliki processed_at atau nomor resi jl_number) agar admin gudang tidak salah kirim.
+     */
+    public static function restoreProcessedCancelledOrders(): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('cut_off_orders')) {
+            return;
+        }
+
+        try {
+            self::withTrashed()
+                ->whereNotNull('deleted_at')
+                ->where(function ($q) {
+                    $q->where('order_status', 'like', '%Batal%')
+                        ->orWhere('order_status', 'like', '%Cancel%')
+                        ->orWhere('order_status', 'like', '%IN_CANCEL%');
+                })
+                ->where(function ($q) {
+                    $q->whereNotNull('processed_at')
+                        ->orWhere(function ($s) {
+                            $s->whereNotNull('jl_number')->where('jl_number', '!=', '');
+                        });
+                })
+                ->restore();
+
+            // Set est_net_income pesanan batal menjadi 0
+            self::withTrashed()
+                ->where(function ($q) {
+                    $q->where('order_status', 'like', '%Batal%')
+                        ->orWhere('order_status', 'like', '%Cancel%');
+                })
+                ->where('est_net_income', '>', 0)
+                ->update(['est_net_income' => 0]);
+        } catch (\Throwable) {
+            // Abaikan kegagalan sementara
+        }
     }
 
     /**
@@ -211,16 +286,12 @@ class CutOffOrder extends Model
      */
     public static function backfillProcessedAt(): void
     {
-        $patterns = [
-            '%batal%',
-            '%cancel%',
+        $unprocessedPatterns = [
             '%belum bayar%',
             '%perlu dikirim%',
             '%tertahan%',
             '%unpaid%',
             '%ready_to_ship%',
-            '%in_cancel%',
-            '%cancelled%',
             '%on_hold%',
             '%awaiting_shipment%',
         ];
@@ -228,8 +299,30 @@ class CutOffOrder extends Model
         \Illuminate\Support\Facades\DB::table('cut_off_orders')
             ->whereNull('deleted_at')
             ->whereNotNull('order_status')
-            ->where(function ($q) use ($patterns) {
-                foreach ($patterns as $pattern) {
+            ->where(function ($q) use ($unprocessedPatterns) {
+                foreach ($unprocessedPatterns as $pattern) {
+                    $q->orWhereRaw('LOWER(order_status) LIKE ?', [$pattern]);
+                }
+            })
+            ->update(['deleted_at' => now()]);
+
+        // Hapus pesanan batal HANYA jika belum pernah diproses (processed_at NULL dan jl_number kosong)
+        $cancelledPatterns = [
+            '%batal%',
+            '%cancel%',
+            '%in_cancel%',
+            '%cancelled%',
+        ];
+
+        \Illuminate\Support\Facades\DB::table('cut_off_orders')
+            ->whereNull('deleted_at')
+            ->whereNotNull('order_status')
+            ->whereNull('processed_at')
+            ->where(function ($q) {
+                $q->whereNull('jl_number')->orWhere('jl_number', '');
+            })
+            ->where(function ($q) use ($cancelledPatterns) {
+                foreach ($cancelledPatterns as $pattern) {
                     $q->orWhereRaw('LOWER(order_status) LIKE ?', [$pattern]);
                 }
             })
@@ -423,6 +516,7 @@ class CutOffOrder extends Model
 
         try {
             self::ensurePerformanceIndexes();
+            self::restoreProcessedCancelledOrders();
             self::$perfIndexesChecked = true;
             if (! app()->runningUnitTests()) {
                 try {

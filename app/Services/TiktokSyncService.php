@@ -430,14 +430,15 @@ class TiktokSyncService
                     'subtotal'  => round($orderAmount, 2),
                 ];
             }
+            $isOrderCancelled = CutOffOrder::isCancelledStatus($statusText, $statusRaw);
             $breakdown = CutOffOrder::buildFinancialBreakdown(
                 $normalizedItems,
                 0.0,  // Order Amount adalah nilai bersih pesanan
                 0.75, // Khusus TikTok: Order Amount x 75%
                 $orderAmount > 0 ? $orderAmount : null,
-                $statusText === 'Batal'
+                $isOrderCancelled
             );
-            $calculatedNet = $breakdown['est_net_income'];
+            $calculatedNet = $isOrderCancelled ? 0.0 : $breakdown['est_net_income'];
 
             $variationName = ! empty($firstItem['sku_name']) ? trim((string) $firstItem['sku_name']) : null;
             if (count($lineItems) > 1 && $variationName) {
@@ -523,29 +524,32 @@ class TiktokSyncService
                 Log::warning("TiktokSyncService upsert to tiktok_orders warning ({$orderId}): " . $e->getMessage());
             }
 
-            // 2. Pesanan Cut Off hanya menampung pesanan yang telah diproses ("Diproses" dan seterusnya).
-            if (CutOffOrder::isExcludedStatus($statusText, $statusRaw)) {
-                $existing = CutOffOrder::withTrashed()
-                    ->where('order_number', $orderId)
-                    ->orderByRaw('CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END ASC')
-                    ->orderBy('id', 'asc')
-                    ->first();
-                if ($existing && ! $existing->trashed()) {
-                    $existing->delete();
-                }
-                continue;
-            }
-
+            // 2. Pesanan Cut Off menampung pesanan yang telah diproses ("Diproses" dan seterusnya),
+            //    serta pesanan yang sempat diproses lalu dibatalkan pembeli (agar admin gudang tahu dan tidak salah kirim).
             $existing = CutOffOrder::withTrashed()
                 ->where('order_number', $orderId)
                 ->orderByRaw('CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END ASC')
                 ->orderBy('id', 'asc')
                 ->first();
 
+            $wasProcessed = ($existing && ($existing->processed_at !== null || ! empty($existing->jl_number)))
+                || ! empty($order['rts_time'])
+                || ! empty($order['tracking_number']);
+
+            if (CutOffOrder::isExcludedStatus($statusText, $statusRaw, $wasProcessed)) {
+                if ($existing && ! $existing->trashed()) {
+                    $existing->delete();
+                }
+                continue;
+            }
+
+            if ($existing && $existing->trashed() && $wasProcessed) {
+                $existing->restore();
+            }
+
             $shouldKeepProcessedAt = $hasProcessedAt
                 && $existing
                 && ! $existing->trashed()
-                && ! CutOffOrder::isExcludedStatus($existing->order_status)
                 && $existing->processed_at !== null;
 
             $processedAt = null;

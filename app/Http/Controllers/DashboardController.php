@@ -103,12 +103,12 @@ class DashboardController extends Controller
             $comparisonLabel = 'dari tahun lalu';
         }
 
-        // Perhitungan Metrik Utama (1 query agregasi per periode)
+        // Perhitungan Metrik Utama (1 query agregasi per periode, abaikan pesanan dibatalkan pembeli)
         $metricCols = "
             COALESCE(SUM(est_net_income), 0) as total_omset,
             COALESCE(SUM(marketplace_net_payout), 0) as total_net_payout,
-            COUNT(*) as total_orders,
-            COALESCE(SUM(CASE WHEN shipping_courier IS NOT NULL AND shipping_courier != '' THEN 1 ELSE 0 END), 0) as total_pengiriman
+            COUNT(CASE WHEN order_status NOT LIKE '%Batal%' AND order_status NOT LIKE '%Cancel%' THEN 1 END) as total_orders,
+            COALESCE(SUM(CASE WHEN shipping_courier IS NOT NULL AND shipping_courier != '' AND order_status NOT LIKE '%Batal%' AND order_status NOT LIKE '%Cancel%' THEN 1 ELSE 0 END), 0) as total_pengiriman
         ";
 
         $currentStats = (clone $query)->selectRaw($metricCols)->first();

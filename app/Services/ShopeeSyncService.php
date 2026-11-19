@@ -630,19 +630,29 @@ class ShopeeSyncService
 
                 $existing = $existingOrders->get($orderSn);
 
-                // Pesanan Cut Off hanya menampung pesanan yang telah diproses ("Diproses" dan seterusnya).
-                // Status Belum Bayar, Perlu Dikirim, Pengajuan Batal, atau Batal tetap masuk ke shopee_orders ("Pesanan Saya"),
-                // tetapi tidak disimpan (atau di-soft-delete jika sebelumnya sempat masuk) di cut_off_orders.
-                if (CutOffOrder::isExcludedStatus($statusText, $rawStatus)) {
+                $wasProcessed = ($existing && ($existing->processed_at !== null || ! empty($existing->jl_number)))
+                    || $shopeeArrangedAtMap->has($orderSn)
+                    || (! empty($order['package_list'][0]['tracking_number']))
+                    || (! empty($order['tracking_number'] ?? null));
+
+                // Pesanan Cut Off menampung pesanan yang telah diproses ("Diproses" dan seterusnya),
+                // serta pesanan yang sempat diproses lalu dibatalkan pembeli (agar admin gudang tahu dan tidak salah kirim).
+                if (CutOffOrder::isExcludedStatus($statusText, $rawStatus, $wasProcessed)) {
                     if ($existing && ! $existing->trashed()) {
                         $existing->delete();
                     }
                     continue;
                 }
 
+                if ($existing && $existing->trashed() && $wasProcessed) {
+                    $existing->restore();
+                }
+
+                $isOrderCancelled = CutOffOrder::isCancelledStatus($statusText, $rawStatus);
+
                 // 5. Calculate total amount / net income
                 // Rumus ERP: Est. Bersih = (Subtotal Pesanan - Voucher Ditanggung Penjual) * 79%
-                // Jika Voucher Ditanggung Penjual = 0, maka (Subtotal Pesanan - 0) * 79%
+                // Jika pesanan dibatalkan, Est. Bersih = Rp 0 agar tidak menggelembungkan omset.
                 $escrowIncome = $escrowMap[$orderSn] ?? [];
                 if ($fetchMissingEscrow && empty($escrowIncome)) {
                     /** @var \App\Models\ShopeeAccount $account */
@@ -656,7 +666,7 @@ class ShopeeSyncService
                 if (empty($orderForCalc['item_list']) && ! empty($items)) {
                     $orderForCalc['item_list'] = $items;
                 }
-                $calc          = $this->calculateNetIncome($orderForCalc, $escrowIncome);
+                $calc          = $this->calculateNetIncome($orderForCalc, $escrowIncome, $isOrderCancelled);
                 $calculatedNet = $calc['est_net_income'];
 
                 $cancelByLabel = $orderRecorder->formatCancelByLabel(isset($order['cancel_by']) ? (string) $order['cancel_by'] : null);
@@ -666,11 +676,12 @@ class ShopeeSyncService
                 // est_net_income: SELALU menyimpan nilai rumus resmi (Subtotal Pesanan - Voucher Ditanggung Penjual) * 79% (sama persis dengan spreadsheet admin)
                 // marketplace_net_payout: pencairan aktual (0 jika Batal, atau nilai escrow riil jika sudah ada)
                 $keteranganSolutif = null;
-                $estNet            = $calculatedNet;
-                $netPayout         = $calculatedNet;
+                $estNet            = $isOrderCancelled ? 0.0 : $calculatedNet;
+                $netPayout         = $isOrderCancelled ? 0.0 : $calculatedNet;
 
-                if ($statusText === 'Batal') {
-                    $netPayout = 0; // Pesanan batal pencairan riil marketplace adalah 0
+                if ($isOrderCancelled) {
+                    $estNet = 0.0;
+                    $netPayout = 0.0; // Pesanan batal pencairan riil marketplace adalah 0
                     if ($cancelReason) {
                         $keteranganSolutif = $cancelByLabel ? "[{$cancelByLabel}] {$cancelReason}" : $cancelReason;
                     } elseif ($cancelByLabel) {
@@ -692,7 +703,6 @@ class ShopeeSyncService
                 $shouldKeepExistingProcessedAt = $hasProcessedAt
                     && $existing
                     && ! $existing->trashed()
-                    && ! CutOffOrder::isExcludedStatus($existing->order_status)
                     && $existing->processed_at !== null;
 
                 $processedAt = null;
@@ -889,7 +899,15 @@ class ShopeeSyncService
             }
         }
 
-        if (CutOffOrder::isExcludedStatus($statusText, $rawStatus)) {
+        $isCancelled = CutOffOrder::isCancelledStatus($statusText, $rawStatus);
+        $wasProcessed = ($existing->processed_at !== null || ! empty($existing->jl_number))
+            || (Schema::hasTable('shopee_orders') && ShopeeOrder::where('order_sn', $orderSn)->where(function ($sub) {
+                $sub->whereNotNull('shipping_arranged_at')
+                    ->orWhereNotNull('fulfillment_method')
+                    ->orWhere('order_status', 'PROCESSED');
+            })->exists());
+
+        if (CutOffOrder::isExcludedStatus($statusText, $rawStatus, $wasProcessed)) {
             $existing->update($updates);
             if (! $existing->trashed()) {
                 $existing->delete();
@@ -903,9 +921,14 @@ class ShopeeSyncService
             $existing->restore();
         }
 
+        if ($isCancelled) {
+            $updates['est_net_income'] = 0.0;
+            $updates['marketplace_net_payout'] = 0.0;
+        }
+
         if (
             $this->hasCutOffColumn('processed_at')
-            && ($existing->processed_at === null || $wasTrashed || CutOffOrder::isExcludedStatus($existing->order_status))
+            && ($existing->processed_at === null || $wasTrashed)
         ) {
             $arrangedAt = Schema::hasTable('shopee_orders')
                 ? ShopeeOrder::where('order_sn', $orderSn)->whereNotNull('shipping_arranged_at')->value('shipping_arranged_at')
@@ -1336,7 +1359,7 @@ class ShopeeSyncService
      * Est. Bersih = (Subtotal Pesanan - Voucher Ditanggung Penjual) * 79%
      * Jika Voucher Ditanggung Penjual = 0, maka (Subtotal Pesanan - 0) * 79%
      */
-    public function calculateNetIncome(array $order, array $escrowIncome = []): array
+    public function calculateNetIncome(array $order, array $escrowIncome = [], bool $isCancelled = false): array
     {
         $escrowItems = is_array($escrowIncome['items'] ?? null) && ! empty($escrowIncome['items'])
             ? $escrowIncome['items']
@@ -1473,7 +1496,7 @@ class ShopeeSyncService
         }
 
         // 3. Rumus Resmi + Breakdown per Produk (Voucher dibagi rata)
-        $breakdown = CutOffOrder::buildFinancialBreakdown($normalizedItems, $sellerVoucher, 0.79, $subtotalOrder);
+        $breakdown = CutOffOrder::buildFinancialBreakdown($normalizedItems, $sellerVoucher, 0.79, $subtotalOrder, $isCancelled);
 
         return [
             'subtotal_order' => $breakdown['subtotal_order'],
@@ -1592,7 +1615,15 @@ class ShopeeSyncService
                         $rawStatus  = (string) ($shopeeOrder['order_status'] ?? '');
                         $statusText = $this->mapOrderStatus($rawStatus);
 
-                        if (CutOffOrder::isExcludedStatus($statusText, $rawStatus)) {
+                        $wasProcessed = false;
+                        foreach ($ordersBySn->get($sn, collect()) as $orderModel) {
+                            if ($orderModel->processed_at !== null || ! empty($orderModel->jl_number)) {
+                                $wasProcessed = true;
+                                break;
+                            }
+                        }
+
+                        if (CutOffOrder::isExcludedStatus($statusText, $rawStatus, $wasProcessed)) {
                             foreach ($ordersBySn->get($sn, collect()) as $orderModel) {
                                 if (! $orderModel->trashed()) {
                                     $orderModel->delete();
@@ -1601,10 +1632,17 @@ class ShopeeSyncService
                             continue;
                         }
 
+                        foreach ($ordersBySn->get($sn, collect()) as $orderModel) {
+                            if ($orderModel->trashed() && $wasProcessed) {
+                                $orderModel->restore();
+                            }
+                        }
+
+                        $isOrderCancelled = CutOffOrder::isCancelledStatus($statusText, $rawStatus);
                         $escrowIncome = $escrows[$sn] ?? [];
-                        $calc         = $this->calculateNetIncome($shopeeOrder, $escrowIncome);
-                        $estNet       = $calc['est_net_income'];
-                        $netPayout    = ($statusText === 'Batal' || $rawStatus === 'CANCELLED') ? 0 : $estNet;
+                        $calc         = $this->calculateNetIncome($shopeeOrder, $escrowIncome, $isOrderCancelled);
+                        $estNet       = $isOrderCancelled ? 0.0 : $calc['est_net_income'];
+                        $netPayout    = $isOrderCancelled ? 0.0 : $estNet;
 
                         $updatePayload = [
                             'est_net_income'         => $estNet,
