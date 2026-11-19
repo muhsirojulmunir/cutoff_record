@@ -182,9 +182,11 @@ class CutOffOrderController extends Controller
                 ->orderByDesc('count')
                 ->get()
                 ->map(fn ($item) => [
-                    'name'  => $item->channel,
-                    'count' => $item->count,
-                ]);
+                    'name'  => (string) ($item->channel ?? ''),
+                    'count' => (int) ($item->count ?? 0),
+                ])
+                ->values()
+                ->all();
 
             $couriers = CutOffOrder::query()
                 ->onlyProcessed()
@@ -195,9 +197,11 @@ class CutOffOrderController extends Controller
                 ->orderByDesc('count')
                 ->get()
                 ->map(fn ($item) => [
-                    'name'  => $item->shipping_courier,
-                    'count' => $item->count,
-                ]);
+                    'name'  => (string) ($item->shipping_courier ?? ''),
+                    'count' => (int) ($item->count ?? 0),
+                ])
+                ->values()
+                ->all();
 
             return [
                 'summary'  => $summary,
@@ -211,7 +215,7 @@ class CutOffOrderController extends Controller
         } else {
             try {
                 $overview = \Illuminate\Support\Facades\Cache::store('file')->remember(
-                    "cut_off_overview_v2_{$cacheVer}_{$todayStart}",
+                    "cut_off_overview_v4_{$cacheVer}_{$todayStart}",
                     30,
                     $computeOverview
                 );
@@ -220,12 +224,22 @@ class CutOffOrderController extends Controller
             }
         }
 
+        $sanitizeList = static function ($list): array {
+            if ($list instanceof \Illuminate\Support\Collection) {
+                return $list->values()->all();
+            }
+            if (is_array($list)) {
+                return array_values($list);
+            }
+            return [];
+        };
+
         return Inertia::render('CutOff/Index', [
             'orders'   => $orders,
-            'filters'  => $filters,
-            'summary'  => $overview['summary'],
-            'channels' => $overview['channels'],
-            'couriers' => $overview['couriers'],
+            'filters'  => ! empty($filters) ? (object) $filters : (object) ['page' => (int) $request->input('page', 1)],
+            'summary'  => (array) ($overview['summary'] ?? []),
+            'channels' => $sanitizeList($overview['channels'] ?? []),
+            'couriers' => $sanitizeList($overview['couriers'] ?? []),
         ]);
     }
 

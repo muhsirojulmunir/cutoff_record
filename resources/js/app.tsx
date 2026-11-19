@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import { createInertiaApp } from '@inertiajs/react';
 import { createRoot } from 'react-dom/client';
+import ErrorBoundary from './Components/ErrorBoundary';
 
 const pages = import.meta.glob<{ default: any }>('./Pages/**/*.tsx');
 
@@ -14,6 +15,10 @@ createInertiaApp({
     return pageModule.default;
   },
   setup({ el, App, props }) {
-    createRoot(el).render(<App {...props} />);
+    createRoot(el).render(
+      <ErrorBoundary>
+        <App {...props} />
+      </ErrorBoundary>
+    );
   },
 });

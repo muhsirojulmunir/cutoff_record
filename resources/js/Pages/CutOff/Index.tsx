@@ -306,6 +306,22 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
       router.get(rawUrl, {}, { preserveScroll: true, preserveState: true });
     }
   };
+
+  const safeChannels = Array.isArray(channels) ? channels : [];
+  const safeCouriers = Array.isArray(couriers) ? couriers : [];
+  const orderList = Array.isArray(orders?.data) ? orders.data : [];
+  const paginationLinks = Array.isArray(orders?.links) ? orders.links : [];
+  const safeSummary = summary || {
+    total_orders: 0,
+    daily_products: 0,
+    daily_orders: 0,
+    daily_date_label: '',
+    total_rj: 0,
+    total_has_dpp: 0,
+    total_est_income: 0,
+    total_net_payout: 0,
+  };
+
   const [hoveredBreakdown, setHoveredBreakdown] = useState<{
     order: CutOffOrder;
     breakdown: CutOffOrderFinancialBreakdown;
@@ -1346,9 +1362,9 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              Semua Toko ({(summary?.total_orders ?? 0).toLocaleString('id-ID')})
+              Semua Toko ({safeSummary.total_orders.toLocaleString('id-ID')})
             </button>
-            {(channels || []).map((ch) => (
+            {safeChannels.map((ch) => (
               <button
                 key={ch.name}
                 onClick={() => {
@@ -1437,9 +1453,9 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                   <option value="Ninja">Ninja Xpress</option>
                   <option value="Pos">Pos Indonesia</option>
                 </optgroup>
-                {couriers.length > 0 && (
+                {safeCouriers.length > 0 && (
                   <optgroup label="Layanan Kurir Lengkap">
-                    {couriers.map((c) => (
+                    {safeCouriers.map((c) => (
                       <option key={c.name} value={c.name}>
                         {c.name} ({c.count.toLocaleString('id-ID')})
                       </option>
@@ -1525,7 +1541,7 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {orders.data.length === 0 ? (
+                {orderList.length === 0 ? (
                   <tr>
                     <td colSpan={canManage ? 9 : 8} className="py-16 text-center">
                       <div className="max-w-md mx-auto flex flex-col items-center">
@@ -1558,8 +1574,10 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                     </td>
                   </tr>
                 ) : (
-                  orders.data.map((order, index) => {
-                    const rowNumber = (orders.current_page - 1) * orders.per_page + index + 1;
+                  orderList.map((order, index) => {
+                    const currentPage = orders?.current_page ?? 1;
+                    const perPage = orders?.per_page ?? 25;
+                    const rowNumber = (currentPage - 1) * perPage + index + 1;
                     const isOos = order.info_gudang && order.info_gudang.includes('OOS');
                     const isRj = order.order_status && (order.order_status.includes('RJ') || order.order_status.includes('Retur'));
                     const shippingTier = getShippingTier(order.shipping_courier);
@@ -1921,11 +1939,11 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
           {/* Pagination Controls */}
           <div className="p-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs bg-slate-50/50">
             <span className="text-slate-500">
-              Menampilkan {orders.from ?? 0}–{orders.to ?? 0} dari {orders.total.toLocaleString('id-ID')} pesanan
+              Menampilkan {orders?.from ?? 0}–{orders?.to ?? 0} dari {(orders?.total ?? 0).toLocaleString('id-ID')} pesanan
             </span>
 
             <div className="flex items-center gap-1">
-              {(orders?.links || []).map((link, idx) => {
+              {paginationLinks.map((link, idx) => {
                 if (!link.url) {
                   return (
                     <span

@@ -948,7 +948,7 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
           {/* Pagination Controls */}
           <div className="p-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs bg-slate-50/50">
             <span className="text-slate-500">
-              Menampilkan {returns.from ?? 0}–{returns.to ?? 0} dari {returns.total.toLocaleString('id-ID')} data retur
+              Menampilkan {returns?.from ?? 0}–{returns?.to ?? 0} dari {(returns?.total ?? 0).toLocaleString('id-ID')} data retur
             </span>
 
             <div className="flex items-center gap-1">

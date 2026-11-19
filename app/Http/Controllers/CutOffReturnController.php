@@ -62,9 +62,11 @@ class CutOffReturnController extends Controller
             ->orderByDesc('count')
             ->get()
             ->map(fn ($item) => [
-                'name'  => $item->marketplace,
-                'count' => $item->count,
-            ]);
+                'name'  => (string) ($item->marketplace ?? ''),
+                'count' => (int) ($item->count ?? 0),
+            ])
+            ->values()
+            ->all();
 
         return Inertia::render('CutOff/Returns', [
             'returns'      => $returns,
