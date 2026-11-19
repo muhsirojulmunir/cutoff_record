@@ -1284,18 +1284,45 @@ export default function ShopeeProductsIndex({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-2 flex-wrap xl:flex-nowrap">
+          <div className="flex items-center gap-2 flex-wrap xl:flex-nowrap shrink-0">
             {/* Tombol Isi / Tambah Stok Shopee Cepat */}
             <button
               type="button"
               onClick={() => openRestockModal(null)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer whitespace-nowrap active:scale-98"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer whitespace-nowrap active:scale-98"
               title="Isi atau tambah stok produk Shopee langsung via API (misal ada stok baru datang)"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
               </svg>
-              <span>+ Isi / Tambah Stok</span>
+              <span>Isi / Tambah Stok</span>
+            </button>
+
+            {/* Tombol Ubah Kode Barang Massal */}
+            <button
+              type="button"
+              onClick={() => setShowBulkMapModal(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-700 hover:text-slate-900 text-xs font-semibold transition-all shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
+              title="Cari dan ubah kode barang varian katalog secara massal"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-slate-500">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+              </svg>
+              <span>Ubah Kode Barang</span>
+            </button>
+
+            {/* Tombol Audit Stok Gudang */}
+            <button
+              type="button"
+              onClick={() => runMasterAudit('ALL')}
+              disabled={isComparing}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-700 hover:text-slate-900 text-xs font-semibold shadow-2xs transition-all cursor-pointer whitespace-nowrap active:scale-98 disabled:opacity-50"
+              title="Audit otomatis seluruh SKU Shopee terhadap data Master Stok (Gudang G & A)"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-slate-500">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+              </svg>
+              <span>Audit Stok Gudang</span>
             </button>
 
             {/* Tombol Pulihkan & Riwayat Pemulihan (Khusus Super Admin) */}
@@ -1308,44 +1335,26 @@ export default function ShopeeProductsIndex({
                     (zeroRestoreSummary?.restorable_items_count ?? 0) > 0 ? 'restorable' : 'all'
                   )
                 }
-                className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border text-xs font-semibold shadow-2xs transition-colors cursor-pointer whitespace-nowrap active:scale-98 ${
-                  (zeroRestoreSummary?.restorable_items_count ?? 0) > 0
-                    ? 'border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-800'
-                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
-                }`}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-700 hover:text-slate-900 text-xs font-semibold shadow-2xs transition-all cursor-pointer whitespace-nowrap active:scale-98"
                 title="Buka modal Pulihkan stok Shopee & lihat riwayat tanggal pengosongan/pemulihan"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-indigo-600">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-slate-500">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
                 </svg>
                 <span>Pulihkan</span>
                 {(zeroRestoreSummary?.restorable_items_count ?? 0) > 0 && (
-                  <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-600 text-white font-mono">
+                  <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200 font-mono">
                     {zeroRestoreSummary?.restorable_items_count}
                   </span>
                 )}
               </button>
             )}
 
-            {/* Tombol Audit Stok Gudang */}
-            <button
-              type="button"
-              onClick={() => runMasterAudit('ALL')}
-              disabled={isComparing}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0B132B] hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer whitespace-nowrap active:scale-98 disabled:opacity-50"
-              title="Audit otomatis seluruh SKU Shopee terhadap data Master Stok (Gudang G & A)"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-slate-300">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-              </svg>
-              <span>Audit Stok Gudang</span>
-            </button>
-
             {/* Export CSV / Excel */}
             <button
               type="button"
               onClick={handleExportCsv}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-700 hover:text-slate-900 text-xs font-semibold transition-all shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
               title="Download seluruh data SKU & Stok ke file CSV / Excel"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-slate-500">
@@ -1354,25 +1363,12 @@ export default function ShopeeProductsIndex({
               <span>Export CSV</span>
             </button>
 
-            {/* Tombol Ubah Kode Barang Massal */}
-            <button
-              type="button"
-              onClick={() => setShowBulkMapModal(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
-              title="Cari dan ubah kode barang varian katalog secara massal"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-slate-600">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
-              </svg>
-              <span>Ubah Kode Barang</span>
-            </button>
-
             {/* Tarik Stok Shopee (API) */}
             <button
               type="button"
               onClick={promptSync}
               disabled={isSyncing}
-              className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer whitespace-nowrap active:scale-98 ${
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer whitespace-nowrap active:scale-98 ${
                 isSyncing
                   ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
                   : 'bg-[#EE4D2D] hover:bg-[#d83f21] text-white'
