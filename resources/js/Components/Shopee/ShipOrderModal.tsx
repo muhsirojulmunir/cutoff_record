@@ -138,10 +138,24 @@ function formatPickupAddressLabel(addr: ShopeePickupAddress): string {
   return parts.length > 0 ? parts.join(', ') : 'Alamat Penjemputan Toko';
 }
 
-function formatPickupSlotLabel(slot: ShopeePickupTimeSlot): string {
-  const timeText = typeof slot.time_text === 'string' ? slot.time_text.trim() : '';
+function formatPickupSlotLabel(slot: ShopeePickupTimeSlot, includeDate: boolean = true): string {
+  let timeText = typeof slot.time_text === 'string' ? slot.time_text.trim() : '';
+
+  // Jika time_text kosong dari Shopee API, periksa apakah pickup_time_id berupa unix timestamp
+  if (!timeText && slot.pickup_time_id) {
+    const idNum = Number(slot.pickup_time_id);
+    if (Number.isFinite(idNum) && idNum > 1_000_000_000) {
+      const ms = idNum > 10_000_000_000 ? idNum : idNum * 1000;
+      timeText = 'Pukul ' + new Date(ms).toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Asia/Jakarta',
+      }).replace('.', ':') + ' WIB';
+    }
+  }
+
   let dateLabel = '';
-  if (slot.date !== undefined && slot.date !== null && slot.date !== '') {
+  if (includeDate && slot.date !== undefined && slot.date !== null && slot.date !== '') {
     const num = Number(slot.date);
     if (Number.isFinite(num) && num > 1_000_000_000) {
       const ms = num > 10_000_000_000 ? num : num * 1000;
@@ -158,7 +172,7 @@ function formatPickupSlotLabel(slot: ShopeePickupTimeSlot): string {
   }
 
   if (dateLabel && timeText) return `${dateLabel} — ${timeText}`;
-  return timeText || dateLabel || `Slot ${slot.pickup_time_id}`;
+  return timeText || dateLabel || (slot.pickup_time_id ? `Slot ${slot.pickup_time_id}` : 'Slot Terdekat');
 }
 
 function formatDropoffBranchLabel(branch: ShopeeDropoffBranch): string {
@@ -2016,7 +2030,7 @@ export default function ShipOrderModal({
                                   {filteredMassSlots.length > 0 ? (
                                     filteredMassSlots.map((slot) => (
                                       <option key={slot.pickup_time_id} value={slot.pickup_time_id}>
-                                        {slot.time_text || `Slot ${slot.pickup_time_id}`}
+                                        {formatPickupSlotLabel(slot, false)}
                                       </option>
                                     ))
                                   ) : (
