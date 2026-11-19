@@ -206,9 +206,10 @@ class ShopeeIntegrationController extends Controller
 
         if (! empty($startDate) && ! empty($endDate)) {
             $timeFrom = strtotime($startDate . ' 00:00:00');
-            $timeTo   = strtotime($endDate . ' 23:59:59');
+            // Pastikan timeTo tidak melebihi waktu sekarang (Shopee API menolak jika create_time_to > current time)
+            $timeTo   = min(strtotime($endDate . ' 23:59:59'), time());
             if ($timeFrom > $timeTo) {
-                [$timeFrom, $timeTo] = [$timeTo, $timeFrom];
+                $timeFrom = min($timeFrom, $timeTo);
             }
         } else {
             $days = (int) $request->input('days', 14);

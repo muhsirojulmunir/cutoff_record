@@ -172,9 +172,13 @@ function resolveDisputeDeadline(row: ReturnRow): string | null {
     try {
       const inputDate = new Date(row.tgl_input_mp);
       if (!isNaN(inputDate.getTime())) {
-        // Standar batas respon sengketa/adu banding Shopee & TikTok adalah 2 hari (48 jam) dari tgl pengajuan
+        // Estimasi respon awal sengketa jika baru diajukan (48 jam)
         const estimated = new Date(inputDate.getTime() + (48 * 3600 * 1000));
-        return estimated.toISOString();
+        // HANYA gunakan estimasi awal jika waktu tersebut MASIH berjalan di masa depan
+        // Jangan pernah menampilkan "Waktu Banding Berakhir" dari estimasi awal jika status di Shopee masih aktif [PROCESSING]!
+        if (estimated.getTime() > Date.now()) {
+          return estimated.toISOString();
+        }
       }
     } catch {
       // noop
@@ -1115,12 +1119,30 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
 
                         {(() => {
                           const deadline = resolveDisputeDeadline(row);
-                          if (!deadline) return null;
-                          return (
-                            <div className="mt-1.5">
-                              <DisputeCountdown dueDateStr={deadline} compact />
-                            </div>
-                          );
+                          if (deadline) {
+                            return (
+                              <div className="mt-1.5">
+                                <DisputeCountdown dueDateStr={deadline} compact />
+                              </div>
+                            );
+                          }
+
+                          const ket = (row.keterangan || '').toUpperCase();
+                          const st = (row.return_status || '').toUpperCase();
+                          const isPending = ket.includes('PROCESSING') || ket.includes('REQUESTED') || st === 'PROCESSING' || st === 'REQUESTED' || Boolean(row.needs_action);
+
+                          if (isPending) {
+                            return (
+                              <div className="mt-1.5">
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300 whitespace-nowrap shadow-xs" title="Menunggu respon / validasi penjual di Shopee Seller Center">
+                                  <span>⏳</span>
+                                  <span>Menunggu Validasi Penjual</span>
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          return null;
                         })()}
 
                         {row.tgl_banding && (

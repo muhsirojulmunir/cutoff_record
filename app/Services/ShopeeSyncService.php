@@ -2050,8 +2050,9 @@ class ShopeeSyncService
      */
     public function syncReturnsToCutOff(ShopeeAccount $account, ?int $timeFrom = null, ?int $timeTo = null): array
     {
-        $timeTo = $timeTo ?: time();
-        $timeFrom = $timeFrom ?: ($timeTo - (14 * 86400)); // Default 14 hari
+        $now = time();
+        $timeTo = $timeTo ? min($timeTo, $now) : $now;
+        $timeFrom = $timeFrom ? min($timeFrom, $timeTo) : ($timeTo - (14 * 86400)); // Default 14 hari
 
         $account = $this->ensureValidToken($account);
 
@@ -2142,12 +2143,21 @@ class ShopeeSyncService
                 $reason = trim((string) ($ret['text_reason'] ?? $ret['reason'] ?? ''));
                 $status = trim((string) ($ret['status'] ?? ''));
                 $statusUpper = strtoupper($status);
-                $dueDateEpoch = ! empty($ret['due_date']) ? (int) $ret['due_date'] : null;
+                $dueDateEpoch = ! empty($ret['due_date'])
+                    ? (int) $ret['due_date']
+                    : (! empty($ret['seller_due_date'])
+                        ? (int) $ret['seller_due_date']
+                        : (! empty($ret['validation_due_date']) ? (int) $ret['validation_due_date'] : null));
+
+                if ($dueDateEpoch && $dueDateEpoch > 9999999999) {
+                    $dueDateEpoch = (int) ($dueDateEpoch / 1000);
+                }
+
                 $dueDate = $dueDateEpoch ? \Carbon\Carbon::createFromTimestamp($dueDateEpoch, 'Asia/Jakarta') : null;
                 $refundAmount = ! empty($ret['amount_before_discount'])
                     ? (float) $ret['amount_before_discount']
                     : (! empty($ret['refund_amount']) ? (float) $ret['refund_amount'] : null);
-                $needsAction = in_array($statusUpper, ['REQUESTED', 'SELLER_DISPUTE_PENDING', 'AWAITING_SELLER_REVIEW', 'PENDING_SELLER_CONFIRMATION'], true)
+                $needsAction = in_array($statusUpper, ['REQUESTED', 'SELLER_DISPUTE_PENDING', 'AWAITING_SELLER_REVIEW', 'PENDING_SELLER_CONFIRMATION', 'PROCESSING'], true)
                     || ($dueDateEpoch && $dueDateEpoch > time() && ! in_array($statusUpper, ['ACCEPTED', 'CANCELLED', 'CLOSED', 'REFUND_PAID', 'SELLER_DISPUTE'], true));
 
                 $keteranganParts = [];
