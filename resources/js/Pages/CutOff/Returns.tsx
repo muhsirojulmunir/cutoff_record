@@ -342,10 +342,10 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
   function openEditModal(row: ReturnRow) {
     setEditingRow(row);
     const currentFisik = row.nama_barang_fisik ?? '';
-    if (currentFisik === 'Sesuai' || currentFisik === 'Tidak Sesuai') {
-      setFisikSelection(currentFisik);
+    if (currentFisik === 'Sesuai') {
+      setFisikSelection('Sesuai');
     } else if (currentFisik) {
-      setFisikSelection('Lainnya');
+      setFisikSelection('Tidak Sesuai');
     } else {
       setFisikSelection('');
     }
@@ -1505,11 +1505,11 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                       onChange={(e) => {
                         const val = e.target.value;
                         setFisikSelection(val);
-                        if (val === 'Sesuai' || val === 'Tidak Sesuai') {
-                          editForm.setData('nama_barang_fisik', val);
-                        } else if (val === 'Lainnya') {
-                          if (editForm.data.nama_barang_fisik === 'Sesuai' || editForm.data.nama_barang_fisik === 'Tidak Sesuai') {
-                            editForm.setData('nama_barang_fisik', '');
+                        if (val === 'Sesuai') {
+                          editForm.setData('nama_barang_fisik', 'Sesuai');
+                        } else if (val === 'Tidak Sesuai') {
+                          if (editForm.data.nama_barang_fisik === 'Sesuai' || !editForm.data.nama_barang_fisik) {
+                            editForm.setData('nama_barang_fisik', 'Tidak Sesuai');
                           }
                         } else {
                           editForm.setData('nama_barang_fisik', '');
@@ -1517,20 +1517,25 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                       }}
                       className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 font-semibold text-slate-800 focus:outline-none focus:border-[#0B132B]"
                     >
-                      <option value="">-- Pilih Fisik Cek Gudang --</option>
+                      <option value="">-- Pilih --</option>
                       <option value="Sesuai">Sesuai</option>
                       <option value="Tidak Sesuai">Tidak Sesuai</option>
-                      <option value="Lainnya">Lainnya (Isi Sendiri, misal: isi kain)</option>
                     </select>
 
-                    {fisikSelection === 'Lainnya' && (
+                    {fisikSelection === 'Tidak Sesuai' && (
                       <div className="mt-2">
+                        <label className="block text-[11px] font-semibold text-rose-700 mb-1">
+                          Detail Fisik Tidak Sesuai:
+                        </label>
                         <input
                           type="text"
-                          value={editForm.data.nama_barang_fisik}
-                          onChange={(e) => editForm.setData('nama_barang_fisik', e.target.value)}
-                          placeholder="Tuliskan kondisi fisik barang (misal: isi kain, barang rusak, salah size)..."
-                          className="w-full px-3 py-2 rounded-xl bg-amber-50/60 border border-amber-300 text-xs text-slate-800 focus:outline-none focus:border-amber-500 font-medium placeholder:text-slate-400"
+                          value={editForm.data.nama_barang_fisik === 'Tidak Sesuai' ? '' : editForm.data.nama_barang_fisik}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            editForm.setData('nama_barang_fisik', val.trim() ? val : 'Tidak Sesuai');
+                          }}
+                          placeholder="Contoh: kain, sepatu tidak sesuai, salah size, kardus kosong..."
+                          className="w-full px-3 py-2 rounded-xl bg-rose-50/50 border border-rose-300 text-xs text-slate-800 focus:outline-none focus:border-rose-500 font-medium placeholder:text-slate-400"
                           autoFocus
                         />
                       </div>
@@ -1551,15 +1556,28 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block font-bold text-slate-700 uppercase mb-1">Keterangan / Alasan</label>
-                    <input
-                      type="text"
-                      value={editForm.data.keterangan}
-                      readOnly
-                      disabled
-                      placeholder="Keterangan marketplace..."
-                      className="w-full px-3 py-2 rounded-xl bg-slate-100 text-slate-700 border border-slate-200 cursor-not-allowed select-all"
-                      title="Keterangan/alasan pengajuan dari marketplace (tidak dapat diubah)"
-                    />
+                    <div className="relative group">
+                      <input
+                        type="text"
+                        value={editForm.data.keterangan}
+                        readOnly
+                        disabled
+                        title={editForm.data.keterangan || ''}
+                        placeholder="Keterangan marketplace..."
+                        className="w-full px-3 py-2 rounded-xl bg-slate-100 text-slate-700 border border-slate-200 cursor-not-allowed select-all truncate"
+                      />
+                      {editForm.data.keterangan && (
+                        <div className="opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 pointer-events-none absolute left-0 bottom-full mb-1.5 z-50 w-full min-w-[280px] sm:min-w-[360px] bg-slate-900 text-white text-xs leading-relaxed p-3 rounded-xl shadow-xl border border-slate-700 break-words">
+                          <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-400 uppercase tracking-wider mb-1">
+                            <span>💬</span>
+                            <span>Isi Lengkap Keterangan MP:</span>
+                          </div>
+                          <p className="text-slate-200 text-xs font-normal whitespace-pre-wrap select-all">
+                            {editForm.data.keterangan}
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div>
@@ -1577,20 +1595,6 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                       <option value="Sudah Dibanding">Sudah Dibanding</option>
                     </select>
                   </div>
-                </div>
-
-                {/* Batas Waktu Banding / Deadline */}
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">Batas Waktu Banding (Deadline)</label>
-                  <input
-                    type="datetime-local"
-                    value={editForm.data.due_date}
-                    onChange={(e) => editForm.setData('due_date', e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:border-[#0B132B]"
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Batas waktu respon dari Shopee/TikTok. Menampilkan hitungan mundur "Kurang X Hari Y Jam" di tabel.
-                  </p>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
