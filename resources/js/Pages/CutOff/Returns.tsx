@@ -1178,15 +1178,21 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                           </p>
                         )}
 
-                        {row.no_pesanan_baru ? (
-                          <div className="inline-flex items-center gap-1.5 mt-1 text-[11px] font-sans text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-md px-2 py-0.5 max-w-[190px] truncate" title={`Pesanan Baru: ${row.no_pesanan_baru}`}>
+                        {row.no_pesanan_baru && (
+                          <div className="inline-flex items-center gap-1.5 mt-1 text-[11px] font-sans text-blue-900 bg-blue-50 border border-blue-200 rounded-md px-2 py-0.5 max-w-[190px] truncate" title={`Pesanan Baru: ${row.no_pesanan_baru}`}>
+                            <span className="truncate font-mono font-bold">{row.no_pesanan_baru}</span>
+                          </div>
+                        )}
+
+                        {row.no_invoice_baru ? (
+                          <div className="inline-flex items-center gap-1.5 mt-1 text-[11px] font-sans text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-md px-2 py-0.5 max-w-[190px] truncate" title={`Nomer JL: ${row.no_invoice_baru}`}>
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5 text-emerald-700 shrink-0">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
                             </svg>
-                            <span className="truncate font-mono font-bold">{row.no_pesanan_baru}</span>
+                            <span className="truncate font-mono font-bold">{row.no_invoice_baru}</span>
                           </div>
-                        ) : (
-                          <span className="text-slate-400 font-sans text-[10px] block mt-1">— Belum Ada JL Baru</span>
+                        ) : !row.no_pesanan_baru && (
+                          <span className="text-slate-400 font-sans text-[10px] block mt-1">— Belum Ada JL</span>
                         )}
                       </td>
 
@@ -1346,7 +1352,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block font-bold text-slate-700 uppercase mb-1">No. Pengembalian</label>
                     <div className="relative">
@@ -1406,13 +1412,27 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                       )}
                     </div>
                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">No. Pesanan Baru</label>
+                    <input
+                      type="text"
+                      value={editForm.data.no_pesanan_baru}
+                      onChange={(e) => editForm.setData('no_pesanan_baru', e.target.value)}
+                      placeholder="No. Pesanan baru pengganti / reorder..."
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
+                    />
+                  </div>
 
                   <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">No. Invoice Baru</label>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">Nomer JL</label>
                     <input
                       type="text"
                       value={editForm.data.no_invoice_baru}
                       onChange={(e) => editForm.setData('no_invoice_baru', e.target.value)}
+                      placeholder="JL/00081185... (kosong jika belum ada)"
                       className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
                     />
                   </div>
@@ -1500,28 +1520,15 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">No. Pengajuan MP</label>
-                    <input
-                      type="text"
-                      value={editForm.data.no_pengajuan}
-                      onChange={(e) => editForm.setData('no_pengajuan', e.target.value)}
-                      placeholder="25091107YSQ3RXK..."
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">JL / No. Pesanan Baru</label>
-                    <input
-                      type="text"
-                      value={editForm.data.no_pesanan_baru}
-                      onChange={(e) => editForm.setData('no_pesanan_baru', e.target.value)}
-                      placeholder="JL/00081185 /SH-A..."
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
-                    />
-                  </div>
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">No. Pengajuan MP</label>
+                  <input
+                    type="text"
+                    value={editForm.data.no_pengajuan}
+                    onChange={(e) => editForm.setData('no_pengajuan', e.target.value)}
+                    placeholder="25091107YSQ3RXK..."
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
+                  />
                 </div>
 
                 <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
@@ -1676,26 +1683,37 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">Keterangan Retur</label>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">No. Pesanan Baru</label>
                     <input
                       type="text"
-                      value={createForm.data.keterangan}
-                      onChange={(e) => createForm.setData('keterangan', e.target.value)}
-                      placeholder="tukar size, batal kirim, dst..."
+                      value={createForm.data.no_pesanan_baru}
+                      onChange={(e) => createForm.setData('no_pesanan_baru', e.target.value)}
+                      placeholder="No. Pesanan baru pengganti / reorder..."
                       className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
                     />
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">JL / Pesanan Baru</label>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">Nomer JL</label>
                     <input
                       type="text"
-                      value={createForm.data.no_pesanan_baru}
-                      onChange={(e) => createForm.setData('no_pesanan_baru', e.target.value)}
-                      placeholder="JL/00081185 /SH-A..."
+                      value={createForm.data.no_invoice_baru}
+                      onChange={(e) => createForm.setData('no_invoice_baru', e.target.value)}
+                      placeholder="JL/00081185... (kosong jika belum ada)"
                       className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
                     />
                   </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Keterangan Retur</label>
+                  <input
+                    type="text"
+                    value={createForm.data.keterangan}
+                    onChange={(e) => createForm.setData('keterangan', e.target.value)}
+                    placeholder="tukar size, batal kirim, dst..."
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
+                  />
                 </div>
 
                 <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">

@@ -37,6 +37,41 @@ class CutOffReturnController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
+        // Otomatis cari Nomer JL dari cut_off_orders jika belum tersimpan di cut_off_returns
+        try {
+            if (Schema::hasTable('cut_off_orders')) {
+                $orderNumbers = collect();
+                foreach ($returns->items() as $item) {
+                    if (empty($item->no_invoice_baru)) {
+                        if (! empty($item->no_pesanan_baru)) {
+                            $orderNumbers->push($item->no_pesanan_baru);
+                        }
+                        if (! empty($item->no_invoice_mp)) {
+                            $orderNumbers->push($item->no_invoice_mp);
+                        }
+                    }
+                }
+
+                if ($orderNumbers->isNotEmpty()) {
+                    $matchedJls = DB::table('cut_off_orders')
+                        ->whereIn('order_number', $orderNumbers->unique())
+                        ->whereNotNull('jl_number')
+                        ->where('jl_number', '!=', '')
+                        ->pluck('jl_number', 'order_number');
+
+                    foreach ($returns->items() as $item) {
+                        if (empty($item->no_invoice_baru)) {
+                            $item->no_invoice_baru = $matchedJls[$item->no_pesanan_baru]
+                                ?? $matchedJls[$item->no_invoice_mp]
+                                ?? null;
+                        }
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            // Abaikan jika query order tidak tersedia
+        }
+
         $hasNeedsAction = false;
         $hasDueDate     = false;
         try {
