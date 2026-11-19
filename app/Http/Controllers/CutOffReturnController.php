@@ -157,6 +157,7 @@ class CutOffReturnController extends Controller
             'keterangan'       => ['nullable', 'string'],
             'barcode'          => ['nullable', 'string', 'max:100'],
             'tgl_banding'      => ['nullable', 'string', 'max:100'],
+            'due_date'         => ['nullable', 'date'],
             'no_pengajuan'     => ['nullable', 'string', 'max:100'],
             'no_pesanan_baru'  => ['nullable', 'string', 'max:100'],
         ]);
@@ -258,6 +259,7 @@ class CutOffReturnController extends Controller
             'keterangan'       => ['nullable', 'string'],
             'barcode'          => ['nullable', 'string', 'max:100'],
             'tgl_banding'      => ['nullable', 'string', 'max:100'],
+            'due_date'         => ['nullable', 'date'],
             'no_pengajuan'     => ['nullable', 'string', 'max:100'],
             'no_pesanan_baru'  => ['nullable', 'string', 'max:100'],
         ]);

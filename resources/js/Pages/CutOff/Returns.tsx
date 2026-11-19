@@ -153,6 +153,38 @@ function ChannelBadge({ mp }: { mp: string | null }) {
 }
 
 // ---------------------------------------------------------------------------
+// Helper Estimasi / Resolusi Batas Waktu Banding
+// ---------------------------------------------------------------------------
+function resolveDisputeDeadline(row: ReturnRow): string | null {
+  if (row.due_date) return row.due_date;
+
+  if (row.tgl_banding) {
+    const s = row.tgl_banding.trim();
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return s;
+  }
+
+  const ket = (row.keterangan || '').toUpperCase();
+  const st = (row.return_status || '').toUpperCase();
+  const isPending = ket.includes('PROCESSING') || ket.includes('REQUESTED') || st === 'PROCESSING' || st === 'REQUESTED';
+
+  if (isPending && row.tgl_input_mp) {
+    try {
+      const inputDate = new Date(row.tgl_input_mp);
+      if (!isNaN(inputDate.getTime())) {
+        // Standar batas respon sengketa/adu banding Shopee & TikTok adalah 2 hari (48 jam) dari tgl pengajuan
+        const estimated = new Date(inputDate.getTime() + (48 * 3600 * 1000));
+        return estimated.toISOString();
+      }
+    } catch {
+      // noop
+    }
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Komponen Countdown Durasi Batas Waktu Adu Banding
 // ---------------------------------------------------------------------------
 function DisputeCountdown({ dueDateStr, compact = false }: { dueDateStr: string | null | undefined; compact?: boolean }) {
@@ -172,9 +204,9 @@ function DisputeCountdown({ dueDateStr, compact = false }: { dueDateStr: string 
 
   if (diffMs <= 0) {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
         <span>⏱️</span>
-        <span>Batas Waktu Habis</span>
+        <span>Waktu Banding Berakhir</span>
       </span>
     );
   }
@@ -187,11 +219,14 @@ function DisputeCountdown({ dueDateStr, compact = false }: { dueDateStr: string 
   const isUrgent = diffMs < 12 * 3600 * 1000; // < 12 jam
   const isWarning = diffMs < 24 * 3600 * 1000; // < 24 jam
 
-  const pad = (n: number) => String(n).padStart(2, '0');
-
-  const timeString = days > 0
-    ? `${days}h ${pad(hours)}j ${pad(minutes)}m ${pad(seconds)}d`
-    : `${pad(hours)}j ${pad(minutes)}m ${pad(seconds)}d`;
+  let timeString = '';
+  if (days > 0) {
+    timeString = `Kurang ${days} Hari ${hours} Jam`;
+  } else if (hours > 0) {
+    timeString = `Kurang ${hours} Jam ${minutes} Menit`;
+  } else {
+    timeString = `Kurang ${minutes} Menit ${seconds} Detik`;
+  }
 
   const colorClass = isUrgent
     ? 'bg-rose-50 text-rose-700 border-rose-300 animate-pulse'
@@ -201,7 +236,10 @@ function DisputeCountdown({ dueDateStr, compact = false }: { dueDateStr: string 
 
   if (compact) {
     return (
-      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${colorClass}`} title={`Batas Akhir: ${formatDate(dueDateStr)}`}>
+      <span
+        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold border ${colorClass} whitespace-nowrap shadow-xs`}
+        title={`Batas Waktu Banding: ${formatDate(dueDateStr)}`}
+      >
         <span>⏳</span>
         <span>{timeString}</span>
       </span>
@@ -209,9 +247,9 @@ function DisputeCountdown({ dueDateStr, compact = false }: { dueDateStr: string 
   }
 
   return (
-    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold border ${colorClass}`}>
-      <span className="text-[10px]">⏳</span>
-      <span>Sisa Waktu: {timeString}</span>
+    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold border ${colorClass} whitespace-nowrap shadow-xs`}>
+      <span className="text-[11px]">⏳</span>
+      <span>Batas Banding: {timeString}</span>
     </div>
   );
 }
@@ -273,6 +311,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
     keterangan: '',
     barcode: '',
     tgl_banding: '',
+    due_date: '',
     no_pengajuan: '',
     no_pesanan_baru: '',
   });
@@ -294,6 +333,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
       keterangan: row.keterangan ?? '',
       barcode: row.barcode ?? '',
       tgl_banding: row.tgl_banding ?? '',
+      due_date: row.due_date ? String(row.due_date).slice(0, 16) : '',
       no_pengajuan: row.no_pengajuan ?? '',
       no_pesanan_baru: row.no_pesanan_baru ?? '',
     });
@@ -332,6 +372,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
     keterangan: '',
     barcode: '',
     tgl_banding: '',
+    due_date: '',
     no_pengajuan: '',
     no_pesanan_baru: '',
   });
@@ -1072,11 +1113,15 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                           <span className="text-slate-400 text-[11px]">—</span>
                         )}
 
-                        {row.due_date && (
-                          <div className="mt-1">
-                            <DisputeCountdown dueDateStr={row.due_date} compact />
-                          </div>
-                        )}
+                        {(() => {
+                          const deadline = resolveDisputeDeadline(row);
+                          if (!deadline) return null;
+                          return (
+                            <div className="mt-1.5">
+                              <DisputeCountdown dueDateStr={deadline} compact />
+                            </div>
+                          );
+                        })()}
 
                         {row.tgl_banding && (
                           <span className="inline-block mt-1 text-[10px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 truncate max-w-[180px]" title={`Banding: ${row.tgl_banding}`}>
@@ -1340,6 +1385,20 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                       className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
                     />
                   </div>
+                </div>
+
+                {/* Batas Waktu Banding / Deadline */}
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Batas Waktu Banding (Deadline)</label>
+                  <input
+                    type="datetime-local"
+                    value={editForm.data.due_date}
+                    onChange={(e) => editForm.setData('due_date', e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:border-[#0B132B]"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Batas waktu respon dari Shopee/TikTok. Menampilkan hitungan mundur "Kurang X Hari Y Jam" di tabel.
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -2093,6 +2093,22 @@ class ShopeeSyncService
             ];
         }
 
+        // Ambil detail retur untuk mendapatkan due_date dan nominal refund resmi dari Shopee
+        foreach ($allReturns as $returnSn => &$ret) {
+            $st = strtoupper((string) ($ret['status'] ?? ''));
+            if (empty($ret['due_date']) && ! in_array($st, ['CANCELLED', 'CLOSED', 'REFUND_PAID'], true)) {
+                try {
+                    $detail = $this->fetchReturnDetailRaw($account, (string) $returnSn);
+                    if (! empty($detail)) {
+                        $ret = array_merge($ret, $detail);
+                    }
+                } catch (\Throwable $e) {
+                    // Abaikan jika detail individual gagal
+                }
+            }
+        }
+        unset($ret);
+
         $createdCount = 0;
         $updatedCount = 0;
         $ordersLinkedCount = 0;
