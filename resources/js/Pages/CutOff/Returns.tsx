@@ -1596,18 +1596,9 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                         }`}
                       >
                         <div className="min-h-0 space-y-1">
-                          <div className="flex items-center justify-between">
-                            <label className={`block text-[11px] font-bold ${
-                              isDetailFisikEmpty ? 'text-rose-600' : 'text-slate-700'
-                            }`}>
-                              Detail Fisik Tidak Sesuai <span className="text-rose-500">*</span>
-                            </label>
-                            {isDetailFisikEmpty && (
-                              <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                                Wajib diisi admin
-                              </span>
-                            )}
-                          </div>
+                          <label className="block text-[11px] font-bold text-slate-700">
+                            Detail Fisik Tidak Sesuai <span className="text-rose-500">*</span>
+                          </label>
                           <input
                             type="text"
                             value={editForm.data.nama_barang_fisik === 'Tidak Sesuai' ? '' : editForm.data.nama_barang_fisik}
@@ -1615,18 +1606,13 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                               editForm.setData('nama_barang_fisik', e.target.value);
                             }}
                             placeholder="Contoh: kain, sepatu tidak sesuai, salah size, kardus kosong..."
-                            className={`w-full px-3 py-2 rounded-xl text-xs font-medium transition-all focus:outline-none ${
-                              isDetailFisikEmpty
-                                ? 'bg-rose-50/50 border-2 border-rose-400 text-rose-950 focus:border-rose-600 placeholder:text-rose-300'
-                                : 'bg-slate-50 border border-slate-300 text-slate-800 focus:border-slate-800 placeholder:text-slate-400'
-                            }`}
+                            className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-800 focus:outline-none focus:border-[#0B132B] placeholder:text-slate-400 transition-colors"
                             tabIndex={fisikSelection === 'Tidak Sesuai' ? 0 : -1}
                             autoFocus
                           />
                           {isDetailFisikEmpty && (
-                            <p className="text-[10px] text-rose-600 font-semibold mt-1 flex items-center gap-1">
-                              <span>⚠️</span>
-                              <span>Silakan ketikkan alasan atau kondisi fisik barang yang tidak sesuai.</span>
+                            <p className="text-[11px] text-rose-500 font-medium mt-1">
+                              * Wajib diisi alasan/kondisi fisik barang tidak sesuai.
                             </p>
                           )}
                         </div>
