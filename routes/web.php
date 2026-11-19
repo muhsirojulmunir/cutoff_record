@@ -69,7 +69,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/shopee-products/restore', [\App\Http\Controllers\ShopeeProductController::class, 'restoreZeroBatch'])->name('shopee-products.restore');
     Route::post('/shopee-products/update-stock', [\App\Http\Controllers\ShopeeProductController::class, 'updateStock'])->name('shopee-products.update-stock');
     Route::get('/shopee-products/variants', [\App\Http\Controllers\ShopeeProductController::class, 'getProductVariants'])->name('shopee-products.variants');
+    Route::get('/shopee-products/search-variants', [\App\Http\Controllers\ShopeeProductController::class, 'searchVariants'])->name('shopee-products.search-variants');
     Route::post('/shopee-products/map', [\App\Http\Controllers\ShopeeProductController::class, 'mapProduct'])->name('shopee-products.map');
+    Route::post('/shopee-products/bulk-map', [\App\Http\Controllers\ShopeeProductController::class, 'bulkMap'])->name('shopee-products.bulk-map');
     Route::get('/shopee-products/search-master', [\App\Http\Controllers\ShopeeProductController::class, 'searchMasterStock'])->name('shopee-products.search-master');
 
     // Stok Produk TikTok (Katalog SKU & Stok)
@@ -83,7 +85,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/tiktok-products/restore', [\App\Http\Controllers\TiktokProductController::class, 'restoreZeroBatch'])->name('tiktok-products.restore');
     Route::post('/tiktok-products/update-stock', [\App\Http\Controllers\TiktokProductController::class, 'updateStock'])->name('tiktok-products.update-stock');
     Route::get('/tiktok-products/variants', [\App\Http\Controllers\TiktokProductController::class, 'getProductVariants'])->name('tiktok-products.variants');
+    Route::get('/tiktok-products/search-variants', [\App\Http\Controllers\TiktokProductController::class, 'searchVariants'])->name('tiktok-products.search-variants');
     Route::post('/tiktok-products/map', [\App\Http\Controllers\TiktokProductController::class, 'mapProduct'])->name('tiktok-products.map');
+    Route::post('/tiktok-products/bulk-map', [\App\Http\Controllers\TiktokProductController::class, 'bulkMap'])->name('tiktok-products.bulk-map');
     Route::get('/tiktok-products/search-master', [\App\Http\Controllers\TiktokProductController::class, 'searchMasterStock'])->name('tiktok-products.search-master');
 
     // Users Management

@@ -673,9 +673,83 @@ class TiktokProductController extends Controller
             'manual_item_code' => strtoupper(trim($validated['item_code'])),
         ]);
 
+        self::clearAuditCache($product->tiktok_account_id);
+
         return response()->json([
             'status'  => 'success',
             'message' => "SKU berhasil dipetakan ke kode master '{$product->manual_item_code}'.",
+        ]);
+    }
+
+    /**
+     * Pencarian cepat varian produk TikTok untuk modal Ubah Kode Barang Massal.
+     */
+    public function searchVariants(Request $request): JsonResponse
+    {
+        $q = trim((string) $request->input('q', ''));
+        if ($q === '') {
+            return response()->json(['status' => 'success', 'data' => []]);
+        }
+
+        $term = strtoupper($q);
+        $products = TiktokProduct::query()
+            ->where(function ($query) use ($q, $term) {
+                $query->where('sku', 'like', "%{$q}%")
+                    ->orWhere('sku', 'like', "%{$term}%")
+                    ->orWhere('item_name', 'like', "%{$q}%")
+                    ->orWhere('model_name', 'like', "%{$q}%")
+                    ->orWhere('manual_item_code', 'like', "%{$term}%");
+            })
+            ->select('id', 'tiktok_account_id', 'item_id', 'model_id', 'item_name', 'model_name', 'sku', 'manual_item_code', 'stock')
+            ->orderBy('item_name', 'asc')
+            ->orderBy('sku', 'asc')
+            ->limit(100)
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => $products,
+        ]);
+    }
+
+    /**
+     * Update massal kode barang (manual_item_code) pada sekumpulan produk TikTok.
+     */
+    public function bulkMap(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'product_ids'   => 'required|array|min:1',
+            'product_ids.*' => 'required|integer',
+            'item_code'     => 'required|string|max:50',
+        ]);
+
+        $itemCode = strtoupper(trim($validated['item_code']));
+        $productIds = $validated['product_ids'];
+
+        $products = TiktokProduct::whereIn('id', $productIds)->get();
+        if ($products->isEmpty()) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Tidak ada produk valid yang ditemukan untuk diperbarui.',
+            ], 422);
+        }
+
+        TiktokProduct::whereIn('id', $productIds)->update([
+            'manual_item_code' => $itemCode,
+        ]);
+
+        // Bersihkan cache audit untuk semua akun TikTok terkait
+        $accountIds = $products->pluck('tiktok_account_id')->filter()->unique();
+        foreach ($accountIds as $accId) {
+            self::clearAuditCache($accId);
+        }
+
+        $updatedCount = $products->count();
+
+        return response()->json([
+            'status'        => 'success',
+            'updated_count' => $updatedCount,
+            'message'       => "Berhasil memperbarui {$updatedCount} varian ke Kode Barang '{$itemCode}'.",
         ]);
     }
 

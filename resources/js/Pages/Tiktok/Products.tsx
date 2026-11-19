@@ -6,6 +6,7 @@ import AppLayout from '../../Layouts/AppLayout';
 import { PageProps } from '../../Types';
 import DualCalendarRangePicker, { formatDateIndo, formatYMD } from '../../Components/DualCalendarRangePicker';
 import TiktokZeroRestoreModal, { ZeroRestoreSummary } from '../../Components/TiktokZeroRestoreModal';
+import BulkMapItemCodeModal from '../../Components/Shopee/BulkMapItemCodeModal';
 
 interface ProductItem {
   id: number;
@@ -595,6 +596,7 @@ export default function TiktokProductsIndex({
   }
 
   // States untuk fitur Mapping Manual Kode Barang ke Master Stok
+  const [showBulkMapModal, setShowBulkMapModal] = useState(false);
   const [mappingModalItem, setMappingModalItem] = useState<AuditItem | null>(null);
   const [mappingSearchQuery, setMappingSearchQuery] = useState('');
   const [mappingSearchResults, setMappingSearchResults] = useState<any[]>([]);
@@ -1350,6 +1352,19 @@ export default function TiktokProductsIndex({
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
               </svg>
               <span>Export CSV</span>
+            </button>
+
+            {/* Tombol Ubah Kode Barang Massal */}
+            <button
+              type="button"
+              onClick={() => setShowBulkMapModal(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
+              title="Cari dan ubah kode barang varian katalog secara massal"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-slate-600">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+              </svg>
+              <span>Ubah Kode Barang</span>
             </button>
 
             {/* Tarik Stok TikTok (API) */}
@@ -3761,6 +3776,26 @@ export default function TiktokProductsIndex({
         </div>,
         document.body
       )}
+
+      {/* Modal Ubah Kode Barang Varian Massal */}
+      <BulkMapItemCodeModal
+        show={showBulkMapModal}
+        onClose={() => setShowBulkMapModal(false)}
+        platform="tiktok"
+        searchEndpoint="/tiktok-products/search-variants"
+        bulkMapEndpoint="/tiktok-products/bulk-map"
+        searchMasterEndpoint="/tiktok-products/search-master"
+        onSuccess={(count, code) => {
+          setToastNotice({
+            message: `Berhasil memperbarui ${count} varian ke Kode Barang ${code}!`,
+            type: 'success',
+          });
+          if (auditSource === 'MASTER') {
+            runMasterAudit(masterWarehouseFilter);
+          }
+          router.reload({ only: ['products', 'summary', 'workQueue', 'zeroRestoreSummary'] });
+        }}
+      />
 
       {/* Modal Pulihkan Stok TikTok & Riwayat Pemulihan */}
       {isSuperAdmin && (

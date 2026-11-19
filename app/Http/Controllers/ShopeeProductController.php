@@ -1467,6 +1467,80 @@ class ShopeeProductController extends Controller
     }
 
     /**
+     * Pencarian cepat varian produk Shopee untuk modal Ubah Kode Barang Massal.
+     */
+    public function searchVariants(Request $request): JsonResponse
+    {
+        $q = trim((string) $request->input('q', ''));
+        if ($q === '') {
+            return response()->json(['status' => 'success', 'data' => []]);
+        }
+
+        $term = strtoupper($q);
+        $products = ShopeeProduct::query()
+            ->where(function ($query) use ($q, $term) {
+                $query->where('sku', 'like', "%{$q}%")
+                    ->orWhere('sku', 'like', "%{$term}%")
+                    ->orWhere('item_name', 'like', "%{$q}%")
+                    ->orWhere('model_name', 'like', "%{$q}%")
+                    ->orWhere('manual_item_code', 'like', "%{$term}%");
+            })
+            ->select('id', 'shopee_account_id', 'item_id', 'model_id', 'item_name', 'model_name', 'sku', 'manual_item_code', 'stock')
+            ->orderBy('item_name', 'asc')
+            ->orderBy('sku', 'asc')
+            ->limit(100)
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => $products,
+        ]);
+    }
+
+    /**
+     * Update massal kode barang (manual_item_code) pada sekumpulan produk Shopee.
+     */
+    public function bulkMap(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'product_ids'   => 'required|array|min:1',
+            'product_ids.*' => 'required|integer',
+            'item_code'     => 'required|string|max:50',
+        ]);
+
+        $this->syncService->ensureProductSchema();
+
+        $itemCode = strtoupper(trim($validated['item_code']));
+        $productIds = $validated['product_ids'];
+
+        $products = ShopeeProduct::whereIn('id', $productIds)->get();
+        if ($products->isEmpty()) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Tidak ada produk valid yang ditemukan untuk diperbarui.',
+            ], 422);
+        }
+
+        ShopeeProduct::whereIn('id', $productIds)->update([
+            'manual_item_code' => $itemCode,
+        ]);
+
+        // Bersihkan cache audit untuk semua akun Shopee terkait
+        $accountIds = $products->pluck('shopee_account_id')->filter()->unique();
+        foreach ($accountIds as $accId) {
+            self::clearAuditCache($accId);
+        }
+
+        $updatedCount = $products->count();
+
+        return response()->json([
+            'status'        => 'success',
+            'updated_count' => $updatedCount,
+            'message'       => "Berhasil memperbarui {$updatedCount} varian ke Kode Barang '{$itemCode}'.",
+        ]);
+    }
+
+    /**
      * Pencarian Master Stok untuk modal mapping manual.
      */
     public function searchMasterStock(Request $request): JsonResponse
