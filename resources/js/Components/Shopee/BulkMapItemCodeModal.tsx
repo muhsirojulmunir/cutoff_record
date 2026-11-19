@@ -276,12 +276,12 @@ export default function BulkMapItemCodeModal({
                   value={searchQuery}
                   onChange={(e) => handleQueryChange(e.target.value)}
                   placeholder="Ketik kata kunci SKU / nama produk / artikel..."
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 shadow-2xs"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-800 focus:ring-1 focus:ring-slate-800 shadow-2xs"
                   autoFocus
                 />
                 {isSearching && (
                   <div className="absolute right-3 top-2.5 flex items-center gap-1.5 text-xs text-slate-400">
-                    <svg className="animate-spin h-4 w-4 text-violet-600" viewBox="0 0 24 24" fill="none">
+                    <svg className="animate-spin h-4 w-4 text-slate-700" viewBox="0 0 24 24" fill="none">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                     </svg>
@@ -305,7 +305,7 @@ export default function BulkMapItemCodeModal({
                                 selectedIds.size === searchResults.length
                               }
                               onChange={toggleSelectAll}
-                              className="rounded border-slate-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
+                              className="rounded border-slate-300 text-slate-900 focus:ring-slate-900 accent-slate-900 cursor-pointer"
                               title="Pilih / Batal Semua"
                             />
                           </th>
@@ -322,7 +322,7 @@ export default function BulkMapItemCodeModal({
                               key={item.id}
                               onClick={() => toggleItem(item.id)}
                               className={`cursor-pointer transition-colors hover:bg-slate-50/80 ${
-                                isChecked ? 'bg-violet-50/30' : ''
+                                isChecked ? 'bg-slate-100/70' : ''
                               }`}
                             >
                               <td className="py-2 px-3 text-center" onClick={(e) => e.stopPropagation()}>
@@ -330,7 +330,7 @@ export default function BulkMapItemCodeModal({
                                   type="checkbox"
                                   checked={isChecked}
                                   onChange={() => toggleItem(item.id)}
-                                  className="rounded border-slate-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
+                                  className="rounded border-slate-300 text-slate-900 focus:ring-slate-900 accent-slate-900 cursor-pointer"
                                 />
                               </td>
                               <td className="py-2 px-3">
@@ -361,12 +361,12 @@ export default function BulkMapItemCodeModal({
                   </div>
                   <div className="bg-slate-50/80 px-3 py-2 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500">
                     <span>
-                      Terpilih: <strong className="text-violet-700 font-bold">{selectedIds.size}</strong> dari {searchResults.length} varian
+                      Terpilih: <strong className="text-slate-900 font-bold">{selectedIds.size}</strong> dari {searchResults.length} varian
                     </span>
                     <button
                       type="button"
                       onClick={toggleSelectAll}
-                      className="text-violet-600 hover:text-violet-800 font-semibold cursor-pointer"
+                      className="text-slate-700 hover:text-slate-950 font-semibold cursor-pointer underline"
                     >
                       {selectedIds.size === searchResults.length ? 'Batal Pilih Semua' : 'Pilih Semua'}
                     </button>
@@ -399,13 +399,13 @@ export default function BulkMapItemCodeModal({
                   value={targetItemCode}
                   onChange={(e) => handleTargetCodeChange(e.target.value)}
                   placeholder="Masukkan Kode Barang Master (misal: 31231)..."
-                  className="w-full sm:w-80 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 font-mono text-xs font-bold text-slate-900 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 shadow-2xs uppercase"
+                  className="w-full sm:w-80 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 font-mono text-xs font-bold text-slate-900 focus:border-slate-800 focus:ring-1 focus:ring-slate-800 shadow-2xs uppercase"
                 />
 
                 {/* Live Lookup Status */}
                 {isVerifyingMaster ? (
                   <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1.5">
-                    <svg className="animate-spin h-3.5 w-3.5 text-violet-500" viewBox="0 0 24 24" fill="none">
+                    <svg className="animate-spin h-3.5 w-3.5 text-slate-600" viewBox="0 0 24 24" fill="none">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                     </svg>
@@ -444,7 +444,7 @@ export default function BulkMapItemCodeModal({
                   isSearching
                 }
                 onClick={() => setStep('preview')}
-                className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-xs transition-colors cursor-pointer"
+                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed shadow-xs transition-colors cursor-pointer active:scale-98"
               >
                 <span>Lanjut ke Pratinjau ({selectedVariants.length} Varian)</span>
                 <span>→</span>
@@ -456,7 +456,7 @@ export default function BulkMapItemCodeModal({
         {/* STEP 2: PREVIEW DIFF & CONFIRMATION */}
         {step === 'preview' && (
           <div className="space-y-4">
-            <div className="rounded-2xl border border-violet-200 bg-violet-50/40 p-4 space-y-2">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-2">
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="text-sm font-bold text-slate-900">
@@ -468,7 +468,7 @@ export default function BulkMapItemCodeModal({
                 </div>
                 <div className="text-right">
                   <div className="text-xs text-slate-500">Kode Target Baru:</div>
-                  <div className="font-mono font-extrabold text-violet-700 text-sm">
+                  <div className="font-mono font-extrabold text-slate-900 text-sm">
                     {targetItemCode.trim().toUpperCase()}
                   </div>
                 </div>
@@ -515,7 +515,7 @@ export default function BulkMapItemCodeModal({
                             <span className="text-slate-400 italic">Belum Diatur</span>
                           )}
                         </td>
-                        <td className="py-2 px-3 text-center text-violet-600 font-bold">
+                        <td className="py-2 px-3 text-center text-slate-400 font-bold">
                           ➔
                         </td>
                         <td className="py-2 px-3 text-center font-mono text-xs font-bold text-emerald-700 bg-emerald-50/50">
