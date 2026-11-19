@@ -1324,9 +1324,9 @@ export default function ShopeeOrdersPage({
   );
 
   const handlePrintMassWaybillWithOrders = useCallback(
-    (targetOrders: ShopeeOrderRecord[]) => {
+    async (targetOrders: ShopeeOrderRecord[]) => {
       if (targetOrders.length === 0) return;
-      void openWaybillPdfStream(targetOrders, true);
+      return await openWaybillPdfStream(targetOrders, true);
     },
     [openWaybillPdfStream]
   );
