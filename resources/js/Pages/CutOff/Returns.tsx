@@ -151,6 +151,17 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
   const isManagement = auth?.user?.role?.name === 'Management';
   const canManage = !isManagement;
 
+  const handlePageChange = (rawUrl: string | null) => {
+    if (!rawUrl) return;
+    try {
+      const parsed = new URL(rawUrl, window.location.origin);
+      const targetUrl = parsed.pathname + parsed.search;
+      router.get(targetUrl, {}, { preserveScroll: true, preserveState: true });
+    } catch {
+      router.get(rawUrl, {}, { preserveScroll: true, preserveState: true });
+    }
+  };
+
   const [search, setSearch] = useState(filters.search ?? '');
   const [selectedMp, setSelectedMp] = useState(filters.marketplace ?? 'all');
   const [dateFrom, setDateFrom] = useState(filters.date_from ?? '');
@@ -941,7 +952,7 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
             </span>
 
             <div className="flex items-center gap-1">
-              {returns.links.map((link, idx) => {
+              {(returns?.links || []).map((link, idx) => {
                 if (!link.url) {
                   return (
                     <span
@@ -955,7 +966,8 @@ export default function Returns({ returns, filters, summary, marketplaces, flash
                 return (
                   <button
                     key={idx}
-                    onClick={() => router.get(link.url!, {}, { preserveState: true })}
+                    type="button"
+                    onClick={() => handlePageChange(link.url)}
                     className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
                       link.active
                         ? 'bg-[#0B132B] text-white border border-[#0B132B]'

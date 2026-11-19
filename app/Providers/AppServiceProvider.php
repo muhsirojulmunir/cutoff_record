@@ -24,6 +24,10 @@ class AppServiceProvider extends ServiceProvider
         date_default_timezone_set('Asia/Jakarta');
         \Illuminate\Support\Facades\Schema::defaultStringLength(191);
 
+        if (app()->environment('production') || str_starts_with((string) config('app.url'), 'https://') || request()->header('X-Forwarded-Proto') === 'https') {
+            \Illuminate\Support\Facades\URL::forceScheme('https');
+        }
+
         // Dynamically register a Gate for every permission stored in the database.
         // Super Admin bypasses all checks via Gate::before.
         Gate::before(function ($user) {

@@ -288,13 +288,24 @@ function formatBreakdownCurrency(amount: number): string {
   }).format(rounded);
 }
 
-export default function CutOffIndex({ orders, filters, summary, channels, couriers = [] }: Props) {
+export default function CutOffIndex({ orders, filters, summary, channels = [], couriers = [] }: Props) {
   const { auth } = usePage<any>().props;
   const isManagement = auth?.user?.role?.name === 'Management';
   const canManage = !isManagement;
   const isSuperAdmin = auth?.user?.role?.name === 'Super Admin' || auth?.user?.roles?.includes('Super Admin');
   const [isTruncating, setIsTruncating] = useState(false);
   const [isSyncingShopee, setIsSyncingShopee] = useState(false);
+
+  const handlePageChange = (rawUrl: string | null) => {
+    if (!rawUrl) return;
+    try {
+      const parsed = new URL(rawUrl, window.location.origin);
+      const targetUrl = parsed.pathname + parsed.search;
+      router.get(targetUrl, {}, { preserveScroll: true, preserveState: true });
+    } catch {
+      router.get(rawUrl, {}, { preserveScroll: true, preserveState: true });
+    }
+  };
   const [hoveredBreakdown, setHoveredBreakdown] = useState<{
     order: CutOffOrder;
     breakdown: CutOffOrderFinancialBreakdown;
@@ -1335,9 +1346,9 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              Semua Toko ({summary.total_orders.toLocaleString('id-ID')})
+              Semua Toko ({(summary?.total_orders ?? 0).toLocaleString('id-ID')})
             </button>
-            {channels.map((ch) => (
+            {(channels || []).map((ch) => (
               <button
                 key={ch.name}
                 onClick={() => {
@@ -1674,7 +1685,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
 
                         {/* Kolom Barang (Variasi, SKU, QTY) */}
                         <td className="py-2.5 px-3 min-w-[175px] max-w-[260px]">
-                          {order.financial_breakdown?.items && order.financial_breakdown.items.length > 1 ? (
+                          {Array.isArray(order.financial_breakdown?.items) && order.financial_breakdown.items.length > 1 ? (
                             <div className="space-y-1.5">
                               {order.financial_breakdown.items.map((item, itemIdx) => (
                                 <div
@@ -1864,9 +1875,9 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
                               </svg>
                             </div>
-                            {order.financial_breakdown && order.financial_breakdown.seller_voucher > 0 && (
+                            {Boolean(order.financial_breakdown && Number(order.financial_breakdown.seller_voucher) > 0) && (
                               <span className="text-[10px] font-medium text-rose-600 mt-0.5 tabular-nums">
-                                Voucher -{formatBreakdownCurrency(order.financial_breakdown.seller_voucher)}
+                                Voucher -{formatBreakdownCurrency(Number(order.financial_breakdown?.seller_voucher || 0))}
                               </span>
                             )}
                           </div>
@@ -1914,7 +1925,7 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
             </span>
 
             <div className="flex items-center gap-1">
-              {orders.links.map((link, idx) => {
+              {(orders?.links || []).map((link, idx) => {
                 if (!link.url) {
                   return (
                     <span
@@ -1928,8 +1939,9 @@ export default function CutOffIndex({ orders, filters, summary, channels, courie
                 return (
                   <button
                     key={idx}
-                    onClick={() => router.get(link.url!, {}, { preserveState: true })}
-                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                    type="button"
+                    onClick={() => handlePageChange(link.url)}
+                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
                       link.active
                         ? 'bg-[#0B132B] text-white border border-[#0B132B]'
                         : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
