@@ -374,9 +374,20 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
     });
   }
 
+  const isDetailFisikEmpty =
+    fisikSelection === 'Tidak Sesuai' &&
+    (!editForm.data.nama_barang_fisik ||
+      editForm.data.nama_barang_fisik === 'Tidak Sesuai' ||
+      editForm.data.nama_barang_fisik.trim() === '');
+
   function handleSaveEdit(e: React.FormEvent) {
     e.preventDefault();
     if (!editingRow) return;
+
+    if (isDetailFisikEmpty) {
+      alert('Kolom Detail Fisik Tidak Sesuai wajib diisi alasan (misal: kain, sepatu tidak sesuai, dsb).');
+      return;
+    }
 
     editForm.put(`/cut-off-returns/${editingRow.id}`, {
       preserveScroll: true,
@@ -654,6 +665,15 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <span>{flash.success}</span>
+          </div>
+        )}
+
+        {flash?.error && (
+          <div className="flex items-center gap-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl px-5 py-4 text-xs font-semibold shadow-xs">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-rose-600 shrink-0">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            </svg>
+            <span>{flash.error}</span>
           </div>
         )}
 
@@ -1553,8 +1573,8 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                           if (val === 'Sesuai') {
                             editForm.setData('nama_barang_fisik', 'Sesuai');
                           } else if (val === 'Tidak Sesuai') {
-                            if (editForm.data.nama_barang_fisik === 'Sesuai' || !editForm.data.nama_barang_fisik) {
-                              editForm.setData('nama_barang_fisik', 'Tidak Sesuai');
+                            if (editForm.data.nama_barang_fisik === 'Sesuai' || editForm.data.nama_barang_fisik === 'Tidak Sesuai') {
+                              editForm.setData('nama_barang_fisik', '');
                             }
                           } else {
                             editForm.setData('nama_barang_fisik', '');
@@ -1571,25 +1591,44 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                       <div
                         className={`grid transition-all duration-300 ease-out overflow-hidden ${
                           fisikSelection === 'Tidak Sesuai'
-                            ? 'grid-rows-[1fr] opacity-100 mt-2'
+                            ? 'grid-rows-[1fr] opacity-100 mt-2.5'
                             : 'grid-rows-[0fr] opacity-0 mt-0 pointer-events-none'
                         }`}
                       >
                         <div className="min-h-0 space-y-1">
-                          <label className="block text-[11px] font-semibold text-slate-600">
-                            Detail Fisik Tidak Sesuai:
-                          </label>
+                          <div className="flex items-center justify-between">
+                            <label className={`block text-[11px] font-bold ${
+                              isDetailFisikEmpty ? 'text-rose-600' : 'text-slate-700'
+                            }`}>
+                              Detail Fisik Tidak Sesuai <span className="text-rose-500">*</span>
+                            </label>
+                            {isDetailFisikEmpty && (
+                              <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                                Wajib diisi admin
+                              </span>
+                            )}
+                          </div>
                           <input
                             type="text"
                             value={editForm.data.nama_barang_fisik === 'Tidak Sesuai' ? '' : editForm.data.nama_barang_fisik}
                             onChange={(e) => {
-                              const val = e.target.value;
-                              editForm.setData('nama_barang_fisik', val.trim() ? val : 'Tidak Sesuai');
+                              editForm.setData('nama_barang_fisik', e.target.value);
                             }}
                             placeholder="Contoh: kain, sepatu tidak sesuai, salah size, kardus kosong..."
-                            className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 text-xs text-slate-800 focus:outline-none focus:border-slate-800 font-medium placeholder:text-slate-400 transition-colors"
+                            className={`w-full px-3 py-2 rounded-xl text-xs font-medium transition-all focus:outline-none ${
+                              isDetailFisikEmpty
+                                ? 'bg-rose-50/50 border-2 border-rose-400 text-rose-950 focus:border-rose-600 placeholder:text-rose-300'
+                                : 'bg-slate-50 border border-slate-300 text-slate-800 focus:border-slate-800 placeholder:text-slate-400'
+                            }`}
                             tabIndex={fisikSelection === 'Tidak Sesuai' ? 0 : -1}
+                            autoFocus
                           />
+                          {isDetailFisikEmpty && (
+                            <p className="text-[10px] text-rose-600 font-semibold mt-1 flex items-center gap-1">
+                              <span>⚠️</span>
+                              <span>Silakan ketikkan alasan atau kondisi fisik barang yang tidak sesuai.</span>
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>

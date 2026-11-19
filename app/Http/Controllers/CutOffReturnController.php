@@ -288,31 +288,55 @@ class CutOffReturnController extends Controller
             abort(403, 'Akses ditolak. Akun Management hanya memiliki izin melihat data (read-only).');
         }
 
-        $validated = $request->validate([
-            'marketplace'      => ['nullable', 'string', 'max:50'],
-            'tgl_input_mp'     => ['nullable', 'date'],
-            'nama_barang_mp'   => ['nullable', 'string', 'max:255'],
-            'jml_produk_mp'    => ['nullable', 'integer'],
-            'no_invoice_mp'    => ['nullable', 'string', 'max:100'],
-            'no_invoice_baru'  => ['nullable', 'string', 'max:100'],
-            'no_retur'         => ['nullable', 'string', 'max:100'],
-            'no_rj'            => ['nullable', 'string', 'max:100'],
-            'tgl_rj'           => ['nullable', 'date'],
-            'tgl_terima_brg'   => ['nullable', 'date'],
-            'nama_barang_fisik'=> ['nullable', 'string', 'max:255'],
-            'jml_brg_fisik'    => ['nullable', 'integer'],
-            'keterangan'       => ['nullable', 'string'],
-            'barcode'          => ['nullable', 'string', 'max:100'],
-            'tgl_banding'      => ['nullable', 'string', 'max:100'],
-            'due_date'         => ['nullable', 'date'],
-            'no_pengajuan'     => ['nullable', 'string', 'max:100'],
-            'no_pesanan_baru'  => ['nullable', 'string', 'max:100'],
-        ]);
+        try {
+            $validated = $request->validate([
+                'marketplace'       => ['nullable', 'string', 'max:50'],
+                'tgl_input_mp'      => ['nullable', 'date'],
+                'nama_barang_mp'    => ['nullable', 'string', 'max:255'],
+                'jml_produk_mp'     => ['nullable', 'integer'],
+                'no_invoice_mp'     => ['nullable', 'string', 'max:100'],
+                'no_invoice_baru'   => ['nullable', 'string', 'max:100'],
+                'no_retur'          => ['nullable', 'string', 'max:100'],
+                'no_rj'             => ['nullable', 'string', 'max:100'],
+                'tgl_rj'            => ['nullable', 'date'],
+                'tgl_terima_brg'    => ['nullable', 'date'],
+                'nama_barang_fisik' => ['nullable', 'string', 'max:255'],
+                'jml_brg_fisik'     => ['nullable', 'integer'],
+                'keterangan'        => ['nullable', 'string'],
+                'barcode'           => ['nullable', 'string', 'max:100'],
+                'tgl_banding'       => ['nullable', 'string', 'max:100'],
+                'due_date'          => ['nullable'],
+                'no_pengajuan'      => ['nullable', 'string', 'max:100'],
+                'no_pesanan_baru'   => ['nullable', 'string', 'max:100'],
+            ]);
 
-        $cutOffReturn->update($validated);
+            // Normalisasi nilai string kosong menjadi null agar aman untuk kolom date/integer
+            foreach (['tgl_input_mp', 'tgl_rj', 'tgl_terima_brg', 'due_date', 'jml_brg_fisik', 'jml_produk_mp'] as $field) {
+                if (array_key_exists($field, $validated)) {
+                    if ($validated[$field] === '' || $validated[$field] === null) {
+                        $validated[$field] = null;
+                    } elseif ($field === 'due_date' && is_string($validated[$field])) {
+                        try {
+                            $validated[$field] = \Carbon\Carbon::parse($validated[$field]);
+                        } catch (\Throwable) {
+                            $validated[$field] = null;
+                        }
+                    }
+                }
+            }
 
-        $label = $cutOffReturn->no_retur ?: $cutOffReturn->id;
-        return back()->with('success', "Data retur #{$label} berhasil diperbarui.");
+            $cutOffReturn->update($validated);
+
+            $label = $cutOffReturn->no_retur ?: $cutOffReturn->id;
+            return back()->with('success', "Data retur #{$label} berhasil diperbarui.");
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error("Gagal update retur #{$cutOffReturn->id}: " . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return back()->with('error', "Gagal menyimpan perubahan: " . $e->getMessage());
+        }
     }
 
     /**
