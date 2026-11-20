@@ -1,5 +1,5 @@
 import { useForm } from '@inertiajs/react';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 
 const FEATURES = [
   'Autentikasi Aman & Role-Based Access Control',
@@ -8,7 +8,12 @@ const FEATURES = [
   'Fondasi Bersih Siap Dikembangkan',
 ];
 
+const REMEMBER_USERNAME_KEY = 'cutoff_saved_username';
+
 export default function Login() {
+  const usernameInputRef = useRef<HTMLInputElement>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
+
   const { data, setData, post, processing, errors } = useForm({
     username: '',
     password: '',
@@ -18,8 +23,38 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [leaving, setLeaving] = useState(false);
 
+  useEffect(() => {
+    try {
+      const savedUser = localStorage.getItem(REMEMBER_USERNAME_KEY);
+      if (savedUser) {
+        setData((prev) => ({
+          ...prev,
+          username: savedUser,
+          remember: true,
+        }));
+        setTimeout(() => {
+          passwordInputRef.current?.focus();
+        }, 100);
+      } else {
+        usernameInputRef.current?.focus();
+      }
+    } catch {
+      usernameInputRef.current?.focus();
+    }
+  }, []);
+
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    if (data.remember && data.username.trim()) {
+      try {
+        localStorage.setItem(REMEMBER_USERNAME_KEY, data.username.trim());
+      } catch {}
+    } else {
+      try {
+        localStorage.removeItem(REMEMBER_USERNAME_KEY);
+      } catch {}
+    }
 
     post('/login', {
       onSuccess: () => {
@@ -89,10 +124,10 @@ export default function Login() {
                 Username
               </label>
               <input
+                ref={usernameInputRef}
                 id="username"
                 type="text"
                 autoComplete="username"
-                autoFocus
                 value={data.username}
                 onChange={(e) => setData('username', e.target.value)}
                 className={`w-full px-4 py-3 rounded-xl bg-slate-50 border text-slate-900 text-sm placeholder-slate-400
@@ -111,6 +146,7 @@ export default function Login() {
               </label>
               <div className="relative">
                 <input
+                  ref={passwordInputRef}
                   id="password"
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
@@ -155,7 +191,7 @@ export default function Login() {
                 disabled={processing}
               />
               <label htmlFor="remember" className="text-sm text-slate-600 cursor-pointer select-none">
-                Ingat sesi saya
+                Ingat username saya
               </label>
             </div>
 
