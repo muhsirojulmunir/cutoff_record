@@ -2020,7 +2020,7 @@ export default function TiktokOrdersPage({
                   viewBox="0 0 24 24"
                   strokeWidth={1.8}
                   stroke="currentColor"
-                  className="h-4 w-4 text-violet-600"
+                  className="h-4 w-4 text-blue-600"
                 >
                   <path
                     strokeLinecap="round"

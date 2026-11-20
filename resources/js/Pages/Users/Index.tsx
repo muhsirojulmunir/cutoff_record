@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import Pagination from '../../Components/Pagination';
@@ -35,12 +35,12 @@ interface UserIndexProps {
 }
 
 const roleBadgeColor: Record<string, string> = {
-  'Super Admin': 'bg-violet-50 border-violet-200 text-violet-700',
-  'Admin':       'bg-blue-50 border-blue-200 text-blue-700',
+  'Super Admin': 'bg-blue-50 border-blue-200 text-[#0B132B]',
+  'Admin':       'bg-sky-50 border-sky-200 text-sky-800',
   'Gudang':      'bg-amber-50 border-amber-200 text-amber-700',
   'PIC':         'bg-emerald-50 border-emerald-200 text-emerald-700',
-  'Direktur':    'bg-rose-50 border-rose-200 text-rose-700',
-  'PIC Gudang':  'bg-indigo-50 border-indigo-200 text-indigo-700',
+  'Direktur':    'bg-slate-100 border-slate-300 text-slate-800',
+  'PIC Gudang':  'bg-cyan-50 border-cyan-200 text-cyan-800',
 };
 
 export default function Index({ users, roles, filters }: UserIndexProps) {

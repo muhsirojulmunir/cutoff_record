@@ -1575,7 +1575,7 @@ export default function ShopeeProductsIndex({
                 ) : 'Semua Waktu'}
               </span>
               {summary?.total_period_sales !== undefined && summary.total_period_sales > 0 && (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-[#0B132B] border border-blue-200">
                   {summary.total_period_sales.toLocaleString('id-ID')} unit terjual
                 </span>
               )}
@@ -1934,7 +1934,7 @@ export default function ShopeeProductsIndex({
                             </span>
                             <span
                               className={`text-[10px] font-medium mt-0.5 ${
-                                (p.sales ?? 0) > 0 ? 'text-violet-600 font-semibold' : 'text-slate-400'
+                                (p.sales ?? 0) > 0 ? 'text-blue-700 font-semibold' : 'text-slate-400'
                               }`}
                               title={`Total Penjualan: ${(p.sales ?? 0).toLocaleString('id-ID')} unit terjual`}
                             >

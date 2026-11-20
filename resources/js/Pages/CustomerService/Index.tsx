@@ -1638,7 +1638,7 @@ export default function CustomerServiceIndex({
                 href={previewImage.src}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-medium text-violet-600 hover:text-violet-700 underline"
+                className="font-medium text-blue-600 hover:text-blue-700 underline"
               >
                 Buka Gambar Asli ↗
               </a>

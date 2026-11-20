@@ -31,12 +31,12 @@ interface RoleIndexProps {
 }
 
 const roleBadgeColor: Record<string, string> = {
-  'Super Admin': 'from-violet-600 to-indigo-600',
-  'Admin':       'from-blue-600 to-cyan-600',
+  'Super Admin': 'from-[#0B132B] to-[#1E3A8A]',
+  'Admin':       'from-blue-600 to-sky-600',
   'Gudang':      'from-amber-600 to-orange-600',
   'PIC':         'from-emerald-600 to-teal-600',
-  'Direktur':    'from-rose-600 to-pink-600',
-  'PIC Gudang':  'from-indigo-600 to-purple-600',
+  'Direktur':    'from-slate-700 to-slate-900',
+  'PIC Gudang':  'from-cyan-700 to-blue-800',
 };
 
 const moduleIcons: Record<string, string> = {
@@ -170,7 +170,7 @@ export default function Index({ roles, modules }: RoleIndexProps) {
                     onClick={() => setSelectedRoleId(role.id)}
                     className={`w-full text-left p-4 rounded-2xl border transition-all ${
                       isSelected
-                        ? 'bg-violet-50/70 border-violet-400/80 shadow-sm ring-1 ring-violet-400/50'
+                        ? 'bg-blue-50/80 border-[#0B132B]/30 shadow-sm ring-1 ring-[#0B132B]/20'
                         : 'bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50/70'
                     }`}
                   >
@@ -180,11 +180,11 @@ export default function Index({ roles, modules }: RoleIndexProps) {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <span className={`font-semibold text-sm truncate ${isSelected ? 'text-violet-700' : 'text-gray-800'}`}>
+                          <span className={`font-semibold text-sm truncate ${isSelected ? 'text-[#0B132B]' : 'text-gray-800'}`}>
                             {role.name}
                           </span>
                           {role.name === 'Super Admin' && (
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-violet-100 text-violet-700">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#0B132B] text-white">
                               Root Admin
                             </span>
                           )}
@@ -254,15 +254,15 @@ export default function Index({ roles, modules }: RoleIndexProps) {
 
                 {/* Banner Khusus Super Admin */}
                 {isSuperAdminRole ? (
-                  <div className="p-5 bg-violet-50/60 border-b border-violet-100 flex items-start gap-3">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-violet-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <div className="p-5 bg-slate-50 border-b border-slate-200 flex items-start gap-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-blue-700 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                     </svg>
                     <div>
-                      <p className="text-sm font-semibold text-violet-900">
+                      <p className="text-sm font-semibold text-slate-900">
                         Akses Penuh Tanpa Batas (Super Administrator)
                       </p>
-                      <p className="text-xs text-violet-700/90 mt-0.5">
+                      <p className="text-xs text-slate-600 mt-0.5">
                         Role Super Admin memiliki akses root ke seluruh menu sistem tanpa batasan dan tidak dapat dikurangi demi keamanan operasional.
                       </p>
                     </div>
@@ -293,7 +293,7 @@ export default function Index({ roles, modules }: RoleIndexProps) {
                       onClick={handleSave}
                       className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm ${
                         hasChanges
-                          ? 'bg-violet-600 hover:bg-violet-700 text-white cursor-pointer ring-2 ring-violet-500/20 shadow-violet-200'
+                          ? 'bg-[#0B132B] hover:bg-[#15234E] text-white cursor-pointer ring-2 ring-blue-900/20 shadow-blue-950/20 active:scale-95'
                           : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                       }`}
                     >
@@ -372,7 +372,7 @@ export default function Index({ roles, modules }: RoleIndexProps) {
                                 key={perm.id}
                                 className={`flex items-start gap-3 p-3 rounded-xl border transition-all select-none ${
                                   isChecked
-                                    ? 'bg-violet-50/50 border-violet-200 text-gray-900'
+                                    ? 'bg-blue-50/70 border-[#0B132B]/30 text-gray-900'
                                     : 'bg-gray-50/50 border-gray-200 text-gray-500 hover:bg-gray-50'
                                 } ${isSuperAdminRole ? 'cursor-default' : 'cursor-pointer'}`}
                               >
@@ -381,7 +381,7 @@ export default function Index({ roles, modules }: RoleIndexProps) {
                                   disabled={isSuperAdminRole}
                                   checked={isChecked}
                                   onChange={() => togglePermission(perm.id)}
-                                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500 disabled:opacity-60"
+                                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#0B132B] focus:ring-[#0B132B] disabled:opacity-60"
                                 />
                                 <div className="flex-1 min-w-0">
                                   <p className={`text-xs font-semibold ${isChecked ? 'text-gray-900' : 'text-gray-600'}`}>
@@ -412,7 +412,7 @@ export default function Index({ roles, modules }: RoleIndexProps) {
                       onClick={handleSave}
                       className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
                         hasChanges
-                          ? 'bg-violet-600 hover:bg-violet-700 text-white cursor-pointer ring-2 ring-violet-500/20'
+                          ? 'bg-[#0B132B] hover:bg-[#15234E] text-white cursor-pointer ring-2 ring-blue-900/20 active:scale-95'
                           : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                       }`}
                     >
