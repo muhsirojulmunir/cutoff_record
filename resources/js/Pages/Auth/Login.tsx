@@ -2,10 +2,10 @@ import { useForm } from '@inertiajs/react';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 
 const FEATURES = [
-  'Autentikasi Aman & Role-Based Access Control',
-  'Manajemen Pengguna & Hak Akses Fleksibel',
-  'Arsitektur Cepat berbasis Laravel & Inertia React',
-  'Fondasi Bersih Siap Dikembangkan',
+  'Sinkronisasi Pesanan Marketplace (Shopee & TikTok)',
+  'Pengaturan Pengiriman & Cetak Resi Massal',
+  'Pengecekan Retur & Pemrosesan Paket Gudang',
+  'Pemantauan Omzet & Volume Harian Real-Time',
 ];
 
 const REMEMBER_USERNAME_KEY = 'cutoff_saved_username';
@@ -78,13 +78,13 @@ export default function Login() {
         <div className="relative z-10 space-y-9">
           <div className="space-y-4">
             <h1 className="text-4xl xl:text-[2.65rem] font-black text-white leading-[1.2] tracking-tight anim-fade-up anim-d1">
-              Platform Sistem<br />
+              Sistem Operasional<br />
               <span className="bg-gradient-to-r from-blue-200 via-sky-200 to-white bg-clip-text text-transparent">
-                Cepat & Terstruktur
+                Pesanan & Cut Off
               </span>
             </h1>
             <p className="text-slate-300 text-sm max-w-sm leading-relaxed anim-fade-up anim-d2">
-              Sistem kerja terintegrasi dengan performa tinggi, keamanan peran berjenjang, dan antarmuka modern bernuansa navy.
+              Pusat kendali operasional gudang, pemrosesan pesanan marketplace, dan pengelolaan pengiriman paket.
             </p>
           </div>
 
@@ -103,18 +103,18 @@ export default function Login() {
         </div>
 
         <p className="text-slate-400 text-xs absolute bottom-10 left-12 xl:left-14 z-10 anim-fade-in anim-d6">
-          Sistem internal terproteksi &bull; Hak Cipta dilindungi.
+          Portal Internal &bull; Record Shoes
         </p>
       </div>
 
-      {/* Panel kanan — Form Putih Bersih dengan Aksen Biru Navy */}
+      {/* Panel kanan — Form Putih Bersih */}
       <div className="flex-1 flex items-center justify-center p-6 sm:p-10 bg-white">
         <div className="w-full max-w-[400px]">
 
           {/* Heading */}
           <div className="mb-8 anim-fade-up anim-d1">
-            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Selamat Datang</h2>
-            <p className="text-slate-500 text-sm mt-1">Masuk dengan kredensial akun Anda.</p>
+            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Masuk ke Sistem</h2>
+            <p className="text-slate-500 text-sm mt-1">Silakan masukkan username dan password Anda.</p>
           </div>
 
           <form onSubmit={submit} className="space-y-5">
@@ -236,8 +236,8 @@ export default function Login() {
           </div>
 
           <div className="text-center space-y-1">
-            <p className="text-white font-semibold tracking-tight text-base">Menyiapkan Ruang Kerja Anda</p>
-            <p className="text-blue-200/70 text-xs">Memuat data akun & sesi...</p>
+            <p className="text-white font-semibold tracking-tight text-base">Memuat Sistem Operasional</p>
+            <p className="text-blue-200/70 text-xs">Menyiapkan data dan hak akses akun Anda...</p>
           </div>
 
           <div className="h-1 w-48 rounded-full bg-slate-800 overflow-hidden">
