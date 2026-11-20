@@ -118,6 +118,12 @@ Route::middleware('auth')->group(function () {
     Route::post('/customer-service/{id}/toggle-unread', [\App\Http\Controllers\CustomerServiceController::class, 'toggleUnread'])->name('customer-service.toggle-unread');
     Route::post('/customer-service/{id}/notes', [\App\Http\Controllers\CustomerServiceController::class, 'saveNotes'])->name('customer-service.notes');
 
+    // Naikkan Produk Shopee (Eksklusif Admin & Super Admin)
+    Route::get('/shopee/boost-products', [\App\Http\Controllers\ShopeeBoostController::class, 'index'])->name('shopee.boost-products.index');
+    Route::get('/shopee/boost-products/status', [\App\Http\Controllers\ShopeeBoostController::class, 'status'])->name('shopee.boost-products.status');
+    Route::post('/shopee/boost-products/boost', [\App\Http\Controllers\ShopeeBoostController::class, 'boost'])->name('shopee.boost-products.boost');
+    Route::get('/shopee/boost-products/search-products', [\App\Http\Controllers\ShopeeBoostController::class, 'searchProducts'])->name('shopee.boost-products.search-products');
+
     // Export Logs & Download Riwayat
     Route::get('/export-logs', [\App\Http\Controllers\ExportLogController::class, 'index'])->name('export-logs.index');
     Route::post('/export-logs', [\App\Http\Controllers\ExportLogController::class, 'store'])->name('export-logs.store');

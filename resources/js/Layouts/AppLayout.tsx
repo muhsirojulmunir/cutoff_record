@@ -19,6 +19,7 @@ interface NavItem {
   icon: string;
   matchPrefix?: boolean;
   superAdminOnly?: boolean;
+  adminOrSuperAdminOnly?: boolean;
   children?: NavItem[];
 }
 
@@ -43,6 +44,13 @@ const navSections: NavSection[] = [
         permission: 'cs.view',
         matchPrefix: true,
         icon: 'M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a.75.75 0 01-.974-.965 4.966 4.966 0 00.73-1.879C3.642 16.586 3 14.412 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z',
+      },
+      {
+        label: 'Naikkan Produk',
+        href: '/shopee/boost-products',
+        adminOrSuperAdminOnly: true,
+        matchPrefix: true,
+        icon: 'M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z',
       },
       {
         key: 'pesanan',
@@ -146,6 +154,7 @@ const navSections: NavSection[] = [
 interface Props {
   children: ReactNode;
   headerRight?: ReactNode;
+  title?: string;
 }
 
 function isNavActive(currentPath: string, item: NavItem): boolean {
@@ -261,6 +270,11 @@ export default function AppLayout({ children, headerRight }: Props) {
   function canSee(item: NavItem): boolean {
     if (isSuperAdmin) return true;
     if (item.superAdminOnly && !isSuperAdmin) return false;
+    if (item.adminOrSuperAdminOnly) {
+      const userRole = (auth?.user?.role?.name || (Array.isArray(auth?.user?.roles) ? auth?.user?.roles[0] : '')) ?? '';
+      const isAdmin = userRole === 'Admin' || (Array.isArray(auth?.user?.roles) && auth?.user?.roles?.includes('Admin'));
+      if (!isAdmin) return false;
+    }
     if (!item.permission) return true;
     return permissions.includes(item.permission);
   }
