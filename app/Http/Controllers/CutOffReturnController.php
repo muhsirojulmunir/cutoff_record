@@ -181,8 +181,8 @@ class CutOffReturnController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
-        if ($request->user() && $request->user()->role?->name === 'Management') {
-            abort(403, 'Akses ditolak. Akun Management hanya memiliki izin melihat data (read-only).');
+        if ($request->user() && in_array($request->user()->role?->name, ['Management', 'Direktur'])) {
+            abort(403, 'Akses ditolak. Akun Direktur / Management hanya memiliki izin melihat data (read-only).');
         }
 
         $validated = $request->validate([
@@ -222,8 +222,8 @@ class CutOffReturnController extends Controller
      */
     public function importBatch(Request $request): RedirectResponse
     {
-        if ($request->user() && $request->user()->role?->name === 'Management') {
-            abort(403, 'Akses ditolak. Akun Management hanya memiliki izin melihat data (read-only).');
+        if ($request->user() && in_array($request->user()->role?->name, ['Management', 'Direktur'])) {
+            abort(403, 'Akses ditolak. Akun Direktur / Management hanya memiliki izin melihat data (read-only).');
         }
 
         $request->validate([
@@ -284,8 +284,8 @@ class CutOffReturnController extends Controller
      */
     public function update(Request $request, CutOffReturn $cutOffReturn): RedirectResponse
     {
-        if ($request->user() && $request->user()->role?->name === 'Management') {
-            abort(403, 'Akses ditolak. Akun Management hanya memiliki izin melihat data (read-only).');
+        if ($request->user() && in_array($request->user()->role?->name, ['Management', 'Direktur'])) {
+            abort(403, 'Akses ditolak. Akun Direktur / Management hanya memiliki izin melihat data (read-only).');
         }
 
         try {
@@ -344,8 +344,8 @@ class CutOffReturnController extends Controller
      */
     public function destroy(Request $request, CutOffReturn $cutOffReturn): RedirectResponse
     {
-        if ($request->user() && $request->user()->role?->name === 'Management') {
-            abort(403, 'Akses ditolak. Akun Management hanya memiliki izin melihat data (read-only).');
+        if ($request->user() && in_array($request->user()->role?->name, ['Management', 'Direktur'])) {
+            abort(403, 'Akses ditolak. Akun Direktur / Management hanya memiliki izin melihat data (read-only).');
         }
 
         $cutOffReturn->delete();

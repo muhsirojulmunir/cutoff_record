@@ -23,11 +23,12 @@ interface RoleIndexProps {
 }
 
 const roleBadgeColor: Record<string, string> = {
-  'Super Admin': 'from-teal-600 to-cyan-600',
+  'Super Admin': 'from-violet-600 to-indigo-600',
   'Admin':       'from-blue-600 to-cyan-600',
-  'Leader':      'from-emerald-600 to-teal-600',
-  'Finance':     'from-orange-600 to-orange-600',
-  'Management':  'from-pink-600 to-rose-600',
+  'Gudang':      'from-amber-600 to-orange-600',
+  'PIC':         'from-emerald-600 to-teal-600',
+  'Direktur':    'from-rose-600 to-pink-600',
+  'PIC Gudang':  'from-indigo-600 to-purple-600',
 };
 
 

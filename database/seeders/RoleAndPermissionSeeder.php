@@ -39,7 +39,7 @@ class RoleAndPermissionSeeder extends Seeder
         $allPermissions = Permission::all();
 
         // --------------------
-        // ROLES
+        // ROLES (6 Role Standar)
         // --------------------
         $superAdmin = Role::firstOrCreate(
             ['name' => 'Super Admin'],
@@ -47,11 +47,23 @@ class RoleAndPermissionSeeder extends Seeder
         );
         $admin = Role::firstOrCreate(
             ['name' => 'Admin'],
-            ['description' => 'Akses operasional dan manajemen pengguna dasar']
+            ['description' => 'Akses operasional dan administrasi sistem']
         );
-        $user = Role::firstOrCreate(
-            ['name' => 'User'],
-            ['description' => 'Pengguna umum dengan akses standar']
+        $gudang = Role::firstOrCreate(
+            ['name' => 'Gudang'],
+            ['description' => 'Akses operasional gudang, inventori, dan stok']
+        );
+        $pic = Role::firstOrCreate(
+            ['name' => 'PIC'],
+            ['description' => 'Akses penanggung jawab operasional']
+        );
+        $direktur = Role::firstOrCreate(
+            ['name' => 'Direktur'],
+            ['description' => 'Akses eksekutif dan pemantauan level direksi']
+        );
+        $picGudang = Role::firstOrCreate(
+            ['name' => 'PIC Gudang'],
+            ['description' => 'Akses penanggung jawab operasional dan verifikasi gudang']
         );
 
         // Assign Permissions to Roles
@@ -63,11 +75,19 @@ class RoleAndPermissionSeeder extends Seeder
                 'role.view',
             ])->pluck('id')
         );
-        $user->permissions()->sync(
-            $allPermissions->whereIn('name', [
-                'dashboard.view',
-            ])->pluck('id')
-        );
+        $dashboardPermId = $allPermissions->where('name', 'dashboard.view')->pluck('id');
+        $gudang->permissions()->sync($dashboardPermId);
+        $pic->permissions()->sync($dashboardPermId);
+        $direktur->permissions()->sync($dashboardPermId);
+        $picGudang->permissions()->sync($dashboardPermId);
+
+        // Hapus role lama selain 6 role target jika tidak memiliki user
+        Role::whereNotIn('name', [
+            'Super Admin', 'Admin', 'Gudang', 'PIC', 'Direktur', 'PIC Gudang'
+        ])->doesntHave('users')->each(function ($role) {
+            $role->permissions()->detach();
+            $role->delete();
+        });
 
         // --------------------
         // DEFAULT USERS
@@ -82,6 +102,11 @@ class RoleAndPermissionSeeder extends Seeder
                 'name'     => 'Admin User',
                 'email'    => 'admin',
                 'role'     => $admin,
+            ],
+            [
+                'name'     => 'Executive Management',
+                'email'    => 'management',
+                'role'     => $direktur,
             ],
         ];
 

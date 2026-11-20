@@ -248,8 +248,8 @@ class CutOffOrderController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
-        if ($request->user() && $request->user()->role?->name === 'Management') {
-            abort(403, 'Akses ditolak. Akun Management hanya memiliki izin melihat data (read-only).');
+        if ($request->user() && in_array($request->user()->role?->name, ['Management', 'Direktur'])) {
+            abort(403, 'Akses ditolak. Akun Direktur / Management hanya memiliki izin melihat data (read-only).');
         }
 
         $validated = $request->validate([
@@ -296,8 +296,8 @@ class CutOffOrderController extends Controller
      */
     public function importBatch(Request $request): RedirectResponse
     {
-        if ($request->user() && $request->user()->role?->name === 'Management') {
-            abort(403, 'Akses ditolak. Akun Management hanya memiliki izin melihat data (read-only).');
+        if ($request->user() && in_array($request->user()->role?->name, ['Management', 'Direktur'])) {
+            abort(403, 'Akses ditolak. Akun Direktur / Management hanya memiliki izin melihat data (read-only).');
         }
 
         $request->validate([
@@ -446,8 +446,8 @@ class CutOffOrderController extends Controller
      */
     public function importJl(Request $request): RedirectResponse
     {
-        if ($request->user() && $request->user()->role?->name === 'Management') {
-            abort(403, 'Akses ditolak. Akun Management hanya memiliki izin melihat data (read-only).');
+        if ($request->user() && in_array($request->user()->role?->name, ['Management', 'Direktur'])) {
+            abort(403, 'Akses ditolak. Akun Direktur / Management hanya memiliki izin melihat data (read-only).');
         }
 
         $validated = $request->validate([
@@ -481,8 +481,8 @@ class CutOffOrderController extends Controller
      */
     public function update(Request $request, CutOffOrder $cutOffOrder): RedirectResponse
     {
-        if ($request->user() && $request->user()->role?->name === 'Management') {
-            abort(403, 'Akses ditolak. Akun Management hanya memiliki izin melihat data (read-only).');
+        if ($request->user() && in_array($request->user()->role?->name, ['Management', 'Direktur'])) {
+            abort(403, 'Akses ditolak. Akun Direktur / Management hanya memiliki izin melihat data (read-only).');
         }
 
         // Status Pesanan dan Ekspedisi dikunci (hanya sinkron dari marketplace / data awal, tidak bisa diubah lewat edit)
@@ -506,8 +506,8 @@ class CutOffOrderController extends Controller
      */
     public function destroy(Request $request, CutOffOrder $cutOffOrder): RedirectResponse
     {
-        if ($request->user() && $request->user()->role?->name === 'Management') {
-            abort(403, 'Akses ditolak. Akun Management hanya memiliki izin melihat data (read-only).');
+        if ($request->user() && in_array($request->user()->role?->name, ['Management', 'Direktur'])) {
+            abort(403, 'Akses ditolak. Akun Direktur / Management hanya memiliki izin melihat data (read-only).');
         }
 
         $cutOffOrder->delete();
