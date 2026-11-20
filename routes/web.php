@@ -135,6 +135,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/shopee-orders/{orderSn}/tracking-info', [\App\Http\Controllers\ShopeeOrderController::class, 'trackingInfo'])->name('shopee-orders.tracking-info');
     Route::get('/shopee-orders/{orderSn}/shipping-parameters', [\App\Http\Controllers\ShopeeOrderController::class, 'shippingParameters'])->name('shopee-orders.shipping-params');
     Route::post('/shopee-orders/{orderSn}/ship', [\App\Http\Controllers\ShopeeOrderController::class, 'ship'])->name('shopee-orders.ship');
+    Route::post('/shopee-orders/{orderSn}/poll-tracking', [\App\Http\Controllers\ShopeeOrderController::class, 'pollTrackingNumber'])->name('shopee-orders.poll-tracking');
     Route::get('/shopee-orders/{orderSn}/waybill-a4', [\App\Http\Controllers\ShopeeOrderController::class, 'printWaybill'])->name('shopee-orders.waybill');
     Route::post('/shopee-orders/{orderSn}/handle-cancel', [\App\Http\Controllers\ShopeeOrderController::class, 'handleCancellation'])->name('shopee-orders.handle-cancel');
 

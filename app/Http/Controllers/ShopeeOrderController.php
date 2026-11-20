@@ -503,6 +503,47 @@ class ShopeeOrderController extends Controller
     }
 
     /**
+     * Poll nomor resi terkini dari Shopee secara asinkron (khusus kurir seperti ID Express).
+     */
+    public function pollTrackingNumber(Request $request, string $orderSn): JsonResponse
+    {
+        $this->authorizeSuperAdmin($request);
+
+        try {
+            $orderSn = $this->normalizeOrderSn($orderSn);
+            $account = $this->requireConnectedAccount();
+
+            $order = ShopeeOrder::where('shopee_account_id', $account->id)
+                ->where('order_sn', $orderSn)
+                ->first();
+
+            $trackingNumber = null;
+            if ($order && ! empty($order->tracking_number)) {
+                $trackingNumber = $order->tracking_number;
+            } else {
+                $trackingNumber = $this->orderService->fetchTrackingNumber($account, $orderSn, $order?->package_number);
+                if (empty($trackingNumber)) {
+                    $refreshed = $this->orderService->refreshSingleOrder($account, $orderSn);
+                    $trackingNumber = $refreshed->tracking_number ?: null;
+                    $order = $refreshed;
+                } else {
+                    $order = $order?->fresh() ?? ShopeeOrder::where('shopee_account_id', $account->id)->where('order_sn', $orderSn)->first();
+                }
+            }
+
+            return response()->json([
+                'status'          => 'success',
+                'order_sn'        => $orderSn,
+                'has_tracking'    => ! empty($trackingNumber),
+                'tracking_number' => $trackingNumber,
+                'order'           => $order ? $this->sanitizeOrderResult(['order' => $order])['order'] : null,
+            ], 200);
+        } catch (\Throwable $e) {
+            return $this->actionErrorResponse($e);
+        }
+    }
+
+    /**
      * Atur pengiriman massal hingga 50 pesanan.
      */
     public function massShip(Request $request): JsonResponse

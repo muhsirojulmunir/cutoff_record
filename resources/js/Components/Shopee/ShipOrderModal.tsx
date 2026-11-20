@@ -979,22 +979,72 @@ export default function ShipOrderModal({
     );
     if (!result || result.isStale()) return;
 
-    singleShippedSnRef.current = result.data.order_sn;
-    setSingleResult(result.data);
-    onShipped?.(result.data);
-    onSuccess?.(result.data);
+    let finalData = result.data;
+
+    // Jika nomor resi belum terbit seketika (umumnya pada kurir pihak ketiga seperti ID Express)
+    if (!finalData.tracking_number && !isTiktok) {
+      setIsPreparingWaybill(true);
+      setWaybillLoadingMessage(
+        `Pengiriman berhasil diatur! Sedang menunggu nomor resi dari kurir (${order.shipping_carrier || 'ID Express'})... Mohon tunggu sebentar.`
+      );
+
+      for (let attempt = 1; attempt <= 6; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        if (!isMountedRef.current) break;
+
+        try {
+          const pollRes = await fetch(`${baseRoute}/${encodeURIComponent(order.order_sn)}/poll-tracking`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+              'X-CSRF-TOKEN': getCsrfToken(),
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+          });
+
+          if (pollRes.ok) {
+            const pollData = (await pollRes.json()) as {
+              has_tracking?: boolean;
+              tracking_number?: string;
+              order?: ShopeeOrderRecord;
+            };
+            if (pollData?.has_tracking && pollData?.tracking_number) {
+              finalData = {
+                ...finalData,
+                tracking_number: pollData.tracking_number,
+                order: pollData.order || finalData.order,
+                message: `Pengiriman berhasil diatur. No. Resi: ${pollData.tracking_number}`,
+              };
+              break;
+            }
+          }
+        } catch (pollErr) {
+          console.warn('Poll tracking attempt error:', pollErr);
+        }
+      }
+
+      setIsPreparingWaybill(false);
+      setWaybillLoadingMessage(null);
+    }
+
+    singleShippedSnRef.current = finalData.order_sn;
+    setSingleResult(finalData);
+    onShipped?.(finalData);
+    onSuccess?.(finalData);
 
     // Langsung buka dokumen cetak resi otomatis
-    const targetOrder: ShopeeOrderRecord = result.data.order ?? {
+    const targetOrder: ShopeeOrderRecord = finalData.order ?? {
       id: order.id,
       shopee_account_id: order.shopee_account_id,
-      order_sn: result.data.order_sn,
+      order_sn: finalData.order_sn,
       package_number: order.package_number,
-      order_status: result.data.order_status || 'PROCESSED',
+      order_status: finalData.order_status || 'PROCESSED',
       logistics_status: order.logistics_status,
       shipping_carrier: order.shipping_carrier,
-      tracking_number: result.data.tracking_number || order.tracking_number,
-      fulfillment_method: result.data.fulfillment_method || selectedMethod,
+      tracking_number: finalData.tracking_number || order.tracking_number,
+      fulfillment_method: finalData.fulfillment_method || selectedMethod,
       buyer_user_id: order.buyer_user_id,
       buyer_username: order.buyer_username,
       buyer_note: order.buyer_note,
@@ -1230,7 +1280,10 @@ export default function ShipOrderModal({
                     </button>
                   </div>
                 ) : (
-                  <span className="text-slate-500 italic">Dihasilkan oleh kurir / sedang diproses</span>
+                  <span className="inline-flex items-center gap-1.5 text-amber-600 font-medium">
+                    <SpinnerIcon className="h-3.5 w-3.5 text-amber-500" />
+                    Sedang diproses oleh kurir...
+                  </span>
                 )}
               </div>
             </div>

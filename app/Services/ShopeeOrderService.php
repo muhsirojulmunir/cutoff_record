@@ -323,6 +323,8 @@ class ShopeeOrderService
         $trackingNumber = trim((string) (
             $resp['tracking_number']
             ?? $resp['last_mile_tracking_number']
+            ?? $resp['first_mile_tracking_number']
+            ?? $resp['plp_number']
             ?? ''
         ));
 
@@ -330,6 +332,16 @@ class ShopeeOrderService
             ShopeeOrder::where('shopee_account_id', $account->id)
                 ->where('order_sn', $orderSn)
                 ->update(['tracking_number' => $trackingNumber]);
+
+            try {
+                $cutOff = CutOffOrder::where('channel', 'SH')->where('order_number', $orderSn)->first();
+                if ($cutOff && (empty($cutOff->package_count) || $cutOff->package_count !== $trackingNumber)) {
+                    $cutOff->update(['package_count' => $trackingNumber]);
+                    CutOffOrder::bumpCacheVersion();
+                }
+            } catch (\Throwable $e) {
+                // Abaikan kesalahan sinkronisasi CutOffOrder lokal
+            }
 
             return $trackingNumber;
         }
@@ -682,7 +694,7 @@ class ShopeeOrderService
         }
 
         $trackingNumber = null;
-        for ($attempt = 1; $attempt <= 2; $attempt++) {
+        for ($attempt = 1; $attempt <= 6; $attempt++) {
             try {
                 $trackingNumber = $this->fetchTrackingNumber(
                     $account,
@@ -698,12 +710,18 @@ class ShopeeOrderService
                 break;
             }
 
-            if ($attempt < 2) {
-                usleep(400000);
+            if ($attempt < 6) {
+                // Beri jeda adaptif untuk kurir asinkron (ID Express/J&T): 600ms, 900ms, 1200ms, 1500ms, 1800ms
+                $sleepMicros = min(2000000, 600000 + ($attempt * 300000));
+                usleep($sleepMicros);
             }
         }
 
         $refreshedOrder = $this->refreshSingleOrder($account, $orderSn);
+
+        if (empty($trackingNumber) && ! empty($refreshedOrder->tracking_number)) {
+            $trackingNumber = $refreshedOrder->tracking_number;
+        }
 
         $localUpdates = [
             'fulfillment_method'   => $method,
@@ -868,16 +886,23 @@ class ShopeeOrderService
         $warnings = [];
         foreach ($orders as $order) {
             if (empty($order->tracking_number)) {
-                try {
-                    $tn = $this->fetchTrackingNumber($account, $order->order_sn, $order->package_number ?: null);
-                    if (! empty($tn)) {
-                        $order->tracking_number = $tn;
-                    } else {
-                        $warnings[] = "No. Resi untuk {$order->order_sn} belum tersedia dari Shopee.";
+                $tn = null;
+                for ($attempt = 1; $attempt <= 5; $attempt++) {
+                    try {
+                        $tn = $this->fetchTrackingNumber($account, $order->order_sn, $order->package_number ?: null);
+                        if (! empty($tn)) {
+                            $order->tracking_number = $tn;
+                            break;
+                        }
+                    } catch (\Throwable $e) {
+                        Log::warning("Shopee waybill fetchTrackingNumber attempt {$attempt} ({$order->order_sn}): " . $e->getMessage());
                     }
-                } catch (\Throwable $e) {
-                    Log::warning("Shopee waybill fetchTrackingNumber warning ({$order->order_sn}): " . $e->getMessage());
-                    $warnings[] = "Gagal mengambil No. Resi {$order->order_sn}: {$e->getMessage()}";
+                    if ($attempt < 5) {
+                        usleep(min(2000000, 800000 + ($attempt * 300000)));
+                    }
+                }
+                if (empty($tn)) {
+                    $warnings[] = "No. Resi untuk {$order->order_sn} belum tersedia dari Shopee.";
                 }
             }
         }

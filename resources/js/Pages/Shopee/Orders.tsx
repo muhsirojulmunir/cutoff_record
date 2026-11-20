@@ -1496,7 +1496,9 @@ export default function ShopeeOrdersPage({
       label_print_count: 0,
       last_synced_at: null,
     };
-    void openWaybillPdfStream([targetOrder], false);
+    if (result.tracking_number) {
+      void openWaybillPdfStream([targetOrder], false);
+    }
   };
 
   const handleMassShipped = (result: ShopeeMassShipResult) => {
@@ -2858,6 +2860,21 @@ export default function ShopeeOrdersPage({
                               ) : (
                                 'Salin'
                               )}
+                            </button>
+                          </div>
+                        ) : order.order_status === 'PROCESSED' ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 font-medium">
+                              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                              Menunggu resi kurir
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleRefreshSingleOrder(order)}
+                              title="Periksa dan update no. resi dari Shopee"
+                              className="text-[10px] text-orange-600 hover:underline cursor-pointer font-semibold ml-1"
+                            >
+                              Cek Resi
                             </button>
                           </div>
                         ) : (
