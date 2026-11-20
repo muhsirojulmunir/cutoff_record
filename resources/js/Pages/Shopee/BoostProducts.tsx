@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Head, router } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import { useOverlayScrollLockAndEscape } from '../../Components/Shopee/overlayHelpers';
@@ -408,20 +409,6 @@ export default function BoostProducts({
         <div className="relative overflow-hidden rounded-3xl bg-linear-to-r from-[#0B132B] via-[#15234E] to-[#1E3A8A] p-6 text-white shadow-xl sm:p-8">
           <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
             <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/20 px-3 py-1 text-xs font-semibold text-blue-200 border border-blue-400/30">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-3.5 w-3.5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
-                  </svg>
-                  <span>Shopee Product Boost</span>
-                </span>
-                {account?.account_name && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-300 border border-emerald-400/30">
-                    <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>{account.account_name}</span>
-                  </span>
-                )}
-              </div>
               <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
                 Naikkan Produk Shopee
               </h1>
@@ -470,11 +457,12 @@ export default function BoostProducts({
                   onClick={handleOpenModal}
                   disabled={availableSlotsCount === 0}
                   className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-blue-900/40 transition-all hover:bg-blue-500 hover:shadow-xl active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                  title={availableSlotsCount === 0 ? 'Semua 5 slot sedang aktif. Tunggu salah satu produk selesai.' : 'Pilih produk untuk dinaikkan'}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="h-4 w-4">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                   </svg>
-                  <span>Naikkan Produk</span>
+                  <span>{availableSlotsCount === 0 ? '5 Slot Penuh' : 'Naikkan Produk'}</span>
                 </button>
               </div>
             </div>
@@ -847,7 +835,7 @@ export default function BoostProducts({
                                 onClick={() => handleSingleBoost(prod)}
                                 disabled={availableSlotsCount === 0 || singleBoostingId === prod.item_id}
                                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs transition-all hover:bg-blue-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-                                title={availableSlotsCount === 0 ? 'Semua slot sedang penuh' : 'Naikkan produk ini sekarang'}
+                                title={availableSlotsCount === 0 ? 'Semua 5 slot sedang aktif. Tunggu hingga masa 4 jam salah satu produk selesai.' : 'Naikkan produk ini sekarang'}
                               >
                                 {singleBoostingId === prod.item_id ? (
                                   <>
@@ -861,7 +849,7 @@ export default function BoostProducts({
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-3.5 w-3.5">
                                       <path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
                                     </svg>
-                                    <span>Naikkan Produk</span>
+                                    <span>{availableSlotsCount === 0 ? 'Slot Penuh' : 'Naikkan Produk'}</span>
                                   </>
                                 )}
                               </button>
@@ -925,20 +913,20 @@ export default function BoostProducts({
         </div>
       </div>
 
-      {/* Modal Pemilihan Produk (Batch Boost) */}
-      {isModalOpen && (
+      {/* Modal Pemilihan Produk (Batch Boost) via React Portal agar selalu persis di tengah layar */}
+      {isModalOpen && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto p-3 sm:p-6"
+          className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-6"
           role="dialog"
           aria-modal="true"
           aria-label="Pilih Produk untuk Dinaikkan"
         >
           <div
-            className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs transition-opacity"
+            className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs transition-opacity"
             onClick={() => setIsModalOpen(false)}
           />
 
-          <div className="relative z-10 my-auto flex w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          <div className="relative z-10 flex w-full max-w-3xl max-h-[88vh] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-200 bg-[#0B132B] px-5 py-4 text-white sm:px-6">
               <div>
@@ -1109,7 +1097,8 @@ export default function BoostProducts({
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </AppLayout>
   );

@@ -56,16 +56,29 @@ class ShopeeBoostService
         if ($response->failed() || ! empty($data['error'])) {
             $msg = $data['message'] ?? $data['error'] ?? 'Gagal mengambil status produk dinaikkan dari Shopee.';
             Log::warning('Shopee get_boosted_list error: ' . $msg, ['data' => $data]);
-            throw new RuntimeException($msg);
+            throw new RuntimeException(self::humanizeShopeeError($msg));
         }
 
-        $boostedItems = $data['response']['item_id_list'] ?? [];
+        Log::info('Shopee get_boosted_list raw response: ', ['response' => $data['response'] ?? $data]);
+
+        // Shopee Open API v2 mengembalikan array pada key item_list (atau item_id_list)
+        $boostedItems = $data['response']['item_list']
+            ?? $data['response']['item_id_list']
+            ?? [];
         $activeItemIds = [];
         $cooldownMap   = [];
 
         foreach ($boostedItems as $item) {
-            $itemId = (int) ($item['item_id'] ?? 0);
-            $cooldown = (int) ($item['cool_down_second'] ?? 0);
+            if (is_numeric($item)) {
+                $itemId = (int) $item;
+                $cooldown = 14400;
+            } elseif (is_array($item)) {
+                $itemId = (int) ($item['item_id'] ?? $item['id'] ?? 0);
+                $cooldown = (int) ($item['cool_down_second'] ?? 0);
+            } else {
+                continue;
+            }
+
             if ($itemId > 0) {
                 $activeItemIds[] = $itemId;
                 $cooldownMap[$itemId] = $cooldown;
@@ -167,9 +180,9 @@ class ShopeeBoostService
         $data = $response->json();
 
         if ($response->failed() || ! empty($data['error'])) {
-            $msg = $data['message'] ?? $data['error'] ?? 'Gagal menaikkan produk di Shopee.';
-            Log::warning('Shopee boost_item error: ' . $msg, ['data' => $data]);
-            throw new RuntimeException($msg);
+            $rawMsg = (string) ($data['message'] ?? $data['error'] ?? 'Gagal menaikkan produk di Shopee.');
+            Log::warning('Shopee boost_item error: ' . $rawMsg, ['data' => $data]);
+            throw new RuntimeException(self::humanizeShopeeError($rawMsg));
         }
 
         $failureList = $data['response']['failure_list'] ?? [];
@@ -181,7 +194,7 @@ class ShopeeBoostService
 
         $msg = "{$countSuccess} produk berhasil dinaikkan ke urutan teratas Shopee selama 4 jam.";
         if ($countFailed > 0) {
-            $reasons = implode(', ', array_map(fn ($f) => ($f['failed_reason'] ?? 'Masih cooldown'), $failureList));
+            $reasons = implode(', ', array_map(fn ($f) => self::humanizeShopeeError($f['failed_reason'] ?? 'Masih cooldown'), $failureList));
             $msg .= " ({$countFailed} produk dilewati: {$reasons}).";
         }
 
@@ -286,9 +299,15 @@ class ShopeeBoostService
             $boostStatus = $this->getBoostedStatus($account);
             $boostedItems = $boostStatus['raw_items'] ?? [];
             foreach ($boostedItems as $it) {
-                $id = (int) ($it['item_id'] ?? 0);
+                if (is_numeric($it)) {
+                    $id = (int) $it;
+                    $cooldown = 14400;
+                } else {
+                    $id = (int) ($it['item_id'] ?? $it['id'] ?? 0);
+                    $cooldown = (int) ($it['cool_down_second'] ?? 0);
+                }
                 if ($id > 0) {
-                    $cooldownMap[$id] = (int) ($it['cool_down_second'] ?? 0);
+                    $cooldownMap[$id] = $cooldown;
                 }
             }
         } catch (\Throwable $e) {
@@ -544,5 +563,31 @@ class ShopeeBoostService
         }
 
         return null;
+    }
+
+    /**
+     * Terjemahkan kode / pesan error mentah dari Shopee Open API menjadi penjelasan bahasa Indonesia yang ramah & jelas.
+     */
+    public static function humanizeShopeeError(string $raw): string
+    {
+        $lower = strtolower($raw);
+
+        if (str_contains($lower, "reached shop's bump slot limit") || str_contains($lower, 'bump slot limit') || str_contains($lower, 'slot limit')) {
+            return 'Batas maksimal 5 slot Naikkan Produk Shopee saat ini sedang penuh. Setiap produk yang dinaikkan aktif selama 4 jam. Harap tunggu hingga salah satu slot selesai sebelum menaikkan produk berikutnya.';
+        }
+
+        if (str_contains($lower, 'cool down') || str_contains($lower, 'cooldown')) {
+            return 'Produk ini masih dalam masa jeda (cooldown) di Shopee. Harap tunggu hingga masa jeda berakhir sebelum menaikkannya kembali.';
+        }
+
+        if (str_contains($lower, 'frequency') || str_contains($lower, 'too frequent')) {
+            return 'Permintaan terlalu sering ke Shopee. Harap tunggu beberapa saat sebelum mencoba kembali.';
+        }
+
+        if (str_contains($lower, 'item not found') || str_contains($lower, 'invalid item')) {
+            return 'Produk tidak ditemukan atau sudah tidak aktif di toko Shopee.';
+        }
+
+        return $raw;
     }
 }
