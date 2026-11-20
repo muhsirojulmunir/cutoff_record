@@ -417,54 +417,68 @@ export default function BoostProducts({
               </p>
             </div>
 
-            {/* Header Right Actions & Slot Gauge */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-              <div className="flex items-center gap-3 rounded-2xl bg-white/10 px-4 py-3 backdrop-blur-md border border-white/15">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Slot Terpakai</p>
-                  <p className="text-lg font-black text-white">
-                    {activeItemIds.length} <span className="text-xs font-medium text-slate-300">/ 5 Slot</span>
-                  </p>
+            {/* Header Right Actions & Slot Gauge (Unified Ergonomic Height & Perfectly Aligned) */}
+            <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+              {/* Slot Gauge Card */}
+              <div className="inline-flex h-11 items-center gap-3 rounded-xl border border-white/15 bg-white/10 px-3.5 backdrop-blur-md">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-slate-300">Terpakai:</span>
+                  <span className="font-mono text-sm font-black text-white">{activeItemIds.length}/5</span>
                 </div>
-                <div className="h-8 w-px bg-white/20" />
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Slot Kosong</p>
-                  <p className="text-lg font-black text-emerald-300">
+                <div className="h-4 w-px bg-white/20" />
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-slate-300">Kosong:</span>
+                  <span className={`font-mono text-sm font-black ${availableSlotsCount > 0 ? 'text-emerald-300' : 'text-slate-400'}`}>
                     {availableSlotsCount}
-                  </p>
+                  </span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    void refreshStatus();
-                    void fetchCatalog(catalogPage, catalogFilter, catalogSearch);
-                  }}
-                  disabled={loadingStatus || loadingCatalog}
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3.5 py-2.5 text-xs font-semibold text-white backdrop-blur-xs transition-colors hover:bg-white/20 disabled:opacity-50"
-                  title="Segarkan status slot terkini dari Shopee"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`h-4 w-4 ${loadingStatus ? 'animate-spin' : ''}`}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                  </svg>
-                  <span>Segarkan</span>
-                </button>
+              {/* Segarkan Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  void refreshStatus();
+                  void fetchCatalog(catalogPage, catalogFilter, catalogSearch);
+                }}
+                disabled={loadingStatus || loadingCatalog}
+                className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 text-xs font-semibold text-white backdrop-blur-xs transition-all hover:bg-white/20 active:scale-95 disabled:opacity-50 whitespace-nowrap"
+                title="Segarkan status slot terkini dari Shopee"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`h-4 w-4 shrink-0 ${loadingStatus ? 'animate-spin' : ''}`}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+                <span>Segarkan</span>
+              </button>
 
-                <button
-                  type="button"
-                  onClick={handleOpenModal}
-                  disabled={availableSlotsCount === 0}
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-blue-900/40 transition-all hover:bg-blue-500 hover:shadow-xl active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
-                  title={availableSlotsCount === 0 ? 'Semua 5 slot sedang aktif. Tunggu salah satu produk selesai.' : 'Pilih produk untuk dinaikkan'}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="h-4 w-4">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                  </svg>
-                  <span>{availableSlotsCount === 0 ? '5 Slot Penuh' : 'Naikkan Produk'}</span>
-                </button>
-              </div>
+              {/* Naikkan Produk / Status Slot Button */}
+              <button
+                type="button"
+                onClick={handleOpenModal}
+                disabled={availableSlotsCount === 0}
+                className={`inline-flex h-11 items-center gap-2 rounded-xl px-4 text-xs font-bold transition-all whitespace-nowrap ${
+                  availableSlotsCount > 0
+                    ? 'cursor-pointer bg-blue-600 text-white shadow-md shadow-blue-900/40 hover:bg-blue-500 active:scale-95'
+                    : 'cursor-not-allowed border border-white/15 bg-white/10 text-slate-300'
+                }`}
+                title={availableSlotsCount === 0 ? 'Semua 5 slot sedang aktif. Tunggu hingga masa berakhir di bawah.' : 'Pilih produk untuk dinaikkan'}
+              >
+                {availableSlotsCount > 0 ? (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="h-4 w-4 shrink-0">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                    </svg>
+                    <span>Naikkan Produk</span>
+                  </>
+                ) : (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4 shrink-0 text-amber-400">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>5 Slot Sedang Aktif</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
