@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\TiktokAccount;
 use App\Models\TiktokOrder;
 use App\Services\TiktokOrderService;
+use App\Services\WaybillArchiveService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -13,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
@@ -367,15 +369,25 @@ class TiktokOrderController extends Controller
         return response()->json($result, 200);
     }
 
-    public function printWaybill(string $orderSn): Response
+    public function printWaybill(Request $request, string $orderSn): Response
     {
+        $this->authorizeAccess($request);
         $account = $this->resolveTiktokAccount();
         $pdfBinary = $this->orderService->generateWaybillPdf($account, [$orderSn]);
 
+        $fileName = "waybill-tiktok-{$orderSn}.pdf";
+        try {
+            $archived = app(WaybillArchiveService::class)->archiveWaybill('tiktok', $pdfBinary, [$orderSn], $request->user());
+            $fileName = $archived->file_name;
+        } catch (\Throwable $archiveErr) {
+            Log::warning('Gagal mengarsipkan resi TikTok: ' . $archiveErr->getMessage());
+        }
+
         return response($pdfBinary, 200, [
-            'Content-Type'        => 'application/pdf',
-            'Content-Disposition' => "inline; filename=\"waybill-tiktok-{$orderSn}.pdf\"",
+            'Content-Type'          => 'application/pdf',
+            'Content-Disposition'   => "inline; filename=\"{$fileName}\"",
             'x-shopee-orders-count' => 1,
+            'Cache-Control'         => 'no-store, no-cache, must-revalidate',
         ]);
     }
 
@@ -391,10 +403,61 @@ class TiktokOrderController extends Controller
 
         $pdfBinary = $this->orderService->generateWaybillPdf($account, $validated['order_sns']);
 
+        $fileName = 'mass-waybill-tiktok.pdf';
+        try {
+            $archived = app(WaybillArchiveService::class)->archiveWaybill('tiktok', $pdfBinary, $validated['order_sns'], $request->user());
+            $fileName = $archived->file_name;
+        } catch (\Throwable $archiveErr) {
+            Log::warning('Gagal mengarsipkan resi massal TikTok: ' . $archiveErr->getMessage());
+        }
+
         return response($pdfBinary, 200, [
-            'Content-Type'        => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="mass-waybill-tiktok.pdf"',
+            'Content-Type'          => 'application/pdf',
+            'Content-Disposition'   => "inline; filename=\"{$fileName}\"",
             'x-shopee-orders-count' => count($validated['order_sns']),
+            'Cache-Control'         => 'no-store, no-cache, must-revalidate',
+        ]);
+    }
+
+    /**
+     * Ambil riwayat unduhan resi TikTok (retensi 90 hari).
+     */
+    public function waybillHistory(Request $request): JsonResponse
+    {
+        $this->authorizeAccess($request);
+
+        $search = $request->query('search');
+        $perPage = (int) $request->query('per_page', 15);
+        $perPage = max(5, min(100, $perPage));
+
+        $history = app(WaybillArchiveService::class)->getHistory('tiktok', $search, $perPage);
+
+        return response()->json($history);
+    }
+
+    /**
+     * Unduh ulang atau preview file resi fisik yang pernah dicetak.
+     */
+    public function downloadArchivedWaybill(Request $request, int $id): Response|JsonResponse
+    {
+        $this->authorizeAccess($request);
+
+        $waybill = app(WaybillArchiveService::class)->getWaybillForDownload($id, 'tiktok');
+        if (! $waybill) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Berkas resi fisik tidak ditemukan atau sudah kadaluarsa (melewati batas 3 bulan).',
+            ], 404);
+        }
+
+        $pdfBinary = Storage::disk('local')->get($waybill->file_path);
+        $isInline = $request->query('mode') === 'preview';
+
+        return response($pdfBinary, 200, [
+            'Content-Type'          => 'application/pdf',
+            'Content-Disposition'   => ($isInline ? 'inline' : 'attachment') . '; filename="' . $waybill->file_name . '"',
+            'x-shopee-orders-count' => (string) $waybill->order_count,
+            'Cache-Control'         => 'private, max-age=3600',
         ]);
     }
 

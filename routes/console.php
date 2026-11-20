@@ -32,3 +32,9 @@ Schedule::call(function () {
     app(\App\Services\CustomerServiceManager::class)->syncShopeeChat();
 })->name('sync-customer-service-chat')->everyMinute()->withoutOverlapping(2);
 
+// Auto-cleanup berkas resi fisik & metadata yang berumur lebih dari 3 bulan (90 hari)
+Schedule::call(function () {
+    app(\App\Services\WaybillArchiveService::class)->pruneExpired(500);
+})->name('prune-expired-waybills')->dailyAt('01:00');
+
+

@@ -126,6 +126,8 @@ Route::middleware('auth')->group(function () {
     // Pesanan Saya Shopee (Eksklusif Super Admin - Fulfillment & Cetak Resi A4)
     Route::get('/shopee-orders', [\App\Http\Controllers\ShopeeOrderController::class, 'index'])->name('shopee-orders.index');
     Route::get('/shopee-orders/export-data', [\App\Http\Controllers\ShopeeOrderController::class, 'exportData'])->name('shopee-orders.export-data');
+    Route::get('/shopee-orders/waybill-history', [\App\Http\Controllers\ShopeeOrderController::class, 'waybillHistory'])->name('shopee-orders.waybill-history');
+    Route::get('/shopee-orders/waybill-history/{id}/download', [\App\Http\Controllers\ShopeeOrderController::class, 'downloadArchivedWaybill'])->name('shopee-orders.waybill-download');
     Route::post('/shopee-orders/sync', [\App\Http\Controllers\ShopeeOrderController::class, 'sync'])->name('shopee-orders.sync');
     Route::post('/shopee-orders/auto-sync', [\App\Http\Controllers\ShopeeOrderController::class, 'autoSync'])->name('shopee-orders.auto-sync');
     Route::post('/shopee-orders/sync-chunk', [\App\Http\Controllers\ShopeeOrderController::class, 'syncChunk'])->name('shopee-orders.sync-chunk');
@@ -143,6 +145,8 @@ Route::middleware('auth')->group(function () {
     // Pesanan Saya TikTok (Eksklusif Super Admin - Fulfillment & Cetak Resi TikTok)
     Route::get('/tiktok-orders', [\App\Http\Controllers\TiktokOrderController::class, 'index'])->name('tiktok-orders.index');
     Route::get('/tiktok-orders/export-data', [\App\Http\Controllers\TiktokOrderController::class, 'exportData'])->name('tiktok-orders.export-data');
+    Route::get('/tiktok-orders/waybill-history', [\App\Http\Controllers\TiktokOrderController::class, 'waybillHistory'])->name('tiktok-orders.waybill-history');
+    Route::get('/tiktok-orders/waybill-history/{id}/download', [\App\Http\Controllers\TiktokOrderController::class, 'downloadArchivedWaybill'])->name('tiktok-orders.waybill-download');
     Route::post('/tiktok-orders/sync', [\App\Http\Controllers\TiktokOrderController::class, 'sync'])->name('tiktok-orders.sync');
     Route::post('/tiktok-orders/clear-sample', [\App\Http\Controllers\TiktokOrderController::class, 'clearSample'])->name('tiktok-orders.clear-sample');
     Route::post('/tiktok-orders/reset-sample', [\App\Http\Controllers\TiktokOrderController::class, 'resetSample'])->name('tiktok-orders.reset-sample');

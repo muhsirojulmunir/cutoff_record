@@ -8,6 +8,7 @@ import WaybillPreviewModal from '../../Components/Shopee/WaybillPreviewModal';
 import OrderDetailDrawer from '../../Components/Shopee/OrderDetailDrawer';
 import DownloadHistory from '../../Components/DownloadHistory';
 import TiktokOrderExportModal from '../../Components/TiktokOrderExportModal';
+import WaybillHistoryModal from '../../Components/WaybillHistoryModal';
 import {
   ACTIVE_DEADLINE_STATUSES,
   SpinnerIcon,
@@ -467,6 +468,10 @@ export default function TiktokOrdersPage({
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportRefreshKey, setExportRefreshKey] = useState(0);
 
+  // Arsip Riwayat Resi (Penyimpanan 90 hari / 3 bulan)
+  const [showWaybillHistory, setShowWaybillHistory] = useState(false);
+  const [waybillHistoryInitialSearch, setWaybillHistoryInitialSearch] = useState('');
+
   const handleClearSample = () => {
     if (confirm('Bersihkan 8 data pesanan contoh (dummy) TikTok? Tabel akan menjadi bersih menunggu pesanan asli dari TikTok Shop.')) {
       setClearingSample(true);
@@ -664,6 +669,7 @@ export default function TiktokOrdersPage({
     drawerOrder ||
       shipModal.show ||
       waybillModal.show ||
+      showWaybillHistory ||
       cancelTarget ||
       isDatePickerOpen ||
       isSyncMenuOpen
@@ -2225,6 +2231,33 @@ export default function TiktokOrdersPage({
               </button>
 
               <DownloadHistory refreshKey={exportRefreshKey} variant="tiktok" />
+
+              {/* Tombol Riwayat Cetak Resi TikTok (Arsip 90 Hari) */}
+              <button
+                type="button"
+                onClick={() => {
+                  setWaybillHistoryInitialSearch('');
+                  setShowWaybillHistory(true);
+                }}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-2xs transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900"
+                title="Lihat riwayat berkas PDF resi TikTok yang pernah dicetak dalam 3 bulan terakhir"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.8}
+                  stroke="currentColor"
+                  className="h-4 w-4 text-blue-600"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"
+                  />
+                </svg>
+                <span>Riwayat Resi</span>
+              </button>
             </div>
           </div>
 
@@ -3138,6 +3171,23 @@ export default function TiktokOrdersPage({
                         </button>
                       )}
 
+                      {(order.label_print_count > 0 || isShipped) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setWaybillHistoryInitialSearch(order.order_sn);
+                            setShowWaybillHistory(true);
+                          }}
+                          className="inline-flex w-full cursor-pointer items-center justify-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800 transition-colors py-0.5"
+                          title="Cari berkas PDF resi pesanan ini di riwayat arsip"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="h-3 w-3">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                          </svg>
+                          <span>Arsip Resi</span>
+                        </button>
+                      )}
+
                       {isInCancel && (
                         <>
                           <button
@@ -3417,6 +3467,14 @@ export default function TiktokOrdersPage({
             'Pesanan TikTok berhasil diekspor dan dicatat di Riwayat Download.',
           );
         }}
+      />
+
+      {/* Modal Riwayat Cetak Resi TikTok (Arsip Fisik 90 Hari) */}
+      <WaybillHistoryModal
+        show={showWaybillHistory}
+        channel="tiktok"
+        initialSearch={waybillHistoryInitialSearch}
+        onClose={() => setShowWaybillHistory(false)}
       />
     </AppLayout>
   );

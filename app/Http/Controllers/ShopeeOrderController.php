@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ShopeeAccount;
 use App\Models\ShopeeOrder;
 use App\Services\ShopeeOrderService;
+use App\Services\WaybillArchiveService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -19,6 +20,7 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
@@ -617,6 +619,14 @@ class ShopeeOrderController extends Controller
             $account = $this->requireConnectedAccount();
             $result = $this->orderService->createAndDownloadWaybillA4($account, [$orderSn]);
 
+            // Simpan otomatis ke arsip disk (retensi 90 hari, zero DB bloat)
+            try {
+                $archived = app(WaybillArchiveService::class)->archiveWaybill('shopee', $result['pdf_binary'], [$orderSn], $request->user());
+                $result['filename'] = $archived->file_name;
+            } catch (\Throwable $archiveErr) {
+                Log::warning('Gagal mengarsipkan resi Shopee: ' . $archiveErr->getMessage());
+            }
+
             return $this->buildWaybillPdfResponse($result);
         } catch (\Throwable $e) {
             return $this->actionErrorResponse($e);
@@ -643,12 +653,62 @@ class ShopeeOrderController extends Controller
 
             $result = $this->orderService->createAndDownloadWaybillA4($account, $validated['order_sns']);
 
+            // Simpan otomatis ke arsip disk (retensi 90 hari, zero DB bloat)
+            try {
+                $archived = app(WaybillArchiveService::class)->archiveWaybill('shopee', $result['pdf_binary'], $validated['order_sns'], $request->user());
+                $result['filename'] = $archived->file_name;
+            } catch (\Throwable $archiveErr) {
+                Log::warning('Gagal mengarsipkan resi massal Shopee: ' . $archiveErr->getMessage());
+            }
+
             return $this->buildWaybillPdfResponse($result);
         } catch (ValidationException $e) {
             return $this->validationErrorResponse($e);
         } catch (\Throwable $e) {
             return $this->actionErrorResponse($e);
         }
+    }
+
+    /**
+     * Ambil riwayat unduhan resi Shopee (retensi 90 hari).
+     */
+    public function waybillHistory(Request $request): JsonResponse
+    {
+        $this->authorizeSuperAdmin($request);
+
+        $search = $request->query('search');
+        $perPage = (int) $request->query('per_page', 15);
+        $perPage = max(5, min(100, $perPage));
+
+        $history = app(WaybillArchiveService::class)->getHistory('shopee', $search, $perPage);
+
+        return response()->json($history);
+    }
+
+    /**
+     * Unduh ulang atau preview file resi fisik yang pernah dicetak.
+     */
+    public function downloadArchivedWaybill(Request $request, int $id): Response|JsonResponse
+    {
+        $this->authorizeSuperAdmin($request);
+
+        $waybill = app(WaybillArchiveService::class)->getWaybillForDownload($id, 'shopee');
+        if (! $waybill) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Berkas resi fisik tidak ditemukan atau sudah kadaluarsa (melewati batas 3 bulan).',
+            ], 404);
+        }
+
+        $pdfBinary = Storage::disk('local')->get($waybill->file_path);
+        $isInline = $request->query('mode') === 'preview';
+
+        return response($pdfBinary, 200, [
+            'Content-Type'          => 'application/pdf',
+            'Content-Disposition'   => ($isInline ? 'inline' : 'attachment') . '; filename="' . $waybill->file_name . '"',
+            'X-Shopee-Orders-Count' => (string) $waybill->order_count,
+            'Cache-Control'         => 'private, max-age=3600',
+        ]);
     }
 
     /**
