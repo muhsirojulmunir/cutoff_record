@@ -26,6 +26,12 @@ Schedule::command('shopee:sync-products')
     ->withoutOverlapping(15)
     ->runInBackground();
 
+// Auto-boost produk Shopee secara berkala (cek slot kosong & otomatis naikkan produk antrean setiap 5 menit)
+Schedule::command('shopee:auto-boost')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(4)
+    ->runInBackground();
+
 // Auto-sync chat Customer Service (Shopee & TikTok Shop) setiap 1 menit di latar belakang
 Schedule::call(function () {
     app(\App\Services\CustomerServiceManager::class)->syncTiktokChat();

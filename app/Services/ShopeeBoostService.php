@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ShopeeAccount;
+use App\Models\ShopeeAutoBoostConfig;
 use App\Models\ShopeeOrder;
 use App\Models\ShopeeProduct;
 use Carbon\Carbon;
@@ -204,6 +205,262 @@ class ShopeeBoostService
             'failure_list'  => $failureList,
             'message'       => $msg,
         ];
+    }
+
+    /**
+     * Ambil konfigurasi dan antrean target Auto-Boost untuk akun Shopee.
+     *
+     * @return array{
+     *     is_enabled: bool,
+     *     target_item_ids: array<int, int>,
+     *     target_items: array<int, array<string, mixed>>,
+     *     last_run_at: ?string,
+     *     last_run_status: ?string,
+     *     last_run_message: ?string
+     * }
+     */
+    public function getAutoBoostConfig(ShopeeAccount $account): array
+    {
+        ShopeeAutoBoostConfig::ensureSchema();
+
+        $config = ShopeeAutoBoostConfig::firstOrCreate(
+            ['shopee_account_id' => $account->id],
+            [
+                'is_enabled'         => false,
+                'target_item_ids'    => [],
+                'last_boosted_index' => 0,
+                'last_run_message'   => 'Auto-boost siap diaktifkan.',
+            ]
+        );
+
+        $targetIds = array_values(array_filter(array_map('intval', (array) ($config->target_item_ids ?? []))));
+
+        // Ambil data produk target (nama, foto, sku, harga, stok, terjual)
+        $targetItems = [];
+        if (! empty($targetIds)) {
+            $imageMap = $this->resolveImagesForItems($account, $targetIds);
+            $prods = ShopeeProduct::where('shopee_account_id', $account->id)
+                ->whereIn('item_id', $targetIds)
+                ->get()
+                ->keyBy('item_id');
+
+            foreach ($targetIds as $id) {
+                $p = $prods->get($id);
+                $targetItems[] = [
+                    'item_id'   => $id,
+                    'item_name' => $p?->item_name ?? "Produk Shopee #{$id}",
+                    'sku'       => $p?->sku ?? '-',
+                    'price'     => $p?->price ? (float) $p->price : null,
+                    'stock'     => (int) ($p?->stock ?? 0),
+                    'sales'     => (int) ($p?->sales ?? 0),
+                    'image_url' => $imageMap[$id] ?? null,
+                ];
+            }
+        }
+
+        return [
+            'is_enabled'       => (bool) $config->is_enabled,
+            'target_item_ids'  => $targetIds,
+            'target_items'     => $targetItems,
+            'last_run_at'      => $config->last_run_at?->toIso8601String(),
+            'last_run_status'  => $config->last_run_status,
+            'last_run_message' => $config->last_run_message,
+        ];
+    }
+
+    /**
+     * Aktifkan / Nonaktifkan Auto-Boost.
+     */
+    public function toggleAutoBoost(ShopeeAccount $account, bool $enable): array
+    {
+        ShopeeAutoBoostConfig::ensureSchema();
+
+        $config = ShopeeAutoBoostConfig::firstOrCreate(
+            ['shopee_account_id' => $account->id],
+            ['target_item_ids' => []]
+        );
+
+        $config->update([
+            'is_enabled'       => $enable,
+            'last_run_message' => $enable ? 'Auto-boost diaktifkan. Sistem akan menjaga produk selalu aktif.' : 'Auto-boost dinonaktifkan.',
+        ]);
+
+        if ($enable) {
+            $this->runAutoBoostCycle($account);
+        }
+
+        return $this->getAutoBoostConfig($account);
+    }
+
+    /**
+     * Tambahkan 1 item ke antrean Auto-Boost.
+     */
+    public function addAutoBoostItem(ShopeeAccount $account, int $itemId): array
+    {
+        ShopeeAutoBoostConfig::ensureSchema();
+
+        $config = ShopeeAutoBoostConfig::firstOrCreate(
+            ['shopee_account_id' => $account->id],
+            ['target_item_ids' => []]
+        );
+
+        $current = array_values(array_filter(array_map('intval', (array) ($config->target_item_ids ?? []))));
+        if (! in_array($itemId, $current, true)) {
+            $current[] = $itemId;
+            $config->update(['target_item_ids' => $current]);
+
+            if ($config->is_enabled) {
+                $this->runAutoBoostCycle($account);
+            }
+        }
+
+        return $this->getAutoBoostConfig($account);
+    }
+
+    /**
+     * Hapus 1 item dari antrean Auto-Boost.
+     */
+    public function removeAutoBoostItem(ShopeeAccount $account, int $itemId): array
+    {
+        ShopeeAutoBoostConfig::ensureSchema();
+
+        $config = ShopeeAutoBoostConfig::firstOrCreate(
+            ['shopee_account_id' => $account->id],
+            ['target_item_ids' => []]
+        );
+
+        $current = array_values(array_filter(array_map('intval', (array) ($config->target_item_ids ?? []))));
+        $next = array_values(array_filter($current, fn ($id) => $id !== $itemId));
+        $config->update(['target_item_ids' => $next]);
+
+        return $this->getAutoBoostConfig($account);
+    }
+
+    /**
+     * Simpan seluruh daftar target antrean Auto-Boost sekaligus.
+     *
+     * @param array<int, int> $targetIds
+     */
+    public function saveAutoBoostTargets(ShopeeAccount $account, array $targetIds): array
+    {
+        ShopeeAutoBoostConfig::ensureSchema();
+
+        $config = ShopeeAutoBoostConfig::firstOrCreate(
+            ['shopee_account_id' => $account->id],
+            ['target_item_ids' => []]
+        );
+
+        $cleanIds = array_values(array_unique(array_filter(array_map('intval', $targetIds))));
+        $config->update(['target_item_ids' => $cleanIds]);
+
+        if ($config->is_enabled && ! empty($cleanIds)) {
+            $this->runAutoBoostCycle($account);
+        }
+
+        return $this->getAutoBoostConfig($account);
+    }
+
+    /**
+     * Eksekusi 1 siklus pemeriksaan & auto-boost di Shopee.
+     *
+     * @return array{status: string, message: string, data?: mixed}
+     */
+    public function runAutoBoostCycle(ShopeeAccount $account): array
+    {
+        ShopeeAutoBoostConfig::ensureSchema();
+
+        $config = ShopeeAutoBoostConfig::where('shopee_account_id', $account->id)->first();
+        if (! $config || ! $config->is_enabled) {
+            return [
+                'status'  => 'idle',
+                'message' => 'Auto-boost tidak aktif.',
+            ];
+        }
+
+        $targetIds = array_values(array_filter(array_map('intval', (array) ($config->target_item_ids ?? []))));
+        if (empty($targetIds)) {
+            $msg = 'Antrean target auto-boost kosong. Tambahkan produk ke jadwal terlebih dahulu.';
+            $config->update([
+                'last_run_at'      => now(),
+                'last_run_status'  => 'empty',
+                'last_run_message' => $msg,
+            ]);
+            return ['status' => 'empty', 'message' => $msg];
+        }
+
+        // Cek status 5 slot Shopee saat ini
+        try {
+            $status = $this->getBoostedStatus($account);
+        } catch (\Throwable $e) {
+            $errMsg = 'Gagal memeriksa slot Shopee: ' . $e->getMessage();
+            $config->update([
+                'last_run_at'      => now(),
+                'last_run_status'  => 'error',
+                'last_run_message' => $errMsg,
+            ]);
+            return ['status' => 'error', 'message' => $errMsg];
+        }
+
+        $availableCount = $status['available_count'] ?? 0;
+        $boostedItems = $status['raw_items'] ?? [];
+        $activeBoostedIds = [];
+        foreach ($boostedItems as $it) {
+            $id = is_numeric($it) ? (int) $it : (int) ($it['item_id'] ?? $it['id'] ?? 0);
+            if ($id > 0) {
+                $activeBoostedIds[] = $id;
+            }
+        }
+
+        if ($availableCount <= 0) {
+            $msg = 'Semua 5 slot Shopee saat ini sedang aktif terisi penuh. Menunggu giliran slot berikutnya.';
+            $config->update([
+                'last_run_at'      => now(),
+                'last_run_status'  => 'full',
+                'last_run_message' => $msg,
+            ]);
+            return ['status' => 'full', 'message' => $msg];
+        }
+
+        // Filter produk target yang belum sedang aktif dinaikkan
+        $candidates = array_values(array_diff($targetIds, $activeBoostedIds));
+        if (empty($candidates)) {
+            $msg = 'Semua produk target yang dipilih saat ini sudah sedang aktif dinaikkan di Shopee.';
+            $config->update([
+                'last_run_at'      => now(),
+                'last_run_status'  => 'all_boosted',
+                'last_run_message' => $msg,
+            ]);
+            return ['status' => 'all_boosted', 'message' => $msg];
+        }
+
+        // Ambil sejumlah slot yang kosong (maksimal sejumlah slot yang tersedia)
+        $itemsToBoost = array_slice($candidates, 0, $availableCount);
+
+        try {
+            $result = $this->boostProducts($account, $itemsToBoost);
+            $countSuccess = count($result['boosted_ids'] ?? []);
+            $msg = "Auto-Boost berhasil menaikkan {$countSuccess} produk ke Shopee: " . implode(', ', $itemsToBoost);
+
+            $config->update([
+                'last_run_at'      => now(),
+                'last_run_status'  => 'success',
+                'last_run_message' => $msg,
+            ]);
+
+            return [
+                'status'  => 'success',
+                'message' => $msg,
+                'data'    => $result,
+            ];
+        } catch (\Throwable $e) {
+            $errMsg = 'Auto-Boost kendala saat menaikkan: ' . $e->getMessage();
+            $config->update([
+                'last_run_at'      => now(),
+                'last_run_status'  => 'error',
+                'last_run_message' => $errMsg,
+            ]);
+            return ['status' => 'error', 'message' => $errMsg];
+        }
     }
 
     /**

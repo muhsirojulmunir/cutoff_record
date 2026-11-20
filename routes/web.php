@@ -124,6 +124,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/shopee/boost-products/catalog', [\App\Http\Controllers\ShopeeBoostController::class, 'catalog'])->name('shopee.boost-products.catalog');
     Route::post('/shopee/boost-products/boost', [\App\Http\Controllers\ShopeeBoostController::class, 'boost'])->name('shopee.boost-products.boost');
     Route::get('/shopee/boost-products/search-products', [\App\Http\Controllers\ShopeeBoostController::class, 'searchProducts'])->name('shopee.boost-products.search-products');
+    Route::post('/shopee/boost-products/auto-boost/toggle', [\App\Http\Controllers\ShopeeBoostController::class, 'toggleAutoBoost'])->name('shopee.boost-products.auto-boost.toggle');
+    Route::post('/shopee/boost-products/auto-boost/save', [\App\Http\Controllers\ShopeeBoostController::class, 'saveAutoBoostTargets'])->name('shopee.boost-products.auto-boost.save');
+    Route::post('/shopee/boost-products/auto-boost/add-item', [\App\Http\Controllers\ShopeeBoostController::class, 'addAutoBoostItem'])->name('shopee.boost-products.auto-boost.add');
+    Route::post('/shopee/boost-products/auto-boost/remove-item', [\App\Http\Controllers\ShopeeBoostController::class, 'removeAutoBoostItem'])->name('shopee.boost-products.auto-boost.remove');
+    Route::post('/shopee/boost-products/auto-boost/run-now', [\App\Http\Controllers\ShopeeBoostController::class, 'runAutoBoostNow'])->name('shopee.boost-products.auto-boost.run-now');
 
     // Export Logs & Download Riwayat
     Route::get('/export-logs', [\App\Http\Controllers\ExportLogController::class, 'index'])->name('export-logs.index');
@@ -257,6 +262,39 @@ Route::match(['get', 'post'], '/cron/shopee-products-sync/{token?}', function (\
         ], 500);
     }
 })->name('cron.shopee-products-sync');
+
+// Web Cron Trigger untuk Auto-Naikkan Produk Shopee berkala (setiap 5-10 menit via cron job cPanel)
+Route::match(['get', 'post'], '/cron/shopee-auto-boost/{token?}', function (\Illuminate\Http\Request $request, $token = null) {
+    $providedToken = $token ?? $request->query('token') ?? $request->header('X-Cron-Token');
+    $expectedToken = env('CRON_SYNC_TOKEN', 'recordsh_cutoff_sync_2026');
+
+    if ($providedToken && $providedToken !== $expectedToken) {
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'Unauthorized cron access: token tidak valid.',
+        ], 403);
+    }
+
+    try {
+        @ini_set('max_execution_time', '300');
+        @set_time_limit(300);
+        \Illuminate\Support\Facades\Artisan::call('shopee:auto-boost');
+        $output = \Illuminate\Support\Facades\Artisan::output();
+
+        return response()->json([
+            'status'    => 'success',
+            'message'   => 'Shopee auto-boost cron executed successfully.',
+            'timestamp' => now()->toIso8601String(),
+            'output'    => trim($output),
+        ]);
+    } catch (\Throwable $e) {
+        \Illuminate\Support\Facades\Log::error('[WebCron] Shopee auto-boost failed: ' . $e->getMessage());
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'Auto-boost error: ' . $e->getMessage(),
+        ], 500);
+    }
+})->name('cron.shopee-auto-boost');
 
 // Helper untuk menjalankan migrasi database otomatis dari cPanel / browser
 Route::match(['get', 'post'], '/system/migrate/{token?}', function (\Illuminate\Http\Request $request, $token = null) {

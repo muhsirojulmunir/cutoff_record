@@ -40,6 +40,7 @@ class ShopeeBoostController extends Controller
             'last_page'    => 1,
             'counts'       => ['all' => 0, 'boosted' => 0, 'available' => 0],
         ];
+        $autoBoost = null;
         $errorMessage = null;
 
         if ($accountConnected) {
@@ -47,6 +48,12 @@ class ShopeeBoostController extends Controller
                 $boostData = $this->boostService->getBoostedStatus($account);
             } catch (Throwable $e) {
                 $errorMessage = $e->getMessage();
+            }
+
+            try {
+                $autoBoost = $this->boostService->getAutoBoostConfig($account);
+            } catch (Throwable $e) {
+                // Abaikan jika auto-boost config belum siap
             }
 
             try {
@@ -69,6 +76,7 @@ class ShopeeBoostController extends Controller
                 'connected'         => $accountConnected,
             ] : null,
             'boostData'    => $boostData,
+            'autoBoost'    => $autoBoost,
             'catalog'      => $catalog,
             'errorMessage' => $errorMessage,
         ]);
@@ -201,6 +209,180 @@ class ShopeeBoostController extends Controller
         return response()->json([
             'products' => $products,
         ]);
+    }
+
+    /**
+     * Aktifkan / Nonaktifkan Auto-Boost Shopee.
+     */
+    public function toggleAutoBoost(Request $request): JsonResponse
+    {
+        $this->authorizeAccess($request);
+
+        $validated = $request->validate([
+            'is_enabled' => ['required', 'boolean'],
+        ]);
+
+        $account = $this->resolveShopeeAccount();
+        if (! $account || empty($account->access_token)) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Toko Shopee belum terhubung dengan token aktif.',
+            ], 422);
+        }
+
+        try {
+            $config = $this->boostService->toggleAutoBoost($account, (bool) $validated['is_enabled']);
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => $config['is_enabled'] ? 'Auto-Naikkan Produk berhasil diaktifkan. Sistem akan menjaga produk selalu aktif.' : 'Auto-Naikkan Produk dinonaktifkan.',
+                'data'    => $config,
+            ]);
+        } catch (Throwable $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Simpan seluruh daftar target produk Auto-Boost sekaligus.
+     */
+    public function saveAutoBoostTargets(Request $request): JsonResponse
+    {
+        $this->authorizeAccess($request);
+
+        $validated = $request->validate([
+            'target_item_ids'   => ['present', 'array'],
+            'target_item_ids.*' => ['integer'],
+        ]);
+
+        $account = $this->resolveShopeeAccount();
+        if (! $account || empty($account->access_token)) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Toko Shopee belum terhubung dengan token aktif.',
+            ], 422);
+        }
+
+        try {
+            $config = $this->boostService->saveAutoBoostTargets($account, $validated['target_item_ids']);
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Daftar produk jadwal Auto-Naikkan berhasil diperbarui.',
+                'data'    => $config,
+            ]);
+        } catch (Throwable $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Tambahkan 1 item ke daftar Auto-Boost.
+     */
+    public function addAutoBoostItem(Request $request): JsonResponse
+    {
+        $this->authorizeAccess($request);
+
+        $validated = $request->validate([
+            'item_id' => ['required', 'integer'],
+        ]);
+
+        $account = $this->resolveShopeeAccount();
+        if (! $account || empty($account->access_token)) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Toko Shopee belum terhubung dengan token aktif.',
+            ], 422);
+        }
+
+        try {
+            $config = $this->boostService->addAutoBoostItem($account, (int) $validated['item_id']);
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Produk berhasil ditambahkan ke jadwal Auto-Naikkan.',
+                'data'    => $config,
+            ]);
+        } catch (Throwable $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Hapus 1 item dari daftar Auto-Boost.
+     */
+    public function removeAutoBoostItem(Request $request): JsonResponse
+    {
+        $this->authorizeAccess($request);
+
+        $validated = $request->validate([
+            'item_id' => ['required', 'integer'],
+        ]);
+
+        $account = $this->resolveShopeeAccount();
+        if (! $account || empty($account->access_token)) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Toko Shopee belum terhubung dengan token aktif.',
+            ], 422);
+        }
+
+        try {
+            $config = $this->boostService->removeAutoBoostItem($account, (int) $validated['item_id']);
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Produk dihapus dari jadwal Auto-Naikkan.',
+                'data'    => $config,
+            ]);
+        } catch (Throwable $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Trigger eksekusi langsung Auto-Boost sekarang.
+     */
+    public function runAutoBoostNow(Request $request): JsonResponse
+    {
+        $this->authorizeAccess($request);
+
+        $account = $this->resolveShopeeAccount();
+        if (! $account || empty($account->access_token)) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Toko Shopee belum terhubung dengan token aktif.',
+            ], 422);
+        }
+
+        try {
+            $result = $this->boostService->runAutoBoostCycle($account);
+            $config = $this->boostService->getAutoBoostConfig($account);
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => $result['message'],
+                'data'    => $config,
+                'result'  => $result,
+            ]);
+        } catch (Throwable $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => $e->getMessage(),
+            ], 422);
+        }
     }
 
     /**
