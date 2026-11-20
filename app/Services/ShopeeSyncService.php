@@ -2578,6 +2578,11 @@ class ShopeeSyncService
                                 ?? 0
                             );
 
+                            $itemImageUrl = $item['image']['image_url_list'][0] ?? null;
+                            if (! $itemImageUrl && ! empty($item['image']['image_id_list'][0])) {
+                                $itemImageUrl = 'https://down-id.img.susercontent.com/file/' . $item['image']['image_id_list'][0];
+                            }
+
                             ShopeeProduct::updateOrCreate(
                                 [
                                     'shopee_account_id' => $account->id,
@@ -2594,7 +2599,11 @@ class ShopeeSyncService
                                     'item_status'       => $itemStatus,
                                     'has_model'         => true,
                                     'last_synced_at'    => $now,
-                                    'raw_data'          => $model,
+                                    'raw_data'          => array_merge($model, [
+                                        'image'            => $item['image'] ?? null,
+                                        'cached_image_url' => $itemImageUrl,
+                                        'item_name'        => $itemName,
+                                    ]),
                                 ]
                             );
 
@@ -2623,6 +2632,11 @@ class ShopeeSyncService
                         ?? 0
                     );
 
+                    $itemImageUrl = $item['image']['image_url_list'][0] ?? null;
+                    if (! $itemImageUrl && ! empty($item['image']['image_id_list'][0])) {
+                        $itemImageUrl = 'https://down-id.img.susercontent.com/file/' . $item['image']['image_id_list'][0];
+                    }
+
                     ShopeeProduct::updateOrCreate(
                         [
                             'shopee_account_id' => $account->id,
@@ -2640,7 +2654,9 @@ class ShopeeSyncService
                             'item_status'       => $itemStatus,
                             'has_model'         => false,
                             'last_synced_at'    => $now,
-                            'raw_data'          => $item,
+                            'raw_data'          => array_merge($item, [
+                                'cached_image_url' => $itemImageUrl,
+                            ]),
                         ]
                     );
 

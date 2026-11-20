@@ -121,6 +121,7 @@ Route::middleware('auth')->group(function () {
     // Naikkan Produk Shopee (Eksklusif Admin & Super Admin)
     Route::get('/shopee/boost-products', [\App\Http\Controllers\ShopeeBoostController::class, 'index'])->name('shopee.boost-products.index');
     Route::get('/shopee/boost-products/status', [\App\Http\Controllers\ShopeeBoostController::class, 'status'])->name('shopee.boost-products.status');
+    Route::get('/shopee/boost-products/catalog', [\App\Http\Controllers\ShopeeBoostController::class, 'catalog'])->name('shopee.boost-products.catalog');
     Route::post('/shopee/boost-products/boost', [\App\Http\Controllers\ShopeeBoostController::class, 'boost'])->name('shopee.boost-products.boost');
     Route::get('/shopee/boost-products/search-products', [\App\Http\Controllers\ShopeeBoostController::class, 'searchProducts'])->name('shopee.boost-products.search-products');
 

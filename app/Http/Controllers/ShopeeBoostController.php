@@ -17,7 +17,7 @@ class ShopeeBoostController extends Controller
     ) {}
 
     /**
-     * Tampilkan halaman utama Naikkan Produk Shopee (Dashboard 5 Slot).
+     * Tampilkan halaman utama Naikkan Produk Shopee (Dashboard 5 Slot & Katalog Produk Toko).
      */
     public function index(Request $request): InertiaResponse
     {
@@ -32,6 +32,14 @@ class ShopeeBoostController extends Controller
             'available_count' => 5,
             'raw_items'       => [],
         ];
+        $catalog = [
+            'items'        => [],
+            'total'        => 0,
+            'per_page'     => 15,
+            'current_page' => 1,
+            'last_page'    => 1,
+            'counts'       => ['all' => 0, 'boosted' => 0, 'available' => 0],
+        ];
         $errorMessage = null;
 
         if ($accountConnected) {
@@ -40,18 +48,29 @@ class ShopeeBoostController extends Controller
             } catch (Throwable $e) {
                 $errorMessage = $e->getMessage();
             }
+
+            try {
+                $catalog = $this->boostService->getProductCatalog($account, [
+                    'page'     => 1,
+                    'per_page' => 15,
+                    'filter'   => 'all',
+                ]);
+            } catch (Throwable $e) {
+                // Abaikan jika katalog gagal di-load awal
+            }
         }
 
         return Inertia::render('Shopee/BoostProducts', [
-            'account'         => $account ? [
+            'account'      => $account ? [
                 'id'                => $account->id,
                 'account_name'      => $account->account_name,
                 'shop_id'           => $account->shop_id,
                 'connection_status' => $account->connection_status,
                 'connected'         => $accountConnected,
             ] : null,
-            'boostData'       => $boostData,
-            'errorMessage'    => $errorMessage,
+            'boostData'    => $boostData,
+            'catalog'      => $catalog,
+            'errorMessage' => $errorMessage,
         ]);
     }
 
@@ -76,6 +95,47 @@ class ShopeeBoostController extends Controller
             return response()->json([
                 'status' => 'success',
                 'data'   => $boostData,
+            ]);
+        } catch (Throwable $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Endpoint API untuk memuat data katalog produk toko Shopee (dengan pagination, search, dan filter).
+     */
+    public function catalog(Request $request): JsonResponse
+    {
+        $this->authorizeAccess($request);
+
+        $account = $this->resolveShopeeAccount();
+        if (! $account) {
+            return response()->json([
+                'items'        => [],
+                'total'        => 0,
+                'per_page'     => 15,
+                'current_page' => 1,
+                'last_page'    => 1,
+                'counts'       => ['all' => 0, 'boosted' => 0, 'available' => 0],
+            ]);
+        }
+
+        $params = [
+            'keyword'  => (string) $request->query('keyword', ''),
+            'filter'   => (string) $request->query('filter', 'all'),
+            'page'     => (int) $request->query('page', 1),
+            'per_page' => (int) $request->query('per_page', 15),
+        ];
+
+        try {
+            $data = $this->boostService->getProductCatalog($account, $params);
+
+            return response()->json([
+                'status' => 'success',
+                'data'   => $data,
             ]);
         } catch (Throwable $e) {
             return response()->json([
