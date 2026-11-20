@@ -407,18 +407,18 @@ export default function BoostProducts({
 
         {/* Hero Header Section */}
         <div className="relative overflow-hidden rounded-3xl bg-linear-to-r from-[#0B132B] via-[#15234E] to-[#1E3A8A] p-6 text-white shadow-xl sm:p-8">
-          <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-            <div className="space-y-2">
+          <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+            <div className="min-w-0 flex-1 space-y-1.5 max-w-xl">
               <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
                 Naikkan Produk Shopee
               </h1>
-              <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
                 Promosi organik resmi Shopee untuk menempatkan hingga <strong>5 produk</strong> di urutan teratas tab <em>Terbaru</em> hasil pencarian selama <strong>4 jam</strong>.
               </p>
             </div>
 
-            {/* Header Right Actions & Slot Gauge (Unified Ergonomic Height & Perfectly Aligned) */}
-            <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+            {/* Header Right Actions & Slot Gauge (Strictly 1 Row, Level & Aligned) */}
+            <div className="shrink-0 flex items-center gap-2.5 sm:gap-3 flex-nowrap">
               {/* Slot Gauge Card */}
               <div className="inline-flex h-11 items-center gap-3 rounded-xl border border-white/15 bg-white/10 px-3.5 backdrop-blur-md">
                 <div className="flex items-center gap-1.5">
