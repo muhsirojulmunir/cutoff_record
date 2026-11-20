@@ -4,6 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -36,6 +39,33 @@ class ExportLog extends Model
     }
 
     /**
+     * Pastikan tabel export_logs sudah dibuat di database.
+     */
+    public static function ensureSchema(): void
+    {
+        if (Schema::hasTable('export_logs')) {
+            return;
+        }
+
+        try {
+            Schema::create('export_logs', function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
+                $table->string('file_name', 255);
+                $table->string('file_path', 255)->nullable();
+                $table->string('module', 100)->index();
+                $table->string('description', 255)->nullable();
+                $table->timestamp('exported_at')->nullable()->index();
+                $table->timestamps();
+
+                $table->index(['user_id', 'id']);
+            });
+        } catch (\Throwable $e) {
+            Log::warning('ExportLog ensureSchema error: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Catat satu unduhan, lalu buang riwayat terlama bila sudah melewati batas.
      */
     public static function record(
@@ -45,6 +75,8 @@ class ExportLog extends Model
         ?int $userId = null,
         ?string $filePath = null,
     ): self {
+        self::ensureSchema();
+
         $userId ??= auth()->id();
 
         $log = self::create([

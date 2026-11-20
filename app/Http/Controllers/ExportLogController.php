@@ -18,24 +18,35 @@ class ExportLogController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $userId = $request->user()?->id;
+        ExportLog::ensureSchema();
 
-        $logs = ExportLog::where('user_id', $userId)
-            ->orderByDesc('id')
-            ->limit(ExportLog::MAX_PER_USER)
-            ->get(['id', 'file_name', 'file_path', 'module', 'description', 'exported_at']);
+        try {
+            $userId = $request->user()?->id;
 
-        return response()->json([
-            'logs' => $logs->map(fn (ExportLog $log) => [
-                'id'           => $log->id,
-                'file_name'    => $log->file_name,
-                'module'       => $log->module,
-                'description'  => $log->description,
-                'exported_at'  => $log->exported_at,
-                'downloadable' => $log->isDownloadable(),
-            ]),
-            'total' => $logs->count(),
-        ]);
+            $logs = ExportLog::where('user_id', $userId)
+                ->orderByDesc('id')
+                ->limit(ExportLog::MAX_PER_USER)
+                ->get(['id', 'file_name', 'file_path', 'module', 'description', 'exported_at']);
+
+            return response()->json([
+                'logs' => $logs->map(fn (ExportLog $log) => [
+                    'id'           => $log->id,
+                    'file_name'    => $log->file_name,
+                    'module'       => $log->module,
+                    'description'  => $log->description,
+                    'exported_at'  => $log->exported_at,
+                    'downloadable' => $log->isDownloadable(),
+                ]),
+                'total' => $logs->count(),
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('ExportLog index error: ' . $e->getMessage());
+
+            return response()->json([
+                'logs'  => [],
+                'total' => 0,
+            ]);
+        }
     }
 
     /**

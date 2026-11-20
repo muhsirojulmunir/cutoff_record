@@ -126,8 +126,8 @@ export default function DownloadHistory({ refreshKey = 0, variant = 'default' }:
                 ? 'bg-slate-900 text-white border-slate-900 px-3.5 py-2 text-xs shadow-xs'
                 : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50 px-3.5 py-2 text-xs shadow-xs'
               : open
-                ? 'bg-teal-50 text-teal-700 border-teal-400 px-4 py-2 text-sm'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400 px-4 py-2 text-sm'
+                ? 'bg-blue-50 text-blue-700 border-blue-400 px-4 py-2 text-sm'
+                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 hover:border-slate-400 px-4 py-2 text-sm'
         }`}
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
@@ -137,7 +137,7 @@ export default function DownloadHistory({ refreshKey = 0, variant = 'default' }:
         {total > 0 && (
           <span
             className={`min-w-[1.25rem] h-4.5 px-1.5 inline-flex items-center justify-center rounded-full text-white text-[10px] font-bold ${
-              isShopee ? 'bg-[#EE4D2D]' : isTiktok ? 'bg-[#FE2C55]' : 'bg-teal-600'
+              isShopee ? 'bg-[#EE4D2D]' : isTiktok ? 'bg-[#FE2C55]' : 'bg-blue-600'
             }`}
           >
             {total > 99 ? '99+' : total}
@@ -146,31 +146,40 @@ export default function DownloadHistory({ refreshKey = 0, variant = 'default' }:
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-[380px] max-h-[70vh] flex flex-col bg-white border border-gray-300 rounded-2xl shadow-xl overflow-hidden z-50">
-          <div className="px-5 py-3.5 border-b border-gray-200 bg-gray-50 shrink-0">
-            <p className="text-sm font-bold text-gray-900">Riwayat Download</p>
-            <p className="text-[11px] text-gray-500 mt-0.5">
+        <div className="absolute right-0 mt-2 w-[380px] max-h-[70vh] flex flex-col bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-50">
+          <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 shrink-0">
+            <p className="text-sm font-bold text-slate-900">Riwayat Download</p>
+            <p className="text-[11px] text-slate-500 mt-0.5">
               10 unduhan terakhir Anda — yang lebih lama terhapus sendiri
             </p>
           </div>
 
           {loading && (
-            <p className="px-5 py-8 text-center text-xs text-gray-400">Memuat riwayat…</p>
+            <p className="px-5 py-8 text-center text-xs text-slate-400">Memuat riwayat…</p>
           )}
 
           {!loading && error && (
-            <p className="px-5 py-8 text-center text-xs text-rose-600">{error}</p>
+            <div className="px-5 py-8 text-center text-xs">
+              <p className="text-rose-600 font-medium">{error}</p>
+              <button
+                type="button"
+                onClick={load}
+                className="mt-2.5 inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors"
+              >
+                Coba Lagi
+              </button>
+            </div>
           )}
 
           {!loading && !error && logs.length === 0 && (
             <div className="px-5 py-10 text-center">
-              <span className="inline-flex p-2.5 rounded-xl bg-gray-100 text-gray-400">
+              <span className="inline-flex p-2.5 rounded-xl bg-slate-100 text-slate-400">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                 </svg>
               </span>
-              <p className="text-sm text-gray-500 mt-3">Belum ada unduhan</p>
-              <p className="text-[11px] text-gray-400 mt-1">
+              <p className="text-sm font-medium text-slate-600 mt-3">Belum ada unduhan</p>
+              <p className="text-[11px] text-slate-400 mt-1">
                 File yang Anda export akan tercatat di sini.
               </p>
             </div>
@@ -180,34 +189,34 @@ export default function DownloadHistory({ refreshKey = 0, variant = 'default' }:
             <div className="overflow-y-auto sidebar-scroll max-h-[22rem]">
               {grouped.map((group) => (
                 <div key={group.label}>
-                  <p className="px-5 py-1.5 bg-gray-50/80 border-y border-gray-100 text-[10px] font-bold uppercase tracking-wider text-gray-500 sticky top-0">
+                  <p className="px-5 py-1.5 bg-slate-50 border-y border-slate-100 text-[10px] font-bold uppercase tracking-wider text-slate-500 sticky top-0">
                     {group.label}
                   </p>
 
-                  <ul className="divide-y divide-gray-100">
+                  <ul className="divide-y divide-slate-100">
                     {group.items.map((log) => (
-                      <li key={log.id} className="px-5 py-3 hover:bg-teal-50/40 transition-colors">
+                      <li key={log.id} className="px-5 py-3 hover:bg-slate-50 transition-colors">
                         <div className="flex items-start gap-3">
-                          <span className="shrink-0 mt-0.5 p-1.5 rounded-lg bg-teal-50 text-teal-600">
+                          <span className="shrink-0 mt-0.5 p-1.5 rounded-lg bg-blue-50 text-blue-600">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-3.5 h-3.5">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                             </svg>
                           </span>
 
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs font-semibold text-gray-800 font-mono break-all leading-snug">
+                            <p className="text-xs font-semibold text-slate-800 font-mono break-all leading-snug">
                               {log.file_name}
                             </p>
                             <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mt-1.5">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 border border-gray-200 text-[10px] font-semibold text-gray-600">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-[10px] font-semibold text-slate-600">
                                 {log.module}
                               </span>
-                              <span className="text-[11px] text-gray-500 font-mono">
+                              <span className="text-[11px] text-slate-500 font-mono">
                                 {fmtDate(log.exported_at)} · {fmtTime(log.exported_at)}
                               </span>
                             </div>
                             {log.description && (
-                              <p className="text-[10px] text-gray-400 mt-1">{log.description}</p>
+                              <p className="text-[10px] text-slate-400 mt-1">{log.description}</p>
                             )}
                           </div>
 
@@ -216,7 +225,7 @@ export default function DownloadHistory({ refreshKey = 0, variant = 'default' }:
                               href={`/export-logs/${log.id}/download`}
                               title="Unduh ulang berkas ini"
                               className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-white text-[11px] font-semibold transition-all ${
-                                isShopee ? 'bg-[#EE4D2D] hover:bg-[#d94122]' : isTiktok ? 'bg-[#FE2C55] hover:bg-[#e0264b]' : 'bg-teal-600 hover:bg-teal-500'
+                                isShopee ? 'bg-[#EE4D2D] hover:bg-[#d94122]' : isTiktok ? 'bg-[#FE2C55] hover:bg-[#e0264b]' : 'bg-[#0B132B] hover:bg-slate-800'
                               }`}
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3">
@@ -227,7 +236,7 @@ export default function DownloadHistory({ refreshKey = 0, variant = 'default' }:
                           ) : (
                             <span
                               title="Berkas lama sudah tidak tersimpan"
-                              className="shrink-0 px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-400 text-[11px] font-semibold"
+                              className="shrink-0 px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-400 text-[11px] font-semibold"
                             >
                               Tidak tersedia
                             </span>
