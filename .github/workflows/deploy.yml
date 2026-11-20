@@ -22,7 +22,7 @@ jobs:
 
       - name: 📦 Install NPM & Build Vite Assets
         run: |
-          npm ci
+          npm install
           npm run build
 
       - name: 🚀 Sync Files ke cPanel via FTP
