@@ -67,6 +67,8 @@ function groupByDate(logs: ExportLog[]): { label: string; items: ExportLog[] }[]
   return [...groups.entries()].map(([label, items]) => ({ label, items }));
 }
 
+const INITIAL_LIMIT = 5;
+
 /**
  * Panel Riwayat Download.
  *
@@ -80,6 +82,7 @@ export default function DownloadHistory({ refreshKey = 0, variant = 'default' }:
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
 
   const isShopee = variant === 'shopee';
   const isTiktok = variant === 'tiktok';
@@ -133,10 +136,15 @@ export default function DownloadHistory({ refreshKey = 0, variant = 'default' }:
   function toggle() {
     const next = !open;
     setOpen(next);
-    if (next) load();
+    if (next) {
+      setShowAll(false);
+      load();
+    }
   }
 
-  const grouped = groupByDate(logs);
+  // Batasi tampilan default 5 berkas, tampilkan semua 10 berkas saat tombol "Lihat Semua" diklik
+  const displayedLogs = showAll ? logs : logs.slice(0, INITIAL_LIMIT);
+  const grouped = groupByDate(displayedLogs);
 
   return (
     <div ref={containerRef} className="relative">
@@ -173,7 +181,7 @@ export default function DownloadHistory({ refreshKey = 0, variant = 'default' }:
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-[440px] sm:w-[480px] max-h-[75vh] flex flex-col bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden z-50">
+        <div className="absolute right-0 mt-2 w-[440px] sm:w-[480px] max-h-[80vh] flex flex-col bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden z-50">
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50 shrink-0">
             <div>
@@ -318,6 +326,33 @@ export default function DownloadHistory({ refreshKey = 0, variant = 'default' }:
                   </ul>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Footer: Tombol Lihat Semua jika berkas lebih dari 5 */}
+          {!loading && !error && logs.length > INITIAL_LIMIT && (
+            <div className="border-t border-slate-200 bg-slate-50 p-2.5 text-center shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowAll((prev) => !prev)}
+                className="inline-flex cursor-pointer items-center justify-center gap-1.5 w-full rounded-xl border border-slate-200 bg-white py-2 px-3 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-100 hover:text-slate-900 transition-colors"
+              >
+                {showAll ? (
+                  <>
+                    <span>Tampilkan Lebih Sedikit (5 Berkas)</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-3.5 w-3.5 text-slate-500">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+                    </svg>
+                  </>
+                ) : (
+                  <>
+                    <span>Lihat Semua ({logs.length} Berkas)</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-3.5 w-3.5 text-slate-500">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </>
+                )}
+              </button>
             </div>
           )}
         </div>
