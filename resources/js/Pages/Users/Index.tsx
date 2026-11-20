@@ -35,11 +35,12 @@ interface UserIndexProps {
 }
 
 const roleBadgeColor: Record<string, string> = {
-  'Super Admin': 'bg-teal-500/15 border-teal-500/25 text-teal-600',
-  'Admin':       'bg-blue-500/15 border-blue-500/25 text-blue-300',
-  'Leader':      'bg-emerald-500/15 border-emerald-500/25 text-emerald-300',
-  'Finance':     'bg-orange-50 border-orange-200 text-orange-600',
-  'Management':  'bg-pink-500/15 border-pink-500/25 text-pink-300',
+  'Super Admin': 'bg-violet-50 border-violet-200 text-violet-700',
+  'Admin':       'bg-blue-50 border-blue-200 text-blue-700',
+  'Gudang':      'bg-amber-50 border-amber-200 text-amber-700',
+  'PIC':         'bg-emerald-50 border-emerald-200 text-emerald-700',
+  'Direktur':    'bg-rose-50 border-rose-200 text-rose-700',
+  'PIC Gudang':  'bg-indigo-50 border-indigo-200 text-indigo-700',
 };
 
 export default function Index({ users, roles, filters }: UserIndexProps) {
@@ -94,7 +95,7 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
           {canCreate && (
             <Link
               href="/users/create"
-              className="flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white font-semibold text-sm rounded-xl transition-all shadow-lg shadow-teal-200/40"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[#0B132B] hover:bg-[#15234E] text-white font-semibold text-sm rounded-xl transition-all shadow-md shadow-[#0B132B]/20 active:scale-95"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -105,7 +106,7 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
         </div>
 
         {/* Filter & Search */}
-        <div className="bg-white border border-gray-300 rounded-2xl p-4">
+        <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
           <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1 relative">
               <input
@@ -113,7 +114,7 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Cari nama atau email..."
-                className="w-full pl-10 pr-4 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+                className="w-full pl-10 pr-4 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-800 text-sm focus:ring-2 focus:ring-[#0B132B]/15 focus:border-[#0B132B] focus:bg-white transition-all"
               />
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-gray-400 absolute left-3.5 top-3">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.637 10.637z" />
@@ -123,7 +124,7 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
               <select
                 value={roleId}
                 onChange={(e) => handleFilterChange('role_id', e.target.value)}
-                className="px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
+                className="px-3 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-700 text-sm focus:ring-2 focus:ring-[#0B132B]/15 focus:border-[#0B132B] transition-all cursor-pointer"
               >
                 <option value="">Semua Role</option>
                 {roles.map((r) => (
@@ -133,7 +134,7 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
               <select
                 value={status}
                 onChange={(e) => handleFilterChange('status', e.target.value)}
-                className="px-3 py-2 rounded-xl bg-gray-50 border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
+                className="px-3 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-700 text-sm focus:ring-2 focus:ring-[#0B132B]/15 focus:border-[#0B132B] transition-all cursor-pointer"
               >
                 <option value="">Semua Status</option>
                 <option value="active">Aktif</option>
@@ -141,7 +142,7 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
               </select>
               <button
                 type="submit"
-                className="px-4 py-2 bg-white hover:bg-teal-50 text-teal-700 rounded-xl text-sm font-semibold border border-teal-400 hover:border-teal-500 transition-all"
+                className="px-4 py-2 bg-white hover:bg-slate-50 text-[#0B132B] rounded-xl text-sm font-semibold border border-slate-300 hover:border-[#0B132B] transition-all shadow-sm"
               >
                 Cari
               </button>
@@ -150,11 +151,11 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
         </div>
 
         {/* Table */}
-        <div className="bg-white border border-gray-300 rounded-2xl overflow-hidden shadow-xl">
+        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-gray-300 text-[11px] font-bold uppercase tracking-wider text-gray-400 bg-teal-50/60">
+                <tr className="border-b border-gray-200 text-[11px] font-bold uppercase tracking-wider text-slate-500 bg-slate-50/80">
                   <th className="px-6 py-4">Nama</th>
                   <th className="px-6 py-4">Email</th>
                   <th className="px-6 py-4">Role</th>
@@ -162,7 +163,7 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
                   <th className="px-6 py-4 text-right">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200/60 text-sm">
+              <tbody className="divide-y divide-gray-100 text-sm">
                 {users.data.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-6 py-12 text-center text-gray-400">
@@ -171,10 +172,10 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
                   </tr>
                 ) : (
                   users.data.map((user) => (
-                    <tr key={user.id} className="hover:bg-teal-50/40 group transition-all">
+                    <tr key={user.id} className="hover:bg-slate-50/70 group transition-all">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0B132B] via-[#132043] to-[#1E3A8A] flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-sm">
                             {user.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
                           </div>
                           <span className="font-semibold text-gray-800 group-hover:text-gray-900 transition-colors">
@@ -207,7 +208,7 @@ export default function Index({ users, roles, filters }: UserIndexProps) {
                           {canEdit && (
                             <Link
                               href={`/users/${user.id}/edit`}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-teal-400 hover:bg-teal-500/10 border border-transparent hover:border-teal-500/10 transition-all"
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-blue-700 hover:bg-blue-50 border border-transparent hover:border-blue-100 transition-all"
                               title="Edit"
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">

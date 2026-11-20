@@ -57,8 +57,8 @@ export default function Edit({ user, roles }: UserEditProps) {
         </div>
 
         {/* Identity Card */}
-        <div className="flex items-center gap-4 px-5 py-4 bg-gray-50/50 border border-gray-300 rounded-2xl">
-          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+        <div className="flex items-center gap-4 px-5 py-4 bg-gray-50/50 border border-gray-200 rounded-2xl shadow-sm">
+          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#0B132B] via-[#132043] to-[#1E3A8A] flex items-center justify-center text-white font-bold text-sm flex-shrink-0 shadow-sm">
             {user.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
           </div>
           <div>
@@ -68,7 +68,7 @@ export default function Edit({ user, roles }: UserEditProps) {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="bg-white border border-gray-300 rounded-2xl p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="bg-white border border-gray-200 rounded-2xl p-6 space-y-5 shadow-sm">
           {/* Nama */}
           <div className="space-y-1.5">
             <label className="block text-sm font-semibold text-gray-700">
@@ -78,7 +78,7 @@ export default function Edit({ user, roles }: UserEditProps) {
               type="text"
               value={data.name}
               onChange={(e) => setData('name', e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+              className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-200 text-gray-800 text-sm focus:ring-2 focus:ring-[#0B132B]/15 focus:border-[#0B132B] focus:bg-white transition-all"
               disabled={processing}
             />
             {errors.name && <p className="text-rose-400 text-xs mt-1">{errors.name}</p>}
@@ -93,7 +93,7 @@ export default function Edit({ user, roles }: UserEditProps) {
               type="text"
               value={data.email}
               onChange={(e) => setData('email', e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+              className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-200 text-gray-800 text-sm focus:ring-2 focus:ring-[#0B132B]/15 focus:border-[#0B132B] focus:bg-white transition-all"
               disabled={processing}
             />
             {errors.email && <p className="text-rose-400 text-xs mt-1">{errors.email}</p>}
@@ -110,7 +110,7 @@ export default function Edit({ user, roles }: UserEditProps) {
               value={data.password}
               onChange={(e) => setData('password', e.target.value)}
               placeholder="Minimal 6 karakter..."
-              className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+              className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-200 text-gray-800 text-sm focus:ring-2 focus:ring-[#0B132B]/15 focus:border-[#0B132B] focus:bg-white transition-all"
               disabled={processing}
             />
             {errors.password && <p className="text-rose-400 text-xs mt-1">{errors.password}</p>}
@@ -124,7 +124,7 @@ export default function Edit({ user, roles }: UserEditProps) {
             <select
               value={data.role_id}
               onChange={(e) => setData('role_id', e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
+              className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-200 text-gray-700 text-sm focus:ring-2 focus:ring-[#0B132B]/15 focus:border-[#0B132B] transition-all cursor-pointer"
               disabled={processing}
             >
               <option value="">Pilih role...</option>
@@ -141,7 +141,7 @@ export default function Edit({ user, roles }: UserEditProps) {
             <select
               value={data.status}
               onChange={(e) => setData('status', e.target.value as 'active' | 'inactive')}
-              className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-500 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all cursor-pointer"
+              className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-200 text-gray-700 text-sm focus:ring-2 focus:ring-[#0B132B]/15 focus:border-[#0B132B] transition-all cursor-pointer"
               disabled={processing}
             >
               <option value="active">Aktif</option>
@@ -151,7 +151,7 @@ export default function Edit({ user, roles }: UserEditProps) {
           </div>
 
           {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-300/80">
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
             <Link
               href="/users"
               className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-semibold transition-all"
@@ -161,7 +161,7 @@ export default function Edit({ user, roles }: UserEditProps) {
             <button
               type="submit"
               disabled={processing}
-              className="px-4 py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 active:scale-95 text-white rounded-xl text-sm font-semibold shadow-lg shadow-teal-200/40 transition-all disabled:opacity-60"
+              className="px-5 py-2.5 bg-[#0B132B] hover:bg-[#15234E] active:scale-95 text-white rounded-xl text-sm font-semibold shadow-md shadow-[#0B132B]/20 transition-all disabled:opacity-60"
             >
               {processing ? 'Menyimpan...' : 'Simpan Perubahan'}
             </button>
