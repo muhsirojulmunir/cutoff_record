@@ -405,7 +405,7 @@ export default function Dashboard({
                   Tren Volume & Penjualan Harian
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Grafik riwayat volume pesanan dalam 14 hari terakhir. Arahkan kursor pada batang untuk melihat nominal.
+                  Grafik riwayat volume pesanan cut off yang telah diproses dalam 14 hari terakhir. Arahkan kursor pada batang untuk melihat nominal.
                 </p>
               </div>
 

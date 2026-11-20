@@ -51,8 +51,19 @@ class DashboardController extends Controller
         }
 
         $applyDateRange = static function ($builder, Carbon $startDate, Carbon $endDate): void {
-            $builder->where('order_date', '>=', $startDate->toDateString())
-                    ->where('order_date', '<', $endDate->copy()->addDay()->toDateString());
+            $start = $startDate->toDateString();
+            $end = $endDate->copy()->addDay()->toDateString();
+            $builder->where(function ($q) use ($start, $end) {
+                $q->where(function ($p) use ($start, $end) {
+                    $p->whereNotNull('processed_at')
+                      ->where('processed_at', '>=', $start)
+                      ->where('processed_at', '<', $end);
+                })->orWhere(function ($o) use ($start, $end) {
+                    $o->whereNull('processed_at')
+                      ->where('order_date', '>=', $start)
+                      ->where('order_date', '<', $end);
+                });
+            });
         };
 
         // Tentukan rentang tanggal & judul
@@ -175,13 +186,30 @@ class DashboardController extends Controller
                     $dailyTrendQuery->where('channel', $channel);
                 }
 
+                // Abaikan pesanan yang dibatalkan
+                $dailyTrendQuery->where(function ($q) {
+                    $q->whereNull('order_status')
+                      ->orWhere(function ($s) {
+                          $s->where('order_status', 'not like', '%Batal%')
+                            ->where('order_status', 'not like', '%Cancel%');
+                      });
+                });
+
                 return $dailyTrendQuery
                     ->select(
-                        DB::raw('DATE(order_date) as date'),
+                        DB::raw('DATE(COALESCE(processed_at, order_date)) as date'),
                         DB::raw('count(*) as order_count'),
                         DB::raw('coalesce(sum(est_net_income), 0) as total_income')
                     )
-                    ->where('order_date', '>=', $fromDate)
+                    ->where(function ($q) use ($fromDate) {
+                        $q->where(function ($p) use ($fromDate) {
+                            $p->whereNotNull('processed_at')
+                              ->where('processed_at', '>=', $fromDate);
+                        })->orWhere(function ($o) use ($fromDate) {
+                            $o->whereNull('processed_at')
+                              ->where('order_date', '>=', $fromDate);
+                        });
+                    })
                     ->where('order_date', '<', '2028-01-01')
                     ->groupBy('date')
                     ->orderByDesc('date')
@@ -290,12 +318,12 @@ class DashboardController extends Controller
             try {
                 $store = \Illuminate\Support\Facades\Cache::store('file');
                 $dailyTrend = $store->remember(
-                    'dashboard_daily_trend_v1_' . md5("{$cacheVer}|{$channel}|{$todayStr}"),
+                    'dashboard_daily_trend_v2_' . md5("{$cacheVer}|{$channel}|{$todayStr}"),
                     60,
                     $computeDailyTrend
                 );
                 $breakdowns = $store->remember(
-                    'dashboard_breakdowns_v1_' . md5("{$cacheVer}|{$range}|{$channel}|{$todayStr}"),
+                    'dashboard_breakdowns_v2_' . md5("{$cacheVer}|{$range}|{$channel}|{$todayStr}"),
                     30,
                     $computeBreakdowns
                 );
