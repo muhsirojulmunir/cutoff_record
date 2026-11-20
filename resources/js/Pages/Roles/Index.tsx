@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Head } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 
