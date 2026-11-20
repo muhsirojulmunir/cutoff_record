@@ -40,6 +40,7 @@ const navSections: NavSection[] = [
       {
         label: 'Customer Service',
         href: '/customer-service',
+        permission: 'cs.view',
         matchPrefix: true,
         icon: 'M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a.75.75 0 01-.974-.965 4.966 4.966 0 00.73-1.879C3.642 16.586 3 14.412 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z',
       },
@@ -51,26 +52,28 @@ const navSections: NavSection[] = [
           {
             label: 'Pesanan Shopee',
             href: '/shopee-orders',
+            permission: 'orders.shopee',
             matchPrefix: true,
-            superAdminOnly: true,
             icon: 'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z',
           },
           {
             label: 'Pesanan TikTok',
             href: '/tiktok-orders',
+            permission: 'orders.tiktok',
             matchPrefix: true,
-            superAdminOnly: true,
             icon: 'M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z',
           },
           {
             label: 'Pesanan Cut Off',
             href: '/cut-off-orders',
+            permission: 'orders.cutoff',
             matchPrefix: true,
             icon: 'M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z',
           },
           {
             label: 'Retur Online',
             href: '/cut-off-returns',
+            permission: 'returns.online',
             matchPrefix: true,
             icon: 'M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3',
           },
@@ -84,18 +87,21 @@ const navSections: NavSection[] = [
           {
             label: 'Master Stok',
             href: '/master-stock',
+            permission: 'stock.master',
             matchPrefix: true,
             icon: 'M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 00.75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 00-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0112 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 01-.673-.38m0 0A2.18 2.18 0 013 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 013.413-.387m7.5 0V5.25A2.25 2.25 0 0013.5 3h-3a2.25 2.25 0 00-2.25 2.25v1.069m7.5 0c.98.058 1.95.143 2.909.255m-10.409 0A48.064 48.064 0 0112 6.75c.98 0 1.95.05 2.909.144',
           },
           {
             label: 'Stok Produk Shopee',
             href: '/shopee-products',
+            permission: 'stock.shopee',
             matchPrefix: true,
             icon: 'M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z',
           },
           {
             label: 'Stok Produk TikTok',
             href: '/tiktok-products',
+            permission: 'stock.tiktok',
             matchPrefix: true,
             icon: 'M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z',
           },
@@ -122,14 +128,14 @@ const navSections: NavSection[] = [
       {
         label: 'Integrasi Shopee',
         href: '/marketplace/shopee',
-        permission: 'user.view',
+        permission: 'settings.shopee',
         matchPrefix: true,
         icon: 'M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h5.25m-5.25 0v-7.5a.75.75 0 00-.75-.75h-3a.75.75 0 00-.75.75V21',
       },
       {
         label: 'Integrasi TikTok',
         href: '/marketplace/tiktok',
-        permission: 'user.view',
+        permission: 'settings.tiktok',
         matchPrefix: true,
         icon: 'M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z',
       },
@@ -253,6 +259,7 @@ export default function AppLayout({ children, headerRight }: Props) {
   }, []);
 
   function canSee(item: NavItem): boolean {
+    if (isSuperAdmin) return true;
     if (item.superAdminOnly && !isSuperAdmin) return false;
     if (!item.permission) return true;
     return permissions.includes(item.permission);

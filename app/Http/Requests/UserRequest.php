@@ -26,8 +26,8 @@ class UserRequest extends FormRequest
                 Rule::unique('users', 'email')->ignore($userId)->whereNull('deleted_at'),
             ],
             'password' => $userId
-                ? ['nullable', 'string', Password::min(8)]
-                : ['required', 'string', Password::min(8)],
+                ? ['nullable', 'string', Password::min(6)]
+                : ['required', 'string', Password::min(6)],
             'role_id'  => ['required', 'exists:roles,id'],
             'status'   => ['required', 'in:active,inactive'],
         ];

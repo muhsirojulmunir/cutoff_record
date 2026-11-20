@@ -420,11 +420,15 @@ class TiktokOrderController extends Controller
             return;
         }
 
+        if ($user && $user->hasPermission('orders.tiktok')) {
+            return;
+        }
+
         if (Gate::allows('user.view')) {
             return;
         }
 
-        abort(403, 'Akses terbatas untuk Super Admin.');
+        abort(403, 'Akses terbatas untuk Super Admin atau pengguna dengan izin Pesanan TikTok.');
     }
 
     private function fetchTabCounts(int $accountId): array

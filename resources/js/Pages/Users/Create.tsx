@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 
@@ -64,16 +64,16 @@ export default function Create({ roles }: UserCreateProps) {
             {errors.name && <p className="text-rose-400 text-xs mt-1">{errors.name}</p>}
           </div>
 
-          {/* Email */}
+          {/* Email / Username */}
           <div className="space-y-1.5">
             <label className="block text-sm font-semibold text-gray-700">
-              Email <span className="text-rose-400">*</span>
+              Username / Email <span className="text-rose-400">*</span>
             </label>
             <input
-              type="email"
+              type="text"
               value={data.email}
               onChange={(e) => setData('email', e.target.value)}
-              placeholder="user@company.com"
+              placeholder="Contoh: gudang, admin, user@company.com..."
               className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
               disabled={processing}
             />
@@ -89,7 +89,7 @@ export default function Create({ roles }: UserCreateProps) {
               type="password"
               value={data.password}
               onChange={(e) => setData('password', e.target.value)}
-              placeholder="Minimal 8 karakter..."
+              placeholder="Minimal 6 karakter..."
               className="w-full px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-300 text-gray-800 text-sm focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
               disabled={processing}
             />

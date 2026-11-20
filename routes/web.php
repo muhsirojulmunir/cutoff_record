@@ -95,6 +95,7 @@ Route::middleware('auth')->group(function () {
 
     // Roles & Permissions
     Route::get('/roles', [RoleController::class, 'index'])->name('roles.index')->middleware('can:role.view');
+    Route::put('/roles/{role}/permissions', [RoleController::class, 'updatePermissions'])->name('roles.update-permissions')->middleware('can:role.view');
 
     // Integrasi Shopee Open API v2
     Route::get('/marketplace/shopee', [\App\Http\Controllers\ShopeeIntegrationController::class, 'index'])->name('shopee.index');
