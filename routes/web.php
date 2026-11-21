@@ -183,6 +183,12 @@ Route::middleware('auth')->group(function () {
     Route::post('/marketplace/tiktok/sync-now', [\App\Http\Controllers\TiktokIntegrationController::class, 'syncNow'])->name('tiktok.sync');
     Route::post('/marketplace/tiktok/sync-returns', [\App\Http\Controllers\TiktokIntegrationController::class, 'syncReturns'])->name('tiktok.sync-returns');
 
+    // Stock Forecast & PO Planning
+    Route::get('/stock-forecast', [\App\Http\Controllers\StockForecastController::class, 'index'])->name('stock-forecast.index');
+    Route::post('/stock-forecast/propose', [\App\Http\Controllers\StockForecastController::class, 'propose'])->name('stock-forecast.propose');
+    Route::post('/stock-forecast/proposals/{poProposal}/approve', [\App\Http\Controllers\StockForecastController::class, 'approve'])->name('stock-forecast.proposals.approve');
+    Route::post('/stock-forecast/proposals/{poProposal}/reject', [\App\Http\Controllers\StockForecastController::class, 'reject'])->name('stock-forecast.proposals.reject');
+
     // System Utilities (Super Admin)
     Route::get('/system/migrate', function () {
         $user = auth()->user();
