@@ -33,6 +33,17 @@ class TiktokProductController extends Controller
             $store = Cache::store('file');
             $store->forget('tiktok_stock_alert_queue');
             $store->forget('tiktok_products_light_cols_v1');
+            $store->forget('master_stock_wh_stats_v2');
+            $store->forget('tiktok_zero_summary_' . ($accountId ?? 'all'));
+            $store->forget('tiktok_zero_summary_all');
+            if ($accountId) {
+                $store->forget("tiktok_summary_stats_{$accountId}");
+            }
+            $store->forget('tiktok_summary_stats_all');
+
+            // Naikkan versi cache untuk menginvalidasi seluruh kalkulasi hash rekonsiliasi seketika
+            $currentVer = (int) $store->get('tiktok_audit_cache_ver', 1);
+            $store->put('tiktok_audit_cache_ver', $currentVer + 1, 86400 * 30);
         } catch (\Throwable $e) {
             // Safe fallback if file cache is unavailable
         }
@@ -129,7 +140,7 @@ class TiktokProductController extends Controller
      *
      * @return array{items: array<int, array<string, mixed>>, total: int, critical: int}
      */
-    public function getStockAlertWorkQueue(): array
+    public function getStockAlertWorkQueue(bool $allowHeavyScan = false): array
     {
         $empty = ['items' => [], 'total' => 0, 'critical' => 0];
 
@@ -140,6 +151,11 @@ class TiktokProductController extends Controller
             }
         } catch (\Throwable $e) {
             // Lanjutkan evaluasi langsung bila file cache gagal dibaca
+        }
+
+        // Cegah scan berat synchronous yang memblokir request pengguna jika cache dingin / dari middleware
+        if (! $allowHeavyScan) {
+            return $empty;
         }
 
         try {
@@ -225,7 +241,19 @@ class TiktokProductController extends Controller
      */
     public function index(Request $request): \Inertia\Response
     {
-        $this->syncService->ensureProductSchema();
+        try {
+            $schemaVerified = ! app()->runningUnitTests()
+                && Cache::store('file')->get('tiktok_product_schema_verified_v1') === true;
+
+            if (! $schemaVerified) {
+                $this->syncService->ensureProductSchema();
+                if (! app()->runningUnitTests()) {
+                    Cache::store('file')->put('tiktok_product_schema_verified_v1', true, 86400);
+                }
+            }
+        } catch (\Throwable $e) {
+            // Abaikan jika tidak punya akses alter table di database
+        }
 
         $search      = trim((string) $request->input('search', ''));
         $stockStatus = (string) $request->input('stock_status', 'all');
@@ -286,13 +314,14 @@ class TiktokProductController extends Controller
             'has_master_stock' => false,
         ];
 
-        $masterStocks = collect();
         if ($hasMasterTable) {
             try {
-                $whStats = MasterStock::selectRaw('warehouse, COUNT(*) as total_items, COALESCE(SUM(qty_pcs), 0) as total_pcs, MAX(last_imported_at) as last_imported')
-                    ->groupBy('warehouse')
-                    ->get()
-                    ->keyBy('warehouse');
+                $whStats = Cache::store('file')->remember('master_stock_wh_stats_v2', 300, function () {
+                    return MasterStock::selectRaw('warehouse, COUNT(*) as total_items, COALESCE(SUM(qty_pcs), 0) as total_pcs, MAX(last_imported_at) as last_imported')
+                        ->groupBy('warehouse')
+                        ->get()
+                        ->keyBy('warehouse');
+                });
 
                 $g = $whStats->get('G');
                 $a = $whStats->get('A');
@@ -306,16 +335,12 @@ class TiktokProductController extends Controller
                     'last_imported_a'  => $a?->last_imported,
                     'has_master_stock' => ($whStats->count() > 0),
                 ];
-
-                if ($masterStockSummary['has_master_stock']) {
-                    $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs', 'raw_qty', 'unit')->get();
-                }
             } catch (\Throwable $e) {
                 // Fallback
             }
         }
 
-        // 2. Evaluasi Rekonsiliasi Master Stok
+        // 2. Evaluasi Rekonsiliasi Master Stok (Instan di memori via Cache)
         $criticalOosIds      = [];
         $campaignLockedIds   = [];
         $campaignUnlockedIds = [];
@@ -324,61 +349,108 @@ class TiktokProductController extends Controller
         $matchedIds          = [];
         $stockInfoById       = [];
 
-        if ($masterStockSummary['has_master_stock'] && $account && $masterStocks->isNotEmpty()) {
-            $maps = ProductStockMatcher::buildMasterStockMaps($masterStocks);
+        if ($masterStockSummary['has_master_stock'] && $account) {
+            $cacheVer     = (int) Cache::store('file')->get('tiktok_audit_cache_ver', 1);
+            $lastImportG  = (string) ($masterStockSummary['last_imported_g'] ?? '');
+            $lastImportA  = (string) ($masterStockSummary['last_imported_a'] ?? '');
+            $verHash      = md5("{$account->id}_{$warehouse}_{$lastImportG}_{$lastImportA}_{$cacheVer}");
+            $evalCacheKey = "tiktok_stock_audit_eval_v5_{$verHash}";
 
-            $allProds = TiktokProduct::select($this->getLightProductColumns())
-                ->where('tiktok_account_id', $account->id)
-                ->get();
-
-            $variantCounts = ProductStockMatcher::countDistinctSizesPerItem($allProds);
-
-            foreach ($allProds as $p) {
-                $info = ProductStockMatcher::resolveStockInfo(
-                    $p,
-                    $maps,
-                    $warehouse,
-                    $variantCounts[$p->item_id] ?? 6
-                );
-
-                if ($info['is_critical_oos']) {
-                    $criticalOosIds[] = $p->id;
-                } elseif ($info['is_campaign_unlocked']) {
-                    $campaignUnlockedIds[] = $p->id;
-                } elseif ($info['is_campaign_locked']) {
-                    $campaignLockedIds[] = $p->id;
+            $evalData = Cache::store('file')->remember($evalCacheKey, 300, function () use ($account, $warehouse) {
+                $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs', 'raw_qty', 'unit')->get();
+                if ($masterStocks->isEmpty()) {
+                    return null;
                 }
 
-                if ($info['warehouse_stock'] > 0 && $p->stock <= 0) {
-                    $gudangReadyIds[] = $p->id;
-                }
+                $maps = ProductStockMatcher::buildMasterStockMaps($masterStocks);
 
-                if (! empty($info['matched_code'])) {
-                    if ($info['diff'] !== 0) {
-                        $discrepancyIds[] = $p->id;
-                    } else {
-                        $matchedIds[] = $p->id;
+                $allProds = TiktokProduct::select($this->getLightProductColumns())
+                    ->where('tiktok_account_id', $account->id)
+                    ->get();
+
+                $variantCounts = ProductStockMatcher::countDistinctSizesPerItem($allProds);
+
+                $critIds      = [];
+                $campLocked   = [];
+                $campUnlocked = [];
+                $gReady       = [];
+                $discrep      = [];
+                $matched      = [];
+                $infoById     = [];
+
+                foreach ($allProds as $p) {
+                    $info = ProductStockMatcher::resolveStockInfo(
+                        $p,
+                        $maps,
+                        $warehouse,
+                        $variantCounts[$p->item_id] ?? 6
+                    );
+
+                    if ($info['is_critical_oos']) {
+                        $critIds[] = $p->id;
+                    } elseif ($info['is_campaign_unlocked']) {
+                        $campUnlocked[] = $p->id;
+                    } elseif ($info['is_campaign_locked']) {
+                        $campLocked[] = $p->id;
                     }
+
+                    if ($info['warehouse_stock'] > 0 && $p->stock <= 0) {
+                        $gReady[] = $p->id;
+                    }
+
+                    if (! empty($info['matched_code'])) {
+                        if ($info['diff'] !== 0) {
+                            $discrep[] = $p->id;
+                        } else {
+                            $matched[] = $p->id;
+                        }
+                    }
+
+                    $infoById[$p->id] = $info;
                 }
 
-                $stockInfoById[$p->id] = $info;
+                return [
+                    'criticalOosIds'      => $critIds,
+                    'campaignLockedIds'   => $campLocked,
+                    'campaignUnlockedIds' => $campUnlocked,
+                    'gudangReadyIds'      => $gReady,
+                    'discrepancyIds'      => $discrep,
+                    'matchedIds'          => $matched,
+                    'stockInfoById'       => $infoById,
+                ];
+            });
+
+            if (is_array($evalData)) {
+                $criticalOosIds      = $evalData['criticalOosIds'] ?? [];
+                $campaignLockedIds   = $evalData['campaignLockedIds'] ?? [];
+                $campaignUnlockedIds = $evalData['campaignUnlockedIds'] ?? [];
+                $gudangReadyIds      = $evalData['gudangReadyIds'] ?? [];
+                $discrepancyIds      = $evalData['discrepancyIds'] ?? [];
+                $matchedIds          = $evalData['matchedIds'] ?? [];
+                $stockInfoById       = $evalData['stockInfoById'] ?? [];
             }
         }
 
         // 3. Ringkasan Global Statistik
-        $qStats = TiktokProduct::query();
-        if ($account) {
-            $qStats->where('tiktok_account_id', $account->id);
-        }
-        $summaryStats = $qStats->selectRaw('
-            COUNT(*) as total_skus,
-            COALESCE(SUM(stock), 0) as total_stock,
-            COALESCE(SUM(CASE WHEN stock > 0 THEN 1 ELSE 0 END), 0) as in_stock_skus,
-            COALESCE(SUM(CASE WHEN stock <= 0 THEN 1 ELSE 0 END), 0) as out_of_stock_skus,
-            COALESCE(SUM(CASE WHEN sales > 0 THEN 1 ELSE 0 END), 0) as has_sales_skus,
-            COALESCE(SUM(sales), 0) as total_sales,
-            MAX(last_synced_at) as last_synced_at
-        ')->first();
+        $summaryStats = Cache::store('file')->remember(
+            'tiktok_summary_stats_' . ($account ? $account->id : 'all'),
+            60,
+            function () use ($account) {
+                $qStats = TiktokProduct::query();
+                if ($account) {
+                    $qStats->where('tiktok_account_id', $account->id);
+                }
+                return $qStats->selectRaw('
+                    COUNT(*) as total_skus,
+                    COALESCE(SUM(stock), 0) as total_stock,
+                    COALESCE(SUM(CASE WHEN stock > 0 THEN 1 ELSE 0 END), 0) as in_stock_skus,
+                    COALESCE(SUM(CASE WHEN stock <= 0 THEN 1 ELSE 0 END), 0) as out_of_stock_skus,
+                    COALESCE(SUM(CASE WHEN sales > 0 THEN 1 ELSE 0 END), 0) as has_sales_skus,
+                    COALESCE(SUM(sales), 0) as total_sales,
+                    MAX(last_synced_at) as last_synced_at
+                ')->first();
+            }
+        );
 
         $totalSkus      = (int) ($summaryStats->total_skus ?? 0);
         $totalStock     = (int) ($summaryStats->total_stock ?? 0);
@@ -501,7 +573,7 @@ class TiktokProductController extends Controller
 
         $isSuperAdmin = $this->isSuperAdmin($request->user());
 
-        $shopeeQueue = app(\App\Http\Controllers\ShopeeProductController::class)->getStockAlertWorkQueue();
+        $shopeeQueue = app(\App\Http\Controllers\ShopeeProductController::class)->getStockAlertWorkQueue(false);
         $combinedQueue = [
             'items'    => array_values(array_merge($shopeeQueue['items'] ?? [], $stockWorkQueue['items'] ?? [])),
             'total'    => count($shopeeQueue['items'] ?? []) + count($stockWorkQueue['items'] ?? []),
@@ -560,6 +632,7 @@ class TiktokProductController extends Controller
             }
 
             $result = $this->syncService->syncProductsFromTiktok($account);
+            self::clearAuditCache($account->id);
             return back()->with('success', $result['message']);
         } catch (\Throwable $e) {
             return back()->with('error', 'Gagal menyinkronkan produk TikTok: ' . $e->getMessage());
@@ -862,6 +935,8 @@ class TiktokProductController extends Controller
             return $batch;
         });
 
+        self::clearAuditCache($account->id);
+
         return response()->json([
             'status'       => 'success',
             'batch_id'     => $batch->id,
@@ -926,6 +1001,8 @@ class TiktokProductController extends Controller
             'restored_at'      => now(),
         ]);
 
+        self::clearAuditCache($account?->id);
+
         return response()->json([
             'status'         => 'success',
             'restored_count' => $restoredCount,
@@ -982,39 +1059,42 @@ class TiktokProductController extends Controller
      */
     private function buildZeroRestoreSummary(?int $accountId): ?array
     {
-        try {
-            $totalBatches = TiktokStockZeroBatch::count();
-            if ($totalBatches === 0) {
+        $cacheKey = 'tiktok_zero_summary_' . ($accountId ?? 'all');
+        return Cache::store('file')->remember($cacheKey, 300, function () {
+            try {
+                $totalBatches = TiktokStockZeroBatch::count();
+                if ($totalBatches === 0) {
+                    return null;
+                }
+
+                $restorableBatches = TiktokStockZeroBatch::where('status', 'zeroed')->count();
+                $restorableItems = TiktokStockZeroItem::where('status', 'zeroed')->count();
+                $restoredItems = TiktokStockZeroItem::where('status', 'restored')->count();
+                $latest = TiktokStockZeroBatch::where('status', 'zeroed')->orderBy('id', 'DESC')->first();
+
+                return [
+                    'total_batches'            => $totalBatches,
+                    'restorable_batches_count' => $restorableBatches,
+                    'restorable_items_count'   => $restorableItems,
+                    'restored_items_count'     => $restoredItems,
+                    'latest_restorable_batch'  => $latest ? [
+                        'id'               => $latest->id,
+                        'batch_code'       => $latest->batch_code,
+                        'source'           => $latest->source,
+                        'source_label'     => ucfirst($latest->source),
+                        'note'             => $latest->note,
+                        'zeroed_by_name'   => $latest->zeroed_by_name,
+                        'zeroed_at_label'  => $latest->zeroed_at ? $latest->zeroed_at->diffForHumans() : null,
+                        'total_requested'  => $latest->total_requested,
+                        'zeroed_count'     => $latest->zeroed_count,
+                        'restored_count'   => $latest->restored_count,
+                        'restorable_count' => $latest->zeroed_count - $latest->restored_count,
+                    ] : null,
+                ];
+            } catch (\Throwable) {
                 return null;
             }
-
-            $restorableBatches = TiktokStockZeroBatch::where('status', 'zeroed')->count();
-            $restorableItems = TiktokStockZeroItem::where('status', 'zeroed')->count();
-            $restoredItems = TiktokStockZeroItem::where('status', 'restored')->count();
-            $latest = TiktokStockZeroBatch::where('status', 'zeroed')->orderBy('id', 'DESC')->first();
-
-            return [
-                'total_batches'            => $totalBatches,
-                'restorable_batches_count' => $restorableBatches,
-                'restorable_items_count'   => $restorableItems,
-                'restored_items_count'     => $restoredItems,
-                'latest_restorable_batch'  => $latest ? [
-                    'id'               => $latest->id,
-                    'batch_code'       => $latest->batch_code,
-                    'source'           => $latest->source,
-                    'source_label'     => ucfirst($latest->source),
-                    'note'             => $latest->note,
-                    'zeroed_by_name'   => $latest->zeroed_by_name,
-                    'zeroed_at_label'  => $latest->zeroed_at ? $latest->zeroed_at->diffForHumans() : null,
-                    'total_requested'  => $latest->total_requested,
-                    'zeroed_count'     => $latest->zeroed_count,
-                    'restored_count'   => $latest->restored_count,
-                    'restorable_count' => $latest->zeroed_count - $latest->restored_count,
-                ] : null,
-            ];
-        } catch (\Throwable) {
-            return null;
-        }
+        });
     }
 
     /**

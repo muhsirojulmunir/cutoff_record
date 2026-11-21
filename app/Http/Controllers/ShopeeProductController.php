@@ -33,6 +33,17 @@ class ShopeeProductController extends Controller
             $store = Cache::store('file');
             $store->forget('shopee_stock_alert_queue');
             $store->forget('shopee_products_light_cols_v1');
+            $store->forget('master_stock_wh_stats_v2');
+            $store->forget('shopee_zero_summary_' . ($accountId ?? 'all'));
+            $store->forget('shopee_zero_summary_all');
+            if ($accountId) {
+                $store->forget("shopee_summary_stats_{$accountId}");
+            }
+            $store->forget('shopee_summary_stats_all');
+
+            // Naikkan versi cache untuk menginvalidasi seluruh kalkulasi hash rekonsiliasi seketika
+            $currentVer = (int) $store->get('shopee_audit_cache_ver', 1);
+            $store->put('shopee_audit_cache_ver', $currentVer + 1, 86400 * 30);
         } catch (\Throwable $e) {
             // Safe fallback if file cache is unavailable
         }
@@ -129,7 +140,7 @@ class ShopeeProductController extends Controller
      *
      * @return array{items: array<int, array<string, mixed>>, total: int, critical: int}
      */
-    public function getStockAlertWorkQueue(): array
+    public function getStockAlertWorkQueue(bool $allowHeavyScan = false): array
     {
         $empty = ['items' => [], 'total' => 0, 'critical' => 0];
 
@@ -140,6 +151,11 @@ class ShopeeProductController extends Controller
             }
         } catch (\Throwable $e) {
             // Lanjutkan evaluasi langsung bila file cache gagal dibaca
+        }
+
+        // Cegah scan berat synchronous yang memblokir request pengguna jika cache dingin / dari middleware
+        if (! $allowHeavyScan) {
+            return $empty;
         }
 
         try {
@@ -302,13 +318,14 @@ class ShopeeProductController extends Controller
             'has_master_stock' => false,
         ];
 
-        $masterStocks = collect();
         if ($hasMasterTable) {
             try {
-                $whStats = MasterStock::selectRaw('warehouse, COUNT(*) as total_items, COALESCE(SUM(qty_pcs), 0) as total_pcs, MAX(last_imported_at) as last_imported')
-                    ->groupBy('warehouse')
-                    ->get()
-                    ->keyBy('warehouse');
+                $whStats = Cache::store('file')->remember('master_stock_wh_stats_v2', 300, function () {
+                    return MasterStock::selectRaw('warehouse, COUNT(*) as total_items, COALESCE(SUM(qty_pcs), 0) as total_pcs, MAX(last_imported_at) as last_imported')
+                        ->groupBy('warehouse')
+                        ->get()
+                        ->keyBy('warehouse');
+                });
 
                 $g = $whStats->get('G');
                 $a = $whStats->get('A');
@@ -322,16 +339,12 @@ class ShopeeProductController extends Controller
                     'last_imported_a'  => $a?->last_imported,
                     'has_master_stock' => ($whStats->count() > 0),
                 ];
-
-                if ($masterStockSummary['has_master_stock']) {
-                    $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs', 'raw_qty', 'unit')->get();
-                }
             } catch (\Throwable $e) {
                 // Fallback aman jika query MasterStock mengalami kendala
             }
         }
 
-        // 2. Evaluasi Cepat Rekonsiliasi Master Stok dengan O(1) Hash Map Indexing (Instan di memori ~10ms)
+        // 2. Evaluasi Cepat Rekonsiliasi Master Stok dengan O(1) Hash Map Indexing (Instan di memori via Cache)
         $criticalOosIds      = [];
         $campaignLockedIds   = [];
         $campaignUnlockedIds = [];
@@ -340,47 +353,88 @@ class ShopeeProductController extends Controller
         $matchedIds          = [];
         $stockInfoById       = [];
 
-        if ($masterStockSummary['has_master_stock'] && $account && $masterStocks->isNotEmpty()) {
-            $maps = ProductStockMatcher::buildMasterStockMaps($masterStocks);
+        if ($masterStockSummary['has_master_stock'] && $account) {
+            $cacheVer     = (int) Cache::store('file')->get('shopee_audit_cache_ver', 1);
+            $lastImportG  = (string) ($masterStockSummary['last_imported_g'] ?? '');
+            $lastImportA  = (string) ($masterStockSummary['last_imported_a'] ?? '');
+            $verHash      = md5("{$account->id}_{$warehouse}_{$lastImportG}_{$lastImportA}_{$cacheVer}");
+            $evalCacheKey = "shopee_stock_audit_eval_v5_{$verHash}";
 
-            // Ambil kolom produk tanpa raw_data (JSON besar) dan tetap aman walau skema berbeda
-            $allProds = ShopeeProduct::select($this->getLightProductColumns())
-                ->where('shopee_account_id', $account->id)
-                ->get();
-
-            $variantCounts = ProductStockMatcher::countDistinctSizesPerItem($allProds);
-
-            foreach ($allProds as $p) {
-                $info = ProductStockMatcher::resolveStockInfo(
-                    $p,
-                    $maps,
-                    $warehouse,
-                    $variantCounts[$p->item_id] ?? 6
-                );
-
-                if ($info['is_critical_oos']) {
-                    $criticalOosIds[] = $p->id;
-                } elseif ($info['is_campaign_unlocked']) {
-                    $campaignUnlockedIds[] = $p->id;
-                } elseif ($info['is_campaign_locked']) {
-                    $campaignLockedIds[] = $p->id;
+            $evalData = Cache::store('file')->remember($evalCacheKey, 300, function () use ($account, $warehouse) {
+                $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs', 'raw_qty', 'unit')->get();
+                if ($masterStocks->isEmpty()) {
+                    return null;
                 }
 
-                // Deteksi barang yang di gudang ada stoknya (> 0) tapi di Shopee masih 0 (Gudang Ready)
-                if ($info['warehouse_stock'] > 0 && $p->stock <= 0) {
-                    $gudangReadyIds[] = $p->id;
-                }
+                $maps = ProductStockMatcher::buildMasterStockMaps($masterStocks);
 
-                // Auto deteksi perbandingan stok fisik Gudang (A + G) vs Stok di Shopee
-                if (! empty($info['matched_code'])) {
-                    if ($info['diff'] !== 0) {
-                        $discrepancyIds[] = $p->id;
-                    } else {
-                        $matchedIds[] = $p->id;
+                // Ambil kolom produk tanpa raw_data (JSON besar) dan tetap aman walau skema berbeda
+                $allProds = ShopeeProduct::select($this->getLightProductColumns())
+                    ->where('shopee_account_id', $account->id)
+                    ->get();
+
+                $variantCounts = ProductStockMatcher::countDistinctSizesPerItem($allProds);
+
+                $critIds      = [];
+                $campLocked   = [];
+                $campUnlocked = [];
+                $gReady       = [];
+                $discrep      = [];
+                $matched      = [];
+                $infoById     = [];
+
+                foreach ($allProds as $p) {
+                    $info = ProductStockMatcher::resolveStockInfo(
+                        $p,
+                        $maps,
+                        $warehouse,
+                        $variantCounts[$p->item_id] ?? 6
+                    );
+
+                    if ($info['is_critical_oos']) {
+                        $critIds[] = $p->id;
+                    } elseif ($info['is_campaign_unlocked']) {
+                        $campUnlocked[] = $p->id;
+                    } elseif ($info['is_campaign_locked']) {
+                        $campLocked[] = $p->id;
                     }
+
+                    // Deteksi barang yang di gudang ada stoknya (> 0) tapi di Shopee masih 0 (Gudang Ready)
+                    if ($info['warehouse_stock'] > 0 && $p->stock <= 0) {
+                        $gReady[] = $p->id;
+                    }
+
+                    // Auto deteksi perbandingan stok fisik Gudang (A + G) vs Stok di Shopee
+                    if (! empty($info['matched_code'])) {
+                        if ($info['diff'] !== 0) {
+                            $discrep[] = $p->id;
+                        } else {
+                            $matched[] = $p->id;
+                        }
+                    }
+
+                    $infoById[$p->id] = $info;
                 }
 
-                $stockInfoById[$p->id] = $info;
+                return [
+                    'criticalOosIds'      => $critIds,
+                    'campaignLockedIds'   => $campLocked,
+                    'campaignUnlockedIds' => $campUnlocked,
+                    'gudangReadyIds'      => $gReady,
+                    'discrepancyIds'      => $discrep,
+                    'matchedIds'          => $matched,
+                    'stockInfoById'       => $infoById,
+                ];
+            });
+
+            if (is_array($evalData)) {
+                $criticalOosIds      = $evalData['criticalOosIds'] ?? [];
+                $campaignLockedIds   = $evalData['campaignLockedIds'] ?? [];
+                $campaignUnlockedIds = $evalData['campaignUnlockedIds'] ?? [];
+                $gudangReadyIds      = $evalData['gudangReadyIds'] ?? [];
+                $discrepancyIds      = $evalData['discrepancyIds'] ?? [];
+                $matchedIds          = $evalData['matchedIds'] ?? [];
+                $stockInfoById       = $evalData['stockInfoById'] ?? [];
             }
         }
 
@@ -400,19 +454,25 @@ class ShopeeProductController extends Controller
         $totalPeriodSales = (int) ($periodSalesData['total_sold'] ?? 0);
         $periodSalesCount = (int) ($periodSalesData['total_skus'] ?? 0);
 
-        $qStats = ShopeeProduct::query();
-        if ($account) {
-            $qStats->where('shopee_account_id', $account->id);
-        }
-        $summaryStats = $qStats->selectRaw('
-            COUNT(*) as total_skus,
-            COALESCE(SUM(stock), 0) as total_stock,
-            COALESCE(SUM(CASE WHEN stock > 0 THEN 1 ELSE 0 END), 0) as in_stock_skus,
-            COALESCE(SUM(CASE WHEN stock <= 0 THEN 1 ELSE 0 END), 0) as out_of_stock_skus,
-            COALESCE(SUM(CASE WHEN sales > 0 THEN 1 ELSE 0 END), 0) as has_sales_skus,
-            COALESCE(SUM(sales), 0) as total_sales,
-            MAX(last_synced_at) as last_synced_at
-        ')->first();
+        $summaryStats = Cache::store('file')->remember(
+            'shopee_summary_stats_' . ($account ? $account->id : 'all'),
+            60,
+            function () use ($account) {
+                $qStats = ShopeeProduct::query();
+                if ($account) {
+                    $qStats->where('shopee_account_id', $account->id);
+                }
+                return $qStats->selectRaw('
+                    COUNT(*) as total_skus,
+                    COALESCE(SUM(stock), 0) as total_stock,
+                    COALESCE(SUM(CASE WHEN stock > 0 THEN 1 ELSE 0 END), 0) as in_stock_skus,
+                    COALESCE(SUM(CASE WHEN stock <= 0 THEN 1 ELSE 0 END), 0) as out_of_stock_skus,
+                    COALESCE(SUM(CASE WHEN sales > 0 THEN 1 ELSE 0 END), 0) as has_sales_skus,
+                    COALESCE(SUM(sales), 0) as total_sales,
+                    MAX(last_synced_at) as last_synced_at
+                ')->first();
+            }
+        );
 
         $totalSkus      = (int) ($summaryStats->total_skus ?? 0);
         $totalStock     = (int) ($summaryStats->total_stock ?? 0);
@@ -600,7 +660,7 @@ class ShopeeProductController extends Controller
 
         $isSuperAdmin = $request->user()?->isSuperAdmin() ?? false;
 
-        $tiktokQueue = app(\App\Http\Controllers\TiktokProductController::class)->getStockAlertWorkQueue();
+        $tiktokQueue = app(\App\Http\Controllers\TiktokProductController::class)->getStockAlertWorkQueue(false);
         $combinedQueue = [
             'items'    => array_values(array_merge($stockWorkQueue['items'] ?? [], $tiktokQueue['items'] ?? [])),
             'total'    => count($stockWorkQueue['items'] ?? []) + count($tiktokQueue['items'] ?? []),
@@ -2272,64 +2332,74 @@ class ShopeeProductController extends Controller
 
     private function buildZeroRestoreSummary(?int $accountId): array
     {
-        $this->syncService->ensureZeroHistorySchema();
+        $cacheKey = 'shopee_zero_summary_' . ($accountId ?? 'all');
+        return Cache::store('file')->remember($cacheKey, 300, function () use ($accountId) {
+            $schemaVerified = ! app()->runningUnitTests()
+                && Cache::store('file')->get('shopee_zero_history_schema_v1') === true;
+            if (! $schemaVerified) {
+                $this->syncService->ensureZeroHistorySchema();
+                if (! app()->runningUnitTests()) {
+                    Cache::store('file')->put('shopee_zero_history_schema_v1', true, 86400);
+                }
+            }
 
-        $batchQuery = ShopeeStockZeroBatch::query();
-        $itemQuery = ShopeeStockZeroItem::query();
-        if ($accountId) {
-            $batchQuery->where(function ($q) use ($accountId) {
-                $q->where('shopee_account_id', $accountId)->orWhereNull('shopee_account_id');
-            });
-            $itemQuery->where(function ($q) use ($accountId) {
-                $q->where('shopee_account_id', $accountId)->orWhereNull('shopee_account_id');
-            });
-        }
+            $batchQuery = ShopeeStockZeroBatch::query();
+            $itemQuery = ShopeeStockZeroItem::query();
+            if ($accountId) {
+                $batchQuery->where(function ($q) use ($accountId) {
+                    $q->where('shopee_account_id', $accountId)->orWhereNull('shopee_account_id');
+                });
+                $itemQuery->where(function ($q) use ($accountId) {
+                    $q->where('shopee_account_id', $accountId)->orWhereNull('shopee_account_id');
+                });
+            }
 
-        $totalBatches = (clone $batchQuery)->count();
-        $restorableBatchesCount = (clone $batchQuery)
-            ->whereHas('items', fn ($q) => $q->whereIn('status', ['zeroed', 'restore_failed']))
-            ->count();
-        $restorableItemsCount = (clone $itemQuery)
-            ->whereIn('status', ['zeroed', 'restore_failed'])
-            ->count();
-        $restoredItemsCount = (clone $itemQuery)
-            ->where('status', 'restored')
-            ->count();
-
-        $latestRestorableBatch = (clone $batchQuery)
-            ->whereHas('items', fn ($q) => $q->whereIn('status', ['zeroed', 'restore_failed']))
-            ->orderByDesc('zeroed_at')
-            ->orderByDesc('id')
-            ->first();
-
-        $latestSummary = null;
-        if ($latestRestorableBatch) {
-            $restorableInLatest = ShopeeStockZeroItem::where('batch_id', $latestRestorableBatch->id)
+            $totalBatches = (clone $batchQuery)->count();
+            $restorableBatchesCount = (clone $batchQuery)
+                ->whereHas('items', fn ($q) => $q->whereIn('status', ['zeroed', 'restore_failed']))
+                ->count();
+            $restorableItemsCount = (clone $itemQuery)
                 ->whereIn('status', ['zeroed', 'restore_failed'])
                 ->count();
+            $restoredItemsCount = (clone $itemQuery)
+                ->where('status', 'restored')
+                ->count();
 
-            $latestSummary = [
-                'id'               => (int) $latestRestorableBatch->id,
-                'batch_code'       => $latestRestorableBatch->batch_code,
-                'source'           => $latestRestorableBatch->source,
-                'source_label'     => $this->resolveZeroSourceLabel((string) $latestRestorableBatch->source),
-                'note'             => $latestRestorableBatch->note,
-                'zeroed_by_name'   => $latestRestorableBatch->zeroed_by_name,
-                'zeroed_at_label'  => $this->formatWibDateTime($latestRestorableBatch->zeroed_at),
-                'total_requested'  => (int) $latestRestorableBatch->total_requested,
-                'zeroed_count'     => (int) $latestRestorableBatch->zeroed_count,
-                'restored_count'   => (int) $latestRestorableBatch->restored_count,
-                'restorable_count' => $restorableInLatest,
+            $latestRestorableBatch = (clone $batchQuery)
+                ->whereHas('items', fn ($q) => $q->whereIn('status', ['zeroed', 'restore_failed']))
+                ->orderByDesc('zeroed_at')
+                ->orderByDesc('id')
+                ->first();
+
+            $latestSummary = null;
+            if ($latestRestorableBatch) {
+                $restorableInLatest = ShopeeStockZeroItem::where('batch_id', $latestRestorableBatch->id)
+                    ->whereIn('status', ['zeroed', 'restore_failed'])
+                    ->count();
+
+                $latestSummary = [
+                    'id'               => (int) $latestRestorableBatch->id,
+                    'batch_code'       => $latestRestorableBatch->batch_code,
+                    'source'           => $latestRestorableBatch->source,
+                    'source_label'     => $this->resolveZeroSourceLabel((string) $latestRestorableBatch->source),
+                    'note'             => $latestRestorableBatch->note,
+                    'zeroed_by_name'   => $latestRestorableBatch->zeroed_by_name,
+                    'zeroed_at_label'  => $this->formatWibDateTime($latestRestorableBatch->zeroed_at),
+                    'total_requested'  => (int) $latestRestorableBatch->total_requested,
+                    'zeroed_count'     => (int) $latestRestorableBatch->zeroed_count,
+                    'restored_count'   => (int) $latestRestorableBatch->restored_count,
+                    'restorable_count' => $restorableInLatest,
+                ];
+            }
+
+            return [
+                'total_batches'            => $totalBatches,
+                'restorable_batches_count' => $restorableBatchesCount,
+                'restorable_items_count'   => $restorableItemsCount,
+                'restored_items_count'     => $restoredItemsCount,
+                'latest_restorable_batch'  => $latestSummary,
             ];
-        }
-
-        return [
-            'total_batches'            => $totalBatches,
-            'restorable_batches_count' => $restorableBatchesCount,
-            'restorable_items_count'   => $restorableItemsCount,
-            'restored_items_count'     => $restoredItemsCount,
-            'latest_restorable_batch'  => $latestSummary,
-        ];
+        });
     }
 
     /**
