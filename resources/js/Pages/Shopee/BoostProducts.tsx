@@ -122,16 +122,6 @@ function formatCountdown(totalSeconds: number): string {
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
-function formatLastRun(dateStr?: string | null): string {
-  if (!dateStr) return 'Belum pernah';
-  try {
-    const d = new Date(dateStr);
-    return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) + ' WIB';
-  } catch {
-    return dateStr;
-  }
-}
-
 const getCsrfToken = () =>
   (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
 
@@ -168,7 +158,6 @@ export default function BoostProducts({
   const [selectedAutoItemIds, setSelectedAutoItemIds] = useState<number[]>([]);
   const [togglingAutoBoost, setTogglingAutoBoost] = useState(false);
   const [savingAutoTargets, setSavingAutoTargets] = useState(false);
-  const [runningAutoBoostNow, setRunningAutoBoostNow] = useState(false);
 
   // Catalog Table Filters & State
   const [catalogFilter, setCatalogFilter] = useState<'all' | 'boosted' | 'available'>('all');
@@ -577,39 +566,6 @@ export default function BoostProducts({
     }
   };
 
-  const handleRunAutoBoostNow = async () => {
-    setRunningAutoBoostNow(true);
-    try {
-      const res = await fetch('/shopee/boost-products/auto-boost/run-now', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          'X-CSRF-TOKEN': getCsrfToken(),
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-      });
-      const json = await res.json();
-      if (!res.ok || json.status === 'error') {
-        throw new Error(json.message || 'Gagal menjalankan siklus auto-boost.');
-      }
-      setAutoBoost(json.data);
-      setToast({
-        type: 'success',
-        message: json.message || 'Siklus auto-boost berhasil dijalankan!',
-      });
-      void refreshStatus();
-      void fetchCatalog(catalogPage, catalogFilter, catalogSearch);
-    } catch (err: unknown) {
-      setToast({
-        type: 'error',
-        message: err instanceof Error ? err.message : 'Terjadi kendala saat menjalankan Auto-Boost.',
-      });
-    } finally {
-      setRunningAutoBoostNow(false);
-    }
-  };
-
   useOverlayScrollLockAndEscape(isModalOpen || isAutoModalOpen, () => {
     setIsModalOpen(false);
     setIsAutoModalOpen(false);
@@ -684,23 +640,6 @@ export default function BoostProducts({
                   </span>
                 </div>
               </div>
-
-              {/* Segarkan Button */}
-              <button
-                type="button"
-                onClick={() => {
-                  void refreshStatus();
-                  void fetchCatalog(catalogPage, catalogFilter, catalogSearch);
-                }}
-                disabled={loadingStatus || loadingCatalog}
-                className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 text-xs font-semibold text-white backdrop-blur-xs transition-all hover:bg-white/20 active:scale-95 disabled:opacity-50 whitespace-nowrap"
-                title="Segarkan status slot terkini dari Shopee"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`h-4 w-4 shrink-0 ${loadingStatus ? 'animate-spin' : ''}`}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                </svg>
-                <span>Segarkan</span>
-              </button>
 
               {/* Naikkan Produk / Status Slot Button */}
               <button
@@ -915,27 +854,13 @@ export default function BoostProducts({
                   )}
                 </div>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  Pilih produk antrean favorit Anda (misal Produk A, B, C, D, E). Sistem server akan otomatis menaikkan produk antrean setiap kali masa 4 jam selesai tanpa perlu buka web.
+                  Daftar produk yang akan dinaikkan ulang secara otomatis setiap 4 jam.
                 </p>
               </div>
             </div>
 
-            {/* Controls: Cek Sekarang, Atur Antrean & Master Toggle */}
-            <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-              {/* Manual Trigger Button */}
-              <button
-                type="button"
-                onClick={handleRunAutoBoostNow}
-                disabled={runningAutoBoostNow || !autoBoost?.is_enabled || (autoBoost?.target_item_ids?.length ?? 0) === 0}
-                className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-                title="Periksa dan eksekusi antrean auto-boost sekarang"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`h-3.5 w-3.5 ${runningAutoBoostNow ? 'animate-spin text-blue-600' : 'text-slate-500'}`}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                </svg>
-                <span>{runningAutoBoostNow ? 'Memeriksa...' : 'Cek Sekarang'}</span>
-              </button>
-
+            {/* Controls: Atur Antrean & Master Toggle */}
+            <div className="flex items-center gap-3 shrink-0">
               {/* Atur / Tambah Produk Button */}
               <button
                 type="button"
@@ -948,14 +873,14 @@ export default function BoostProducts({
                 <span>Atur Antrean Produk</span>
               </button>
 
-              {/* Master ON/OFF Switch */}
+              {/* Master ON/OFF Switch (Clean iOS-style, tanpa tumpukan icon di knob) */}
               <button
                 type="button"
                 role="switch"
                 aria-checked={Boolean(autoBoost?.is_enabled)}
                 disabled={togglingAutoBoost}
                 onClick={() => handleToggleAutoBoost(!autoBoost?.is_enabled)}
-                className={`relative inline-flex h-9 w-16 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden disabled:opacity-50 ${
+                className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden disabled:opacity-50 ${
                   autoBoost?.is_enabled ? 'bg-emerald-600' : 'bg-slate-300'
                 }`}
                 title={autoBoost?.is_enabled ? 'Klik untuk mematikan Auto-Boost' : 'Klik untuk mengaktifkan Auto-Boost'}
@@ -963,42 +888,17 @@ export default function BoostProducts({
                 <span className="sr-only">Toggle Auto-Boost</span>
                 <span
                   aria-hidden="true"
-                  className={`pointer-events-none inline-block h-8 w-8 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out flex items-center justify-center ${
-                    autoBoost?.is_enabled ? 'translate-x-7' : 'translate-x-0'
+                  className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                    autoBoost?.is_enabled ? 'translate-x-6' : 'translate-x-0'
                   }`}
-                >
-                  {autoBoost?.is_enabled ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 text-emerald-600">
-                      <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
-                    </svg>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 text-slate-400">
-                      <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
-                    </svg>
-                  )}
-                </span>
+                />
               </button>
             </div>
           </div>
 
-          {/* Sub-status Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 pb-4 text-xs text-slate-500">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-slate-700">
-                Terdaftar di Antrean: <strong>{autoBoost?.target_items?.length ?? 0} produk</strong>
-              </span>
-              <span className="text-slate-300">•</span>
-              <span>Pemeriksaan Server: <strong>Setiap 5 Menit</strong> (Cron Job 24 Jam)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span>Status Terakhir:</span>
-              <span className="font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
-                {autoBoost?.last_run_message || 'Belum ada riwayat siklus'}
-              </span>
-              {autoBoost?.last_run_at && (
-                <span className="text-[11px] text-slate-400">({formatLastRun(autoBoost.last_run_at)})</span>
-              )}
-            </div>
+          {/* Antrean Count */}
+          <div className="pt-3 pb-3 text-xs font-semibold text-slate-600">
+            Terdaftar di antrean: <span className="text-slate-900 font-bold">{autoBoost?.target_items?.length ?? 0} produk</span>
           </div>
 
           {/* List of Target Items in Queue */}
@@ -1009,9 +909,9 @@ export default function BoostProducts({
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <p className="text-xs font-bold text-slate-800">Belum Ada Produk di Jadwal Auto-Naikkan</p>
+              <p className="text-xs font-bold text-slate-800">Belum Ada Produk dalam Antrean</p>
               <p className="text-[11px] text-slate-500 max-w-md mt-1">
-                Pilih hingga 5 produk atau lebih dari katalog toko Anda. Begitu masa 4 jam selesai, sistem otomatis menaikkan kembali produk pilihan Anda secara bergiliran nonstop.
+                Tambahkan produk toko untuk dinaikkan secara otomatis setiap 4 jam.
               </p>
               <button
                 type="button"
@@ -1427,7 +1327,7 @@ export default function BoostProducts({
                 <li>Shopee memberikan batas maksimal <strong>5 produk sekaligus</strong> untuk dinaikkan dalam satu toko.</li>
                 <li>Setiap produk yang dinaikkan akan aktif selama <strong>4 jam penuh</strong> di urutan atas pencarian kategori (tab <em>Terbaru</em>).</li>
                 <li>Setelah masa 4 jam berakhir, slot akan terbuka kembali dan Anda dapat menaikkan produk yang sama atau produk lainnya.</li>
-                <li><strong>Auto-Naikkan Otomatis:</strong> Anda cukup memasukkan daftar produk (misal Sepatu A, B, C, D, E) ke jadwal dan mengaktifkan sakelar. Server ERP akan otomatis menaikkan produk antrean setiap 4 jam secara 24 jam nonstop tanpa perlu intervensi admin.</li>
+                <li><strong>Auto-Naikkan Otomatis:</strong> Produk dalam antrean akan dinaikkan kembali secara otomatis setiap 4 jam selama sakelar aktif.</li>
                 <li>Fitur ini 100% aman, menggunakan jalur resmi Shopee Open Platform, dan tidak memotong saldo iklan toko (gratis).</li>
               </ul>
             </div>
