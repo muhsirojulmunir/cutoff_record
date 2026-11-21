@@ -47,10 +47,12 @@ class StockForecastController extends Controller
         }
 
         $roles = $this->getUserRoleNames();
-        $isAllowed = in_array('Super Admin', $roles, true) || in_array('PIC', $roles, true) || in_array('Direktur', $roles, true);
+        $isAllowed = in_array('Super Admin', $roles, true)
+            || in_array('PIC', $roles, true)
+            || in_array('Direktur', $roles, true);
 
         if (!$isAllowed) {
-            abort(403, 'Akses terbatas untuk Super Admin, PIC, dan Direktur.');
+            abort(403, 'Akses terbatas untuk Super Admin dan PIC.');
         }
     }
 

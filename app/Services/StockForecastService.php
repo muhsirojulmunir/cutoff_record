@@ -200,10 +200,17 @@ class StockForecastService
         }
 
         // Ambil pengajuan PO aktif untuk penanda
-        $activeProposals = PoProposal::whereIn('status', [PoProposal::STATUS_PENDING, PoProposal::STATUS_APPROVED])
+        $proposals = PoProposal::whereIn('status', [PoProposal::STATUS_PENDING, PoProposal::STATUS_APPROVED])
             ->orderByDesc('id')
-            ->pluck('po_number', 'sku')
-            ->toArray();
+            ->get(['po_number', 'sku']);
+
+        $activeProposals = [];
+        foreach ($proposals as $p) {
+            $sku = strtoupper(trim($p->sku));
+            if (!isset($activeProposals[$sku])) {
+                $activeProposals[$sku] = $p->po_number;
+            }
+        }
 
         $rows = [];
         $stats = [
