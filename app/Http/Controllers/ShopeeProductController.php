@@ -34,12 +34,15 @@ class ShopeeProductController extends Controller
             $store->forget('shopee_stock_alert_queue');
             $store->forget('shopee_products_light_cols_v1');
             $store->forget('master_stock_wh_stats_v2');
+            $store->forget('master_stock_wh_summary_v3');
             $store->forget('shopee_zero_summary_' . ($accountId ?? 'all'));
             $store->forget('shopee_zero_summary_all');
             if ($accountId) {
                 $store->forget("shopee_summary_stats_{$accountId}");
+                $store->forget("shopee_summary_stats_v3_{$accountId}");
             }
             $store->forget('shopee_summary_stats_all');
+            $store->forget('shopee_summary_stats_v3_all');
 
             // Naikkan versi cache untuk menginvalidasi seluruh kalkulasi hash rekonsiliasi seketika
             $currentVer = (int) $store->get('shopee_audit_cache_ver', 1);
@@ -320,25 +323,25 @@ class ShopeeProductController extends Controller
 
         if ($hasMasterTable) {
             try {
-                $whStats = Cache::store('file')->remember('master_stock_wh_stats_v2', 300, function () {
-                    return MasterStock::selectRaw('warehouse, COUNT(*) as total_items, COALESCE(SUM(qty_pcs), 0) as total_pcs, MAX(last_imported_at) as last_imported')
+                $masterStockSummary = Cache::store('file')->remember('master_stock_wh_summary_v3', 300, function () {
+                    $whStats = MasterStock::selectRaw('warehouse, COUNT(*) as total_items, COALESCE(SUM(qty_pcs), 0) as total_pcs, MAX(last_imported_at) as last_imported')
                         ->groupBy('warehouse')
                         ->get()
                         ->keyBy('warehouse');
+
+                    $g = $whStats->get('G');
+                    $a = $whStats->get('A');
+
+                    return [
+                        'total_g_items'    => (int) ($g?->total_items ?? 0),
+                        'total_g_pcs'      => (int) ($g?->total_pcs ?? 0),
+                        'last_imported_g'  => $g?->last_imported,
+                        'total_a_items'    => (int) ($a?->total_items ?? 0),
+                        'total_a_pcs'      => (int) ($a?->total_pcs ?? 0),
+                        'last_imported_a'  => $a?->last_imported,
+                        'has_master_stock' => ($whStats->count() > 0),
+                    ];
                 });
-
-                $g = $whStats->get('G');
-                $a = $whStats->get('A');
-
-                $masterStockSummary = [
-                    'total_g_items'    => (int) ($g?->total_items ?? 0),
-                    'total_g_pcs'      => (int) ($g?->total_pcs ?? 0),
-                    'last_imported_g'  => $g?->last_imported,
-                    'total_a_items'    => (int) ($a?->total_items ?? 0),
-                    'total_a_pcs'      => (int) ($a?->total_pcs ?? 0),
-                    'last_imported_a'  => $a?->last_imported,
-                    'has_master_stock' => ($whStats->count() > 0),
-                ];
             } catch (\Throwable $e) {
                 // Fallback aman jika query MasterStock mengalami kendala
             }
@@ -455,14 +458,14 @@ class ShopeeProductController extends Controller
         $periodSalesCount = (int) ($periodSalesData['total_skus'] ?? 0);
 
         $summaryStats = Cache::store('file')->remember(
-            'shopee_summary_stats_' . ($account ? $account->id : 'all'),
+            'shopee_summary_stats_v3_' . ($account ? $account->id : 'all'),
             60,
             function () use ($account) {
                 $qStats = ShopeeProduct::query();
                 if ($account) {
                     $qStats->where('shopee_account_id', $account->id);
                 }
-                return $qStats->selectRaw('
+                $row = $qStats->selectRaw('
                     COUNT(*) as total_skus,
                     COALESCE(SUM(stock), 0) as total_stock,
                     COALESCE(SUM(CASE WHEN stock > 0 THEN 1 ELSE 0 END), 0) as in_stock_skus,
@@ -471,16 +474,26 @@ class ShopeeProductController extends Controller
                     COALESCE(SUM(sales), 0) as total_sales,
                     MAX(last_synced_at) as last_synced_at
                 ')->first();
+
+                return [
+                    'total_skus'        => (int) ($row?->total_skus ?? 0),
+                    'total_stock'       => (int) ($row?->total_stock ?? 0),
+                    'in_stock_skus'     => (int) ($row?->in_stock_skus ?? 0),
+                    'out_of_stock_skus' => (int) ($row?->out_of_stock_skus ?? 0),
+                    'has_sales_skus'    => (int) ($row?->has_sales_skus ?? 0),
+                    'total_sales'       => (int) ($row?->total_sales ?? 0),
+                    'last_synced_at'    => $row?->last_synced_at ? (string) $row->last_synced_at : null,
+                ];
             }
         );
 
-        $totalSkus      = (int) ($summaryStats->total_skus ?? 0);
-        $totalStock     = (int) ($summaryStats->total_stock ?? 0);
-        $inStockSkus    = (int) ($summaryStats->in_stock_skus ?? 0);
-        $outOfStockSkus = (int) ($summaryStats->out_of_stock_skus ?? 0);
-        $hasSalesSkus   = $periodSalesCount > 0 ? $periodSalesCount : (int) ($summaryStats->has_sales_skus ?? 0);
-        $totalSales     = $totalPeriodSales > 0 ? $totalPeriodSales : (int) ($summaryStats->total_sales ?? 0);
-        $lastSyncedAt   = $summaryStats->last_synced_at ?? null;
+        $totalSkus      = (int) ($summaryStats['total_skus'] ?? 0);
+        $totalStock     = (int) ($summaryStats['total_stock'] ?? 0);
+        $inStockSkus    = (int) ($summaryStats['in_stock_skus'] ?? 0);
+        $outOfStockSkus = (int) ($summaryStats['out_of_stock_skus'] ?? 0);
+        $hasSalesSkus   = $periodSalesCount > 0 ? $periodSalesCount : (int) ($summaryStats['has_sales_skus'] ?? 0);
+        $totalSales     = $totalPeriodSales > 0 ? $totalPeriodSales : (int) ($summaryStats['total_sales'] ?? 0);
+        $lastSyncedAt   = $summaryStats['last_synced_at'] ?? null;
 
         // 4. Query Paginasi 50 Item
         $query = ShopeeProduct::query();
