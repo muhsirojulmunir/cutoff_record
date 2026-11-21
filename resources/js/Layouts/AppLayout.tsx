@@ -20,6 +20,7 @@ interface NavItem {
   matchPrefix?: boolean;
   superAdminOnly?: boolean;
   adminOrSuperAdminOnly?: boolean;
+  customCheck?: (user: PageProps['auth']['user']) => boolean;
   children?: NavItem[];
 }
 
@@ -112,6 +113,23 @@ const navSections: NavSection[] = [
             permission: 'stock.tiktok',
             matchPrefix: true,
             icon: 'M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z',
+          },
+          {
+            label: 'Proyeksi & Rencana PO',
+            href: '/stock-forecast',
+            matchPrefix: true,
+            icon: 'M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941',
+            customCheck: (user) => {
+              if (!user) return false;
+              const roleName = user.role?.name;
+              const roles = user.roles || [];
+              const allowed = ['Super Admin', 'PIC', 'Direktur'];
+              return (
+                Boolean(user.is_super_admin) ||
+                allowed.includes(roleName || '') ||
+                roles.some((r) => allowed.includes(r))
+              );
+            },
           },
         ],
       },
@@ -268,6 +286,9 @@ export default function AppLayout({ children, headerRight }: Props) {
   }, []);
 
   function canSee(item: NavItem): boolean {
+    if (item.customCheck) {
+      return item.customCheck(user);
+    }
     if (isSuperAdmin) return true;
     if (item.superAdminOnly && !isSuperAdmin) return false;
     if (item.adminOrSuperAdminOnly) {
@@ -317,7 +338,7 @@ export default function AppLayout({ children, headerRight }: Props) {
         return { ...section, items };
       })
       .filter((section) => section.items.length > 0);
-  }, [menuSearch, permissions, isSuperAdmin]);
+  }, [menuSearch, permissions, isSuperAdmin, user]);
 
   const noMenuFound = menuSearch.trim() !== '' && filteredSections.length === 0;
 
