@@ -110,7 +110,7 @@ class StockForecastService
      */
     public function getCached3MonthSales(): array
     {
-        $cached = Cache::store('file')->get(self::CACHE_KEY_SALES_3M);
+        $cached = Cache::store(config('cache.default', 'file'))->get(self::CACHE_KEY_SALES_3M);
         if (is_array($cached)) {
             return $cached;
         }
@@ -148,7 +148,7 @@ class StockForecastService
             }
         }
 
-        Cache::store('file')->put(self::CACHE_KEY_SALES_3M, $result, self::CACHE_TTL_SECONDS);
+        Cache::store(config('cache.default', 'file'))->put(self::CACHE_KEY_SALES_3M, $result, self::CACHE_TTL_SECONDS);
         return $result;
     }
 
@@ -157,7 +157,7 @@ class StockForecastService
      */
     public function clearSalesCache(): void
     {
-        Cache::store('file')->forget(self::CACHE_KEY_SALES_3M);
+        Cache::store(config('cache.default', 'file'))->forget(self::CACHE_KEY_SALES_3M);
     }
 
     /**
@@ -200,13 +200,10 @@ class StockForecastService
         }
 
         // Ambil pengajuan PO aktif untuk penanda
-        $proposals = PoProposal::whereIn('status', [PoProposal::STATUS_PENDING, PoProposal::STATUS_APPROVED])
-            ->select('po_number', 'sku')
-            ->get();
-        $activeProposals = [];
-        foreach ($proposals as $p) {
-            $activeProposals[strtoupper(trim($p->sku))] = $p->po_number;
-        }
+        $activeProposals = PoProposal::whereIn('status', [PoProposal::STATUS_PENDING, PoProposal::STATUS_APPROVED])
+            ->orderByDesc('id')
+            ->pluck('po_number', 'sku')
+            ->toArray();
 
         $rows = [];
         $stats = [

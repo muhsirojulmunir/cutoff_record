@@ -73,8 +73,8 @@ class StockForecastController extends Controller
     {
         $this->authorizeAccess();
 
-        $targetMonths    = (int)$request->input('target_months', 5);
-        $leadTimeMonths  = (int)$request->input('lead_time_months', 3);
+        $targetMonths = max(1, min(24, (int)$request->input('target_months', 5) ?: 5));
+        $leadTimeMonths = max(1, min(12, (int)$request->input('lead_time_months', 3) ?: 3));
         $search          = $request->input('search');
         $statusFilter    = $request->input('status', 'all');
 
@@ -114,7 +114,7 @@ class StockForecastController extends Controller
             'sku'                   => ['required', 'string', 'max:100'],
             'product_name'          => ['required', 'string', 'max:255'],
             'supplier_name'         => ['nullable', 'string', 'max:255'],
-            'warehouse'             => ['required', 'string', 'max:10'],
+            'warehouse'             => ['required', 'string', 'in:G,A'],
             'current_stock'         => ['required', 'integer'],
             'monthly_velocity'      => ['required', 'numeric'],
             'stock_coverage_months' => ['nullable', 'numeric'],
