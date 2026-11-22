@@ -37,13 +37,37 @@ class CustomerServiceController extends Controller
             $tiktokDiag = $this->tiktokChatService->getConversationList($tiktokAccount, 5);
         }
 
+        $shopeeMessage = null;
+        if ($shopeeDiag) {
+            if (! empty($shopeeDiag['success'])) {
+                $sCount = count($shopeeDiag['conversations'] ?? []);
+                $shopeeMessage = "Koneksi live Seller Chat API sukses! Token aktif & valid ({$sCount} percakapan terdeteksi).";
+            } else {
+                $shopeeMessage = $shopeeDiag['message'] ?? 'Gagal mengakses Shopee Chat API.';
+            }
+        } else {
+            $shopeeMessage = $shopeeAccount ? 'Token tersedia tapi belum dipanggil.' : 'Akun Shopee belum terhubung.';
+        }
+
+        $tiktokMessage = null;
+        if ($tiktokDiag) {
+            if (! empty($tiktokDiag['success'])) {
+                $tCount = count($tiktokDiag['conversations'] ?? []);
+                $tiktokMessage = "Koneksi live TikTok CS Partner API sukses! Token aktif & valid ({$tCount} percakapan terdeteksi).";
+            } else {
+                $tiktokMessage = $tiktokDiag['message'] ?? 'Gagal mengakses TikTok CS API.';
+            }
+        } else {
+            $tiktokMessage = $tiktokAccount ? 'Token tersedia tapi belum dipanggil.' : 'Akun TikTok belum terhubung.';
+        }
+
         return response()->json([
             'shopee' => [
                 'account_name' => $shopeeAccount?->account_name ?? 'Belum ada akun Shopee',
                 'shop_id'      => $shopeeAccount?->shop_id ?? '-',
                 'has_token'    => ! empty($shopeeAccount?->access_token),
                 'success'      => $shopeeDiag['success'] ?? false,
-                'message'      => $shopeeDiag['message'] ?? ($shopeeAccount ? 'Token tersedia tapi belum dipanggil' : 'Akun Shopee belum terhubung.'),
+                'message'      => $shopeeMessage,
                 'error'        => $shopeeDiag['error'] ?? null,
             ],
             'tiktok' => [
@@ -51,7 +75,7 @@ class CustomerServiceController extends Controller
                 'shop_id'      => $tiktokAccount?->shop_id ?? '-',
                 'has_token'    => ! empty($tiktokAccount?->access_token),
                 'success'      => $tiktokDiag['success'] ?? false,
-                'message'      => $tiktokDiag['message'] ?? ($tiktokAccount ? 'Token tersedia tapi belum dipanggil' : 'Akun TikTok belum terhubung.'),
+                'message'      => $tiktokMessage,
                 'error'        => $tiktokDiag['error'] ?? null,
             ],
             'timestamp' => now('Asia/Jakarta')->format('d M Y H:i:s') . ' WIB',
