@@ -229,6 +229,17 @@ export default function AppLayout({ children, headerRight }: Props) {
   );
 
   const [isChatDrawerOpen, setIsChatDrawerOpen] = useState(false);
+  const [csUnreadCount, setCsUnreadCount] = useState<number>(0);
+
+  useEffect(() => {
+    const handleUnread = (e: any) => {
+      if (typeof e.detail === 'number') {
+        setCsUnreadCount(e.detail);
+      }
+    };
+    window.addEventListener('cs-unread-count-updated', handleUnread);
+    return () => window.removeEventListener('cs-unread-count-updated', handleUnread);
+  }, []);
 
   const currentPath = (url ? url.split('?')[0] : '') || window.location.pathname;
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -611,9 +622,11 @@ export default function AppLayout({ children, headerRight }: Props) {
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a.75.75 0 01-.974-.965 4.966 4.966 0 00.73-1.879C3.642 16.586 3 14.412 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
                 </svg>
-                <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#EE4D2D] px-1 text-[9px] font-bold text-white shadow-2xs">
-                  2
-                </span>
+                {csUnreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#EE4D2D] px-1 text-[9px] font-bold text-white shadow-2xs">
+                    {csUnreadCount > 99 ? '99+' : csUnreadCount}
+                  </span>
+                )}
               </button>
               <NotificationBell queue={queue} />
             </div>
@@ -680,9 +693,11 @@ export default function AppLayout({ children, headerRight }: Props) {
               clipRule="evenodd"
             />
           </svg>
-          <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-bold text-white ring-2 ring-white shadow-2xs">
-            2
-          </span>
+          {csUnreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-bold text-white ring-2 ring-white shadow-2xs">
+              {csUnreadCount > 99 ? '99+' : csUnreadCount}
+            </span>
+          )}
         </button>
       </aside>
 

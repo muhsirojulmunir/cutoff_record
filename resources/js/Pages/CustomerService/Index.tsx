@@ -244,6 +244,63 @@ export default function CustomerServiceIndex({
     }
   }, [initialConversations]);
 
+  // Broadcast conversations & unread count ke SideChatDock & AppLayout
+  useEffect(() => {
+    if (conversations && conversations.length > 0) {
+      window.dispatchEvent(
+        new CustomEvent('cs-conversations-updated', { detail: conversations })
+      );
+      const unreadTotal = conversations.reduce(
+        (acc, c) => acc + (c.unread_count > 0 ? 1 : 0),
+        0
+      );
+      window.dispatchEvent(
+        new CustomEvent('cs-unread-count-updated', { detail: unreadTotal })
+      );
+    }
+  }, [conversations]);
+
+  // Listen to select conversation and message sent from SideChatDock
+  useEffect(() => {
+    const handleSelectFromDock = (e: any) => {
+      const convId = String(e.detail);
+      const target = conversations.find((c) => String(c.id) === convId);
+      if (target) {
+        handleSelectConversation(target);
+      }
+    };
+    const handleMsgSentFromDock = () => {
+      fetch(`/customer-service/poll?channel=${channelFilter}`, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.conversations && Array.isArray(data.conversations)) {
+            setConversations(data.conversations);
+          }
+        })
+        .catch(() => {});
+    };
+
+    window.addEventListener('cs-select-conversation', handleSelectFromDock as any);
+    window.addEventListener('cs-message-sent', handleMsgSentFromDock as any);
+    return () => {
+      window.removeEventListener('cs-select-conversation', handleSelectFromDock as any);
+      window.removeEventListener('cs-message-sent', handleMsgSentFromDock as any);
+    };
+  }, [conversations, channelFilter]);
+
+  // Broadcast active conversation change
+  useEffect(() => {
+    if (selectedConvId) {
+      window.dispatchEvent(
+        new CustomEvent('cs-active-conversation-changed', {
+          detail: selectedConvId,
+        })
+      );
+    }
+  }, [selectedConvId]);
+
   const [diagData, setDiagData] = useState<{
     shopee?: { account_name: string; shop_id: string; has_token: boolean; success: boolean; message: string; error?: string };
     tiktok?: { account_name: string; shop_id: string; has_token: boolean; success: boolean; message: string; error?: string };

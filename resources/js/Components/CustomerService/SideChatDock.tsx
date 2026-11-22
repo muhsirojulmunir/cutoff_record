@@ -32,133 +32,6 @@ export interface SideChatConversation {
   messages: SideChatMessage[];
 }
 
-const DEFAULT_CONVERSATIONS: SideChatConversation[] = [
-  {
-    id: 'conv-sh-01',
-    channel: 'shopee',
-    channel_label: 'Shopee',
-    shop_name: 'Record Shoes Official Shop',
-    buyer_username: 'fitria.rizal',
-    buyer_name: 'Fitria Rizal',
-    unread_count: 1,
-    last_message: '[Ringkasan Chat] Pembeli butuh bantuanmu: Kak apakah ukuran 37 warna putih ini ready stok?',
-    last_message_time: '09:39',
-    group: 'unread',
-    order: {
-      order_sn: '2611136UB88J62',
-      product_name: 'RECORD IONIQ SEPATU SNEAKER SEKOLAH ANAK TK SD SMP UNISEX BLACK HITAM PUTIH PEREKAT 30-37',
-      variation: 'CONFERO-TUCSON P/H,37 (23CM)',
-      sku: 'RECORD-TUCSON-PH-37_01240237',
-      price: 159299,
-      status: 'Perlu Dikirim',
-    },
-    messages: [
-      { id: 'm1', sender: 'buyer', text: 'Halo admin Record Shoes Official', timestamp: '09:35' },
-      { id: 'm2', sender: 'seller', text: 'Halo kak Fitria! Selamat datang di Record Shoes Official. Ada yang bisa kami bantu? 😊', timestamp: '09:36' },
-      { id: 'm3', sender: 'buyer', text: 'Kak, untuk ukuran 37 warna putih ini ready stok gak ya?', timestamp: '09:39' },
-    ],
-  },
-  {
-    id: 'conv-tt-02',
-    channel: 'tiktok',
-    channel_label: 'TikTok Shop',
-    shop_name: 'Record Shoes Official TikTok',
-    buyer_username: 'budi_santoso_sub',
-    buyer_name: 'Budi Santoso',
-    unread_count: 1,
-    last_message: 'Min, kalau ukuran sepatu kurang pas bisa tukar size kan ya?',
-    last_message_time: '08:15',
-    group: 'unread',
-    order: {
-      order_sn: '5791823901823904',
-      product_name: 'RECORD CONFERO TUCSON SNEAKER SEKOLAH PRIA WANITA',
-      variation: 'Hitam Putih, 40 (25.5cm)',
-      sku: 'RECORD-TUCSON-HP-40',
-      price: 169000,
-      status: 'Perlu Dikirim',
-    },
-    messages: [
-      { id: 'm10', sender: 'buyer', text: 'Pagi min mau tanya dulu sebelum checkout', timestamp: '08:14' },
-      { id: 'm11', sender: 'buyer', text: 'Min, kalau ukuran sepatu kurang pas bisa tukar size kan ya?', timestamp: '08:15' },
-    ],
-  },
-  {
-    id: 'conv-sh-02',
-    channel: 'shopee',
-    channel_label: 'Shopee',
-    shop_name: 'Record Shoes Official Shop',
-    buyer_username: 'newblackelucidator',
-    buyer_name: 'Ahmad Pratama',
-    unread_count: 0,
-    last_message: 'Terima kasih min infonya, paket sudah sampai tadi siang 👍',
-    last_message_time: '2 hari lalu',
-    group: 'auto',
-    order: {
-      order_sn: '26111259X07YEX',
-      product_name: 'RECORD KYLIE SEPATU SNEAKERS SEKOLAH ANAK SMP SMA CEWE BLACK HITAM/PUTIH',
-      variation: 'Putih, 34 (22 cm)',
-      sku: 'RECORD-KYLIE-P-34',
-      price: 154199,
-      status: 'Selesai',
-    },
-    messages: [
-      { id: 'm7', sender: 'buyer', text: 'Min kurir instan nya estimasi jam berapa ya sampai ke alamat?', timestamp: '2 hari lalu' },
-      { id: 'm8', sender: 'seller', text: 'Halo kak Ahmad, kurir SPX Instant sudah pickup dari gudang dan sedang meluncur ke alamat ya.', timestamp: '2 hari lalu' },
-      { id: 'm9', sender: 'buyer', text: 'Terima kasih min infonya, paket sudah sampai tadi siang 👍', timestamp: '2 hari lalu' },
-    ],
-  },
-  {
-    id: 'conv-sh-03',
-    channel: 'shopee',
-    channel_label: 'Shopee',
-    shop_name: 'Record Shoes Official Shop',
-    buyer_username: 'dodinovrizon',
-    buyer_name: 'Dodi Novrizon',
-    unread_count: 0,
-    last_message: 'Iya kak',
-    last_message_time: 'Kemarin',
-    group: 'manual',
-    order: {
-      order_sn: '26111248X09ZZ1',
-      product_name: 'RECORD MOTOBIKE SITRUN SEPATU SEKOLAH HITAM POLOS',
-      variation: 'Hitam, 39 (24.5cm)',
-      sku: 'RECORD-SPK19-SB-39',
-      price: 134299,
-      status: 'Dikirim',
-    },
-    messages: [
-      { id: 'm20', sender: 'buyer', text: 'Sore min, paket saya sudah dikirim belum ya?', timestamp: 'Kemarin 16:30' },
-      { id: 'm21', sender: 'seller', text: 'Halo kak Dodi, paket sudah dipickup kurir SPX sore tadi dengan resi SPXID09812763.', timestamp: 'Kemarin 16:35' },
-      { id: 'm22', sender: 'buyer', text: 'Iya kak', timestamp: 'Kemarin 16:40' },
-    ],
-  },
-  {
-    id: 'conv-tt-01',
-    channel: 'tiktok',
-    channel_label: 'TikTok Shop',
-    shop_name: 'Record Shoes Official TikTok',
-    buyer_username: 'dewi_kartika99',
-    buyer_name: 'Dewi Kartika',
-    unread_count: 0,
-    last_message: 'Baik min, sudah saya checkout ya. Mohon segera diproses.',
-    last_message_time: 'Kemarin',
-    group: 'manual',
-    order: {
-      order_sn: '5798234719082341',
-      product_name: 'RECORD KYLIE SEPATU SNEAKERS SEKOLAH ANAK SMP SMA CEWE BLACK HITAM/PUTIH 12 TH KEATAS TALI 33-40',
-      variation: 'Putih, 38 (24cm)',
-      sku: 'RECORD-KYLIE-P-38_01224638',
-      price: 141599,
-      status: 'Dikirim',
-    },
-    messages: [
-      { id: 'm4', sender: 'buyer', text: 'Min kalau order sekarang dikirim hari apa ya?', timestamp: 'Kemarin 09:30' },
-      { id: 'm5', sender: 'seller', text: 'Halo kak Dewi! Pesanan yang masuk sebelum jam 15.00 WIB langsung kami kirim hari ini ya kak ✨', timestamp: 'Kemarin 09:35' },
-      { id: 'm6', sender: 'buyer', text: 'Baik min, sudah saya checkout ya. Mohon segera diproses.', timestamp: 'Kemarin 09:42' },
-    ],
-  },
-];
-
 export interface SideChatProps {
   isOpen?: boolean;
   onClose?: () => void;
@@ -177,7 +50,8 @@ export default function SideChatDock({ isOpen: controlledIsOpen, onClose }: Side
     }
   };
 
-  const [conversations, setConversations] = useState<SideChatConversation[]>(DEFAULT_CONVERSATIONS);
+  const [conversations, setConversations] = useState<SideChatConversation[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [channelFilter, setChannelFilter] = useState<'all' | 'shopee' | 'tiktok'>('all');
   const [tab, setTab] = useState<'today' | 'all'>('today');
@@ -218,55 +92,92 @@ export default function SideChatDock({ isOpen: controlledIsOpen, onClose }: Side
     return () => window.removeEventListener('toggle-side-chat-dock', handleToggle);
   }, [controlledIsOpen, onClose]);
 
-  // Poll live conversations when drawer is open
-  useEffect(() => {
-    if (!isOpen) return;
+  // Mapper helper
+  const mapApiConversations = (rawList: any[]): SideChatConversation[] => {
+    return rawList.map((c: any) => ({
+      id: String(c.id),
+      channel: c.channel === 'tiktok' ? 'tiktok' : 'shopee',
+      channel_label: c.channel_label || (c.channel === 'shopee' ? 'Shopee' : 'TikTok Shop'),
+      shop_name: c.shop_name || (c.channel === 'shopee' ? 'Record Shoes Official Shop' : 'Record Shoes Official TikTok'),
+      buyer_username: c.buyer_username || 'buyer',
+      buyer_name: c.buyer_name || c.buyer_username || 'Pembeli',
+      unread_count: Number(c.unread_count || 0),
+      last_message: c.last_message || '',
+      last_message_time: c.last_message_time || '',
+      group: (c.unread_count > 0 ? 'unread' : (c.status === 'resolved' ? 'auto' : 'manual')) as 'unread' | 'auto' | 'manual',
+      order: c.order || {
+        order_sn: '-',
+        product_name: '-',
+        variation: '-',
+        sku: '-',
+        price: 0,
+        status: '-',
+      },
+      messages: Array.isArray(c.messages)
+        ? c.messages.map((m: any) => ({
+            id: String(m.id),
+            sender: m.sender === 'buyer' ? 'buyer' : 'seller',
+            text: m.text || '',
+            timestamp: m.timestamp || '',
+          }))
+        : [],
+    }));
+  };
 
+  // 1. Listen to instant broadcast from CustomerService Index.tsx
+  useEffect(() => {
+    const handleSyncFromPage = (e: any) => {
+      if (Array.isArray(e.detail)) {
+        const mapped = mapApiConversations(e.detail);
+        setConversations(mapped);
+        setIsLoaded(true);
+      }
+    };
+    window.addEventListener('cs-conversations-updated', handleSyncFromPage as any);
+    return () => window.removeEventListener('cs-conversations-updated', handleSyncFromPage as any);
+  }, []);
+
+  // 2. Listen to active conversation selection broadcast from main page
+  useEffect(() => {
+    const handleActiveChanged = (e: any) => {
+      if (e.detail !== undefined) {
+        setSelectedConvId(e.detail ? String(e.detail) : null);
+      }
+    };
+    window.addEventListener('cs-active-conversation-changed', handleActiveChanged as any);
+    return () => window.removeEventListener('cs-active-conversation-changed', handleActiveChanged as any);
+  }, []);
+
+  // 3. Poll live conversations from API
+  useEffect(() => {
+    let isMounted = true;
     const fetchLive = () => {
       fetch('/customer-service/poll', {
         headers: { 'X-Requested-With': 'XMLHttpRequest' },
       })
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
-          if (data?.conversations && Array.isArray(data.conversations) && data.conversations.length > 0) {
-            const mapped: SideChatConversation[] = data.conversations.map((c: any) => ({
-              id: String(c.id),
-              channel: c.channel === 'tiktok' ? 'tiktok' : 'shopee',
-              channel_label: c.channel_label || (c.channel === 'shopee' ? 'Shopee' : 'TikTok Shop'),
-              shop_name: c.shop_name || 'Record Shoes Official',
-              buyer_username: c.buyer_username || 'buyer',
-              buyer_name: c.buyer_name || 'Pembeli',
-              unread_count: Number(c.unread_count || 0),
-              last_message: c.last_message || '',
-              last_message_time: c.last_message_time || '',
-              group: (c.unread_count > 0 ? 'unread' : (c.status === 'resolved' ? 'auto' : 'manual')) as 'unread' | 'auto' | 'manual',
-              order: c.order || {
-                order_sn: '-',
-                product_name: '-',
-                variation: '-',
-                sku: '-',
-                price: 0,
-                status: '-',
-              },
-              messages: Array.isArray(c.messages)
-                ? c.messages.map((m: any) => ({
-                    id: String(m.id),
-                    sender: m.sender === 'buyer' ? 'buyer' : 'seller',
-                    text: m.text || '',
-                    timestamp: m.timestamp || '',
-                  }))
-                : [],
-            }));
+          if (!isMounted) return;
+          if (data?.conversations && Array.isArray(data.conversations)) {
+            const mapped = mapApiConversations(data.conversations);
             setConversations(mapped);
+            setIsLoaded(true);
+
+            // Broadcast unread count
+            const unreadCount = mapped.reduce((acc, c) => acc + (c.unread_count > 0 ? 1 : 0), 0);
+            window.dispatchEvent(new CustomEvent('cs-unread-count-updated', { detail: unreadCount }));
           }
         })
         .catch(() => {});
     };
 
     fetchLive();
-    const interval = setInterval(fetchLive, 8000);
-    return () => clearInterval(interval);
-  }, [isOpen]);
+    const interval = setInterval(fetchLive, 10000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   // Active selected conversation in mini chat view
   const activeConv = useMemo(() => {
@@ -289,10 +200,10 @@ export default function SideChatDock({ isOpen: controlledIsOpen, onClose }: Side
       }
       if (searchQuery.trim() !== '') {
         const q = searchQuery.toLowerCase();
-        const matchName = c.buyer_name.toLowerCase().includes(q);
-        const matchUser = c.buyer_username.toLowerCase().includes(q);
-        const matchSn = c.order.order_sn.toLowerCase().includes(q);
-        const matchMsg = c.last_message.toLowerCase().includes(q);
+        const matchName = (c.buyer_name || '').toLowerCase().includes(q);
+        const matchUser = (c.buyer_username || '').toLowerCase().includes(q);
+        const matchSn = c.order?.order_sn ? c.order.order_sn.toLowerCase().includes(q) : false;
+        const matchMsg = (c.last_message || '').toLowerCase().includes(q);
         if (!matchName && !matchUser && !matchSn && !matchMsg) return false;
       }
       return true;
@@ -300,9 +211,23 @@ export default function SideChatDock({ isOpen: controlledIsOpen, onClose }: Side
   }, [conversations, channelFilter, searchQuery]);
 
   // Groups
-  const unreadItems = useMemo(() => filteredList.filter((c) => c.group === 'unread'), [filteredList]);
-  const autoItems = useMemo(() => filteredList.filter((c) => c.group === 'auto'), [filteredList]);
-  const manualItems = useMemo(() => filteredList.filter((c) => c.group === 'manual'), [filteredList]);
+  const unreadItems = useMemo(
+    () => filteredList.filter((c) => c.group === 'unread' || c.unread_count > 0),
+    [filteredList]
+  );
+  const autoItems = useMemo(
+    () => filteredList.filter((c) => c.group === 'auto'),
+    [filteredList]
+  );
+  const manualItems = useMemo(
+    () =>
+      filteredList.filter(
+        (c) =>
+          c.group === 'manual' ||
+          (c.group !== 'unread' && c.group !== 'auto' && (c.unread_count === 0 || !c.unread_count))
+      ),
+    [filteredList]
+  );
 
   // Send message from mini chat view
   const handleSendReply = async (e?: React.FormEvent) => {
@@ -350,11 +275,14 @@ export default function SideChatDock({ isOpen: controlledIsOpen, onClose }: Side
           text: textToSend,
         }),
       });
+      window.dispatchEvent(new CustomEvent('cs-message-sent', { detail: activeConv.id }));
     } catch {}
   };
 
   const handleSelectConv = (convId: string) => {
     setSelectedConvId(convId);
+    window.dispatchEvent(new CustomEvent('cs-select-conversation', { detail: convId }));
+
     // Mark as read locally and dispatch to server
     setConversations((prev) =>
       prev.map((c) => (c.id === convId ? { ...c, unread_count: 0 } : c))
@@ -594,45 +522,49 @@ export default function SideChatDock({ isOpen: controlledIsOpen, onClose }: Side
                   >
                     <div className="flex items-center gap-1.5">
                       <span className="text-[10px] text-slate-500">{openAuto ? '▼' : '▶'}</span>
-                      <span>Dibalas Otomatis (17)</span>
+                      <span>Dibalas Otomatis ({autoItems.length})</span>
                     </div>
                   </button>
 
                   {openAuto && (
                     <div className="divide-y divide-slate-50">
-                      {autoItems.map((c) => (
-                        <div
-                          key={c.id}
-                          onClick={() => handleSelectConv(c.id)}
-                          className="flex cursor-pointer items-start gap-2.5 px-3 py-2.5 hover:bg-slate-50 transition-colors"
-                        >
-                          <div className="relative shrink-0">
-                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-700">
-                              {c.buyer_name.charAt(0)}
-                            </div>
-                            <span
-                              className={`absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[8px] font-bold text-white ${
-                                c.channel === 'shopee' ? 'bg-[#EE4D2D]' : 'bg-black'
-                              }`}
-                            >
-                              {c.channel === 'shopee' ? 'S' : 'T'}
-                            </span>
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between">
-                              <span className="truncate text-xs font-semibold text-slate-800">
-                                {c.buyer_username}
-                              </span>
-                              <span className="text-[10px] text-slate-400 tabular-nums">
-                                {c.last_message_time}
+                      {autoItems.length === 0 ? (
+                        <p className="px-5 py-3 text-[11px] text-slate-400">Tidak ada chat dibalas otomatis.</p>
+                      ) : (
+                        autoItems.map((c) => (
+                          <div
+                            key={c.id}
+                            onClick={() => handleSelectConv(c.id)}
+                            className="flex cursor-pointer items-start gap-2.5 px-3 py-2.5 hover:bg-slate-50 transition-colors"
+                          >
+                            <div className="relative shrink-0">
+                              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-700">
+                                {c.buyer_name.charAt(0)}
+                              </div>
+                              <span
+                                className={`absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[8px] font-bold text-white ${
+                                  c.channel === 'shopee' ? 'bg-[#EE4D2D]' : 'bg-black'
+                                }`}
+                              >
+                                {c.channel === 'shopee' ? 'S' : 'T'}
                               </span>
                             </div>
-                            <p className="mt-0.5 truncate text-[11px] text-slate-500 leading-tight">
-                              {c.last_message}
-                            </p>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between">
+                                <span className="truncate text-xs font-semibold text-slate-800">
+                                  {c.buyer_username}
+                                </span>
+                                <span className="text-[10px] text-slate-400 tabular-nums">
+                                  {c.last_message_time}
+                                </span>
+                              </div>
+                              <p className="mt-0.5 truncate text-[11px] text-slate-500 leading-tight">
+                                {c.last_message}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))
+                      )}
                     </div>
                   )}
                 </div>
@@ -646,45 +578,49 @@ export default function SideChatDock({ isOpen: controlledIsOpen, onClose }: Side
                   >
                     <div className="flex items-center gap-1.5">
                       <span className="text-[10px] text-slate-500">{openManual ? '▼' : '▶'}</span>
-                      <span>Dibalas Manual (22)</span>
+                      <span>Dibalas Manual ({manualItems.length})</span>
                     </div>
                   </button>
 
                   {openManual && (
                     <div className="divide-y divide-slate-50">
-                      {manualItems.map((c) => (
-                        <div
-                          key={c.id}
-                          onClick={() => handleSelectConv(c.id)}
-                          className="flex cursor-pointer items-start gap-2.5 px-3 py-2.5 hover:bg-slate-50 transition-colors"
-                        >
-                          <div className="relative shrink-0">
-                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-700">
-                              {c.buyer_name.charAt(0)}
-                            </div>
-                            <span
-                              className={`absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[8px] font-bold text-white ${
-                                c.channel === 'shopee' ? 'bg-[#EE4D2D]' : 'bg-black'
-                              }`}
-                            >
-                              {c.channel === 'shopee' ? 'S' : 'T'}
-                            </span>
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between">
-                              <span className="truncate text-xs font-semibold text-slate-800">
-                                {c.buyer_username}
-                              </span>
-                              <span className="text-[10px] text-slate-400 tabular-nums">
-                                {c.last_message_time}
+                      {manualItems.length === 0 ? (
+                        <p className="px-5 py-3 text-[11px] text-slate-400">Tidak ada chat dibalas manual.</p>
+                      ) : (
+                        manualItems.map((c) => (
+                          <div
+                            key={c.id}
+                            onClick={() => handleSelectConv(c.id)}
+                            className="flex cursor-pointer items-start gap-2.5 px-3 py-2.5 hover:bg-slate-50 transition-colors"
+                          >
+                            <div className="relative shrink-0">
+                              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-700">
+                                {c.buyer_name.charAt(0)}
+                              </div>
+                              <span
+                                className={`absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[8px] font-bold text-white ${
+                                  c.channel === 'shopee' ? 'bg-[#EE4D2D]' : 'bg-black'
+                                }`}
+                              >
+                                {c.channel === 'shopee' ? 'S' : 'T'}
                               </span>
                             </div>
-                            <p className="mt-0.5 truncate text-[11px] text-slate-500 leading-tight">
-                              {c.last_message}
-                            </p>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between">
+                                <span className="truncate text-xs font-semibold text-slate-800">
+                                  {c.buyer_username}
+                                </span>
+                                <span className="text-[10px] text-slate-400 tabular-nums">
+                                  {c.last_message_time}
+                                </span>
+                              </div>
+                              <p className="mt-0.5 truncate text-[11px] text-slate-500 leading-tight">
+                                {c.last_message}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))
+                      )}
                     </div>
                   )}
                 </div>
