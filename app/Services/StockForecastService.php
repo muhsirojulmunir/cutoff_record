@@ -137,15 +137,41 @@ class StockForecastService
             ->get();
 
         $result = [];
+        $addSales = function (string $key, int $m3, int $m2, int $m1) use (&$result) {
+            $k = strtoupper(trim($key));
+            if ($k === '') return;
+            if (!isset($result[$k])) {
+                $result[$k] = ['m3' => 0, 'm2' => 0, 'm1' => 0];
+            }
+            $result[$k]['m3'] += $m3;
+            $result[$k]['m2'] += $m2;
+            $result[$k]['m1'] += $m1;
+        };
+
         foreach ($rows as $row) {
             if (!empty($row->clean_sku)) {
                 $sku = strtoupper(trim($row->clean_sku));
-                if (!isset($result[$sku])) {
-                    $result[$sku] = ['m3' => 0, 'm2' => 0, 'm1' => 0];
+                $m3 = (int)$row->m3_qty;
+                $m2 = (int)$row->m2_qty;
+                $m1 = (int)$row->m1_qty;
+
+                // 1. Catat dengan key SKU asli
+                $addSales($sku, $m3, $m2, $m1);
+
+                // 2. Ekstrak kode internal 6-8 digit di akhir SKU (misal: RECORD-VIERRA-HM-34_01041334)
+                if (preg_match('/_(\d{6,8})$/', $sku, $m)) {
+                    $rawCode = $m[1];
+                    $unpadded = ltrim($rawCode, '0');
+                    $padded8 = str_pad($unpadded !== '' ? $unpadded : $rawCode, 8, '0', STR_PAD_LEFT);
+                    $addSales($rawCode, $m3, $m2, $m1);
+                    $addSales($padded8, $m3, $m2, $m1);
+                    $addSales($unpadded, $m3, $m2, $m1);
+                } elseif (preg_match('/^\d{6,8}$/', $sku)) {
+                    $unpadded = ltrim($sku, '0');
+                    $padded8 = str_pad($unpadded !== '' ? $unpadded : $sku, 8, '0', STR_PAD_LEFT);
+                    $addSales($padded8, $m3, $m2, $m1);
+                    $addSales($unpadded, $m3, $m2, $m1);
                 }
-                $result[$sku]['m3'] += (int)$row->m3_qty;
-                $result[$sku]['m2'] += (int)$row->m2_qty;
-                $result[$sku]['m1'] += (int)$row->m1_qty;
             }
         }
 
@@ -226,7 +252,16 @@ class StockForecastService
         ];
 
         foreach ($itemsMap as $code => $data) {
-            $sales = $salesMap[$code] ?? ['m3' => 0, 'm2' => 0, 'm1' => 0];
+            $unpadded = ltrim($code, '0');
+            $padded8 = str_pad($unpadded !== '' ? $unpadded : $code, 8, '0', STR_PAD_LEFT);
+            $nameKey = strtoupper(trim($data['item_name'] ?? ''));
+
+            $sales = $salesMap[$code]
+                ?? $salesMap[$padded8]
+                ?? ($unpadded !== '' ? ($salesMap[$unpadded] ?? null) : null)
+                ?? ($nameKey !== '' ? ($salesMap[$nameKey] ?? null) : null)
+                ?? ['m3' => 0, 'm2' => 0, 'm1' => 0];
+
             $metrics = $this->calculateRowMetrics(
                 $sales,
                 $data['total_stock'],
