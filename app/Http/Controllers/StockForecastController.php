@@ -6,6 +6,7 @@ use App\Models\PoProposal;
 use App\Services\StockForecastService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -87,10 +88,12 @@ class StockForecastController extends Controller
             $statusFilter
         );
 
-        $proposals = PoProposal::with(['proposer:id,name', 'reviewer:id,name'])
-            ->orderByDesc('id')
-            ->limit(100)
-            ->get();
+        $proposals = Schema::hasTable('po_proposals')
+            ? PoProposal::with(['proposer:id,name', 'reviewer:id,name'])
+                ->orderByDesc('id')
+                ->limit(100)
+                ->get()
+            : collect([]);
 
         $roles = $this->getUserRoleNames();
         $isManagement = in_array('Super Admin', $roles, true) || in_array('Direktur', $roles, true);

@@ -8,6 +8,7 @@ use App\Models\PoProposal;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class StockForecastService
 {
@@ -200,15 +201,17 @@ class StockForecastService
         }
 
         // Ambil pengajuan PO aktif untuk penanda
-        $proposals = PoProposal::whereIn('status', [PoProposal::STATUS_PENDING, PoProposal::STATUS_APPROVED])
-            ->orderByDesc('id')
-            ->get(['po_number', 'sku']);
-
         $activeProposals = [];
-        foreach ($proposals as $p) {
-            $sku = strtoupper(trim($p->sku));
-            if (!isset($activeProposals[$sku])) {
-                $activeProposals[$sku] = $p->po_number;
+        if (Schema::hasTable('po_proposals')) {
+            $proposals = PoProposal::whereIn('status', [PoProposal::STATUS_PENDING, PoProposal::STATUS_APPROVED])
+                ->orderByDesc('id')
+                ->get(['po_number', 'sku']);
+
+            foreach ($proposals as $p) {
+                $sku = strtoupper(trim($p->sku));
+                if (!isset($activeProposals[$sku])) {
+                    $activeProposals[$sku] = $p->po_number;
+                }
             }
         }
 
