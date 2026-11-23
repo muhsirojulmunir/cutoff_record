@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CutOffOrder;
 use App\Models\ShopeeAccount;
 use App\Models\ShopeeOrder;
 use App\Services\ShopeeOrderService;
@@ -1201,6 +1202,17 @@ class ShopeeOrderController extends Controller
             'Alamat Pengiriman',
         ];
 
+        $orderSns = $orders->pluck('order_sn')->filter()->unique()->values()->all();
+        $cutOffMap = ! empty($orderSns)
+            ? CutOffOrder::withTrashed()
+                ->whereIn('order_number', $orderSns)
+                ->where(function ($q) {
+                    $q->where('channel', 'SH')->orWhere('channel', 'Shopee');
+                })
+                ->get()
+                ->keyBy('order_number')
+            : collect();
+
         $rows = [];
         foreach ($orders as $order) {
             $items = is_array($order->items_json) ? $order->items_json : [];
@@ -1226,8 +1238,108 @@ class ShopeeOrderController extends Controller
                 $totalOrderWeightGr += ($w * $q);
             }
 
-            $rawPayload = is_array($order->raw_payload) ? $order->raw_payload : [];
+            $rawPayload = $order->raw_payload;
+            if (is_string($rawPayload) && $rawPayload !== '') {
+                $decoded = json_decode($rawPayload, true);
+                if (is_string($decoded)) {
+                    $decoded = json_decode($decoded, true);
+                }
+                $rawPayload = is_array($decoded) ? $decoded : [];
+            } elseif (! is_array($rawPayload)) {
+                $rawPayload = [];
+            }
+
             $paymentInfo = is_array($rawPayload['payment_info'] ?? null) ? $rawPayload['payment_info'] : [];
+
+            // Ekstrak voucher & koin dari payment_info (mendukung associative map maupun list entry)
+            $paymentSellerVoucher = 0.0;
+            $paymentShopeeVoucher = 0.0;
+            $paymentCoin = 0;
+
+            $paymentEntries = array_is_list($paymentInfo) ? $paymentInfo : [$paymentInfo];
+            foreach ($paymentEntries as $pEntry) {
+                if (! is_array($pEntry)) {
+                    continue;
+                }
+                $vInfo = is_array($pEntry['voucher_info'] ?? null) ? $pEntry['voucher_info'] : [];
+                $candidateSeller = (float) (
+                    $pEntry['voucher_from_seller']
+                    ?? $pEntry['seller_voucher_discount']
+                    ?? ($vInfo['discount_by_shop_voucher'] ?? 0)
+                    ?? ($vInfo['seller_voucher_discount'] ?? 0)
+                );
+                if ($candidateSeller > $paymentSellerVoucher) {
+                    $paymentSellerVoucher = $candidateSeller;
+                }
+
+                $candidateShopee = (float) (
+                    $pEntry['shopee_voucher']
+                    ?? $pEntry['voucher_from_shopee']
+                    ?? ($vInfo['discount_by_shopee_voucher'] ?? 0)
+                    ?? ($vInfo['shopee_voucher_discount'] ?? 0)
+                );
+                if ($candidateShopee > $paymentShopeeVoucher) {
+                    $paymentShopeeVoucher = $candidateShopee;
+                }
+
+                if (isset($pEntry['coin'])) {
+                    $paymentCoin = max($paymentCoin, (int) $pEntry['coin']);
+                }
+            }
+
+            // Ekstrak voucher dari CutOffOrder (sinkronisasi escrow resmi Shopee)
+            $cutOff = $cutOffMap->get($order->order_sn);
+            $cutOffBreakdown = is_array($cutOff?->financial_breakdown) ? $cutOff->financial_breakdown : [];
+            $cutOffSellerVoucher = (float) ($cutOffBreakdown['seller_voucher'] ?? $cutOff?->seller_voucher ?? 0);
+
+            // Ekstrak voucher dari root raw_payload
+            $payloadSellerVoucher = (float) (
+                $rawPayload['voucher_from_seller']
+                ?? $rawPayload['seller_voucher_discount']
+                ?? $rawPayload['seller_voucher']
+                ?? 0
+            );
+            $payloadShopeeVoucher = (float) (
+                $rawPayload['voucher_from_shopee']
+                ?? $rawPayload['shopee_voucher']
+                ?? 0
+            );
+
+            // Ekstrak voucher dari total item-level
+            $itemsSellerVoucherSum = 0.0;
+            $itemsShopeeVoucherSum = 0.0;
+            foreach ($items as $it) {
+                if (! is_array($it)) {
+                    continue;
+                }
+                $itemsSellerVoucherSum += (float) (
+                    $it['discount_from_voucher_seller']
+                    ?? $it['voucher_from_seller']
+                    ?? $it['seller_voucher_discount']
+                    ?? 0
+                );
+                $itemsShopeeVoucherSum += (float) (
+                    $it['discount_from_voucher_shopee']
+                    ?? $it['voucher_from_shopee']
+                    ?? 0
+                );
+            }
+
+            // Nilai voucher pesanan (order-level)
+            $orderSellerVoucher = max(
+                $cutOffSellerVoucher,
+                $paymentSellerVoucher,
+                $payloadSellerVoucher,
+                $itemsSellerVoucherSum
+            );
+
+            $orderShopeeVoucher = max(
+                $paymentShopeeVoucher,
+                $payloadShopeeVoucher,
+                $itemsShopeeVoucherSum
+            );
+
+            $finalCoin = max($paymentCoin, (int) ($rawPayload['coin'] ?? 0));
 
             $statusLabel = match (strtoupper((string) $order->order_status)) {
                 'UNPAID'                                  => 'Belum Bayar',
@@ -1270,6 +1382,21 @@ class ShopeeOrderController extends Controller
                 $totDiscItem = max(0, ($origPrice - $discPrice) * $itemQty);
                 $itemWeightGr = isset($item['weight']) && (float) $item['weight'] > 0 ? (float) $item['weight'] : 450;
 
+                $itemSpecificVoucher = (float) (
+                    $item['discount_from_voucher_seller']
+                    ?? $item['voucher_from_seller']
+                    ?? $item['seller_voucher_discount']
+                    ?? 0
+                );
+                $rowSellerVoucher = $orderSellerVoucher > 0 ? $orderSellerVoucher : $itemSpecificVoucher;
+
+                $itemSpecificShopeeVoucher = (float) (
+                    $item['discount_from_voucher_shopee']
+                    ?? $item['voucher_from_shopee']
+                    ?? 0
+                );
+                $rowShopeeVoucher = $orderShopeeVoucher > 0 ? $orderShopeeVoucher : $itemSpecificShopeeVoucher;
+
                 $rows[] = [
                     $order->order_sn,
                     $statusLabel,
@@ -1298,13 +1425,13 @@ class ShopeeOrderController extends Controller
                     round($itemWeightGr) . ' gr',
                     (string) $totalOrderedQty,
                     round($totalOrderWeightGr) . ' gr',
-                    number_format((float) ($paymentInfo['seller_voucher_code'] ?? 0), 0, ',', '.'),
+                    number_format($rowSellerVoucher, 0, ',', '.'),
                     '0',
-                    number_format((float) ($paymentInfo['shopee_voucher'] ?? 0), 0, ',', '.'),
+                    number_format($rowShopeeVoucher, 0, ',', '.'),
                     'N',
                     '0',
                     '0',
-                    (string) ((int) ($paymentInfo['coin'] ?? 0)),
+                    (string) $finalCoin,
                     '0',
                     '0',
                     $estShippingFeeFormatted,

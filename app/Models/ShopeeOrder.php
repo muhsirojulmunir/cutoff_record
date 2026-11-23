@@ -138,6 +138,22 @@ class ShopeeOrder extends Model
         ];
     }
 
+    public function getDecodedPayloadAttribute(): array
+    {
+        $raw = $this->raw_payload;
+        if (is_array($raw)) {
+            return $raw;
+        }
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            if (is_string($decoded)) {
+                $decoded = json_decode($decoded, true);
+            }
+            return is_array($decoded) ? $decoded : [];
+        }
+        return [];
+    }
+
     public function account(): BelongsTo
     {
         return $this->belongsTo(ShopeeAccount::class, 'shopee_account_id');
