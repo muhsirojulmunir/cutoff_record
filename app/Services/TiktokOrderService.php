@@ -620,9 +620,12 @@ class TiktokOrderService
             }
         }
 
-        $orders = TiktokOrder::where('tiktok_account_id', $account->id)
-            ->whereIn('order_sn', $orderSns)
-            ->get();
+        $orders = TiktokOrder::whereIn('order_sn', $orderSns)->get();
+        if ($orders->isEmpty()) {
+            $orders = TiktokOrder::where('tiktok_account_id', $account->id)
+                ->whereIn('order_sn', $orderSns)
+                ->get();
+        }
 
         return [
             'status'         => count($failed) === 0 ? 'success' : (count($succeeded) > 0 ? 'warning' : 'error'),
@@ -892,9 +895,23 @@ class TiktokOrderService
     public function fetchTrackingNumber(TiktokAccount $account, string $orderSn, ?string $packageId = null): ?string
     {
         $this->ensureSchema();
-        $order = TiktokOrder::where('tiktok_account_id', $account->id)
-            ->where('order_sn', $orderSn)
-            ->first();
+        $order = TiktokOrder::where('order_sn', $orderSn)->first()
+            ?? TiktokOrder::where('tiktok_account_id', $account->id)
+                ->where('order_sn', $orderSn)
+                ->first();
+
+        if ($order && $order->tiktok_account_id) {
+            $orderAcc = TiktokAccount::find($order->tiktok_account_id);
+            if ($orderAcc && (! empty($orderAcc->access_token) || $orderAcc->isConnected())) {
+                $account = $orderAcc;
+            }
+        }
+        if (empty($account->access_token)) {
+            $tokenAcc = TiktokAccount::whereNotNull('access_token')->where('access_token', '!=', '')->first();
+            if ($tokenAcc) {
+                $account = $tokenAcc;
+            }
+        }
 
         // Jika nomor resi ada dan valid (bukan dummy), kita tetap query jika akun terhubung
         $targetPackageId = $packageId ?: $order?->package_number;
@@ -997,9 +1014,10 @@ class TiktokOrderService
     public function getEscrowDetail(TiktokAccount $account, string $orderSn): array
     {
         $this->ensureSchema();
-        $order = TiktokOrder::where('tiktok_account_id', $account->id)
-            ->where('order_sn', $orderSn)
-            ->firstOrFail();
+        $order = TiktokOrder::where('order_sn', $orderSn)->first()
+            ?? TiktokOrder::where('tiktok_account_id', $account->id)
+                ->where('order_sn', $orderSn)
+                ->firstOrFail();
 
         $totalAmount = (float) $order->total_amount;
         $subtotal = $totalAmount;
@@ -1050,9 +1068,23 @@ class TiktokOrderService
     public function getTrackingInfo(TiktokAccount $account, string $orderSn): array
     {
         $this->ensureSchema();
-        $order = TiktokOrder::where('tiktok_account_id', $account->id)
-            ->where('order_sn', $orderSn)
-            ->firstOrFail();
+        $order = TiktokOrder::where('order_sn', $orderSn)->first()
+            ?? TiktokOrder::where('tiktok_account_id', $account->id)
+                ->where('order_sn', $orderSn)
+                ->firstOrFail();
+
+        if ($order->tiktok_account_id) {
+            $orderAcc = TiktokAccount::find($order->tiktok_account_id);
+            if ($orderAcc && (! empty($orderAcc->access_token) || $orderAcc->isConnected())) {
+                $account = $orderAcc;
+            }
+        }
+        if (empty($account->access_token)) {
+            $tokenAcc = TiktokAccount::whereNotNull('access_token')->where('access_token', '!=', '')->first();
+            if ($tokenAcc) {
+                $account = $tokenAcc;
+            }
+        }
 
         // 1. Coba ambil tracking riil langsung dari TikTok Shop Open API (/fulfillment/202309/orders/{order_id}/tracking)
         if ($account->isConnected() && ! empty($account->access_token)) {
@@ -1182,9 +1214,10 @@ class TiktokOrderService
     public function handleBuyerCancellation(TiktokAccount $account, string $orderSn, string $operation): array
     {
         $this->ensureSchema();
-        $order = TiktokOrder::where('tiktok_account_id', $account->id)
-            ->where('order_sn', $orderSn)
-            ->firstOrFail();
+        $order = TiktokOrder::where('order_sn', $orderSn)->first()
+            ?? TiktokOrder::where('tiktok_account_id', $account->id)
+                ->where('order_sn', $orderSn)
+                ->firstOrFail();
 
         if ($operation === 'ACCEPT') {
             $order->update([

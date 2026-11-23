@@ -108,7 +108,10 @@ class TiktokOrderController extends Controller
             ->forLogisticsStatus($logisticsStatus);
 
         if ($account) {
-            $query->where('tiktok_account_id', $account->id);
+            $query->where(function ($q) use ($account) {
+                $q->where('tiktok_account_id', $account->id)
+                  ->orWhereNull('tiktok_account_id');
+            });
         }
 
         if ($search !== '') {
@@ -255,7 +258,7 @@ class TiktokOrderController extends Controller
     public function massShip(Request $request): JsonResponse
     {
         $this->authorizeAccess($request);
-        $account = $this->resolveTiktokAccount();
+        $account = $this->resolveTiktokAccount($request->input('order_sns.0'));
 
         $validated = $request->validate([
             'order_sns'        => ['required', 'array', 'min:1'],
@@ -604,7 +607,10 @@ class TiktokOrderController extends Controller
         $pendingPickupSql = TiktokOrder::pendingPickupPredicateSql();
 
         $row = TiktokOrder::query()
-            ->where('tiktok_account_id', $accountId)
+            ->where(function ($q) use ($accountId) {
+                $q->where('tiktok_account_id', $accountId)
+                  ->orWhereNull('tiktok_account_id');
+            })
             ->selectRaw("
                 COUNT(*) as all_count,
                 COALESCE(SUM(CASE WHEN order_status = 'UNPAID' THEN 1 ELSE 0 END), 0) as unpaid,
@@ -642,7 +648,10 @@ class TiktokOrderController extends Controller
     private function computeOrderTypeCounts(int $accountId, string $tab): array
     {
         $base = TiktokOrder::query()
-            ->where('tiktok_account_id', $accountId)
+            ->where(function ($q) use ($accountId) {
+                $q->where('tiktok_account_id', $accountId)
+                  ->orWhereNull('tiktok_account_id');
+            })
             ->forTab($tab, 'all');
 
         return [
@@ -690,7 +699,10 @@ class TiktokOrderController extends Controller
             [$dateFrom, $dateTo] = [$dateTo, $dateFrom];
         }
 
-        $query = TiktokOrder::query()->where('tiktok_account_id', $account->id);
+        $query = TiktokOrder::query()->where(function ($q) use ($account) {
+            $q->where('tiktok_account_id', $account->id)
+              ->orWhereNull('tiktok_account_id');
+        });
 
         if ($tab !== 'all') {
             $query->forTab($tab, $subTab);
