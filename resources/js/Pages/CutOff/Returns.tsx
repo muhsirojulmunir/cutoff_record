@@ -273,6 +273,9 @@ function DisputeCountdown({ dueDateStr, compact = false }: { dueDateStr: string 
 // ---------------------------------------------------------------------------
 export default function Returns({ returns, filters, summary, disputeTasks = [], marketplaces, flash }: Props) {
   const { auth } = usePage<any>().props;
+  const isSuperAdmin =
+    auth?.user?.role?.name === 'Super Admin' ||
+    (Array.isArray(auth?.user?.roles) && auth.user.roles.includes('Super Admin'));
   const isManagement = auth?.user?.role?.name === 'Management';
   const canManage = !isManagement;
 
@@ -701,37 +704,39 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
 
             {canManage && (
               <>
-                {/* Marketplace Sync Control Group */}
-                <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200/80">
-                  <span className="pl-2.5 pr-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider hidden sm:inline">
-                    Tarik API
-                  </span>
-                  {/* Tarik Retur Shopee API */}
-                  <button
-                    type="button"
-                    onClick={() => setIsShopeeSyncModalOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-orange-50 border border-slate-200/80 text-slate-700 hover:text-[#EE4D2D] text-xs font-semibold transition-colors shadow-2xs cursor-pointer active:scale-95"
-                    title="Tarik Retur dari Shopee Open API"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 text-[#EE4D2D]">
-                      <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zm.53 5.47a.75.75 0 00-1.06 0l-3 3a.75.75 0 101.06 1.06l1.72-1.72v5.69a.75.75 0 001.5 0v-5.69l1.72 1.72a.75.75 0 101.06-1.06l-3-3z" clipRule="evenodd" />
-                    </svg>
-                    <span>Shopee</span>
-                  </button>
+                {/* Marketplace Sync Control Group (Khusus Super Admin) */}
+                {isSuperAdmin && (
+                  <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200/80">
+                    <span className="pl-2.5 pr-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider hidden sm:inline">
+                      Tarik API
+                    </span>
+                    {/* Tarik Retur Shopee API */}
+                    <button
+                      type="button"
+                      onClick={() => setIsShopeeSyncModalOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-orange-50 border border-slate-200/80 text-slate-700 hover:text-[#EE4D2D] text-xs font-semibold transition-colors shadow-2xs cursor-pointer active:scale-95"
+                      title="Tarik Retur dari Shopee Open API"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 text-[#EE4D2D]">
+                        <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zm.53 5.47a.75.75 0 00-1.06 0l-3 3a.75.75 0 101.06 1.06l1.72-1.72v5.69a.75.75 0 001.5 0v-5.69l1.72 1.72a.75.75 0 101.06-1.06l-3-3z" clipRule="evenodd" />
+                      </svg>
+                      <span>Shopee</span>
+                    </button>
 
-                  {/* Tarik Retur TikTok API */}
-                  <button
-                    type="button"
-                    onClick={() => setIsTiktokSyncModalOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200/80 text-slate-700 text-xs font-semibold transition-colors shadow-2xs cursor-pointer active:scale-95 ml-1"
-                    title="Tarik Retur dari TikTok Shop API"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 text-slate-900">
-                      <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zm.53 5.47a.75.75 0 00-1.06 0l-3 3a.75.75 0 101.06 1.06l1.72-1.72v5.69a.75.75 0 001.5 0v-5.69l1.72 1.72a.75.75 0 101.06-1.06l-3-3z" clipRule="evenodd" />
-                    </svg>
-                    <span>TikTok</span>
-                  </button>
-                </div>
+                    {/* Tarik Retur TikTok API */}
+                    <button
+                      type="button"
+                      onClick={() => setIsTiktokSyncModalOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200/80 text-slate-700 text-xs font-semibold transition-colors shadow-2xs cursor-pointer active:scale-95 ml-1"
+                      title="Tarik Retur dari TikTok Shop API"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5 text-slate-900">
+                        <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zm.53 5.47a.75.75 0 00-1.06 0l-3 3a.75.75 0 101.06 1.06l1.72-1.72v5.69a.75.75 0 001.5 0v-5.69l1.72 1.72a.75.75 0 101.06-1.06l-3-3z" clipRule="evenodd" />
+                      </svg>
+                      <span>TikTok</span>
+                    </button>
+                  </div>
+                )}
 
                 {/* Upload Excel (.xlsx) */}
                 <button
@@ -2041,7 +2046,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
       )}
 
       {/* Modal Tarik Retur Shopee API */}
-      {isShopeeSyncModalOpen && createPortal(
+      {isSuperAdmin && isShopeeSyncModalOpen && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto"
           onClick={() => !isSyncingShopee && setIsShopeeSyncModalOpen(false)}
@@ -2215,7 +2220,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
       )}
 
       {/* Modal Tarik Retur TikTok API */}
-      {isTiktokSyncModalOpen && createPortal(
+      {isSuperAdmin && isTiktokSyncModalOpen && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto"
           onClick={() => !isSyncingTiktok && setIsTiktokSyncModalOpen(false)}

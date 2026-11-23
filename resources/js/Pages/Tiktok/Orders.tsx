@@ -1780,32 +1780,24 @@ export default function TiktokOrdersPage({
                 <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
                   Pesanan Saya TikTok
                 </h1>
-
-                {isShopeeConnected ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                    Terhubung
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold text-rose-700">
-                    <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
-                    Belum Terhubung
-                  </span>
-                )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
                 {account ? (
-                  <span className="font-semibold text-slate-700">{account.account_name}</span>
+                  <>
+                    <span className="font-semibold text-slate-800">{account.account_name}</span>
+                    <span className="text-slate-300">•</span>
+                    <span>Kelola pemrosesan pesanan, atur pengiriman kurir, dan cetak label thermal pesanan TikTok Shop.</span>
+                  </>
                 ) : (
-                  <span>Belum ada akun toko TikTok yang dikonfigurasi pada sistem.</span>
+                  <span>Kelola pemrosesan pesanan, atur pengiriman kurir, dan cetak label thermal pesanan TikTok Shop.</span>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Live Auto-Sync Pill + Chunked Sinkron Ulang Menu (Khusus Super Admin) */}
-          {isSuperAdmin && (
+          {/* Live Auto-Sync Pill + Chunked Sinkron Ulang Menu (Khusus Super Admin) / Mode Info (Non Super Admin) */}
+          {isSuperAdmin ? (
             <div className="flex flex-wrap items-center gap-2.5 lg:shrink-0">
             <button
               type="button"
@@ -2032,6 +2024,26 @@ export default function TiktokOrdersPage({
               </button>
             )}
           </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2.5 lg:shrink-0">
+              <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-600 shadow-2xs">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.8}
+                  stroke="currentColor"
+                  className="h-4 w-4 text-blue-600"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span>Pusat Pemrosesan & Cetak Resi Toko</span>
+              </div>
+            </div>
           )}
         </section>
 
