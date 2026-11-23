@@ -1581,6 +1581,7 @@ class ShopeeProductController extends Controller
             'mappings'              => 'nullable|array|min:1',
             'mappings.*.id'        => 'required_with:mappings|integer',
             'mappings.*.item_code' => 'required_with:mappings|string|max:50',
+            'mappings.*.sku'       => 'nullable|string|max:100',
             'product_ids'          => 'nullable|array|min:1',
             'product_ids.*'        => 'required_with:product_ids|integer',
             'item_code'            => 'nullable|string|max:50',
@@ -1590,6 +1591,7 @@ class ShopeeProductController extends Controller
 
         $updatedCount = 0;
         $accountIds = collect();
+        $updatedItemsForApi = [];
 
         // 1. Mode Mappings (Individual / Smart Size Matcher)
         if (!empty($validated['mappings'])) {
@@ -1607,9 +1609,24 @@ class ShopeeProductController extends Controller
                 $pid = (int) $mapping['id'];
                 $code = strtoupper(trim($mapping['item_code']));
                 if (isset($products[$pid]) && $code !== '') {
-                    ShopeeProduct::where('id', $pid)->update(['manual_item_code' => $code]);
-                    if ($products[$pid]->shopee_account_id) {
-                        $accountIds->push($products[$pid]->shopee_account_id);
+                    $prod = $products[$pid];
+                    $newSku = !empty($mapping['sku'])
+                        ? strtoupper(trim($mapping['sku']))
+                        : $this->computeUpdatedSku($prod->sku, $code);
+
+                    ShopeeProduct::where('id', $pid)->update([
+                        'manual_item_code' => $code,
+                        'sku'              => $newSku,
+                    ]);
+
+                    if ($prod->shopee_account_id) {
+                        $accountIds->push($prod->shopee_account_id);
+                        $updatedItemsForApi[] = [
+                            'account_id' => $prod->shopee_account_id,
+                            'item_id'    => (int) $prod->item_id,
+                            'model_id'   => (int) ($prod->model_id ?? 0),
+                            'sku'        => $newSku,
+                        ];
                     }
                     $updatedCount++;
                 }
@@ -1627,9 +1644,22 @@ class ShopeeProductController extends Controller
                 ], 422);
             }
 
-            ShopeeProduct::whereIn('id', $productIds)->update([
-                'manual_item_code' => $itemCode,
-            ]);
+            foreach ($products as $prod) {
+                $newSku = $this->computeUpdatedSku($prod->sku, $itemCode);
+                ShopeeProduct::where('id', $prod->id)->update([
+                    'manual_item_code' => $itemCode,
+                    'sku'              => $newSku,
+                ]);
+
+                if ($prod->shopee_account_id) {
+                    $updatedItemsForApi[] = [
+                        'account_id' => $prod->shopee_account_id,
+                        'item_id'    => (int) $prod->item_id,
+                        'model_id'   => (int) ($prod->model_id ?? 0),
+                        'sku'        => $newSku,
+                    ];
+                }
+            }
 
             $accountIds = $products->pluck('shopee_account_id');
             $updatedCount = $products->count();
@@ -1640,16 +1670,47 @@ class ShopeeProductController extends Controller
             ], 422);
         }
 
-        // Bersihkan cache audit untuk semua akun Shopee terkait
+        // Sinkronisasi SKU ke Shopee API jika akun terhubung aktif
         foreach ($accountIds->filter()->unique() as $accId) {
+            $account = \App\Models\ShopeeAccount::find($accId);
+            if ($account && !empty($account->access_token) && !empty($account->shop_id)) {
+                $accItems = array_filter($updatedItemsForApi, fn ($p) => (int) ($p['account_id'] ?? 0) === (int) $accId);
+                if (!empty($accItems)) {
+                    try {
+                        $this->syncService->updateModelSkuBatch($account, $accItems);
+                    } catch (\Throwable $e) {
+                        \Illuminate\Support\Facades\Log::warning("[ShopeeBulkMap] Gagal update SKU ke Shopee API: " . $e->getMessage());
+                    }
+                }
+            }
             self::clearAuditCache($accId);
         }
 
         return response()->json([
             'status'        => 'success',
             'updated_count' => $updatedCount,
-            'message'       => "Berhasil memperbarui {$updatedCount} varian kode barang.",
+            'message'       => "Berhasil memperbarui {$updatedCount} varian (Kode Barang & SKU Marketplace).",
         ]);
+    }
+
+    /**
+     * Hitung SKU baru dengan mengganti suffix kode lama setelah underscore '_' dengan kode baru.
+     * Contoh: 'RECORD-BLANCO-H-39_01246239' + '01279139' => 'RECORD-BLANCO-H-39_01279139'.
+     */
+    private function computeUpdatedSku(?string $oldSku, string $newCode): string
+    {
+        $newCode = strtoupper(trim($newCode));
+        if (empty($oldSku) || trim($oldSku) === '') {
+            return $newCode;
+        }
+        $cleanSku = trim($oldSku);
+        $lastUnderscore = strrpos($cleanSku, '_');
+        if ($lastUnderscore !== false) {
+            $prefix = substr($cleanSku, 0, $lastUnderscore + 1);
+            return $prefix . $newCode;
+        }
+        return $cleanSku . '_' . $newCode;
+    }
     }
 
     /**

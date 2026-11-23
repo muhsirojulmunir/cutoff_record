@@ -64,9 +64,6 @@ export function extractShoeSize(modelName?: string | null, sku?: string | null):
  *
  * Contoh 2 (Input hanya prefix artikel):
  * Base "012791", Target Size "40" => "01279140"
- *
- * Contoh 3 (Non-sepatu atau ukuran tidak terdeteksi):
- * Menggunakan kode dasar apa adanya.
  */
 export function computeSmartCode(baseInput: string, targetSize: string | null): string {
   const clean = baseInput.trim().toUpperCase();
@@ -82,6 +79,34 @@ export function computeSmartCode(baseInput: string, targetSize: string | null): 
 
   // Jika input berupa prefix artikel murni tanpa ukuran, langsung tambahkan ukuran target
   return `${clean}${targetSize}`;
+}
+
+/**
+ * Menghitung SKU baru dengan mengganti suffix kode lama setelah '_' dengan kode baru.
+ * Contoh: "RECORD-BLANCO-H-39_01246239" + "01279139" => "RECORD-BLANCO-H-39_01279139"
+ */
+export function computeUpdatedSku(oldSku?: string | null, newCode?: string | null): string {
+  const cleanCode = (newCode || '').trim().toUpperCase();
+  if (!oldSku || !oldSku.trim()) return cleanCode;
+  const cleanSku = oldSku.trim();
+  if (!cleanCode) return cleanSku;
+
+  const lastUnderscoreIdx = cleanSku.lastIndexOf('_');
+  if (lastUnderscoreIdx !== -1) {
+    const prefix = cleanSku.substring(0, lastUnderscoreIdx + 1);
+    return `${prefix}${cleanCode}`;
+  }
+
+  return `${cleanSku}_${cleanCode}`;
+}
+
+export function getSkuPrefix(sku?: string | null): string {
+  if (!sku) return '';
+  const lastIdx = sku.lastIndexOf('_');
+  if (lastIdx !== -1) {
+    return sku.substring(0, lastIdx + 1);
+  }
+  return `${sku}_`;
 }
 
 export default function BulkMapItemCodeModal({
@@ -299,14 +324,17 @@ export default function BulkMapItemCodeModal({
       return;
     }
 
-    // Bangun payload mappings: [{id, item_code}]
+    // Bangun payload mappings: [{id, item_code, sku}]
     const mappings = selectedVariants.map((item) => {
       const customCode = (rowItemCodes[item.id] || baseItemCode || item.manual_item_code || '')
         .trim()
         .toUpperCase();
+      const updatedSku = computeUpdatedSku(item.sku, customCode);
+
       return {
         id: item.id,
         item_code: customCode,
+        sku: updatedSku,
       };
     });
 
@@ -388,7 +416,7 @@ export default function BulkMapItemCodeModal({
                     1. Cari Varian Produk yang Ingin Diubah
                   </h4>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Ketik SKU, Nama Produk, atau Model (misal: <strong>KYLIE</strong>, <strong>012791</strong>, atau <strong>jayden</strong>).
+                    Ketik SKU, Nama Produk, atau Model (misal: <strong>blanco-h</strong>, <strong>KYLIE</strong>, atau <strong>012791</strong>).
                   </p>
                 </div>
                 {searchResults.length > 0 && (
@@ -444,9 +472,12 @@ export default function BulkMapItemCodeModal({
                           </th>
                           <th className="py-2.5 px-3 min-w-[200px]">Produk & Variasi</th>
                           <th className="py-2.5 px-2.5 text-center w-24">Ukuran</th>
-                          <th className="py-2.5 px-3 min-w-[150px]">SKU Marketplace</th>
-                          <th className="py-2.5 px-3 text-center min-w-[110px]">Kode Saat Ini</th>
-                          <th className="py-2.5 px-3 min-w-[150px]">
+                          <th className="py-2.5 px-3 min-w-[200px]">
+                            SKU Marketplace{' '}
+                            <span className="text-[10px] text-blue-600 font-semibold">(Otomatis Ikut Berubah)</span>
+                          </th>
+                          <th className="py-2.5 px-3 text-center min-w-[100px]">Kode Saat Ini</th>
+                          <th className="py-2.5 px-3 min-w-[140px]">
                             Kode Target Baru{' '}
                             <span className="text-[10px] text-slate-400 lowercase font-normal">(bisa diedit)</span>
                           </th>
@@ -458,6 +489,7 @@ export default function BulkMapItemCodeModal({
                           const isChecked = selectedIds.has(item.id);
                           const detectedSize = extractShoeSize(item.model_name, item.sku);
                           const rowCode = rowItemCodes[item.id] || '';
+                          const updatedSku = computeUpdatedSku(item.sku, rowCode);
 
                           return (
                             <tr
@@ -502,9 +534,28 @@ export default function BulkMapItemCodeModal({
                                 )}
                               </td>
 
-                              {/* SKU */}
-                              <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700 select-all">
-                                {item.sku || '-'}
+                              {/* SKU Marketplace (Live Update Suffix Mengikuti Kode Baru) */}
+                              <td className="py-2.5 px-3 font-mono">
+                                {rowCode ? (
+                                  <div>
+                                    <div className="text-[11px] font-bold text-slate-900 select-all flex items-center flex-wrap gap-0.5">
+                                      <span className="text-slate-600">{getSkuPrefix(item.sku)}</span>
+                                      <span className="text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-300 shadow-2xs">
+                                        {rowCode}
+                                      </span>
+                                    </div>
+                                    {item.sku && item.sku !== updatedSku && (
+                                      <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1">
+                                        <span className="text-slate-400">Lama:</span>
+                                        <span className="line-through">{item.sku}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="text-[11px] text-slate-700 select-all">
+                                    {item.sku || '-'}
+                                  </div>
+                                )}
                               </td>
 
                               {/* Kode Lama Saat Ini */}
@@ -596,7 +647,7 @@ export default function BulkMapItemCodeModal({
                     2. Masukkan Kode Barang Master & Smart Size Matcher
                   </h4>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Ketik kode dasar / salah satu varian (misal: <strong>01279139</strong> atau <strong>012791</strong>). Sistem otomatis menyesuaikan 2 digit terakhir sesuai ukuran tiap variasi.
+                    Ketik kode dasar / salah satu varian (misal: <strong>01279139</strong> atau <strong>012791</strong>). Sistem otomatis menyesuaikan 2 digit terakhir kode barang dan <strong>otomatis memperbarui akhiran SKU Marketplace</strong>.
                   </p>
                 </div>
 
@@ -675,16 +726,16 @@ export default function BulkMapItemCodeModal({
                 </p>
               ) : null}
 
-              {/* Banner Panduan Fleksibilitas */}
+              {/* Banner Panduan Fleksibilitas & SKU Otomatis */}
               <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-xs text-blue-900 flex items-start gap-2">
                 <span className="text-blue-600 text-sm">💡</span>
-                <div className="text-[11px] space-y-0.5">
-                  <p className="font-bold text-blue-950">Cara Penggunaan yang Sangat Fleksibel:</p>
+                <div className="text-[11px] space-y-1">
+                  <p className="font-bold text-blue-950">Aturan Otomatis SKU Marketplace & Kode Barang:</p>
                   <p>
-                    • <strong>Ubah Semua Sekaligus Otomatis:</strong> Centang semua varian, ketik kode (misal <code>01279139</code>), sistem akan otomatis memberi kode <code>...38</code>, <code>...39</code>, <code>...40</code>, <code>...41</code>, dst.
+                    • <strong>SKU Marketplace Otomatis Mengikuti:</strong> Saat Anda memasukkan kode barang (misal: <code>01279139</code>), bagian belakang SKU (misal: <code>RECORD-BLANCO-H-39_01246239</code>) akan otomatis diperbarui menjadi <code>RECORD-BLANCO-H-39_01279139</code>.
                   </p>
                   <p>
-                    • <strong>Hanya Ubah SATU Varian (misal ukuran 41 saja):</strong> Cukup klik tombol <strong>&quot;Hanya Ubah Ini&quot;</strong> pada ukuran 41, atau hapus centang varian lain. Varian yang tidak dicentang <u>dijamin aman dan tidak akan berubah sama sekali</u>.
+                    • <strong>Bisa Ubah Satuan:</strong> Jika Anda hanya ingin mengubah ukuran 41 saja, cukup klik <strong>&quot;Hanya Ubah Ini&quot;</strong> pada ukuran 41. Ukuran lain dijamin tidak akan tersentuh.
                   </p>
                 </div>
               </div>
@@ -723,10 +774,10 @@ export default function BulkMapItemCodeModal({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h4 className="text-sm font-bold text-slate-900">
-                    Pratinjau Perubahan Kode Barang Varian
+                    Pratinjau Perubahan Kode Barang & SKU Marketplace
                   </h4>
                   <p className="text-xs text-slate-600 mt-0.5">
-                    Harap tinjau kode baru untuk setiap varian sebelum disimpan ke database.
+                    Harap tinjau kode baru dan pembaruan SKU untuk setiap varian sebelum disimpan.
                   </p>
                 </div>
                 <div className="text-left sm:text-right">
@@ -742,14 +793,14 @@ export default function BulkMapItemCodeModal({
                 <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2">
                   <span className="font-bold text-emerald-700">✓ Mode Satuan:</span>
                   <span>
-                    Hanya <strong>1 varian ini</strong> yang akan diperbarui. Seluruh varian ukuran lainnya <u>tetap menggunakan kode lama mereka tanpa tersentuh</u>.
+                    Hanya <strong>1 varian ini</strong> yang akan diperbarui (Kode Barang & SKU). Seluruh varian ukuran lainnya <u>tetap menggunakan kode dan SKU lama tanpa tersentuh</u>.
                   </span>
                 </div>
               ) : (
                 <div className="text-xs text-blue-900 bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-2">
                   <span className="font-bold text-blue-700">ℹ Mode Massal:</span>
                   <span>
-                    Sebanyak <strong>{selectedVariants.length} varian</strong> akan diperbarui dengan kode unik masing-masing sesuai tabel di bawah.
+                    Sebanyak <strong>{selectedVariants.length} varian</strong> akan diperbarui Kode Barang dan SKU Marketplace masing-masing sesuai tabel di bawah.
                   </span>
                 </div>
               )}
@@ -761,18 +812,17 @@ export default function BulkMapItemCodeModal({
                 <table className="w-full text-left text-xs border-collapse">
                   <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500 z-10">
                     <tr>
-                      <th className="py-2.5 px-3 min-w-[200px]">Produk & Variasi</th>
-                      <th className="py-2.5 px-2.5 text-center w-24">Ukuran</th>
-                      <th className="py-2.5 px-3 min-w-[150px]">SKU Marketplace</th>
-                      <th className="py-2.5 px-3 text-center min-w-[110px]">Kode Lama</th>
-                      <th className="py-2.5 px-3 text-center w-12">Arah</th>
-                      <th className="py-2.5 px-3 text-center min-w-[130px]">Kode Baru (Target)</th>
+                      <th className="py-2.5 px-3 min-w-[180px]">Produk & Variasi</th>
+                      <th className="py-2.5 px-2 text-center w-20">Ukuran</th>
+                      <th className="py-2.5 px-3 min-w-[220px]">SKU Marketplace (Lama ➔ Baru)</th>
+                      <th className="py-2.5 px-3 text-center min-w-[140px]">Kode Barang (Lama ➔ Baru)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {selectedVariants.map((item) => {
                       const detectedSize = extractShoeSize(item.model_name, item.sku);
                       const targetCode = (rowItemCodes[item.id] || baseItemCode).trim().toUpperCase();
+                      const updatedSku = computeUpdatedSku(item.sku, targetCode);
 
                       return (
                         <tr key={item.id} className="hover:bg-slate-50/70">
@@ -790,7 +840,7 @@ export default function BulkMapItemCodeModal({
                           </td>
 
                           {/* Ukuran */}
-                          <td className="py-2.5 px-2.5 text-center">
+                          <td className="py-2.5 px-2 text-center">
                             {detectedSize ? (
                               <span className="inline-flex items-center rounded-md bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 text-[11px] font-bold font-mono">
                                 Size {detectedSize}
@@ -802,30 +852,30 @@ export default function BulkMapItemCodeModal({
                             )}
                           </td>
 
-                          {/* SKU */}
-                          <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700">
-                            {item.sku || '-'}
-                          </td>
-
-                          {/* Kode Lama */}
-                          <td className="py-2.5 px-3 text-center font-mono text-[11px]">
-                            {item.manual_item_code ? (
-                              <span className="text-slate-500 line-through">
-                                {item.manual_item_code}
-                              </span>
+                          {/* SKU Lama ➔ Baru */}
+                          <td className="py-2.5 px-3 font-mono text-[11px]">
+                            {item.sku ? (
+                              <div>
+                                <div className="text-slate-400 line-through text-[10px]">{item.sku}</div>
+                                <div className="text-blue-700 font-bold text-xs mt-0.5 flex items-center gap-1">
+                                  <span>➔</span>
+                                  <span>{updatedSku}</span>
+                                </div>
+                              </div>
                             ) : (
-                              <span className="text-slate-400 italic">Belum Diatur</span>
+                              <div className="text-blue-700 font-bold text-xs">{updatedSku}</div>
                             )}
                           </td>
 
-                          {/* Panah */}
-                          <td className="py-2.5 px-3 text-center text-slate-400 font-bold">
-                            ➔
-                          </td>
-
-                          {/* Kode Baru Target */}
-                          <td className="py-2.5 px-3 text-center font-mono text-xs font-bold text-emerald-800 bg-emerald-50/60">
-                            {targetCode}
+                          {/* Kode Lama ➔ Baru */}
+                          <td className="py-2.5 px-3 text-center font-mono text-[11px]">
+                            <div className="text-slate-400 line-through text-[10px]">
+                              {item.manual_item_code || 'Belum Diatur'}
+                            </div>
+                            <div className="text-emerald-700 font-bold text-xs mt-0.5 flex items-center justify-center gap-1">
+                              <span>➔</span>
+                              <span>{targetCode}</span>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -839,7 +889,7 @@ export default function BulkMapItemCodeModal({
                   Total Varian yang Akan Disimpan: <strong className="text-slate-900 font-bold">{selectedVariants.length}</strong>
                 </span>
                 <span className="text-[11px] text-slate-500">
-                  Audit stok dan mapping akan otomatis disegarkan seketika.
+                  Kode Barang dan SKU Marketplace akan diperbarui seketika.
                 </span>
               </div>
             </div>
@@ -866,10 +916,10 @@ export default function BulkMapItemCodeModal({
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                     </svg>
-                    <span>Menyimpan {selectedVariants.length} Varian...</span>
+                    <span>Menyimpan {selectedVariants.length} Varian & SKU...</span>
                   </>
                 ) : (
-                  <span>Konfirmasi & Terapkan ({selectedVariants.length} Varian)</span>
+                  <span>Konfirmasi & Simpan ({selectedVariants.length} Varian & SKU)</span>
                 )}
               </button>
             </div>

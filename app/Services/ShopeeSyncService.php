@@ -2811,6 +2811,68 @@ class ShopeeSyncService
         ];
     }
 
+    /**
+     * Update model_sku ke Shopee Open Platform v2 (/api/v2/product/update_model).
+     * Dikelompokkan per item_id secara aman.
+     */
+    public function updateModelSkuBatch(ShopeeAccount $account, array $items): array
+    {
+        $accessToken = (string) ($account->access_token ?? '');
+        $shopId      = (int) $account->shop_id;
+        $partnerId   = (int) $account->partner_id;
+        $partnerKey  = (string) $account->partner_key;
+
+        if (empty($accessToken) || empty($shopId) || empty($partnerId) || empty($partnerKey)) {
+            return ['status' => 'skipped', 'message' => 'Kredensial Shopee belum terhubung.'];
+        }
+
+        // Kelompokkan per item_id
+        $byItem = [];
+        foreach ($items as $entry) {
+            $itemId  = (int) ($entry['item_id'] ?? 0);
+            $modelId = (int) ($entry['model_id'] ?? 0);
+            $sku     = (string) ($entry['sku'] ?? '');
+            if ($itemId > 0 && $modelId > 0 && $sku !== '') {
+                $byItem[$itemId][] = [
+                    'model_id'  => $modelId,
+                    'model_sku' => $sku,
+                ];
+            }
+        }
+
+        $results = [];
+        foreach ($byItem as $itemId => $modelList) {
+            try {
+                $path      = '/api/v2/product/update_model';
+                $timestamp = time();
+                $baseStr   = sprintf('%s%s%s%s%s', $partnerId, $path, $timestamp, $accessToken, $shopId);
+                $sign      = hash_hmac('sha256', $baseStr, $partnerKey);
+
+                $queryParams = [
+                    'partner_id'   => $partnerId,
+                    'timestamp'    => $timestamp,
+                    'sign'         => $sign,
+                    'access_token' => $accessToken,
+                    'shop_id'      => $shopId,
+                ];
+
+                $url = $this->host . $path . '?' . http_build_query($queryParams);
+                $payload = [
+                    'item_id' => $itemId,
+                    'model'   => $modelList,
+                ];
+
+                $res = Http::timeout(25)->post($url, $payload);
+                $results[$itemId] = $res->json();
+            } catch (\Throwable $e) {
+                Log::warning("[ShopeeUpdateModelSku] Item {$itemId} gagal: " . $e->getMessage());
+                $results[$itemId] = ['error' => $e->getMessage()];
+            }
+        }
+
+        return $results;
+    }
+
     private function extractLocationId(ShopeeProduct $product): ?string
     {
         $raw = is_array($product->raw_data) ? $product->raw_data : null;

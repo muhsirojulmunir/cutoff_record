@@ -809,6 +809,7 @@ class TiktokProductController extends Controller
             'mappings'              => 'nullable|array|min:1',
             'mappings.*.id'        => 'required_with:mappings|integer',
             'mappings.*.item_code' => 'required_with:mappings|string|max:50',
+            'mappings.*.sku'       => 'nullable|string|max:100',
             'product_ids'          => 'nullable|array|min:1',
             'product_ids.*'        => 'required_with:product_ids|integer',
             'item_code'            => 'nullable|string|max:50',
@@ -835,9 +836,18 @@ class TiktokProductController extends Controller
                 $pid = (int) $mapping['id'];
                 $code = strtoupper(trim($mapping['item_code']));
                 if (isset($products[$pid]) && $code !== '') {
-                    TiktokProduct::where('id', $pid)->update(['manual_item_code' => $code]);
-                    if ($products[$pid]->tiktok_account_id) {
-                        $accountIds->push($products[$pid]->tiktok_account_id);
+                    $prod = $products[$pid];
+                    $newSku = !empty($mapping['sku'])
+                        ? strtoupper(trim($mapping['sku']))
+                        : $this->computeUpdatedSku($prod->sku, $code);
+
+                    TiktokProduct::where('id', $pid)->update([
+                        'manual_item_code' => $code,
+                        'sku'              => $newSku,
+                    ]);
+
+                    if ($prod->tiktok_account_id) {
+                        $accountIds->push($prod->tiktok_account_id);
                     }
                     $updatedCount++;
                 }
@@ -855,9 +865,13 @@ class TiktokProductController extends Controller
                 ], 422);
             }
 
-            TiktokProduct::whereIn('id', $productIds)->update([
-                'manual_item_code' => $itemCode,
-            ]);
+            foreach ($products as $prod) {
+                $newSku = $this->computeUpdatedSku($prod->sku, $itemCode);
+                TiktokProduct::where('id', $prod->id)->update([
+                    'manual_item_code' => $itemCode,
+                    'sku'              => $newSku,
+                ]);
+            }
 
             $accountIds = $products->pluck('tiktok_account_id');
             $updatedCount = $products->count();
@@ -876,8 +890,28 @@ class TiktokProductController extends Controller
         return response()->json([
             'status'        => 'success',
             'updated_count' => $updatedCount,
-            'message'       => "Berhasil memperbarui {$updatedCount} varian kode barang.",
+            'message'       => "Berhasil memperbarui {$updatedCount} varian (Kode Barang & SKU Marketplace).",
         ]);
+    }
+
+    /**
+     * Hitung SKU baru dengan mengganti suffix kode lama setelah underscore '_' dengan kode baru.
+     * Contoh: 'RECORD-BLANCO-H-39_01246239' + '01279139' => 'RECORD-BLANCO-H-39_01279139'.
+     */
+    private function computeUpdatedSku(?string $oldSku, string $newCode): string
+    {
+        $newCode = strtoupper(trim($newCode));
+        if (empty($oldSku) || trim($oldSku) === '') {
+            return $newCode;
+        }
+        $cleanSku = trim($oldSku);
+        $lastUnderscore = strrpos($cleanSku, '_');
+        if ($lastUnderscore !== false) {
+            $prefix = substr($cleanSku, 0, $lastUnderscore + 1);
+            return $prefix . $newCode;
+        }
+        return $cleanSku . '_' . $newCode;
+    }
     }
 
     /**
