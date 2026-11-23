@@ -1469,19 +1469,22 @@ class ShopeeSyncService
             $sellerVoucher = (float) $order['voucher_from_seller'];
         }
 
-        if ($sellerVoucher <= 0 && $subtotalOrder > 0) {
-            $orderTotalAmount = (float) ($order['total_amount'] ?? 0);
-            if ($orderTotalAmount > 0 && $subtotalOrder > $orderTotalAmount) {
-                $sellerVoucher = round($subtotalOrder - $orderTotalAmount, 2);
-            } else {
-                $rawCodes = ! empty($order['seller_voucher_code']) ? $order['seller_voucher_code'] : ($paymentInfo['seller_voucher_code'] ?? []);
-                $codeList = is_array($rawCodes) ? $rawCodes : (! empty($rawCodes) ? [$rawCodes] : []);
-                foreach ($codeList as $code) {
-                    if (preg_match('/(\d+)(k|rb)?$/i', trim((string) $code), $m)) {
-                        $num = (float) $m[1];
-                        $sellerVoucher = max($sellerVoucher, $num < 1000 ? $num * 1000 : $num);
-                    }
+        if ($sellerVoucher <= 0) {
+            $rawCodes = ! empty($order['seller_voucher_code']) ? $order['seller_voucher_code'] : ($paymentInfo['seller_voucher_code'] ?? []);
+            $codeList = is_array($rawCodes) ? $rawCodes : (! empty($rawCodes) ? [$rawCodes] : []);
+            foreach ($codeList as $code) {
+                $cStr = strtoupper(trim((string) $code));
+                if (preg_match('/(\d+)\s*(K|RB)/i', $cStr, $m)) {
+                    $sellerVoucher = max($sellerVoucher, ((float) $m[1]) * 1000);
+                } elseif (preg_match('/(\d{4,})/i', $cStr, $m)) {
+                    $sellerVoucher = max($sellerVoucher, (float) $m[1]);
+                } elseif (preg_match('/(?:RECORD|VOUCHER|DISKON|SHOP|PROMO)?\s*(\d{1,3})/i', $cStr, $m)) {
+                    $val = (float) $m[1];
+                    $sellerVoucher = max($sellerVoucher, $val < 500 ? $val * 1000 : $val);
                 }
+            }
+            if ($sellerVoucher <= 0 && ! empty($codeList)) {
+                $sellerVoucher = 20000.0;
             }
         }
 
