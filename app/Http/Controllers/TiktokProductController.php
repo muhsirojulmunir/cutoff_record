@@ -912,7 +912,6 @@ class TiktokProductController extends Controller
         }
         return $cleanSku . '_' . $newCode;
     }
-    }
 
     /**
      * Search MasterStock for mapping modal.

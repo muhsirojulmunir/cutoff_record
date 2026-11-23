@@ -1711,7 +1711,6 @@ class ShopeeProductController extends Controller
         }
         return $cleanSku . '_' . $newCode;
     }
-    }
 
     /**
      * Pencarian Master Stok untuk modal mapping manual.
