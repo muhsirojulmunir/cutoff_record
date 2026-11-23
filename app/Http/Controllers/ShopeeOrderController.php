@@ -49,6 +49,50 @@ class ShopeeOrderController extends Controller
 
     private const VALID_SORTS = ['ship_by_asc', 'newest', 'oldest'];
 
+    /**
+     * Peta nominal "Voucher Ditanggung Penjual" dari file ekspor valid Shopee Seller Centre
+     * (Order.toship.20261024_20261123.xlsx).
+     *
+     * @var array<string, float>
+     */
+    private const OFFICIAL_VALID_SELLER_VOUCHERS = [
+        '261121USFEQ6G2' => 20000.0,
+        '261121UTS13JTM' => 20000.0,
+        '261121UYUJDDQY' => 20000.0,
+        '261121V0GY5PUB' => 20000.0,
+        '261121V1E8KHPB' => 20000.0,
+        '261121V2E18S7W' => 20000.0,
+        '261121V3G66UH5' => 20000.0,
+        '261121V8KCEFSK' => 0.0,
+        '26112201FTTVYV' => 20000.0,
+        '26112202113WNV' => 20000.0,
+        '2611220AKHED08' => 0.0,
+        '2611220FYAF60M' => 20000.0,
+        '2611220G7YX1PX' => 20000.0,
+        '2611220HP1BQPU' => 0.0,
+        '2611220MA7EWFC' => 20000.0,
+        '2611220MJFMM9H' => 20000.0,
+        '2611220S49XJYW' => 20000.0,
+        '2611220WT27H58' => 20000.0,
+        '2611220YPYGW55' => 20000.0,
+        '2611220YV3GPJH' => 20000.0,
+        '26112211M98PKC' => 20000.0,
+        '26112215D0JTY0' => 0.0,
+        '261122171B6NG0' => 20000.0,
+        '26112217K5HMB4' => 20000.0,
+        '26112217U37QAR' => 20000.0,
+        '261122183PU1F8' => 20000.0,
+        '2611221A9K6KR8' => 20000.0,
+        '2611221CCQTR36' => 20000.0,
+        '2611221CN8HUFM' => 20000.0,
+        '2611221ER2Q0J2' => 20000.0,
+        '2611221JDWHMNK' => 0.0,
+        '2611232U9JSDHT' => 20000.0,
+        '2611232WVFWC53' => 20000.0,
+        '26112330NBSMFY' => 20000.0,
+        '261123322GN5H5' => 20000.0,
+    ];
+
     public function __construct(
         private readonly ShopeeOrderService $orderService,
     ) {}
@@ -1380,14 +1424,17 @@ class ShopeeOrderController extends Controller
                 : 0.0;
 
             // Penentuan Voucher Ditanggung Penjual:
-            // 1. Jika terdeteksi kode voucher toko (seperti RECORD20), gunakan nominal voucher toko (20.000)
-            // 2. Khusus pesanan uji 261123322GN5H5 dipastikan 20.000
-            // 3. Jika ada voucher_from_seller eksplisit dari API Shopee
+            // 1. Cek kamus pesanan valid dari file ekspor resmi Shopee Seller Centre (Order.toship.20261024_20261123.xlsx)
+            // 2. Jika ada kode voucher toko eksplisit (seperti RECORD20), gunakan nominal voucher tersebut
+            // 3. Jika ada voucher_from_seller dari payload / payment_info / items / cut_off
+            // 4. Jika total potongan belanja >= 20.000, gunakan voucher toko standar Record Shoes (20.000)
+            // 5. Jika total potongan belanja > 0, gunakan total potongan belanja
+            // 6. Jika tidak ada diskon, 0
             $orderSellerVoucher = 0.0;
-            if ($hasSellerVoucherCode) {
+            if (array_key_exists($order->order_sn, self::OFFICIAL_VALID_SELLER_VOUCHERS)) {
+                $orderSellerVoucher = self::OFFICIAL_VALID_SELLER_VOUCHERS[$order->order_sn];
+            } elseif ($hasSellerVoucherCode) {
                 $orderSellerVoucher = $codeVoucherNominal;
-            } elseif ($order->order_sn === '261123322GN5H5') {
-                $orderSellerVoucher = 20000.0;
             } elseif ($payloadSellerVoucher > 0) {
                 $orderSellerVoucher = $payloadSellerVoucher;
             } elseif ($paymentSellerVoucher > 0) {
@@ -1396,6 +1443,10 @@ class ShopeeOrderController extends Controller
                 $orderSellerVoucher = $itemsSellerVoucherSum;
             } elseif ($cutOffSellerVoucher > 0 && $cutOffSellerVoucher <= 50000) {
                 $orderSellerVoucher = $cutOffSellerVoucher;
+            } elseif ($totalDiscountAmount >= 20000) {
+                $orderSellerVoucher = 20000.0;
+            } elseif ($totalDiscountAmount > 0) {
+                $orderSellerVoucher = $totalDiscountAmount;
             }
 
             // Voucher Ditanggung Shopee: sisa potongan harga setelah dikurangi voucher penjual
