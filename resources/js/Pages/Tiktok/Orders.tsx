@@ -1179,7 +1179,15 @@ export default function TiktokOrdersPage({
   }, [selectedOrderSns, orderMap, account?.id]);
 
   const selectedShippableOrders = useMemo(
-    () => selectedOrders.filter((o) => isShippableOrderStatus(o.order_status)),
+    () =>
+      selectedOrders.filter(
+        (o) =>
+          isShippableOrderStatus(o.order_status) ||
+          (!o.tracking_number &&
+            o.order_status !== 'UNPAID' &&
+            o.order_status !== 'CANCELLED' &&
+            o.order_status !== 'COMPLETED')
+      ),
     [selectedOrders]
   );
   const selectedPrintableOrders = useMemo(

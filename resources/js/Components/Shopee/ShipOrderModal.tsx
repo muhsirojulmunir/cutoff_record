@@ -388,6 +388,7 @@ export default function ShipOrderModal({
       setShipSuccessNotice(null);
       setPrintedOrderSns(new Set());
       setIsPreparingWaybill(false);
+      setActiveCourier('all');
     }
   }, [show, mode, orders]);
 
@@ -598,12 +599,12 @@ export default function ShipOrderModal({
   const allMassStats = useMemo(() => getCourierStats('all'), [getCourierStats]);
   const isAllMassCompleted = eligibleMassOrders.length > 0 && allMassStats.unprinted === 0;
 
-  // Set active courier to the first courier group if not set or invalid
+  // Set active courier to 'all' or the first courier group if not set or invalid
   useEffect(() => {
     if (mode !== 'mass') return;
     if (courierKeys.length > 0) {
-      if (!activeCourier || !courierKeys.includes(activeCourier)) {
-        setActiveCourier(courierKeys[0]);
+      if (!activeCourier || (!courierKeys.includes(activeCourier) && activeCourier !== 'all')) {
+        setActiveCourier(courierKeys.length > 1 ? 'all' : courierKeys[0]);
       }
     } else {
       setActiveCourier('');
@@ -612,7 +613,7 @@ export default function ShipOrderModal({
 
   // Orders displayed in the active view
   const displayedMassOrders = useMemo(() => {
-    if (!activeCourier) return eligibleMassOrders;
+    if (!activeCourier || activeCourier === 'all') return eligibleMassOrders;
     return courierGroups[activeCourier] ?? eligibleMassOrders;
   }, [activeCourier, eligibleMassOrders, courierGroups]);
 
@@ -655,7 +656,7 @@ export default function ShipOrderModal({
 
   useEffect(() => {
     if (!show || mode !== 'mass' || !sampleOrderForCourier?.order_sn) return;
-    const courierKey = activeCourier;
+    const courierKey = activeCourier || 'all';
     if (courierParamsCache[courierKey] !== undefined) return;
 
     const controller = new AbortController();
@@ -713,7 +714,11 @@ export default function ShipOrderModal({
     courierParamsCache,
   ]);
 
-  const activeShippingParams = courierParamsCache[activeCourier] ?? null;
+  const activeShippingParams =
+    courierParamsCache[activeCourier] ??
+    courierParamsCache['all'] ??
+    (courierKeys.length > 0 ? courierParamsCache[courierKeys[0]] : null) ??
+    null;
 
   useEffect(() => {
     if (!activeShippingParams) return;
@@ -1647,6 +1652,28 @@ export default function ShipOrderModal({
             </div>
 
             <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+              {courierKeys.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveCourier('all')}
+                  className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs whitespace-nowrap border transition-colors cursor-pointer ${
+                    activeCourier === 'all'
+                      ? 'border-[#EE4D2D] bg-[#FFF5F2] text-[#EE4D2D] font-bold shadow-2xs'
+                      : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400 font-medium'
+                  }`}
+                >
+                  <span>Semua Jasa Kirim</span>
+                  <span
+                    className={`inline-flex items-center justify-center rounded-full px-1.5 py-0.2 text-[10px] font-bold tabular-nums ${
+                      activeCourier === 'all'
+                        ? 'bg-[#EE4D2D] text-white'
+                        : 'bg-slate-100 text-slate-700 border border-slate-200'
+                    }`}
+                  >
+                    {allMassStats.unprinted}
+                  </span>
+                </button>
+              )}
               {courierKeys.map((courier) => {
                 const stats = getCourierStats(courier);
                 const isActive = activeCourier === courier;
@@ -1694,7 +1721,7 @@ export default function ShipOrderModal({
               <div className="flex items-center justify-between text-xs text-slate-600 px-1">
                 <span>
                   Menampilkan <strong className="text-slate-900">{displayedMassOrders.length}</strong> pesanan
-                  {activeCourier ? ` (${activeCourier})` : ''}
+                  {activeCourier && activeCourier !== 'all' ? ` (${activeCourier})` : ' (Semua Jasa Kirim)'}
                 </span>
                 <span className="text-[11px] text-slate-500 font-medium">
                   <strong className="text-[#EE4D2D]">{targetOrdersToShip.length}</strong> dipilih

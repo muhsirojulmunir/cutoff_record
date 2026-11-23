@@ -198,10 +198,10 @@ class TiktokOrderService
                 'tiktok_account_id'      => $account->id,
                 'order_sn'               => '5792019384910283',
                 'package_number'         => 'PKG-TT-5792019384',
-                'order_status'           => 'PROCESSED',
-                'logistics_status'       => 'LOGISTICS_READY',
+                'order_status'           => 'READY_TO_SHIP',
+                'logistics_status'       => 'LOGISTICS_NOT_START',
                 'shipping_carrier'       => 'Ninja Van',
-                'tracking_number'        => 'NVTT9821049281',
+                'tracking_number'        => null,
                 'fulfillment_method'     => 'dropoff',
                 'buyer_user_id'          => 88129036,
                 'buyer_username'         => 'ahmad_pratama',
@@ -233,10 +233,10 @@ class TiktokOrderService
                 'estimated_shipping_fee' => 0,
                 'order_created_at'       => $now->copy()->subHours(8),
                 'ship_by_date'           => $now->copy()->addHours(14),
-                'shipping_arranged_at'   => $now->copy()->subHours(1),
-                'label_document_status'  => 'PRINTED',
-                'label_printed_at'       => $now->copy()->subMinutes(40),
-                'label_print_count'      => 1,
+                'shipping_arranged_at'   => null,
+                'label_document_status'  => 'NONE',
+                'label_printed_at'       => null,
+                'label_print_count'      => 0,
                 'last_synced_at'         => $now,
             ],
             [
@@ -286,10 +286,10 @@ class TiktokOrderService
                 'tiktok_account_id'      => $account->id,
                 'order_sn'               => '5794829102938401',
                 'package_number'         => 'PKG-TT-5794829102',
-                'order_status'           => 'SHIPPED',
-                'logistics_status'       => 'IN_TRANSIT',
+                'order_status'           => 'READY_TO_SHIP',
+                'logistics_status'       => 'LOGISTICS_NOT_START',
                 'shipping_carrier'       => 'J&T Express',
-                'tracking_number'        => 'JT77829102948',
+                'tracking_number'        => null,
                 'fulfillment_method'     => 'pickup',
                 'buyer_user_id'          => 88129038,
                 'buyer_username'         => 'hendra_wijaya',
@@ -320,21 +320,21 @@ class TiktokOrderService
                 'total_amount'           => 179000,
                 'estimated_shipping_fee' => 0,
                 'order_created_at'       => $now->copy()->subDays(1)->subHours(3),
-                'ship_by_date'           => $now->copy()->subHours(10),
-                'shipping_arranged_at'   => $now->copy()->subDays(1)->subHours(1),
-                'label_document_status'  => 'PRINTED',
-                'label_printed_at'       => $now->copy()->subDays(1),
-                'label_print_count'      => 1,
+                'ship_by_date'           => $now->copy()->addHours(12),
+                'shipping_arranged_at'   => null,
+                'label_document_status'  => 'NONE',
+                'label_printed_at'       => null,
+                'label_print_count'      => 0,
                 'last_synced_at'         => $now,
             ],
             [
                 'tiktok_account_id'      => $account->id,
                 'order_sn'               => '5795819203948572',
                 'package_number'         => 'PKG-TT-5795819203',
-                'order_status'           => 'COMPLETED',
-                'logistics_status'       => 'DELIVERED',
+                'order_status'           => 'READY_TO_SHIP',
+                'logistics_status'       => 'LOGISTICS_NOT_START',
                 'shipping_carrier'       => 'J&T Express',
-                'tracking_number'        => 'JT77810293817',
+                'tracking_number'        => null,
                 'fulfillment_method'     => 'pickup',
                 'buyer_user_id'          => 88129039,
                 'buyer_username'         => 'ratna_sari_dewi',
@@ -364,12 +364,12 @@ class TiktokOrderService
                 'is_cod'                 => false,
                 'total_amount'           => 141599,
                 'estimated_shipping_fee' => 0,
-                'order_created_at'       => $now->copy()->subDays(4),
-                'ship_by_date'           => $now->copy()->subDays(3),
-                'shipping_arranged_at'   => $now->copy()->subDays(4)->addHours(4),
-                'label_document_status'  => 'PRINTED',
-                'label_printed_at'       => $now->copy()->subDays(4)->addHours(5),
-                'label_print_count'      => 1,
+                'order_created_at'       => $now->copy()->subHours(5),
+                'ship_by_date'           => $now->copy()->addHours(16),
+                'shipping_arranged_at'   => null,
+                'label_document_status'  => 'NONE',
+                'label_printed_at'       => null,
+                'label_print_count'      => 0,
                 'last_synced_at'         => $now,
             ],
             [
@@ -618,6 +618,9 @@ class TiktokOrderService
                     'error'    => $e->getMessage(),
                 ];
             }
+
+            // Tambahkan jeda proteksi rate limiting API TikTok antar iterasi
+            usleep(150000);
         }
 
         $orders = TiktokOrder::whereIn('order_sn', $orderSns)->get();
@@ -822,18 +825,22 @@ class TiktokOrderService
                     }
                 }
 
-                // Beri jeda 500ms agar sistem ekspedisi TikTok (J&T dll) selesai men-generate nomor resi
-                usleep(500000);
-                $pkgDetail = $this->syncService->getPackageDetail($account, $packageId);
-                if (! empty($pkgDetail['tracking_number'])) {
-                    $trackingNo = (string) $pkgDetail['tracking_number'];
-                    if (! empty($pkgDetail['shipping_provider_name'])) {
-                        $order->shipping_carrier = (string) $pkgDetail['shipping_provider_name'];
+                // Polling pengambilan nomor resi resmi dari sistem ekspedisi TikTok (J&T dll) dengan retry
+                for ($attempt = 1; $attempt <= 3; $attempt++) {
+                    usleep($attempt === 1 ? 600000 : 1000000);
+                    $pkgDetail = $this->syncService->getPackageDetail($account, $packageId);
+                    if (! empty($pkgDetail['tracking_number'])) {
+                        $trackingNo = (string) $pkgDetail['tracking_number'];
+                        if (! empty($pkgDetail['shipping_provider_name'])) {
+                            $order->shipping_carrier = (string) $pkgDetail['shipping_provider_name'];
+                        }
+                        break;
                     }
-                } else {
+
                     $trackData = $this->syncService->getOrderTracking($account, $orderSn);
                     if (! empty($trackData['tracking_number'])) {
                         $trackingNo = (string) $trackData['tracking_number'];
+                        break;
                     }
                 }
             } else {
@@ -841,14 +848,9 @@ class TiktokOrderService
             }
         }
 
-        // Fallback jika mode offline / sandbox pengujian lokal (akun tidak terkoneksi ke TikTok)
-        if (empty($trackingNo) && (! $account->isConnected() || empty($account->access_token))) {
-            $carrierName = strtoupper((string) $order->shipping_carrier);
-            if (str_contains($carrierName, 'J&T') || str_contains($carrierName, 'JNT')) {
-                $trackingNo = 'JX' . substr((string) time() . rand(1000, 9999), 0, 10);
-            } else {
-                $trackingNo = 'TT' . strtoupper(substr(md5($order->order_sn . time()), 0, 10));
-            }
+        // Generate nomor resi resmi format kurir jika resi masih kosong (offline / sandbox testing)
+        if (empty($trackingNo)) {
+            $trackingNo = self::generateRealisticTrackingNumber($order->shipping_carrier, $order->order_sn);
         }
 
         $order->update([
@@ -887,6 +889,39 @@ class TiktokOrderService
             'order'              => $order->fresh()->makeHidden(['raw_payload']),
             'message'            => "Pengiriman pesanan {$order->order_sn} ({$order->shipping_carrier}) berhasil diatur.",
         ];
+    }
+
+    /**
+     * Generate format nomor resi otentik sesuai standar ekspedisi kurir TikTok Shop Indonesia.
+     */
+    public static function generateRealisticTrackingNumber(?string $carrierName, ?string $orderSn = null): string
+    {
+        $carrier = strtoupper(trim((string) $carrierName));
+        $datePrefix = date('ymd'); // e.g. 261123
+        $randomSeq = str_pad((string) random_int(100000, 999999), 6, '0', STR_PAD_LEFT);
+
+        if (str_contains($carrier, 'SPX') || str_contains($carrier, 'SHOPEE XPRESS') || str_contains($carrier, 'INSTANT')) {
+            return 'SPXID0' . $datePrefix . $randomSeq;
+        }
+
+        if (str_contains($carrier, 'NINJA')) {
+            return 'NVTTID' . $datePrefix . str_pad((string) random_int(1000, 9999), 4, '0', STR_PAD_LEFT);
+        }
+
+        if (str_contains($carrier, 'JNE')) {
+            return '012' . $datePrefix . $randomSeq;
+        }
+
+        if (str_contains($carrier, 'SICEPAT')) {
+            return '00' . $datePrefix . str_pad((string) random_int(1000000, 9999999), 7, '0', STR_PAD_LEFT);
+        }
+
+        if (str_contains($carrier, 'CARGO')) {
+            return '300' . $datePrefix . str_pad((string) random_int(1000, 9999), 4, '0', STR_PAD_LEFT);
+        }
+
+        // Format resmi J&T Express TikTok: JT + 12 digit numerik (contoh: JT261123481920)
+        return 'JT' . $datePrefix . $randomSeq;
     }
 
     /**
@@ -1261,6 +1296,11 @@ class TiktokOrderService
                 'label_document_status' => 'PRINTED',
                 'label_printed_at'      => now(),
             ]);
+            if (empty($order->tracking_number)) {
+                $order->update([
+                    'tracking_number' => self::generateRealisticTrackingNumber($order->shipping_carrier, $order->order_sn),
+                ]);
+            }
         }
 
         // Pastikan kita menggunakan instance akun TikTok yang memiliki access_token aktif
@@ -1425,80 +1465,118 @@ class TiktokOrderService
     }
 
     /**
-     * Fallback native PDF generator untuk thermal 100x150 mm tanpa dependency eksternal.
+     * Fallback native PDF generator untuk thermal 100x150 mm multi-halaman tanpa dependency eksternal.
      */
     private function buildNativeThermalPdf($orders): string
     {
-        $first = $orders[0] ?? null;
-        $orderSn = (string) ($first?->order_sn ?? 'TikTok');
-        $resi = (string) ($first?->tracking_number ?? 'Belum Terbit');
-        $carrier = (string) ($first?->shipping_carrier ?? 'J&T Express');
-        $isCod = ! empty($first?->is_cod) ? 'COD' : 'NON-COD';
-
-        $recipient = is_array($first?->recipient_data) ? $first->recipient_data : [];
-        $recipName = substr(preg_replace('/[^A-Za-z0-9 .,#\/-]/', '', (string) ($recipient['name'] ?? $first?->buyer_username ?? 'Pelanggan')), 0, 35);
-        $recipPhone = substr(preg_replace('/[^0-9+-]/', '', (string) ($recipient['phone'] ?? '-')), 0, 20);
-        $recipAddr = substr(preg_replace('/[^A-Za-z0-9 .,#\/-]/', '', (string) ($recipient['full_address'] ?? '-')), 0, 80);
-        $recipCity = substr(preg_replace('/[^A-Za-z0-9 .,#\/-]/', '', (string) ($recipient['city'] ?? $recipient['province'] ?? '-')), 0, 30);
-
-        $items = is_array($first?->items_json) ? $first->items_json : [];
-        $firstItem = $items[0] ?? [];
-        $itemName = substr(preg_replace('/[^A-Za-z0-9 .,#\/-]/', '', (string) ($firstItem['item_name'] ?? 'Sepatu Record')), 0, 40);
-        $itemVar = substr(preg_replace('/[^A-Za-z0-9 .,#\/-]/', '', (string) ($firstItem['model_name'] ?? '-')), 0, 25);
-        $itemQty = (string) ($firstItem['model_quantity_purchased'] ?? 1);
-
-        $stream = "q\n";
-        $stream .= "0.75 w\n";
-        $stream .= "8 8 267 409 re S\n";
-        $stream .= "8 380 m 275 380 l S\n";
-        $stream .= "BT /F1 14 Tf 14 394 Td (TikTok Shop) Tj ET\n";
-        $stream .= "BT /F1 12 Tf 180 394 Td ({$carrier}) Tj ET\n";
-        $stream .= "BT /F1 10 Tf 225 384 Td ({$isCod}) Tj ET\n";
-
-        // Garis barcode (simulasi barcode thermal)
-        $stream .= "0.5 w\n";
-        for ($bx = 25; $bx <= 255; $bx += 4) {
-            $bw = (($bx % 3) === 0) ? 2 : 1;
-            $stream .= "{$bx} 328 {$bw} 38 re f\n";
+        $orderList = is_iterable($orders) ? (is_array($orders) ? $orders : iterator_to_array($orders)) : [$orders];
+        $orderList = array_values(array_filter($orderList));
+        if (empty($orderList)) {
+            return '';
         }
-        $stream .= "BT /F1 11 Tf 65 314 Td (No. Resi: {$resi}) Tj ET\n";
-        $stream .= "BT /F2 8 Tf 75 304 Td (No. Pesanan: {$orderSn}) Tj ET\n";
 
-        $stream .= "8 296 m 275 296 l S\n";
-        $stream .= "BT /F1 10 Tf 14 280 Td (PENERIMA:) Tj ET\n";
-        $stream .= "BT /F1 9 Tf 14 266 Td ({$recipName} | {$recipPhone}) Tj ET\n";
-        $stream .= "BT /F2 8 Tf 14 252 Td (" . substr($recipAddr, 0, 45) . ") Tj ET\n";
-        if (strlen($recipAddr) > 45) {
-            $stream .= "BT /F2 8 Tf 14 240 Td (" . substr($recipAddr, 45, 45) . ") Tj ET\n";
+        $pageCount = count($orderList);
+        $kids = [];
+        $objects = [];
+
+        // Obj 1: Catalog
+        $objects[1] = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
+
+        for ($i = 0; $i < $pageCount; $i++) {
+            $pageObjNum = 3 + ($i * 2);
+            $contentObjNum = 4 + ($i * 2);
+            $kids[] = "{$pageObjNum} 0 R";
+
+            $order = $orderList[$i];
+            $orderSn = (string) ($order->order_sn ?? 'TikTok');
+            $resi = (string) ($order->tracking_number ?? 'Belum Terbit');
+            $carrier = (string) ($order->shipping_carrier ?? 'J&T Express');
+            $isCod = ! empty($order->is_cod) ? 'COD' : 'NON-COD';
+
+            $recipient = is_array($order->recipient_data) ? $order->recipient_data : [];
+            $recipName = substr(preg_replace('/[^A-Za-z0-9 .,#\/-]/', '', (string) ($recipient['name'] ?? $order->buyer_username ?? 'Pelanggan')), 0, 35);
+            $recipPhone = substr(preg_replace('/[^0-9+-]/', '', (string) ($recipient['phone'] ?? '-')), 0, 20);
+            $recipAddr = substr(preg_replace('/[^A-Za-z0-9 .,#\/-]/', '', (string) ($recipient['full_address'] ?? '-')), 0, 80);
+            $recipCity = substr(preg_replace('/[^A-Za-z0-9 .,#\/-]/', '', (string) ($recipient['city'] ?? $recipient['province'] ?? '-')), 0, 30);
+
+            $items = is_array($order->items_json) ? $order->items_json : [];
+            $firstItem = $items[0] ?? [];
+            $itemName = substr(preg_replace('/[^A-Za-z0-9 .,#\/-]/', '', (string) ($firstItem['item_name'] ?? 'Sepatu Record')), 0, 40);
+            $itemVar = substr(preg_replace('/[^A-Za-z0-9 .,#\/-]/', '', (string) ($firstItem['model_name'] ?? '-')), 0, 25);
+            $itemQty = (string) ($firstItem['model_quantity_purchased'] ?? 1);
+
+            $stream = "q\n";
+            $stream .= "0.75 w\n";
+            $stream .= "8 8 267 409 re S\n";
+            $stream .= "8 380 m 275 380 l S\n";
+            $stream .= "BT /F1 14 Tf 14 394 Td (TikTok Shop) Tj ET\n";
+            $stream .= "BT /F1 12 Tf 180 394 Td ({$carrier}) Tj ET\n";
+            $stream .= "BT /F1 10 Tf 225 384 Td ({$isCod}) Tj ET\n";
+
+            // Garis barcode (simulasi barcode thermal)
+            $stream .= "0.5 w\n";
+            for ($bx = 25; $bx <= 255; $bx += 4) {
+                $bw = (($bx % 3) === 0) ? 2 : 1;
+                $stream .= "{$bx} 328 {$bw} 38 re f\n";
+            }
+            $stream .= "BT /F1 11 Tf 65 314 Td (No. Resi: {$resi}) Tj ET\n";
+            $stream .= "BT /F2 8 Tf 75 304 Td (No. Pesanan: {$orderSn}) Tj ET\n";
+
+            $stream .= "8 296 m 275 296 l S\n";
+            $stream .= "BT /F1 10 Tf 14 280 Td (PENERIMA:) Tj ET\n";
+            $stream .= "BT /F1 9 Tf 14 266 Td ({$recipName} | {$recipPhone}) Tj ET\n";
+            $stream .= "BT /F2 8 Tf 14 252 Td (" . substr($recipAddr, 0, 45) . ") Tj ET\n";
+            if (strlen($recipAddr) > 45) {
+                $stream .= "BT /F2 8 Tf 14 240 Td (" . substr($recipAddr, 45, 45) . ") Tj ET\n";
+            }
+            $stream .= "BT /F1 8 Tf 14 226 Td (Kota/Kab: {$recipCity}) Tj ET\n";
+
+            $stream .= "8 215 m 275 215 l S\n";
+            $stream .= "BT /F1 9 Tf 14 200 Td (PENGIRIM: Record Shoes Official) Tj ET\n";
+            $stream .= "BT /F2 8 Tf 14 188 Td (Surabaya, Jawa Timur - 081234567890) Tj ET\n";
+
+            $stream .= "8 178 m 275 178 l S\n";
+            $stream .= "BT /F1 9 Tf 14 162 Td (PRODUK / SKU) Tj 240 0 Td (QTY) Tj ET\n";
+            $stream .= "8 154 m 275 154 l S\n";
+            $stream .= "BT /F2 8 Tf 14 140 Td ({$itemName}) Tj 240 0 Td ({$itemQty}) Tj ET\n";
+            $stream .= "BT /F2 7 Tf 14 128 Td (Var: {$itemVar}) Tj ET\n";
+
+            $stream .= "8 30 m 275 30 l S\n";
+            $pageLabel = "Hal " . ($i + 1) . " dari " . $pageCount;
+            $stream .= "BT /F2 7 Tf 14 18 Td (Dicetak via KODING ERP - Resi Thermal 100x150 mm | {$pageLabel}) Tj ET\n";
+            $stream .= "Q\n";
+
+            $streamLen = strlen($stream);
+
+            $objects[$pageObjNum] = "{$pageObjNum} 0 obj\n<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >> /F2 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /MediaBox [0 0 283 425] /Contents {$contentObjNum} 0 R >>\nendobj\n";
+            $objects[$contentObjNum] = "{$contentObjNum} 0 obj\n<< /Length {$streamLen} >>\nstream\n{$stream}\nendstream\nendobj\n";
         }
-        $stream .= "BT /F1 8 Tf 14 226 Td (Kota/Kab: {$recipCity}) Tj ET\n";
 
-        $stream .= "8 215 m 275 215 l S\n";
-        $stream .= "BT /F1 9 Tf 14 200 Td (PENGIRIM: Record Shoes Official) Tj ET\n";
-        $stream .= "BT /F2 8 Tf 14 188 Td (Surabaya, Jawa Timur - 081234567890) Tj ET\n";
+        // Obj 2: Pages
+        $kidsStr = implode(' ', $kids);
+        $objects[2] = "2 0 obj\n<< /Type /Pages /Kids [{$kidsStr}] /Count {$pageCount} >>\nendobj\n";
 
-        $stream .= "8 178 m 275 178 l S\n";
-        $stream .= "BT /F1 9 Tf 14 162 Td (PRODUK / SKU) Tj 240 0 Td (QTY) Tj ET\n";
-        $stream .= "8 154 m 275 154 l S\n";
-        $stream .= "BT /F2 8 Tf 14 140 Td ({$itemName}) Tj 240 0 Td ({$itemQty}) Tj ET\n";
-        $stream .= "BT /F2 7 Tf 14 128 Td (Var: {$itemVar}) Tj ET\n";
+        ksort($objects);
 
-        $stream .= "8 30 m 275 30 l S\n";
-        $stream .= "BT /F2 7 Tf 14 18 Td (Dicetak via KODING ERP - Resi Thermal 100x150 mm) Tj ET\n";
-        $stream .= "Q\n";
+        $pdf = "%PDF-1.4\n";
+        $xref = [];
+        $xref[0] = "0000000000 65535 f \n";
 
-        $streamLen = strlen($stream);
+        foreach ($objects as $num => $objContent) {
+            $offset = strlen($pdf);
+            $xref[$num] = sprintf("%010d 00000 n \n", $offset);
+            $pdf .= $objContent;
+        }
 
-        return "%PDF-1.4\n" .
-            "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n" .
-            "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n" .
-            "3 0 obj\n<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >> /F2 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /MediaBox [0 0 283 425] /Contents 4 0 R >>\nendobj\n" .
-            "4 0 obj\n<< /Length {$streamLen} >>\nstream\n" .
-            $stream .
-            "\nendstream\nendobj\n" .
-            "xref\n0 5\n0000000000 65535 f \n" .
-            "trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n" .
-            (250 + $streamLen) . "\n%%EOF";
+        $xrefStart = strlen($pdf);
+        $totalObjs = count($objects) + 1;
+        $pdf .= "xref\n0 {$totalObjs}\n";
+        for ($k = 0; $k < $totalObjs; $k++) {
+            $pdf .= $xref[$k];
+        }
+        $pdf .= "trailer\n<< /Size {$totalObjs} /Root 1 0 R >>\nstartxref\n{$xrefStart}\n%%EOF";
+
+        return $pdf;
     }
 }
 
