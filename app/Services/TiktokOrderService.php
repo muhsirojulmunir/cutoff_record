@@ -1219,10 +1219,19 @@ class TiktokOrderService
                 if (! empty($pkgId) && ! str_starts_with($pkgId, 'PKG-')) {
                     $docUrl = $this->syncService->fetchPackageShippingDocumentUrl($account, $pkgId, 'A6');
                     if (! empty($docUrl)) {
-                        $pdfRes = Http::timeout(20)->get($docUrl);
+                        $pdfRes = Http::timeout(25)
+                            ->withHeaders([
+                                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                                'Accept'     => 'application/pdf,application/octet-stream,*/*',
+                                'Referer'    => 'https://seller-id.tokopedia.com/',
+                            ])
+                            ->get($docUrl);
+
                         if ($pdfRes->successful() && str_starts_with($pdfRes->body(), '%PDF-')) {
-                            Log::info("[TiktokOrderService] Berhasil mengunduh dokumen resmi TikTok CDN untuk order {$firstOrder->order_sn}");
+                            Log::info("[TiktokOrderService] Berhasil mengunduh dokumen resmi TikTok CDN untuk order {$firstOrder->order_sn} (" . strlen($pdfRes->body()) . " bytes)");
                             return $pdfRes->body();
+                        } else {
+                            Log::warning("[TiktokOrderService] Gagal unduh PDF resmi dari CDN ({$docUrl}): status=" . $pdfRes->status());
                         }
                     }
                 }

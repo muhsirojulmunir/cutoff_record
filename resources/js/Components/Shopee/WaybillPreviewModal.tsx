@@ -228,7 +228,8 @@ export default function WaybillPreviewModal({
 
           {pdfUrl && (
             <p className="text-[11px] text-slate-500">
-              Format resmi Shopee <span className="font-mono font-semibold text-slate-700">THERMAL_AIR_WAYBILL</span> (Thermal A6 / 100×150 mm — Kassen). Gunakan ikon printer di tampilan PDF atau klik{' '}
+              Format resmi {title.toLowerCase().includes('tiktok') || filename.toLowerCase().includes('tiktok') ? 'TikTok Shop / Tokopedia' : 'Shopee'}{' '}
+              <span className="font-mono font-semibold text-slate-700">THERMAL_AIR_WAYBILL</span> (Thermal A6 / 100×150 mm — Kassen). Gunakan ikon printer di tampilan PDF atau klik{' '}
               <span className="font-semibold text-slate-700">Buka Tab Penuh / Print</span> lalu pilih ukuran kertas 100×150 mm (A6) & skala 100%.
             </p>
           )}

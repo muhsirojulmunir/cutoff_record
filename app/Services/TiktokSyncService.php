@@ -1073,6 +1073,33 @@ class TiktokSyncService
         string $packageId,
         string $docSize = 'A6'
     ): ?string {
+        // Coba dokumen jenis SHIPPING_LABEL_AND_PACKING_SLIP dan SHIPPING_LABEL
+        $docTypes = ['SHIPPING_LABEL_AND_PACKING_SLIP', 'SHIPPING_LABEL'];
+
+        foreach ($docTypes as $docType) {
+            $docUrl = $this->queryShippingDocumentUrl($account, $packageId, $docSize, $docType);
+            if (! empty($docUrl)) {
+                return $docUrl;
+            }
+        }
+
+        // Coba tanpa parameter document_size jika spesifik ukuran tidak didukung
+        foreach ($docTypes as $docType) {
+            $docUrl = $this->queryShippingDocumentUrl($account, $packageId, null, $docType);
+            if (! empty($docUrl)) {
+                return $docUrl;
+            }
+        }
+
+        return null;
+    }
+
+    private function queryShippingDocumentUrl(
+        TiktokAccount $account,
+        string $packageId,
+        ?string $docSize,
+        string $docType
+    ): ?string {
         try {
             $this->ensureValidAccessToken($account);
 
@@ -1092,10 +1119,13 @@ class TiktokSyncService
                 'app_key'         => $account->app_key,
                 'timestamp'       => (string) $timestamp,
                 'shop_cipher'     => $shopCipher,
-                'document_type'   => 'SHIPPING_LABEL',
-                'document_size'   => $docSize,
+                'document_type'   => $docType,
                 'document_format' => 'PDF',
             ];
+
+            if (! empty($docSize)) {
+                $queryParams['document_size'] = $docSize;
+            }
 
             $sign = $this->generateSignature($path, $queryParams, $account->app_secret, '');
             $queryParams['sign'] = $sign;
@@ -1106,25 +1136,26 @@ class TiktokSyncService
                 ->withHeaders([
                     'x-tts-access-token' => $account->access_token,
                     'Content-Type'       => 'application/json',
+                    'User-Agent'         => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 ])
                 ->get($url);
 
             if (! $response->successful()) {
-                Log::warning("TiktokSyncService fetchPackageShippingDocumentUrl HTTP {$response->status()} ({$packageId}): " . $response->body());
+                Log::warning("TiktokSyncService fetchPackageShippingDocumentUrl HTTP {$response->status()} ({$packageId}, type={$docType}): " . $response->body());
                 return null;
             }
 
             $json = $response->json();
             if (($json['code'] ?? -1) !== 0) {
-                Log::info("TiktokSyncService fetchPackageShippingDocumentUrl API error ({$packageId}): " . ($json['message'] ?? 'Error'));
+                Log::info("TiktokSyncService fetchPackageShippingDocumentUrl API error ({$packageId}, type={$docType}): " . ($json['message'] ?? 'Error'));
                 return null;
             }
 
             $docUrl = $json['data']['doc_url'] ?? null;
-            Log::info("TiktokSyncService fetchPackageShippingDocumentUrl success ({$packageId}): " . ($docUrl ? 'Found doc_url' : 'doc_url is empty'));
+            Log::info("TiktokSyncService fetchPackageShippingDocumentUrl success ({$packageId}, type={$docType}): " . ($docUrl ? 'Found doc_url' : 'doc_url is empty'));
             return $docUrl;
         } catch (\Throwable $e) {
-            Log::warning("TiktokSyncService fetchPackageShippingDocumentUrl error ({$packageId}): " . $e->getMessage());
+            Log::warning("TiktokSyncService fetchPackageShippingDocumentUrl exception ({$packageId}, type={$docType}): " . $e->getMessage());
             return null;
         }
     }
