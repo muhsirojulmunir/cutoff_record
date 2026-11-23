@@ -1469,6 +1469,22 @@ class ShopeeSyncService
             $sellerVoucher = (float) $order['voucher_from_seller'];
         }
 
+        if ($sellerVoucher <= 0 && $subtotalOrder > 0) {
+            $orderTotalAmount = (float) ($order['total_amount'] ?? 0);
+            if ($orderTotalAmount > 0 && $subtotalOrder > $orderTotalAmount) {
+                $sellerVoucher = round($subtotalOrder - $orderTotalAmount, 2);
+            } else {
+                $rawCodes = ! empty($order['seller_voucher_code']) ? $order['seller_voucher_code'] : ($paymentInfo['seller_voucher_code'] ?? []);
+                $codeList = is_array($rawCodes) ? $rawCodes : (! empty($rawCodes) ? [$rawCodes] : []);
+                foreach ($codeList as $code) {
+                    if (preg_match('/(\d+)(k|rb)?$/i', trim((string) $code), $m)) {
+                        $num = (float) $m[1];
+                        $sellerVoucher = max($sellerVoucher, $num < 1000 ? $num * 1000 : $num);
+                    }
+                }
+            }
+        }
+
         if ($sellerVoucher < 0) {
             $sellerVoucher = 0.0;
         }
