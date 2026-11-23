@@ -127,6 +127,11 @@ interface Props {
     daily_date_label: string;
     total_rj: number;
     total_has_dpp: number;
+    total_ready?: number;
+    total_oos?: number;
+    total_substitusi?: number;
+    total_has_resi?: number;
+    total_items_qty?: number;
     total_est_income: number;
     total_net_payout: number;
   };
@@ -293,6 +298,14 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
   const isManagement = auth?.user?.role?.name === 'Management';
   const canManage = !isManagement;
   const isSuperAdmin = auth?.user?.role?.name === 'Super Admin' || auth?.user?.roles?.includes('Super Admin');
+  const canViewFinancial =
+    isSuperAdmin ||
+    auth?.user?.role?.name === 'Direktur' ||
+    auth?.user?.role?.name === 'Management' ||
+    (Array.isArray(auth?.user?.roles) &&
+      (auth.user.roles.includes('Super Admin') ||
+        auth.user.roles.includes('Direktur') ||
+        auth.user.roles.includes('Management')));
   const [isTruncating, setIsTruncating] = useState(false);
   const [isSyncingShopee, setIsSyncingShopee] = useState(false);
 
@@ -318,6 +331,11 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
     daily_date_label: '',
     total_rj: 0,
     total_has_dpp: 0,
+    total_ready: 0,
+    total_oos: 0,
+    total_substitusi: 0,
+    total_has_resi: 0,
+    total_items_qty: 0,
     total_est_income: 0,
     total_net_payout: 0,
   };
@@ -1300,7 +1318,7 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
             <p className="text-xs text-slate-500 mt-1">Data sheet Cut Off 2026</p>
           </div>
 
-          {/* Card 2: Pesanan Harian (jumlah qty per produk dari pesanan Telah diproses) */}
+          {/* Card 2: Pesanan Harian (jumlah qty produk laku dari pesanan Cut Off yang telah diproses) */}
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Pesanan Harian</span>
@@ -1311,11 +1329,11 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
               </span>
             </div>
             <div className="mt-3 flex items-baseline gap-1.5">
-              <p className="text-2xl font-extrabold text-slate-900">{summary.daily_products.toLocaleString('id-ID')}</p>
+              <p className="text-2xl font-extrabold text-slate-900">{safeSummary.daily_products.toLocaleString('id-ID')}</p>
               <span className="text-xs font-semibold text-slate-500">produk</span>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Telah diproses ({summary.daily_date_label}) · {summary.daily_orders.toLocaleString('id-ID')} pesanan
+              Telah diproses ({safeSummary.daily_date_label || 'Hari Ini'}) · {safeSummary.daily_orders.toLocaleString('id-ID')} pesanan
             </p>
           </div>
 
@@ -1329,23 +1347,43 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                 </svg>
               </span>
             </div>
-            <p className="text-2xl font-extrabold text-amber-600 mt-3">{summary.total_rj.toLocaleString('id-ID')}</p>
+            <p className="text-2xl font-extrabold text-amber-600 mt-3">{safeSummary.total_rj.toLocaleString('id-ID')}</p>
             <p className="text-xs text-slate-500 mt-1">Pesanan retur / kompensasi</p>
           </div>
 
-          {/* Card 4 */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Est. Bersih</span>
-              <span className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
-                </svg>
-              </span>
+          {/* Card 4: Total Est. Bersih (Khusus Super Admin & Management) ATAU Monitoring Gudang (Admin & Gudang) */}
+          {canViewFinancial ? (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Est. Bersih</span>
+                <span className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+                  </svg>
+                </span>
+              </div>
+              <p className="text-xl font-extrabold text-slate-900 mt-3 truncate">{formatRupiah(safeSummary.total_est_income)}</p>
+              <p className="text-xs text-slate-500 mt-1">{(safeSummary.total_has_dpp || 0).toLocaleString('id-ID')} pesanan cair (DPP)</p>
             </div>
-            <p className="text-xl font-extrabold text-slate-900 mt-3 truncate">{formatRupiah(summary.total_est_income)}</p>
-            <p className="text-xs text-slate-500 mt-1">{summary.total_has_dpp} pesanan cair (DPP)</p>
-          </div>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Monitoring Gudang</span>
+                <span className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0l-3-3m3 3l3-3M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+                  </svg>
+                </span>
+              </div>
+              <div className="mt-3 flex items-baseline gap-1.5">
+                <p className="text-2xl font-extrabold text-slate-900">{(safeSummary.total_ready || 0).toLocaleString('id-ID')}</p>
+                <span className="text-xs font-semibold text-emerald-600">Ready</span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                {(safeSummary.total_oos || 0).toLocaleString('id-ID')} OOS (Habis) · {(safeSummary.total_substitusi || 0).toLocaleString('id-ID')} Substitusi
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Filter Pills Channel / Toko */}
@@ -1533,7 +1571,11 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                   <th className="py-2.5 px-2.5">SKU Pengganti</th>
                   <th className="py-2.5 px-2.5">Info Gudang</th>
                   <th className="py-2.5 px-3">Status Pesanan</th>
-                  <th className="py-2.5 px-3">EST Bersih</th>
+                  {canViewFinancial ? (
+                    <th className="py-2.5 px-3">EST Bersih</th>
+                  ) : (
+                    <th className="py-2.5 px-3">Kesiapan Kirim</th>
+                  )}
                   {canManage && (
                     <th className="py-2.5 px-2 text-center w-12 sticky right-0 bg-slate-900 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)]">
                       Aksi
@@ -1918,46 +1960,72 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                           )}
                         </td>
 
-                        {/* Keuangan & DPP */}
-                        <td className="py-2.5 px-3 whitespace-nowrap">
-                          <div
-                            className="inline-flex flex-col items-start group/bd cursor-help"
-                            onMouseEnter={(e) => openBreakdownTooltip(e, order)}
-                            onMouseLeave={() => setHoveredBreakdown(null)}
-                          >
-                            <div className="inline-flex items-center gap-1">
-                              <span className={`font-semibold underline decoration-dotted underline-offset-4 transition-colors ${
-                                isCancelled ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-900 decoration-slate-300 group-hover/bd:text-blue-700 group-hover/bd:decoration-blue-400'
-                              }`}>
-                                {formatRupiah(order.est_net_income)}
-                              </span>
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                strokeWidth={1.8}
-                                stroke="currentColor"
-                                className="w-3.5 h-3.5 text-slate-400 group-hover/bd:text-blue-600 transition-colors"
-                              >
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
-                              </svg>
+                        {/* Keuangan & DPP (Super Admin & Management) ATAU Kesiapan Kirim (Admin & Gudang) */}
+                        {canViewFinancial ? (
+                          <td className="py-2.5 px-3 whitespace-nowrap">
+                            <div
+                              className="inline-flex flex-col items-start group/bd cursor-help"
+                              onMouseEnter={(e) => openBreakdownTooltip(e, order)}
+                              onMouseLeave={() => setHoveredBreakdown(null)}
+                            >
+                              <div className="inline-flex items-center gap-1">
+                                <span className={`font-semibold underline decoration-dotted underline-offset-4 transition-colors ${
+                                  isCancelled ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-900 decoration-slate-300 group-hover/bd:text-blue-700 group-hover/bd:decoration-blue-400'
+                                }`}>
+                                  {formatRupiah(order.est_net_income)}
+                                </span>
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  strokeWidth={1.8}
+                                  stroke="currentColor"
+                                  className="w-3.5 h-3.5 text-slate-400 group-hover/bd:text-blue-600 transition-colors"
+                                >
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                                </svg>
+                              </div>
+                              {Boolean(order.financial_breakdown && Number(order.financial_breakdown.seller_voucher) > 0) && (
+                                <span className="text-[10px] font-medium text-rose-600 mt-0.5 tabular-nums">
+                                  Voucher -{formatBreakdownCurrency(Number(order.financial_breakdown?.seller_voucher || 0))}
+                                </span>
+                              )}
                             </div>
-                            {Boolean(order.financial_breakdown && Number(order.financial_breakdown.seller_voucher) > 0) && (
-                              <span className="text-[10px] font-medium text-rose-600 mt-0.5 tabular-nums">
-                                Voucher -{formatBreakdownCurrency(Number(order.financial_breakdown?.seller_voucher || 0))}
+                            <div className="flex flex-col gap-0.5 mt-0.5">
+                              {order.dpp_number ? (
+                                <span className="inline-block font-mono text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 w-fit">
+                                  {order.dpp_number}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-slate-400">Belum DPP</span>
+                              )}
+                            </div>
+                          </td>
+                        ) : (
+                          <td className="py-2.5 px-3 whitespace-nowrap">
+                            <div className="flex flex-col items-start gap-1">
+                              {order.info_gudang && order.info_gudang.includes('OOS') ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                  Stok Habis (OOS)
+                                </span>
+                              ) : order.info_gudang && order.info_gudang.includes('SUBSTITUSI') ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                  Substitusi SKU
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                  Siap Kirim
+                                </span>
+                              )}
+                              <span className="text-[10px] text-slate-500 font-mono">
+                                {order.jl_number ? `Resi: ${order.jl_number}` : 'Belum Ada Resi'}
                               </span>
-                            )}
-                          </div>
-                          <div className="flex flex-col gap-0.5 mt-0.5">
-                            {order.dpp_number ? (
-                              <span className="inline-block font-mono text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 w-fit">
-                                {order.dpp_number}
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-slate-400">Belum DPP</span>
-                            )}
-                          </div>
-                        </td>
+                            </div>
+                          </td>
+                        )}
 
                         {/* Aksi */}
                         {canManage && (
@@ -2126,7 +2194,7 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className={`grid ${canViewFinancial ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
                   <div>
                     <label className="block font-bold text-slate-700 uppercase mb-1">Status Pesanan</label>
                     <input
@@ -2138,16 +2206,18 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                     />
                   </div>
 
-                  <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">No. DPP (Pencairan)</label>
-                    <input
-                      type="text"
-                      value={editForm.data.dpp_number}
-                      onChange={(e) => editForm.setData('dpp_number', e.target.value)}
-                      placeholder="DPP/000..."
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
-                    />
-                  </div>
+                  {canViewFinancial && (
+                    <div>
+                      <label className="block font-bold text-slate-700 uppercase mb-1">No. DPP (Pencairan)</label>
+                      <input
+                        type="text"
+                        value={editForm.data.dpp_number}
+                        onChange={(e) => editForm.setData('dpp_number', e.target.value)}
+                        placeholder="DPP/000..."
+                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
@@ -2343,7 +2413,7 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className={`grid grid-cols-1 ${canViewFinancial ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3`}>
                   {/* Info Gudang */}
                   <div>
                     <label className="block font-bold text-slate-700 uppercase mb-1">Info Gudang</label>
@@ -2368,17 +2438,19 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                     />
                   </div>
 
-                  {/* Est Net Income */}
-                  <div>
-                    <label className="block font-bold text-slate-700 uppercase mb-1">Est. Pendapatan Bersih (Rp)</label>
-                    <input
-                      type="number"
-                      value={createForm.data.est_net_income}
-                      onChange={(e) => createForm.setData('est_net_income', e.target.value)}
-                      placeholder="0"
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
-                    />
-                  </div>
+                  {/* Est Net Income (Khusus Super Admin & Management) */}
+                  {canViewFinancial && (
+                    <div>
+                      <label className="block font-bold text-slate-700 uppercase mb-1">Est. Pendapatan Bersih (Rp)</label>
+                      <input
+                        type="number"
+                        value={createForm.data.est_net_income}
+                        onChange={(e) => createForm.setData('est_net_income', e.target.value)}
+                        placeholder="0"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0B132B]"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div>

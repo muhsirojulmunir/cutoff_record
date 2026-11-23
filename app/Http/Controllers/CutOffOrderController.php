@@ -51,126 +51,79 @@ class CutOffOrderController extends Controller
         // Metrik Ringkasan Utama + Dropdown Filter (di-cache 30 detik & auto-invalidate saat ada perubahan data)
         $todayWib = \Carbon\Carbon::now('Asia/Jakarta');
         $todayStart = $todayWib->toDateString();
-        $dailyDateLabel = $todayWib->copy()->locale('id')->translatedFormat('d M Y');
         $cacheVer = CutOffOrder::getCacheVersion();
 
-        $computeOverview = static function () use ($dailyDateLabel): array {
+        $computeOverview = static function () use ($todayStart, $todayWib): array {
             $rawSummary = CutOffOrder::query()
                 ->onlyProcessed()
                 ->selectRaw(
                     "COUNT(*) as total_orders,
+                    COALESCE(SUM(qty), 0) as total_items_qty,
                     COUNT(CASE WHEN order_status LIKE '%RJ%' OR order_status LIKE '%Retur%' THEN 1 END) as total_rj,
                     COUNT(CASE WHEN dpp_number IS NOT NULL AND dpp_number != '' THEN 1 END) as total_has_dpp,
+                    COUNT(CASE WHEN info_gudang LIKE '%READY%' THEN 1 END) as total_ready,
+                    COUNT(CASE WHEN info_gudang LIKE '%OOS%' OR info_gudang LIKE '%KOSONG%' THEN 1 END) as total_oos,
+                    COUNT(CASE WHEN info_gudang LIKE '%SUBSTITUSI%' THEN 1 END) as total_substitusi,
+                    COUNT(CASE WHEN jl_number IS NOT NULL AND jl_number != '' THEN 1 END) as total_has_resi,
                     COALESCE(SUM(est_net_income), 0) as total_est_income,
                     COALESCE(SUM(marketplace_net_payout), 0) as total_net_payout"
                 )
                 ->first();
 
-            // Pesanan Harian: baca pesanan berstatus "Telah diproses", dihitung by qty per produk (bukan per pesanan)
-            $dailyProducts = 0;
-            $dailyOrders   = 0;
-            $shopeeKnownSns = [];
-
-            if (Schema::hasTable('shopee_orders')) {
-                $processedShopee = \App\Models\ShopeeOrder::query()
-                    ->where('order_status', 'PROCESSED')
-                    ->select(['order_sn', 'items_json'])
-                    ->get();
-
-                if ($processedShopee->isNotEmpty()) {
-                    $processedSns = $processedShopee->pluck('order_sn')
-                        ->map(static fn ($sn): string => trim((string) $sn))
-                        ->filter()
-                        ->values()
-                        ->all();
-
-                    $cutOffQtyBySn = ! empty($processedSns)
-                        ? CutOffOrder::query()
-                            ->onlyProcessed()
-                            ->whereIn('order_number', $processedSns)
-                            ->pluck('qty', 'order_number')
-                            ->all()
-                        : [];
-
-                    foreach ($processedShopee as $so) {
-                        $sn = trim((string) $so->order_sn);
-                        if ($sn !== '') {
-                            $shopeeKnownSns[$sn] = true;
-                        }
-
-                        $itemQtySum = 0;
-                        foreach ((array) ($so->items_json ?? []) as $item) {
-                            if (is_array($item)) {
-                                $itemQtySum += max(1, (int) (
-                                    $item['model_quantity_purchased']
-                                    ?? $item['quantity_purchased']
-                                    ?? $item['model_quantity']
-                                    ?? $item['qty']
-                                    ?? 1
-                                ));
-                            }
-                        }
-
-                        if ($itemQtySum <= 0) {
-                            $fallbackQty = (int) ($cutOffQtyBySn[$sn] ?? 0);
-                            $itemQtySum = max(1, $fallbackQty);
-                        }
-
-                        $dailyProducts += $itemQtySum;
-                        $dailyOrders++;
-                    }
-                }
-            }
-
-            // Tambahkan pesanan aktif "Diproses" / "Menunggu Pickup" dari channel lain (mis. TikTok) atau yang belum ada di shopee_orders
-            $recentCutoff = \Carbon\Carbon::now('Asia/Jakarta')->subDays(30)->toDateString();
-            $cutOffProcessedRows = CutOffOrder::query()
+            // Pesanan Harian: murni mengacu ke pesanan Cut Off (CutOffOrder) yang telah diproses
+            // Menghitung berapa produk yang laku (SUM qty produk non-batal) dan berapa pesanan (COUNT DISTINCT order_number)
+            $hasTodayOrders = CutOffOrder::query()
                 ->onlyProcessed()
-                ->where(function ($q) use ($recentCutoff) {
-                    $q->where('order_date', '>=', $recentCutoff)
-                      ->orWhereNull('order_date');
-                })
-                ->where(function ($q) {
-                    $q->where('order_status', 'like', '%Diproses%')
-                      ->orWhere('order_status', 'like', '%Menunggu Pickup%')
-                      ->orWhereRaw("UPPER(COALESCE(order_status, '')) IN ('PROCESSED', 'AWAITING_COLLECTION')");
-                })
-                ->select(['order_number', 'qty'])
-                ->get();
+                ->whereDate(DB::raw('COALESCE(processed_at, order_date)'), $todayStart)
+                ->exists();
 
-            if ($cutOffProcessedRows->isNotEmpty()) {
-                $candidateSns = $cutOffProcessedRows->pluck('order_number')
-                    ->map(static fn ($sn): string => trim((string) $sn))
-                    ->filter(static fn (string $sn): bool => $sn !== '' && ! isset($shopeeKnownSns[$sn]))
-                    ->unique()
-                    ->values()
-                    ->all();
+            if ($hasTodayOrders) {
+                $targetDailyDate = $todayStart;
+                $dailyDateLabel  = $todayWib->copy()->locale('id')->translatedFormat('d M Y');
+            } else {
+                $latestDate = CutOffOrder::query()
+                    ->onlyProcessed()
+                    ->whereNotNull(DB::raw('COALESCE(processed_at, order_date)'))
+                    ->whereDate(DB::raw('COALESCE(processed_at, order_date)'), '<=', $todayStart)
+                    ->max(DB::raw('DATE(COALESCE(processed_at, order_date))'));
 
-                $trackedInShopee = (! empty($candidateSns) && Schema::hasTable('shopee_orders'))
-                    ? \App\Models\ShopeeOrder::query()
-                        ->whereIn('order_sn', $candidateSns)
-                        ->pluck('order_sn')
-                        ->mapWithKeys(static fn ($sn): array => [trim((string) $sn) => true])
-                        ->all()
-                    : [];
-
-                foreach ($cutOffProcessedRows as $row) {
-                    $sn = trim((string) $row->order_number);
-                    if ($sn !== '' && (isset($shopeeKnownSns[$sn]) || isset($trackedInShopee[$sn]))) {
-                        continue;
-                    }
-                    $dailyProducts += max(1, (int) ($row->qty ?? 1));
-                    $dailyOrders++;
-                }
+                $targetDailyDate = $latestDate ?: $todayStart;
+                $dailyDateLabel  = \Carbon\Carbon::parse($targetDailyDate)->locale('id')->translatedFormat('d M Y');
             }
+
+            $dailyStats = CutOffOrder::query()
+                ->onlyProcessed()
+                ->whereDate(DB::raw('COALESCE(processed_at, order_date)'), $targetDailyDate)
+                ->where(function ($q) {
+                    $q->whereNull('order_status')
+                      ->orWhere(function ($s) {
+                          $s->where('order_status', 'not like', '%Batal%')
+                            ->where('order_status', 'not like', '%Cancel%')
+                            ->where('order_status', 'not like', '%RJ%')
+                            ->where('order_status', 'not like', '%Retur%');
+                      });
+                })
+                ->selectRaw(
+                    'COALESCE(SUM(qty), 0) as total_products,
+                     COUNT(DISTINCT COALESCE(NULLIF(order_number, \'\'), CAST(id AS CHAR))) as total_orders'
+                )
+                ->first();
+
+            $dailyProducts = (int) ($dailyStats->total_products ?? 0);
+            $dailyOrders   = (int) ($dailyStats->total_orders ?? 0);
 
             $summary = [
                 'total_orders'      => (int) ($rawSummary->total_orders ?? 0),
+                'total_items_qty'   => (int) ($rawSummary->total_items_qty ?? 0),
                 'daily_products'    => $dailyProducts,
                 'daily_orders'      => $dailyOrders,
                 'daily_date_label'  => $dailyDateLabel,
                 'total_rj'          => (int) ($rawSummary->total_rj ?? 0),
                 'total_has_dpp'     => (int) ($rawSummary->total_has_dpp ?? 0),
+                'total_ready'       => (int) ($rawSummary->total_ready ?? 0),
+                'total_oos'         => (int) ($rawSummary->total_oos ?? 0),
+                'total_substitusi'  => (int) ($rawSummary->total_substitusi ?? 0),
+                'total_has_resi'    => (int) ($rawSummary->total_has_resi ?? 0),
                 'total_est_income'  => (float) ($rawSummary->total_est_income ?? 0),
                 'total_net_payout'  => (float) ($rawSummary->total_net_payout ?? 0),
             ];
