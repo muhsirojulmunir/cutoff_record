@@ -800,44 +800,83 @@ class TiktokProductController extends Controller
 
     /**
      * Update massal kode barang (manual_item_code) pada sekumpulan produk TikTok.
+     * Mendukung mode per-varian (mappings: [{id, item_code}]) untuk Smart Size Matcher
+     * maupun mode legacy (product_ids + item_code).
      */
     public function bulkMap(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'product_ids'   => 'required|array|min:1',
-            'product_ids.*' => 'required|integer',
-            'item_code'     => 'required|string|max:50',
+            'mappings'              => 'nullable|array|min:1',
+            'mappings.*.id'        => 'required_with:mappings|integer',
+            'mappings.*.item_code' => 'required_with:mappings|string|max:50',
+            'product_ids'          => 'nullable|array|min:1',
+            'product_ids.*'        => 'required_with:product_ids|integer',
+            'item_code'            => 'nullable|string|max:50',
         ]);
 
         $this->syncService->ensureProductSchema();
 
-        $itemCode = strtoupper(trim($validated['item_code']));
-        $productIds = $validated['product_ids'];
+        $updatedCount = 0;
+        $accountIds = collect();
 
-        $products = TiktokProduct::whereIn('id', $productIds)->get();
-        if ($products->isEmpty()) {
+        // 1. Mode Mappings (Individual / Smart Size Matcher)
+        if (!empty($validated['mappings'])) {
+            $productIds = array_column($validated['mappings'], 'id');
+            $products = TiktokProduct::whereIn('id', $productIds)->get()->keyBy('id');
+
+            if ($products->isEmpty()) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Tidak ada produk valid yang ditemukan untuk diperbarui.',
+                ], 422);
+            }
+
+            foreach ($validated['mappings'] as $mapping) {
+                $pid = (int) $mapping['id'];
+                $code = strtoupper(trim($mapping['item_code']));
+                if (isset($products[$pid]) && $code !== '') {
+                    TiktokProduct::where('id', $pid)->update(['manual_item_code' => $code]);
+                    if ($products[$pid]->tiktok_account_id) {
+                        $accountIds->push($products[$pid]->tiktok_account_id);
+                    }
+                    $updatedCount++;
+                }
+            }
+        } elseif (!empty($validated['product_ids']) && !empty($validated['item_code'])) {
+            // 2. Mode Legacy Uniform
+            $itemCode = strtoupper(trim($validated['item_code']));
+            $productIds = $validated['product_ids'];
+
+            $products = TiktokProduct::whereIn('id', $productIds)->get();
+            if ($products->isEmpty()) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Tidak ada produk valid yang ditemukan untuk diperbarui.',
+                ], 422);
+            }
+
+            TiktokProduct::whereIn('id', $productIds)->update([
+                'manual_item_code' => $itemCode,
+            ]);
+
+            $accountIds = $products->pluck('tiktok_account_id');
+            $updatedCount = $products->count();
+        } else {
             return response()->json([
                 'status'  => 'error',
-                'message' => 'Tidak ada produk valid yang ditemukan untuk diperbarui.',
+                'message' => 'Harap tentukan varian dan kode barang yang ingin diperbarui.',
             ], 422);
         }
 
-        TiktokProduct::whereIn('id', $productIds)->update([
-            'manual_item_code' => $itemCode,
-        ]);
-
         // Bersihkan cache audit untuk semua akun TikTok terkait
-        $accountIds = $products->pluck('tiktok_account_id')->filter()->unique();
-        foreach ($accountIds as $accId) {
+        foreach ($accountIds->filter()->unique() as $accId) {
             self::clearAuditCache($accId);
         }
-
-        $updatedCount = $products->count();
 
         return response()->json([
             'status'        => 'success',
             'updated_count' => $updatedCount,
-            'message'       => "Berhasil memperbarui {$updatedCount} varian ke Kode Barang '{$itemCode}'.",
+            'message'       => "Berhasil memperbarui {$updatedCount} varian kode barang.",
         ]);
     }
 
