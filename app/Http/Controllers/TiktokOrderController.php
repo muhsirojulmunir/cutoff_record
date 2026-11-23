@@ -325,7 +325,7 @@ class TiktokOrderController extends Controller
 
     public function shippingParameters(string $orderSn): JsonResponse
     {
-        $account = $this->resolveTiktokAccount();
+        $account = $this->resolveTiktokAccount($orderSn);
         $result = $this->orderService->getShippingParameters($account, $orderSn);
 
         if (ob_get_length()) {
@@ -338,7 +338,7 @@ class TiktokOrderController extends Controller
     public function ship(Request $request, string $orderSn): JsonResponse
     {
         $this->authorizeAccess($request);
-        $account = $this->resolveTiktokAccount();
+        $account = $this->resolveTiktokAccount($orderSn);
 
         $validated = $request->validate([
             'method'             => ['nullable', 'string', 'in:pickup,dropoff,non_integrated'],
@@ -375,7 +375,7 @@ class TiktokOrderController extends Controller
 
     public function refreshDetail(string $orderSn): JsonResponse
     {
-        $account = $this->resolveTiktokAccount();
+        $account = $this->resolveTiktokAccount($orderSn);
 
         try {
             $order = $this->orderService->refreshSingleOrder($account, $orderSn);
@@ -396,7 +396,7 @@ class TiktokOrderController extends Controller
 
     public function escrowDetail(string $orderSn): JsonResponse
     {
-        $account = $this->resolveTiktokAccount();
+        $account = $this->resolveTiktokAccount($orderSn);
         $result = $this->orderService->getEscrowDetail($account, $orderSn);
 
         if (ob_get_length()) {
@@ -408,7 +408,7 @@ class TiktokOrderController extends Controller
 
     public function trackingInfo(string $orderSn): JsonResponse
     {
-        $account = $this->resolveTiktokAccount();
+        $account = $this->resolveTiktokAccount($orderSn);
         $result = $this->orderService->getTrackingInfo($account, $orderSn);
 
         if (ob_get_length()) {
@@ -421,7 +421,7 @@ class TiktokOrderController extends Controller
     public function handleCancellation(Request $request, string $orderSn): JsonResponse
     {
         $this->authorizeAccess($request);
-        $account = $this->resolveTiktokAccount();
+        $account = $this->resolveTiktokAccount($orderSn);
 
         $validated = $request->validate([
             'operation' => ['required', 'string', 'in:ACCEPT,REJECT'],
@@ -439,7 +439,7 @@ class TiktokOrderController extends Controller
     public function printWaybill(Request $request, string $orderSn): Response
     {
         $this->authorizeAccess($request);
-        $account = $this->resolveTiktokAccount();
+        $account = $this->resolveTiktokAccount($orderSn);
         $pdfBinary = $this->orderService->generateWaybillPdf($account, [$orderSn]);
 
         $fileName = "waybill-tiktok-{$orderSn}.pdf";
@@ -450,24 +450,30 @@ class TiktokOrderController extends Controller
             Log::warning('Gagal mengarsipkan resi TikTok: ' . $archiveErr->getMessage());
         }
 
-        return response($pdfBinary, 200, [
+        $headers = [
             'Content-Type'          => 'application/pdf',
             'Content-Disposition'   => "inline; filename=\"{$fileName}\"",
             'x-shopee-orders-count' => 1,
             'Cache-Control'         => 'no-store, no-cache, must-revalidate',
-        ]);
+        ];
+
+        if (! empty($this->orderService->lastOfficialDocUrl)) {
+            $headers['x-tiktok-doc-url'] = $this->orderService->lastOfficialDocUrl;
+        }
+
+        return response($pdfBinary, 200, $headers);
     }
 
     public function massPrintWaybill(Request $request): Response
     {
         $this->authorizeAccess($request);
-        $account = $this->resolveTiktokAccount();
 
         $validated = $request->validate([
             'order_sns'   => ['required', 'array', 'min:1'],
             'order_sns.*' => ['required', 'string'],
         ]);
 
+        $account = $this->resolveTiktokAccount($validated['order_sns'][0] ?? null);
         $pdfBinary = $this->orderService->generateWaybillPdf($account, $validated['order_sns']);
 
         $fileName = 'mass-waybill-tiktok.pdf';
@@ -478,12 +484,18 @@ class TiktokOrderController extends Controller
             Log::warning('Gagal mengarsipkan resi massal TikTok: ' . $archiveErr->getMessage());
         }
 
-        return response($pdfBinary, 200, [
+        $headers = [
             'Content-Type'          => 'application/pdf',
             'Content-Disposition'   => "inline; filename=\"{$fileName}\"",
             'x-shopee-orders-count' => count($validated['order_sns']),
             'Cache-Control'         => 'no-store, no-cache, must-revalidate',
-        ]);
+        ];
+
+        if (! empty($this->orderService->lastOfficialDocUrl)) {
+            $headers['x-tiktok-doc-url'] = $this->orderService->lastOfficialDocUrl;
+        }
+
+        return response($pdfBinary, 200, $headers);
     }
 
     /**
@@ -528,9 +540,32 @@ class TiktokOrderController extends Controller
         ]);
     }
 
-    private function resolveTiktokAccount(): TiktokAccount
+    private function resolveTiktokAccount(?string $orderSn = null): TiktokAccount
     {
-        return TiktokAccount::firstOrCreate(
+        if ($orderSn) {
+            $order = TiktokOrder::where('order_sn', $orderSn)->first();
+            if ($order && $order->tiktok_account_id) {
+                $orderAcc = TiktokAccount::find($order->tiktok_account_id);
+                if ($orderAcc && (! empty($orderAcc->access_token) || $orderAcc->isConnected())) {
+                    return $orderAcc;
+                }
+            }
+        }
+
+        $activeWithToken = TiktokAccount::whereNotNull('access_token')
+            ->where('access_token', '!=', '')
+            ->first();
+
+        if ($activeWithToken) {
+            return $activeWithToken;
+        }
+
+        $activeAccount = TiktokAccount::where('status', 'active')->first();
+        if ($activeAccount) {
+            return $activeAccount;
+        }
+
+        return TiktokAccount::first() ?? TiktokAccount::firstOrCreate(
             ['id' => 1],
             [
                 'account_name'      => 'RecordShoesOfficial',

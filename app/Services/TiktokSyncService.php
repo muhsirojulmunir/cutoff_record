@@ -765,15 +765,19 @@ class TiktokSyncService
 
             $pkgList = $order['package_list'] ?? [];
             $firstPkg = $pkgList[0] ?? [];
-            $packageId = $firstPkg['package_id'] ?? $firstPkg['id'] ?? null;
+            $lineItems = $order['line_items'] ?? [];
+            $packageId = $firstPkg['package_id'] ?? $firstPkg['id'] ?? ($lineItems[0]['package_id'] ?? null);
             if (empty($packageId) || str_starts_with((string) $packageId, 'PKG-')) {
-                $packageId = ! empty($firstPkg['package_id']) ? (string) $firstPkg['package_id'] : 'PKG-' . $orderId;
+                $packageId = ! empty($firstPkg['package_id'])
+                    ? (string) $firstPkg['package_id']
+                    : (! empty($lineItems[0]['package_id']) ? (string) $lineItems[0]['package_id'] : 'PKG-' . $orderId);
             }
             $shippingCarrier = $order['shipping_provider']
                 ?? $order['delivery_option_name']
                 ?? ($firstPkg['shipping_provider_name'] ?? 'J&T Express');
             $trackingNumber = $order['tracking_number']
-                ?? ($firstPkg['tracking_number'] ?? null);
+                ?? ($firstPkg['tracking_number'] ?? null)
+                ?? ($firstPkg['tracking_id'] ?? null);
 
             // Jika nomor resi belum ada dari payload order tapi package_id valid, panggil getPackageDetail
             if (empty($trackingNumber) && ! empty($packageId) && ! str_starts_with($packageId, 'PKG-')) {
@@ -1132,11 +1136,12 @@ class TiktokSyncService
 
             $url = $this->openHost . $path . '?' . http_build_query($queryParams);
 
-            $response = Http::timeout(15)
+            $response = Http::withoutVerifying()
+                ->timeout(20)
                 ->withHeaders([
                     'x-tts-access-token' => $account->access_token,
                     'Content-Type'       => 'application/json',
-                    'User-Agent'         => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'User-Agent'         => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
                 ])
                 ->get($url);
 

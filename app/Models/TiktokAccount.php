@@ -54,7 +54,7 @@ class TiktokAccount extends Model
 
     public function isConnected(): bool
     {
-        return $this->connection_status === 'connected';
+        return ! empty($this->access_token) || $this->connection_status === 'connected';
     }
 
     public function toSafeArray(): array

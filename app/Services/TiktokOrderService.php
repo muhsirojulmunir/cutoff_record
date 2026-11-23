@@ -31,6 +31,7 @@ class TiktokOrderService
     ];
 
     private bool $schemaEnsured = false;
+    public ?string $lastOfficialDocUrl = null;
 
     public function __construct(
         private readonly TiktokSyncService $syncService,
@@ -928,9 +929,21 @@ class TiktokOrderService
     public function refreshSingleOrder(TiktokAccount $account, string $orderSn): TiktokOrder
     {
         $this->ensureSchema();
-        $order = TiktokOrder::where('tiktok_account_id', $account->id)
-            ->where('order_sn', $orderSn)
-            ->firstOrFail();
+        $order = TiktokOrder::where('order_sn', $orderSn)->first()
+            ?? TiktokOrder::where('tiktok_account_id', $account->id)->where('order_sn', $orderSn)->firstOrFail();
+
+        if ($order->tiktok_account_id) {
+            $orderAcc = TiktokAccount::find($order->tiktok_account_id);
+            if ($orderAcc && (! empty($orderAcc->access_token) || $orderAcc->isConnected())) {
+                $account = $orderAcc;
+            }
+        }
+        if (empty($account->access_token)) {
+            $tokenAcc = TiktokAccount::whereNotNull('access_token')->where('access_token', '!=', '')->first();
+            if ($tokenAcc) {
+                $account = $tokenAcc;
+            }
+        }
 
         if ($account->isConnected() && ! empty($account->access_token)) {
             try {
@@ -1184,9 +1197,15 @@ class TiktokOrderService
     public function generateWaybillPdf(TiktokAccount $account, array $orderSns): string
     {
         $this->ensureSchema();
-        $orders = TiktokOrder::where('tiktok_account_id', $account->id)
-            ->whereIn('order_sn', $orderSns)
-            ->get();
+        $this->lastOfficialDocUrl = null;
+
+        // Cari pesanan berdasarkan order_sn terlebih dahulu agar tidak terganjal perbedaan ID akun lokal
+        $orders = TiktokOrder::whereIn('order_sn', $orderSns)->get();
+        if ($orders->isEmpty()) {
+            $orders = TiktokOrder::where('tiktok_account_id', $account->id)
+                ->whereIn('order_sn', $orderSns)
+                ->get();
+        }
 
         foreach ($orders as $order) {
             $order->increment('label_print_count');
@@ -1196,34 +1215,59 @@ class TiktokOrderService
             ]);
         }
 
+        // Pastikan kita menggunakan instance akun TikTok yang memiliki access_token aktif
+        if ($orders->isNotEmpty()) {
+            $firstOrder = $orders->first();
+            if ($firstOrder->tiktok_account_id) {
+                $orderAcc = TiktokAccount::find($firstOrder->tiktok_account_id);
+                if ($orderAcc && (! empty($orderAcc->access_token) || $orderAcc->isConnected())) {
+                    $account = $orderAcc;
+                }
+            }
+        }
+        if (empty($account->access_token)) {
+            $tokenAcc = TiktokAccount::whereNotNull('access_token')->where('access_token', '!=', '')->first();
+            if ($tokenAcc) {
+                $account = $tokenAcc;
+            }
+        }
+
         // Jika single order dan terhubung ke API TikTok, ambil dokumen PDF resmi dari TikTok CDN
         if ($orders->count() === 1 && $account->isConnected() && ! empty($account->access_token)) {
             try {
                 $firstOrder = $orders->first();
                 $pkgId = $firstOrder->package_number;
-                if (empty($pkgId) || str_starts_with($pkgId, 'PKG-')) {
+
+                // Selalu segarkan info dari TikTok API jika nomor paket atau resi belum tersimpan
+                if (empty($pkgId) || str_starts_with($pkgId, 'PKG-') || empty($firstOrder->tracking_number)) {
                     $pkgList = is_array($firstOrder->package_list_json) ? $firstOrder->package_list_json : [];
                     $candidateId = $pkgList[0]['package_id'] ?? $pkgList[0]['id'] ?? null;
                     if (! empty($candidateId) && ! str_starts_with((string) $candidateId, 'PKG-')) {
                         $pkgId = (string) $candidateId;
                         $firstOrder->update(['package_number' => $pkgId]);
-                    } else {
-                        $remote = $this->syncService->fetchSingleOrder($account, $firstOrder->order_sn);
-                        if ($remote && ! empty($remote->package_number) && ! str_starts_with($remote->package_number, 'PKG-')) {
-                            $pkgId = $remote->package_number;
-                            $firstOrder = $remote;
-                        }
+                    }
+
+                    $remote = $this->syncService->fetchSingleOrder($account, $firstOrder->order_sn);
+                    if ($remote && ! empty($remote->package_number) && ! str_starts_with($remote->package_number, 'PKG-')) {
+                        $pkgId = $remote->package_number;
+                        $firstOrder = $remote;
                     }
                 }
 
                 if (! empty($pkgId) && ! str_starts_with($pkgId, 'PKG-')) {
                     $docUrl = $this->syncService->fetchPackageShippingDocumentUrl($account, $pkgId, 'A6');
                     if (! empty($docUrl)) {
-                        $pdfRes = Http::timeout(25)
+                        $this->lastOfficialDocUrl = $docUrl;
+                        Log::info("[TiktokOrderService] Memperoleh URL dokumen resmi TikTok untuk order {$firstOrder->order_sn}: {$docUrl}");
+
+                        $pdfRes = Http::withoutVerifying()
+                            ->timeout(30)
+                            ->withOptions(['allow_redirects' => true])
                             ->withHeaders([
-                                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                                'Accept'     => 'application/pdf,application/octet-stream,*/*',
-                                'Referer'    => 'https://seller-id.tokopedia.com/',
+                                'User-Agent'      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                                'Accept'          => 'application/pdf,application/octet-stream,*/*',
+                                'Accept-Language' => 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+                                'Referer'         => 'https://seller-id.tokopedia.com/',
                             ])
                             ->get($docUrl);
 
@@ -1231,12 +1275,14 @@ class TiktokOrderService
                             Log::info("[TiktokOrderService] Berhasil mengunduh dokumen resmi TikTok CDN untuk order {$firstOrder->order_sn} (" . strlen($pdfRes->body()) . " bytes)");
                             return $pdfRes->body();
                         } else {
-                            Log::warning("[TiktokOrderService] Gagal unduh PDF resmi dari CDN ({$docUrl}): status=" . $pdfRes->status());
+                            Log::warning("[TiktokOrderService] Gagal unduh biner PDF resmi dari CDN ({$docUrl}): status=" . $pdfRes->status());
                         }
+                    } else {
+                        Log::warning("[TiktokOrderService] fetchPackageShippingDocumentUrl mengembalikan URL kosong untuk package {$pkgId}");
                     }
                 }
             } catch (\Throwable $e) {
-                Log::warning("[TiktokOrderService] fetchPackageShippingDocumentUrl exception: " . $e->getMessage());
+                Log::warning("[TiktokOrderService] generateWaybillPdf exception: " . $e->getMessage());
             }
         }
 

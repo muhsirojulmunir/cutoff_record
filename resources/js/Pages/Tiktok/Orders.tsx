@@ -83,6 +83,7 @@ interface ShipModalState {
 interface WaybillModalState {
   show: boolean;
   pdfUrl: string | null;
+  externalPdfUrl?: string | null;
   title: string;
   filename: string;
   orderCount: number;
@@ -1306,6 +1307,8 @@ export default function TiktokOrdersPage({
         const headerCount = Number(response.headers.get('x-shopee-orders-count'));
         const resolvedCount = Number.isFinite(headerCount) && headerCount > 0 ? headerCount : capped.length;
 
+        const tiktokDocUrl = response.headers.get('x-tiktok-doc-url') || undefined;
+
         revokeActiveBlobUrl();
         const blobUrl = URL.createObjectURL(blob);
         activeBlobUrlRef.current = blobUrl;
@@ -1313,6 +1316,7 @@ export default function TiktokOrdersPage({
         setWaybillModal({
           show: true,
           pdfUrl: blobUrl,
+          externalPdfUrl: tiktokDocUrl,
           title: isMass
             ? `Resi Thermal Massal (${resolvedCount} Pesanan)`
             : `Resi Thermal — ${capped[0].order_sn}`,
@@ -3314,6 +3318,7 @@ export default function TiktokOrdersPage({
       <WaybillPreviewModal
         show={waybillModal.show}
         pdfUrl={waybillModal.pdfUrl}
+        externalPdfUrl={waybillModal.externalPdfUrl}
         title={waybillModal.title}
         filename={waybillModal.filename}
         orderCount={waybillModal.orderCount}
