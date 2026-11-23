@@ -486,17 +486,34 @@ class TiktokSyncService
                     }
 
                     $recip = $order['recipient_address'] ?? [];
+                    $pkgList = $order['package_list'] ?? [];
+                    $firstPkg = $pkgList[0] ?? [];
+                    $packageId = $firstPkg['package_id'] ?? $firstPkg['id'] ?? null;
+                    if (empty($packageId) || str_starts_with((string) $packageId, 'PKG-')) {
+                        $packageId = ! empty($firstPkg['package_id']) ? (string) $firstPkg['package_id'] : 'PKG-' . $orderId;
+                    }
+                    $shippingCarrier = $order['shipping_provider']
+                        ?? $order['delivery_option_name']
+                        ?? ($firstPkg['shipping_provider_name'] ?? 'J&T Express');
+                    $trackingNumber = $order['tracking_number']
+                        ?? ($firstPkg['tracking_number'] ?? null);
+
+                    $mappedStatus = strtoupper($statusRaw) ?: 'AWAITING_SHIPMENT';
+                    if (! empty($trackingNumber) && in_array($mappedStatus, ['AWAITING_SHIPMENT', 'READY_TO_SHIP'], true)) {
+                        $mappedStatus = 'AWAITING_COLLECTION';
+                    }
+
                     TiktokOrder::updateOrCreate(
                         [
                             'tiktok_account_id' => $account->id,
                             'order_sn'          => $orderId,
                         ],
                         [
-                            'package_number'         => $order['package_list'][0]['id'] ?? 'PKG-' . $orderId,
-                            'order_status'           => strtoupper($statusRaw) ?: 'AWAITING_SHIPMENT',
+                            'package_number'         => $packageId,
+                            'order_status'           => $mappedStatus,
                             'logistics_status'       => $order['fulfillment_type'] ?? null,
-                            'shipping_carrier'       => $order['shipping_provider'] ?? $order['delivery_option_name'] ?? ($order['package_list'][0]['shipping_provider_name'] ?? 'J&T Express'),
-                            'tracking_number'        => $order['tracking_number'] ?? ($order['package_list'][0]['tracking_number'] ?? null),
+                            'shipping_carrier'       => $shippingCarrier,
+                            'tracking_number'        => $trackingNumber,
                             'fulfillment_method'     => 'pickup',
                             'buyer_user_id'          => $order['buyer_uid'] ?? null,
                             'buyer_username'         => $order['buyer_email'] ?? $recip['name'] ?? $order['buyer_uid'] ?? null,
@@ -509,7 +526,7 @@ class TiktokSyncService
                                 'province'     => $recip['region'] ?? $recip['state'] ?? null,
                             ],
                             'items_json'             => $orderItemsJson,
-                            'package_list_json'      => $order['package_list'] ?? [],
+                            'package_list_json'      => $pkgList,
                             'payment_method'         => $paymentMethod,
                             'is_cod'                 => ! empty($order['is_cod']),
                             'total_amount'           => $orderAmount,
@@ -746,17 +763,45 @@ class TiktokSyncService
                 $paymentMethod = 'COD (Bayar di Tempat)';
             }
 
-            return TiktokOrder::updateOrCreate(
+            $pkgList = $order['package_list'] ?? [];
+            $firstPkg = $pkgList[0] ?? [];
+            $packageId = $firstPkg['package_id'] ?? $firstPkg['id'] ?? null;
+            if (empty($packageId) || str_starts_with((string) $packageId, 'PKG-')) {
+                $packageId = ! empty($firstPkg['package_id']) ? (string) $firstPkg['package_id'] : 'PKG-' . $orderId;
+            }
+            $shippingCarrier = $order['shipping_provider']
+                ?? $order['delivery_option_name']
+                ?? ($firstPkg['shipping_provider_name'] ?? 'J&T Express');
+            $trackingNumber = $order['tracking_number']
+                ?? ($firstPkg['tracking_number'] ?? null);
+
+            // Jika nomor resi belum ada dari payload order tapi package_id valid, panggil getPackageDetail
+            if (empty($trackingNumber) && ! empty($packageId) && ! str_starts_with($packageId, 'PKG-')) {
+                $pkgDetail = $this->getPackageDetail($account, $packageId);
+                if (! empty($pkgDetail['tracking_number'])) {
+                    $trackingNumber = (string) $pkgDetail['tracking_number'];
+                }
+                if (! empty($pkgDetail['shipping_provider_name'])) {
+                    $shippingCarrier = (string) $pkgDetail['shipping_provider_name'];
+                }
+            }
+
+            $mappedStatus = strtoupper($statusRaw) ?: 'AWAITING_SHIPMENT';
+            if (! empty($trackingNumber) && in_array($mappedStatus, ['AWAITING_SHIPMENT', 'READY_TO_SHIP'], true)) {
+                $mappedStatus = 'AWAITING_COLLECTION';
+            }
+
+            $tiktokOrder = TiktokOrder::updateOrCreate(
                 [
                     'tiktok_account_id' => $account->id,
                     'order_sn'          => (string) ($order['id'] ?? $orderId),
                 ],
                 [
-                    'package_number'         => $order['package_list'][0]['id'] ?? 'PKG-' . $orderId,
-                    'order_status'           => strtoupper($statusRaw) ?: 'AWAITING_SHIPMENT',
+                    'package_number'         => $packageId,
+                    'order_status'           => $mappedStatus,
                     'logistics_status'       => $order['fulfillment_type'] ?? null,
-                    'shipping_carrier'       => $order['shipping_provider'] ?? $order['delivery_option_name'] ?? ($order['package_list'][0]['shipping_provider_name'] ?? 'J&T Express'),
-                    'tracking_number'        => $order['tracking_number'] ?? ($order['package_list'][0]['tracking_number'] ?? null),
+                    'shipping_carrier'       => $shippingCarrier,
+                    'tracking_number'        => $trackingNumber,
                     'fulfillment_method'     => 'pickup',
                     'buyer_user_id'          => $order['buyer_uid'] ?? null,
                     'buyer_username'         => $order['buyer_email'] ?? $recip['name'] ?? $order['buyer_uid'] ?? null,
@@ -769,7 +814,7 @@ class TiktokSyncService
                         'province'     => $recip['region'] ?? $recip['state'] ?? null,
                     ],
                     'items_json'             => $orderItemsJson,
-                    'package_list_json'      => $order['package_list'] ?? [],
+                    'package_list_json'      => $pkgList,
                     'payment_method'         => $paymentMethod,
                     'is_cod'                 => ! empty($order['is_cod']),
                     'total_amount'           => $productPrice,
@@ -778,6 +823,31 @@ class TiktokSyncService
                     'last_synced_at'         => now(),
                 ]
             );
+
+            // Sinkronkan ke CutOffOrder jika ada
+            try {
+                $cutOff = CutOffOrder::where('channel', 'TT')->where('order_number', (string) ($order['id'] ?? $orderId))->first();
+                if ($cutOff) {
+                    $cutOffUpdates = [];
+                    if (! empty($trackingNumber)) {
+                        $cutOffUpdates['package_count'] = $trackingNumber;
+                    }
+                    if (in_array($mappedStatus, ['AWAITING_COLLECTION', 'PROCESSED', 'SHIPPED', 'IN_TRANSIT'], true)) {
+                        $cutOffUpdates['order_status'] = 'Menunggu Pickup';
+                        if (empty($cutOff->processed_at)) {
+                            $cutOffUpdates['processed_at'] = now('Asia/Jakarta')->format('Y-m-d H:i:s');
+                        }
+                    }
+                    if (! empty($cutOffUpdates)) {
+                        $cutOff->update($cutOffUpdates);
+                        CutOffOrder::bumpCacheVersion();
+                    }
+                }
+            } catch (\Throwable $cutErr) {
+                Log::info("CutOffOrder sync in fetchSingleOrder notice: " . $cutErr->getMessage());
+            }
+
+            return $tiktokOrder;
         } catch (\Throwable $e) {
             Log::warning("TiktokSyncService fetchSingleOrder error ({$orderId}): " . $e->getMessage());
             return null;
@@ -1040,15 +1110,19 @@ class TiktokSyncService
                 ->get($url);
 
             if (! $response->successful()) {
+                Log::warning("TiktokSyncService fetchPackageShippingDocumentUrl HTTP {$response->status()} ({$packageId}): " . $response->body());
                 return null;
             }
 
             $json = $response->json();
             if (($json['code'] ?? -1) !== 0) {
+                Log::info("TiktokSyncService fetchPackageShippingDocumentUrl API error ({$packageId}): " . ($json['message'] ?? 'Error'));
                 return null;
             }
 
-            return $json['data']['doc_url'] ?? null;
+            $docUrl = $json['data']['doc_url'] ?? null;
+            Log::info("TiktokSyncService fetchPackageShippingDocumentUrl success ({$packageId}): " . ($docUrl ? 'Found doc_url' : 'doc_url is empty'));
+            return $docUrl;
         } catch (\Throwable $e) {
             Log::warning("TiktokSyncService fetchPackageShippingDocumentUrl error ({$packageId}): " . $e->getMessage());
             return null;

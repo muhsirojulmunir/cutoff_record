@@ -757,50 +757,73 @@ class TiktokOrderService
 
         // Jika akun terhubung ke TikTok Shop Open API, panggil API fulfillment resmi
         if ($account->isConnected() && ! empty($account->access_token)) {
-            try {
-                $packageId = $order->package_number;
-                if (empty($packageId) || str_starts_with($packageId, 'PKG-')) {
-                    $packageList = is_array($order->package_list_json) ? $order->package_list_json : [];
-                    if (! empty($packageList[0]['id'])) {
-                        $packageId = (string) $packageList[0]['id'];
-                    } else {
-                        $remoteOrder = $this->syncService->fetchSingleOrder($account, $orderSn);
-                        if ($remoteOrder && ! empty($remoteOrder->package_number) && ! str_starts_with($remoteOrder->package_number, 'PKG-')) {
-                            $packageId = $remoteOrder->package_number;
-                            $order = $remoteOrder;
+            $packageId = $order->package_number;
+            if (empty($packageId) || str_starts_with($packageId, 'PKG-')) {
+                $packageList = is_array($order->package_list_json) ? $order->package_list_json : [];
+                $candidateId = $packageList[0]['package_id'] ?? $packageList[0]['id'] ?? null;
+                if (! empty($candidateId) && ! str_starts_with((string) $candidateId, 'PKG-')) {
+                    $packageId = (string) $candidateId;
+                    $order->update(['package_number' => $packageId]);
+                } else {
+                    $remoteOrder = $this->syncService->fetchSingleOrder($account, $orderSn);
+                    if ($remoteOrder && ! empty($remoteOrder->package_number) && ! str_starts_with($remoteOrder->package_number, 'PKG-')) {
+                        $packageId = $remoteOrder->package_number;
+                        $order = $remoteOrder;
+                    }
+                }
+            }
+
+            if (! empty($packageId) && ! str_starts_with($packageId, 'PKG-')) {
+                $handover = $method === 'dropoff' ? 'DROP_OFF' : 'PICKUP';
+                $pickupSlot = null;
+
+                $apiRes = $this->syncService->shipPackage($account, $packageId, $handover, $pickupSlot);
+                Log::info("[TiktokOrderService] shipPackage result ({$orderSn}/{$packageId}): " . json_encode($apiRes));
+
+                if (! ($apiRes['success'] ?? false)) {
+                    $errCode = $apiRes['code'] ?? -1;
+                    $errMsg = (string) ($apiRes['message'] ?? 'Gagal mengatur pengiriman di TikTok Shop.');
+
+                    // Cek jika pesanan ternyata sudah diatur pengiriman di TikTok Seller Center sebelumnya
+                    $isAlreadyArranged = str_contains(strtolower($errMsg), 'already')
+                        || str_contains(strtolower($errMsg), 'package status')
+                        || str_contains(strtolower($errMsg), 'shipped')
+                        || str_contains(strtolower($errMsg), 'arranged')
+                        || str_contains(strtolower($errMsg), 'processed')
+                        || in_array($errCode, [30001001, 30001002, 30001003], true);
+
+                    if ($isAlreadyArranged) {
+                        Log::info("[TiktokOrderService] Pesanan {$orderSn} sudah diatur di TikTok sebelumnya: {$errMsg}");
+                        $refreshed = $this->syncService->fetchSingleOrder($account, $orderSn);
+                        if ($refreshed && ! empty($refreshed->tracking_number)) {
+                            $trackingNo = $refreshed->tracking_number;
                         }
+                    } else {
+                        throw new \RuntimeException("Gagal mengatur pengiriman di TikTok Shop: {$errMsg} (Kode: {$errCode})");
                     }
                 }
 
-                if (! empty($packageId) && ! str_starts_with($packageId, 'PKG-')) {
-                    $handover = $method === 'dropoff' ? 'DROP_OFF' : 'PICKUP';
-                    $pickupSlot = null;
-
-                    $apiRes = $this->syncService->shipPackage($account, $packageId, $handover, $pickupSlot);
-                    Log::info("[TiktokOrderService] shipPackage result ({$orderSn}/{$packageId}): " . json_encode($apiRes));
-
-                    // Beri jeda 300ms agar sistem ekspedisi TikTok (J&T dll) selesai men-generate nomor resi
-                    usleep(300000);
-                    $pkgDetail = $this->syncService->getPackageDetail($account, $packageId);
-                    if (! empty($pkgDetail['tracking_number'])) {
-                        $trackingNo = (string) $pkgDetail['tracking_number'];
-                        if (! empty($pkgDetail['shipping_provider_name'])) {
-                            $order->shipping_carrier = (string) $pkgDetail['shipping_provider_name'];
-                        }
-                    } else {
-                        $trackData = $this->syncService->getOrderTracking($account, $orderSn);
-                        if (! empty($trackData['tracking_number'])) {
-                            $trackingNo = (string) $trackData['tracking_number'];
-                        }
+                // Beri jeda 500ms agar sistem ekspedisi TikTok (J&T dll) selesai men-generate nomor resi
+                usleep(500000);
+                $pkgDetail = $this->syncService->getPackageDetail($account, $packageId);
+                if (! empty($pkgDetail['tracking_number'])) {
+                    $trackingNo = (string) $pkgDetail['tracking_number'];
+                    if (! empty($pkgDetail['shipping_provider_name'])) {
+                        $order->shipping_carrier = (string) $pkgDetail['shipping_provider_name'];
+                    }
+                } else {
+                    $trackData = $this->syncService->getOrderTracking($account, $orderSn);
+                    if (! empty($trackData['tracking_number'])) {
+                        $trackingNo = (string) $trackData['tracking_number'];
                     }
                 }
-            } catch (\Throwable $e) {
-                Log::warning("[TiktokOrderService] shipPackage API exception ({$orderSn}): " . $e->getMessage());
+            } else {
+                throw new \RuntimeException("Package ID TikTok tidak valid atau belum tersedia untuk pesanan {$orderSn}. Silakan gunakan tombol Refresh.");
             }
         }
 
-        // Fallback jika mode offline / sandbox / token belum ada resi instan
-        if (empty($trackingNo)) {
+        // Fallback jika mode offline / sandbox pengujian lokal (akun tidak terkoneksi ke TikTok)
+        if (empty($trackingNo) && (! $account->isConnected() || empty($account->access_token))) {
             $carrierName = strtoupper((string) $order->shipping_carrier);
             if (str_contains($carrierName, 'J&T') || str_contains($carrierName, 'JNT')) {
                 $trackingNo = 'JX' . substr((string) time() . rand(1000, 9999), 0, 10);
@@ -810,7 +833,7 @@ class TiktokOrderService
         }
 
         $order->update([
-            'order_status'         => 'PROCESSED',
+            'order_status'         => 'AWAITING_COLLECTION',
             'logistics_status'     => 'LOGISTICS_READY',
             'fulfillment_method'   => $method,
             'tracking_number'      => $trackingNo,
@@ -857,19 +880,25 @@ class TiktokOrderService
             ->where('order_sn', $orderSn)
             ->first();
 
-        if ($order && ! empty($order->tracking_number)) {
-            return $order->tracking_number;
-        }
+        // Jika nomor resi ada dan valid (bukan dummy), kita tetap query jika akun terhubung
+        $targetPackageId = $packageId ?: $order?->package_number;
 
         if ($account->isConnected() && ! empty($account->access_token)) {
             try {
-                $targetPackageId = $packageId ?: $order?->package_number;
+                if (empty($targetPackageId) || str_starts_with($targetPackageId, 'PKG-')) {
+                    $refreshed = $this->syncService->fetchSingleOrder($account, $orderSn);
+                    if ($refreshed && ! empty($refreshed->tracking_number)) {
+                        return $refreshed->tracking_number;
+                    }
+                    $targetPackageId = $refreshed?->package_number ?: $targetPackageId;
+                }
+
                 if (! empty($targetPackageId) && ! str_starts_with($targetPackageId, 'PKG-')) {
                     $pkg = $this->syncService->getPackageDetail($account, $targetPackageId);
                     if (! empty($pkg['tracking_number'])) {
                         $order?->update([
                             'tracking_number'  => (string) $pkg['tracking_number'],
-                            'order_status'     => 'PROCESSED',
+                            'order_status'     => 'AWAITING_COLLECTION',
                             'logistics_status' => 'LOGISTICS_READY',
                         ]);
                         return (string) $pkg['tracking_number'];
@@ -880,7 +909,7 @@ class TiktokOrderService
                 if (! empty($trackingInfo['tracking_number'])) {
                     $order?->update([
                         'tracking_number'  => (string) $trackingInfo['tracking_number'],
-                        'order_status'     => 'PROCESSED',
+                        'order_status'     => 'AWAITING_COLLECTION',
                         'logistics_status' => 'LOGISTICS_READY',
                     ]);
                     return (string) $trackingInfo['tracking_number'];
@@ -894,7 +923,7 @@ class TiktokOrderService
     }
 
     /**
-     * Refresh single order detail.
+     * Refresh single order detail langsung dari TikTok Shop Open API.
      */
     public function refreshSingleOrder(TiktokAccount $account, string $orderSn): TiktokOrder
     {
@@ -902,6 +931,33 @@ class TiktokOrderService
         $order = TiktokOrder::where('tiktok_account_id', $account->id)
             ->where('order_sn', $orderSn)
             ->firstOrFail();
+
+        if ($account->isConnected() && ! empty($account->access_token)) {
+            try {
+                $refreshed = $this->syncService->fetchSingleOrder($account, $orderSn);
+                if ($refreshed) {
+                    $order = $refreshed;
+                }
+            } catch (\Throwable $e) {
+                Log::warning("[TiktokOrderService] refreshSingleOrder error ({$orderSn}): " . $e->getMessage());
+            }
+
+            // Jika tracking number belum terisi tapi package_number ada dan valid, panggil getPackageDetail
+            if (empty($order->tracking_number) && ! empty($order->package_number) && ! str_starts_with($order->package_number, 'PKG-')) {
+                try {
+                    $pkgDetail = $this->syncService->getPackageDetail($account, $order->package_number);
+                    if (! empty($pkgDetail['tracking_number'])) {
+                        $order->update([
+                            'tracking_number'  => (string) $pkgDetail['tracking_number'],
+                            'order_status'     => 'AWAITING_COLLECTION',
+                            'logistics_status' => 'LOGISTICS_READY',
+                        ]);
+                    }
+                } catch (\Throwable $pkgErr) {
+                    Log::info("[TiktokOrderService] getPackageDetail refresh notice ({$order->package_number}): " . $pkgErr->getMessage());
+                }
+            }
+        }
 
         $order->update(['last_synced_at' => now()]);
         return $order->fresh();
@@ -1140,44 +1196,61 @@ class TiktokOrderService
             ]);
         }
 
-        // Jika single order dan terhubung ke API TikTok, coba ambil dokumen PDF resmi dari TikTok CDN
+        // Jika single order dan terhubung ke API TikTok, ambil dokumen PDF resmi dari TikTok CDN
         if ($orders->count() === 1 && $account->isConnected() && ! empty($account->access_token)) {
             try {
                 $firstOrder = $orders->first();
                 $pkgId = $firstOrder->package_number;
+                if (empty($pkgId) || str_starts_with($pkgId, 'PKG-')) {
+                    $pkgList = is_array($firstOrder->package_list_json) ? $firstOrder->package_list_json : [];
+                    $candidateId = $pkgList[0]['package_id'] ?? $pkgList[0]['id'] ?? null;
+                    if (! empty($candidateId) && ! str_starts_with((string) $candidateId, 'PKG-')) {
+                        $pkgId = (string) $candidateId;
+                        $firstOrder->update(['package_number' => $pkgId]);
+                    } else {
+                        $remote = $this->syncService->fetchSingleOrder($account, $firstOrder->order_sn);
+                        if ($remote && ! empty($remote->package_number) && ! str_starts_with($remote->package_number, 'PKG-')) {
+                            $pkgId = $remote->package_number;
+                            $firstOrder = $remote;
+                        }
+                    }
+                }
+
                 if (! empty($pkgId) && ! str_starts_with($pkgId, 'PKG-')) {
                     $docUrl = $this->syncService->fetchPackageShippingDocumentUrl($account, $pkgId, 'A6');
                     if (! empty($docUrl)) {
-                        $pdfRes = Http::timeout(15)->get($docUrl);
-                        if ($pdfRes->successful() && strlen($pdfRes->body()) > 500) {
+                        $pdfRes = Http::timeout(20)->get($docUrl);
+                        if ($pdfRes->successful() && str_starts_with($pdfRes->body(), '%PDF-')) {
+                            Log::info("[TiktokOrderService] Berhasil mengunduh dokumen resmi TikTok CDN untuk order {$firstOrder->order_sn}");
                             return $pdfRes->body();
                         }
                     }
                 }
             } catch (\Throwable $e) {
-                Log::info("[TiktokOrderService] Fallback to thermal waybill template: " . $e->getMessage());
+                Log::warning("[TiktokOrderService] fetchPackageShippingDocumentUrl exception: " . $e->getMessage());
             }
         }
 
-        // Buat PDF Waybill A4 / Thermal standar menggunakan DomPDF atau fallback generator
+        // Buat PDF Waybill Thermal standar (100x150 mm) menggunakan DomPDF atau generator native
         return $this->renderWaybillHtmlToPdf($orders);
     }
 
     private function renderWaybillHtmlToPdf($orders): string
     {
-        // Simple, clean PDF template or raw minimal PDF
+        // Simple, clean thermal PDF template (100x150mm)
         $html = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-            body { font-family: sans-serif; font-size: 11px; margin: 0; padding: 20px; color: #111; }
-            .label-box { border: 2px solid #000; padding: 16px; margin-bottom: 24px; page-break-after: always; max-width: 500px; }
-            .header { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 8px; }
-            .brand { font-size: 18px; font-weight: bold; }
-            .courier { font-size: 16px; font-weight: bold; text-align: right; }
-            .barcode-box { text-align: center; font-family: monospace; font-size: 14px; font-weight: bold; border: 1px dashed #666; padding: 10px; margin: 10px 0; }
-            .meta-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-            .meta-table td { padding: 4px; vertical-align: top; font-size: 11px; }
+            @page { size: 100mm 150mm; margin: 0; }
+            body { font-family: sans-serif; font-size: 10px; margin: 0; padding: 12px; color: #111; box-sizing: border-box; }
+            .label-box { border: 2px solid #000; padding: 10px; page-break-after: always; width: 100%; box-sizing: border-box; }
+            .header { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 6px; }
+            .brand { font-size: 15px; font-weight: bold; }
+            .courier { font-size: 14px; font-weight: bold; text-align: right; }
+            .barcode-box { text-align: center; border: 1px dashed #444; padding: 8px; margin: 8px 0; background: #fafafa; }
+            .meta-table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+            .meta-table td { padding: 3px; vertical-align: top; font-size: 9.5px; }
             .bold { font-weight: bold; }
-            .items-table { width: 100%; border-collapse: collapse; margin-top: 10px; border-top: 1px solid #000; }
-            .items-table th, .items-table td { padding: 4px; border-bottom: 1px solid #ddd; text-align: left; font-size: 10px; }
+            .items-table { width: 100%; border-collapse: collapse; margin-top: 8px; border-top: 1px solid #000; }
+            .items-table th, .items-table td { padding: 3px; border-bottom: 1px solid #ddd; text-align: left; font-size: 9px; }
         </style></head><body>';
 
         foreach ($orders as $o) {
@@ -1187,31 +1260,32 @@ class TiktokOrderService
                 <div class="header">
                     <div>
                         <div class="brand">TikTok Shop</div>
-                        <div>Record Shoes Official TikTok</div>
+                        <div style="font-size:10px;">Record Shoes Official</div>
                     </div>
                     <div class="courier">
                         ' . htmlspecialchars($o->shipping_carrier ?? 'J&T Express') . '<br>
-                        <span style="font-size:12px; font-weight:normal;">' . ($o->is_cod ? 'COD' : 'NON-COD') . '</span>
+                        <span style="font-size:11px; font-weight:normal; color:#d97706;">' . ($o->is_cod ? 'COD' : 'NON-COD') . '</span>
                     </div>
                 </div>
                 <div class="barcode-box">
-                    <div>* ' . htmlspecialchars($o->tracking_number ?: $o->order_sn) . ' *</div>
-                    <div style="font-size:12px; margin-top:4px;">No. Resi: ' . htmlspecialchars($o->tracking_number ?: 'Belum Terbit') . '</div>
+                    <div style="font-family: monospace; font-size: 14px; font-weight: bold; letter-spacing: 2px;">* ' . htmlspecialchars($o->tracking_number ?: $o->order_sn) . ' *</div>
+                    <div style="font-size:11px; margin-top:3px; font-weight: bold;">No. Resi: ' . htmlspecialchars($o->tracking_number ?: 'Belum Terbit') . '</div>
+                    <div style="font-size:9px; color:#555;">No. Pesanan: ' . htmlspecialchars($o->order_sn) . '</div>
                 </div>
                 <table class="meta-table">
                     <tr>
-                        <td width="50%">
-                            <div class="bold">Penerima:</div>
-                            <div>' . htmlspecialchars($recipient['name'] ?? $o->buyer_username) . '</div>
+                        <td width="55%">
+                            <div class="bold">PENERIMA:</div>
+                            <div class="bold">' . htmlspecialchars($recipient['name'] ?? $o->buyer_username ?? 'Pelanggan') . '</div>
                             <div>' . htmlspecialchars($recipient['phone'] ?? '-') . '</div>
                             <div>' . htmlspecialchars($recipient['full_address'] ?? '-') . '</div>
+                            <div>' . htmlspecialchars(($recipient['city'] ?? '') . ', ' . ($recipient['province'] ?? '')) . '</div>
                         </td>
-                        <td width="50%">
-                            <div class="bold">Pengirim:</div>
-                            <div>Record Shoes Official</div>
+                        <td width="45%" style="border-left: 1px solid #ccc; padding-left: 6px;">
+                            <div class="bold">PENGIRIM:</div>
+                            <div class="bold">Record Shoes Official</div>
                             <div>0812-3456-7890</div>
-                            <div>Kab. Bogor, Jawa Barat</div>
-                            <div style="margin-top:6px;"><span class="bold">No. Pesanan:</span> ' . htmlspecialchars($o->order_sn) . '</div>
+                            <div>Surabaya, Jawa Timur</div>
                         </td>
                     </tr>
                 </table>
@@ -1220,26 +1294,108 @@ class TiktokOrderService
                     <tbody>';
             foreach ($items as $item) {
                 $html .= '<tr>
-                    <td>' . htmlspecialchars($item['item_name'] ?? 'Sepatu') . '</td>
+                    <td>' . htmlspecialchars($item['item_name'] ?? 'Sepatu Record') . '</td>
                     <td>' . htmlspecialchars($item['model_name'] ?? '-') . '</td>
                     <td>' . htmlspecialchars((string) ($item['model_quantity_purchased'] ?? 1)) . '</td>
                 </tr>';
             }
-            $html .= '</tbody></table></div>';
+            $html .= '</tbody></table>
+                <div style="margin-top: 8px; font-size: 8px; color: #777; text-align: center; border-top: 1px dashed #ccc; padding-top: 4px;">
+                    Dicetak via KODING ERP - Format Thermal A6 (100x150 mm)
+                </div>
+            </div>';
         }
         $html .= '</body></html>';
 
-        // Check if Dompdf exists, else use Dompdf or fallback to minimal valid PDF
+        // Check if Dompdf exists, else use Dompdf or fallback to clean native thermal PDF
         if (class_exists(\Dompdf\Dompdf::class)) {
             $dompdf = new \Dompdf\Dompdf(['isRemoteEnabled' => true]);
             $dompdf->loadHtml($html);
-            $dompdf->setPaper('A4', 'portrait');
+            // Ukuran Thermal A6: 100mm x 150mm (283.46 pt x 425.20 pt)
+            $dompdf->setPaper([0, 0, 283.46, 425.20], 'portrait');
             $dompdf->render();
             return $dompdf->output();
         }
 
-        // Fallback minimal valid PDF wrapper
-        return "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /MediaBox [0 0 595 842] /Contents 4 0 R >>\nendobj\n4 0 obj\n<< /Length 130 >>\nstream\nBT\n/F1 16 Tf\n50 800 Td\n(TikTok Shop Waybill Label - Record Shoes Official) Tj\n0 -30 Td\n/F1 12 Tf\n(Order: " . ($orders[0]?->order_sn ?? 'TikTok') . ") Tj\nET\nendstream\nendobj\nxref\n0 5\n0000000000 65535 f \n0000000010 00000 n \n0000000060 00000 n \n0000000117 00000 n \n0000000300 00000 n \ntrailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n480\n%%EOF";
+        // Native valid PDF 1.4 thermal label generator (MediaBox: 100x150mm / 283x425pt)
+        return $this->buildNativeThermalPdf($orders);
+    }
+
+    /**
+     * Fallback native PDF generator untuk thermal 100x150 mm tanpa dependency eksternal.
+     */
+    private function buildNativeThermalPdf($orders): string
+    {
+        $first = $orders[0] ?? null;
+        $orderSn = (string) ($first?->order_sn ?? 'TikTok');
+        $resi = (string) ($first?->tracking_number ?? 'Belum Terbit');
+        $carrier = (string) ($first?->shipping_carrier ?? 'J&T Express');
+        $isCod = ! empty($first?->is_cod) ? 'COD' : 'NON-COD';
+
+        $recipient = is_array($first?->recipient_data) ? $first->recipient_data : [];
+        $recipName = substr(preg_replace('/[^A-Za-z0-9 .,#\/-]/', '', (string) ($recipient['name'] ?? $first?->buyer_username ?? 'Pelanggan')), 0, 35);
+        $recipPhone = substr(preg_replace('/[^0-9+-]/', '', (string) ($recipient['phone'] ?? '-')), 0, 20);
+        $recipAddr = substr(preg_replace('/[^A-Za-z0-9 .,#\/-]/', '', (string) ($recipient['full_address'] ?? '-')), 0, 80);
+        $recipCity = substr(preg_replace('/[^A-Za-z0-9 .,#\/-]/', '', (string) ($recipient['city'] ?? $recipient['province'] ?? '-')), 0, 30);
+
+        $items = is_array($first?->items_json) ? $first->items_json : [];
+        $firstItem = $items[0] ?? [];
+        $itemName = substr(preg_replace('/[^A-Za-z0-9 .,#\/-]/', '', (string) ($firstItem['item_name'] ?? 'Sepatu Record')), 0, 40);
+        $itemVar = substr(preg_replace('/[^A-Za-z0-9 .,#\/-]/', '', (string) ($firstItem['model_name'] ?? '-')), 0, 25);
+        $itemQty = (string) ($firstItem['model_quantity_purchased'] ?? 1);
+
+        $stream = "q\n";
+        $stream .= "0.75 w\n";
+        $stream .= "8 8 267 409 re S\n";
+        $stream .= "8 380 m 275 380 l S\n";
+        $stream .= "BT /F1 14 Tf 14 394 Td (TikTok Shop) Tj ET\n";
+        $stream .= "BT /F1 12 Tf 180 394 Td ({$carrier}) Tj ET\n";
+        $stream .= "BT /F1 10 Tf 225 384 Td ({$isCod}) Tj ET\n";
+
+        // Garis barcode (simulasi barcode thermal)
+        $stream .= "0.5 w\n";
+        for ($bx = 25; $bx <= 255; $bx += 4) {
+            $bw = (($bx % 3) === 0) ? 2 : 1;
+            $stream .= "{$bx} 328 {$bw} 38 re f\n";
+        }
+        $stream .= "BT /F1 11 Tf 65 314 Td (No. Resi: {$resi}) Tj ET\n";
+        $stream .= "BT /F2 8 Tf 75 304 Td (No. Pesanan: {$orderSn}) Tj ET\n";
+
+        $stream .= "8 296 m 275 296 l S\n";
+        $stream .= "BT /F1 10 Tf 14 280 Td (PENERIMA:) Tj ET\n";
+        $stream .= "BT /F1 9 Tf 14 266 Td ({$recipName} | {$recipPhone}) Tj ET\n";
+        $stream .= "BT /F2 8 Tf 14 252 Td (" . substr($recipAddr, 0, 45) . ") Tj ET\n";
+        if (strlen($recipAddr) > 45) {
+            $stream .= "BT /F2 8 Tf 14 240 Td (" . substr($recipAddr, 45, 45) . ") Tj ET\n";
+        }
+        $stream .= "BT /F1 8 Tf 14 226 Td (Kota/Kab: {$recipCity}) Tj ET\n";
+
+        $stream .= "8 215 m 275 215 l S\n";
+        $stream .= "BT /F1 9 Tf 14 200 Td (PENGIRIM: Record Shoes Official) Tj ET\n";
+        $stream .= "BT /F2 8 Tf 14 188 Td (Surabaya, Jawa Timur - 081234567890) Tj ET\n";
+
+        $stream .= "8 178 m 275 178 l S\n";
+        $stream .= "BT /F1 9 Tf 14 162 Td (PRODUK / SKU) Tj 240 0 Td (QTY) Tj ET\n";
+        $stream .= "8 154 m 275 154 l S\n";
+        $stream .= "BT /F2 8 Tf 14 140 Td ({$itemName}) Tj 240 0 Td ({$itemQty}) Tj ET\n";
+        $stream .= "BT /F2 7 Tf 14 128 Td (Var: {$itemVar}) Tj ET\n";
+
+        $stream .= "8 30 m 275 30 l S\n";
+        $stream .= "BT /F2 7 Tf 14 18 Td (Dicetak via KODING ERP - Resi Thermal 100x150 mm) Tj ET\n";
+        $stream .= "Q\n";
+
+        $streamLen = strlen($stream);
+
+        return "%PDF-1.4\n" .
+            "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n" .
+            "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n" .
+            "3 0 obj\n<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >> /F2 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /MediaBox [0 0 283 425] /Contents 4 0 R >>\nendobj\n" .
+            "4 0 obj\n<< /Length {$streamLen} >>\nstream\n" .
+            $stream .
+            "\nendstream\nendobj\n" .
+            "xref\n0 5\n0000000000 65535 f \n" .
+            "trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n" .
+            (250 + $streamLen) . "\n%%EOF";
     }
 }
 

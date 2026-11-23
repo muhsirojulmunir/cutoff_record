@@ -352,26 +352,46 @@ class TiktokOrderController extends Controller
 
         $validated['fulfillment_method'] = $validated['method'] ?? $validated['fulfillment_method'] ?? 'pickup';
 
-        $result = $this->orderService->ship($account, $orderSn, $validated);
+        try {
+            $result = $this->orderService->ship($account, $orderSn, $validated);
 
-        if (ob_get_length()) {
-            ob_clean();
+            if (ob_get_length()) {
+                ob_clean();
+            }
+
+            return response()->json($result, 200);
+        } catch (\Throwable $e) {
+            if (ob_get_length()) {
+                ob_clean();
+            }
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => $e->getMessage(),
+                'error'   => $e->getMessage(),
+            ], 422);
         }
-
-        return response()->json($result, 200);
     }
 
     public function refreshDetail(string $orderSn): JsonResponse
     {
         $account = $this->resolveTiktokAccount();
-        $order = $this->orderService->refreshSingleOrder($account, $orderSn);
 
-        return response()->json([
-            'status'   => 'success',
-            'order_sn' => $order->order_sn,
-            'order'    => $order->makeHidden(['raw_payload']),
-            'message'  => "Detail pesanan TikTok {$orderSn} berhasil diperbarui.",
-        ]);
+        try {
+            $order = $this->orderService->refreshSingleOrder($account, $orderSn);
+
+            return response()->json([
+                'status'   => 'success',
+                'order_sn' => $order->order_sn,
+                'order'    => $order->makeHidden(['raw_payload']),
+                'message'  => "Detail pesanan TikTok {$orderSn} berhasil diperbarui dari TikTok Shop.",
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Gagal memperbarui pesanan dari TikTok: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     public function escrowDetail(string $orderSn): JsonResponse
