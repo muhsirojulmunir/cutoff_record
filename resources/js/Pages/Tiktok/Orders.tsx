@@ -430,7 +430,10 @@ export default function TiktokOrdersPage({
   filters,
   hasDummyData = false,
 }: TiktokOrdersPageProps) {
-  const { flash } = usePage<TiktokOrdersPageProps>().props;
+  const { auth, flash } = usePage<TiktokOrdersPageProps>().props;
+  const isSuperAdmin =
+    auth?.user?.role?.name === 'Super Admin' ||
+    (Array.isArray(auth?.user?.roles) && auth.user.roles.includes('Super Admin'));
 
   const isMountedRef = useRef(true);
   const filtersRef = useRef(filters);
@@ -454,7 +457,7 @@ export default function TiktokOrdersPage({
   const masterCheckboxRef = useRef<HTMLInputElement | null>(null);
 
   // Sync & UI state
-  const [isLiveAutoSync, setIsLiveAutoSync] = useState(true);
+  const [isLiveAutoSync, setIsLiveAutoSync] = useState(isSuperAdmin);
   const [liveCountdown, setLiveCountdown] = useState(LIVE_AUTO_SYNC_INTERVAL_SEC);
   const [isAutoSyncing, setIsAutoSyncing] = useState(false);
   const [isChunkSyncing, setIsChunkSyncing] = useState(false);
@@ -823,6 +826,7 @@ export default function TiktokOrdersPage({
 
   // Silent initial auto-sync on page mount if last sync is empty or >= 20s old
   useEffect(() => {
+    if (!isSuperAdmin) return;
     if (!isShopeeConnected || initialAutoSyncAttemptedRef.current) return;
     if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
 
@@ -849,10 +853,11 @@ export default function TiktokOrdersPage({
     return () => {
       window.clearTimeout(timer);
     };
-  }, [isShopeeConnected, account?.last_synced_at, runAutoSync]);
+  }, [isSuperAdmin, isShopeeConnected, account?.last_synced_at, runAutoSync]);
 
   // 30-second Live Auto-Sync countdown loop with interaction & visibility guards
   useEffect(() => {
+    if (!isSuperAdmin) return;
     const timer = window.setInterval(() => {
       if (!isShopeeConnectedRef.current || !isLiveAutoSyncRef.current) return;
       if (autoSyncInFlightRef.current || chunkSyncInFlightRef.current) return;
@@ -1791,23 +1796,7 @@ export default function TiktokOrdersPage({
 
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                 {account ? (
-                  <>
-                    <span className="font-semibold text-slate-700">{account.account_name}</span>
-                    <span className="text-slate-300">•</span>
-                    <span>
-                      Shop ID:{' '}
-                      <span className="font-mono font-semibold text-slate-700">
-                        {account.shop_id || '-'}
-                      </span>
-                    </span>
-                    <span className="text-slate-300">•</span>
-                    <span className="tabular-nums">
-                      Sinkron terakhir:{' '}
-                      <span className="font-medium text-slate-700">
-                        {lastSyncedLabel}
-                      </span>
-                    </span>
-                  </>
+                  <span className="font-semibold text-slate-700">{account.account_name}</span>
                 ) : (
                   <span>Belum ada akun toko TikTok yang dikonfigurasi pada sistem.</span>
                 )}
@@ -1815,8 +1804,9 @@ export default function TiktokOrdersPage({
             </div>
           </div>
 
-          {/* Live Auto-Sync Pill + Chunked Sinkron Ulang Menu */}
-          <div className="flex flex-wrap items-center gap-2.5 lg:shrink-0">
+          {/* Live Auto-Sync Pill + Chunked Sinkron Ulang Menu (Khusus Super Admin) */}
+          {isSuperAdmin && (
+            <div className="flex flex-wrap items-center gap-2.5 lg:shrink-0">
             <button
               type="button"
               disabled={!isShopeeConnected}
@@ -2042,6 +2032,7 @@ export default function TiktokOrdersPage({
               </button>
             )}
           </div>
+          )}
         </section>
 
         {/* Banner Mode Data Contoh (Dummy) */}
@@ -2079,8 +2070,8 @@ export default function TiktokOrdersPage({
           </div>
         )}
 
-        {/* Non-blocking Sync Alert Banner (e.g. session expired / non-JSON response) */}
-        {syncAlert && (
+        {/* Non-blocking Sync Alert Banner (e.g. session expired / non-JSON response) (Khusus Super Admin) */}
+        {isSuperAdmin && syncAlert && (
           <section
             role="alert"
             className="flex flex-col justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3.5 text-xs text-amber-900 sm:flex-row sm:items-center"
@@ -2695,7 +2686,9 @@ export default function TiktokOrdersPage({
             <p className="mt-1 max-w-md text-xs text-slate-500">
               {hasActiveFilters
                 ? 'Coba ubah kata kunci pencarian, kurir, atau rentang tanggal pesanan untuk melihat data lainnya.'
-                : 'Gunakan tombol Sinkron Ulang di atas untuk menarik pesanan terbaru langsung dari toko TikTok Shop Anda.'}
+                : isSuperAdmin
+                  ? 'Gunakan tombol Sinkron Ulang di atas untuk menarik pesanan terbaru langsung dari toko TikTok Shop Anda.'
+                  : 'Belum ada pesanan pada filter ini.'}
             </p>
             <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
               {hasActiveFilters && (
@@ -2707,7 +2700,7 @@ export default function TiktokOrdersPage({
                   Reset Filter
                 </button>
               )}
-              {isShopeeConnected && (
+              {isShopeeConnected && isSuperAdmin && (
                 <button
                   type="button"
                   disabled={isChunkSyncing}

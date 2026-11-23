@@ -420,7 +420,10 @@ export default function ShopeeOrdersPage({
   carriers,
   filters,
 }: ShopeeOrdersPageProps) {
-  const { flash } = usePage<ShopeeOrdersPageProps>().props;
+  const { auth, flash } = usePage<ShopeeOrdersPageProps>().props;
+  const isSuperAdmin =
+    auth?.user?.role?.name === 'Super Admin' ||
+    (Array.isArray(auth?.user?.roles) && auth.user.roles.includes('Super Admin'));
 
   const isMountedRef = useRef(true);
   const filtersRef = useRef(filters);
@@ -444,7 +447,7 @@ export default function ShopeeOrdersPage({
   const masterCheckboxRef = useRef<HTMLInputElement | null>(null);
 
   // Sync & UI state
-  const [isLiveAutoSync, setIsLiveAutoSync] = useState(true);
+  const [isLiveAutoSync, setIsLiveAutoSync] = useState(isSuperAdmin);
   const [liveCountdown, setLiveCountdown] = useState(LIVE_AUTO_SYNC_INTERVAL_SEC);
   const [isAutoSyncing, setIsAutoSyncing] = useState(false);
   const [isChunkSyncing, setIsChunkSyncing] = useState(false);
@@ -795,6 +798,7 @@ export default function ShopeeOrdersPage({
 
   // Silent initial auto-sync on page mount if last sync is empty or >= 20s old
   useEffect(() => {
+    if (!isSuperAdmin) return;
     if (!isShopeeConnected || initialAutoSyncAttemptedRef.current) return;
     if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
 
@@ -821,10 +825,11 @@ export default function ShopeeOrdersPage({
     return () => {
       window.clearTimeout(timer);
     };
-  }, [isShopeeConnected, account?.last_synced_at, runAutoSync]);
+  }, [isSuperAdmin, isShopeeConnected, account?.last_synced_at, runAutoSync]);
 
   // 30-second Live Auto-Sync countdown loop with interaction & visibility guards
   useEffect(() => {
+    if (!isSuperAdmin) return;
     const timer = window.setInterval(() => {
       if (!isShopeeConnectedRef.current || !isLiveAutoSyncRef.current) return;
       if (autoSyncInFlightRef.current || chunkSyncInFlightRef.current) return;
@@ -1762,23 +1767,7 @@ export default function ShopeeOrdersPage({
 
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                 {account ? (
-                  <>
-                    <span className="font-semibold text-slate-700">{account.account_name}</span>
-                    <span className="text-slate-300">•</span>
-                    <span>
-                      Shop ID:{' '}
-                      <span className="font-mono font-semibold text-slate-700">
-                        {account.shop_id || '-'}
-                      </span>
-                    </span>
-                    <span className="text-slate-300">•</span>
-                    <span className="tabular-nums">
-                      Sinkron terakhir:{' '}
-                      <span className="font-medium text-slate-700">
-                        {lastSyncedLabel}
-                      </span>
-                    </span>
-                  </>
+                  <span className="font-semibold text-slate-700">{account.account_name}</span>
                 ) : (
                   <span>Belum ada akun toko Shopee yang dikonfigurasi pada sistem.</span>
                 )}
@@ -1786,185 +1775,187 @@ export default function ShopeeOrdersPage({
             </div>
           </div>
 
-          {/* Live Auto-Sync Pill + Chunked Sinkron Ulang Menu */}
-          <div className="flex flex-wrap items-center gap-2.5 lg:shrink-0">
-            <button
-              type="button"
-              disabled={!isShopeeConnected}
-              onClick={() => {
-                if (!isShopeeConnected) return;
-                const nextActive = !isLiveAutoSync;
-                isLiveAutoSyncRef.current = nextActive;
-                setIsLiveAutoSync(nextActive);
-                if (!nextActive) {
-                  autoSyncAbortRef.current?.abort();
-                }
-                resetLiveCountdown();
-              }}
-              title={
-                !isShopeeConnected
-                  ? 'Hubungkan akun Shopee terlebih dahulu di Integrasi Shopee'
-                  : isLiveAutoSync
-                    ? `Live Auto-Sync aktif: menyegarkan otomatis tiap ${LIVE_AUTO_SYNC_INTERVAL_SEC} detik. Klik untuk menjeda.`
-                    : 'Live Auto-Sync dijeda. Klik untuk mengaktifkan kembali.'
-              }
-              className={`inline-flex cursor-pointer items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50 ${
-                !isShopeeConnected
-                  ? 'border-slate-200 bg-slate-100 text-slate-500'
-                  : isLiveAutoSync
-                    ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-                    : 'border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {isAutoSyncing ? (
-                <>
-                  <SpinnerIcon className="h-3.5 w-3.5 text-emerald-600" />
-                  <span>Menyegarkan otomatis...</span>
-                </>
-              ) : (
-                <>
-                  <span className="relative flex h-2 w-2">
-                    {isShopeeConnected && isLiveAutoSync && (
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                    )}
-                    <span
-                      className={`relative inline-flex h-2 w-2 rounded-full ${
-                        isShopeeConnected && isLiveAutoSync ? 'bg-emerald-500' : 'bg-slate-400'
-                      }`}
-                    />
-                  </span>
-                  {!isShopeeConnected ? (
-                    <span>Live Auto-Sync: Nonaktif</span>
-                  ) : isLiveAutoSync ? (
-                    <span className="tabular-nums">
-                      Live Auto-Sync:{' '}
-                      <strong className="font-mono font-bold">{liveCountdown}s</strong>
-                    </span>
-                  ) : (
-                    <span>Live Auto-Sync: Jeda</span>
-                  )}
-                </>
-              )}
-            </button>
-
-            {isChunkSyncing && chunkProgress ? (
-              <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-[#0B132B] px-3.5 py-2 text-xs font-semibold text-white shadow-xs">
-                <SpinnerIcon className="h-4 w-4 text-white" />
-                <span className="tabular-nums">
-                  Sinkron hari {chunkProgress.current}/{chunkProgress.total}...
-                </span>
-                <button
-                  type="button"
-                  onClick={cancelChunkSync}
-                  className="ml-1 cursor-pointer rounded-lg bg-white/15 px-2 py-0.5 text-[11px] font-semibold text-white transition-colors hover:bg-white/25"
-                >
-                  Batal
-                </button>
-              </div>
-            ) : (
-              <div className="relative" ref={syncMenuRef}>
-                <button
-                  type="button"
-                  disabled={!isShopeeConnected}
-                  onClick={() => setIsSyncMenuOpen((prev) => !prev)}
-                  aria-expanded={isSyncMenuOpen}
-                  aria-haspopup="menu"
-                  title={
-                    isShopeeConnected
-                      ? 'Pilih rentang hari untuk sinkron ulang bertahap (anti-timeout)'
-                      : 'Hubungkan akun Shopee terlebih dahulu di Integrasi Shopee'
+          {/* Live Auto-Sync Pill + Chunked Sinkron Ulang Menu (Khusus Super Admin) */}
+          {isSuperAdmin && (
+            <div className="flex flex-wrap items-center gap-2.5 lg:shrink-0">
+              <button
+                type="button"
+                disabled={!isShopeeConnected}
+                onClick={() => {
+                  if (!isShopeeConnected) return;
+                  const nextActive = !isLiveAutoSync;
+                  isLiveAutoSyncRef.current = nextActive;
+                  setIsLiveAutoSync(nextActive);
+                  if (!nextActive) {
+                    autoSyncAbortRef.current?.abort();
                   }
-                  className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#0B132B] px-4 py-2.5 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={1.8}
-                    stroke="currentColor"
-                    className="h-4 w-4"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
-                    />
-                  </svg>
-                  <span>Sinkron Ulang</span>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={2}
-                    stroke="currentColor"
-                    className={`h-3.5 w-3.5 transition-transform ${isSyncMenuOpen ? 'rotate-180' : ''}`}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                  </svg>
-                </button>
-
-                {isSyncMenuOpen && (
-                  <div
-                    role="menu"
-                    aria-label="Preset rentang Sinkron Ulang"
-                    className="absolute right-0 z-40 mt-2 w-64 rounded-2xl border border-slate-200 bg-white py-2 shadow-lg"
-                  >
-                    <div className="px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                      Sinkron Bertahap (Anti-503)
-                    </div>
-                    {[
-                      {
-                        days: 1,
-                        label: 'Hari Ini (1 Hari)',
-                        desc: 'Tarik pesanan hari ini (WIB)',
-                      },
-                      {
-                        days: 3,
-                        label: '3 Hari Terakhir',
-                        desc: 'Proses bertahap 1 hari per request',
-                      },
-                      {
-                        days: 7,
-                        label: '7 Hari Terakhir',
-                        desc: 'Sinkron penuh 7 hari tanpa timeout',
-                      },
-                    ].map((preset) => (
-                      <button
-                        key={preset.days}
-                        type="button"
-                        role="menuitem"
-                        onClick={() => void runChunkedSync(preset.days)}
-                        className="flex w-full cursor-pointer items-start gap-2.5 px-3.5 py-2 text-left transition-colors hover:bg-slate-50"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          strokeWidth={1.8}
-                          stroke="currentColor"
-                          className="mt-0.5 h-4 w-4 shrink-0 text-[#EE4D2D]"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
-                          />
-                        </svg>
-                        <div>
-                          <p className="text-xs font-semibold text-slate-800">{preset.label}</p>
-                          <p className="text-[11px] text-slate-500">{preset.desc}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+                  resetLiveCountdown();
+                }}
+                title={
+                  !isShopeeConnected
+                    ? 'Hubungkan akun Shopee terlebih dahulu di Integrasi Shopee'
+                    : isLiveAutoSync
+                      ? `Live Auto-Sync aktif: menyegarkan otomatis tiap ${LIVE_AUTO_SYNC_INTERVAL_SEC} detik. Klik untuk menjeda.`
+                      : 'Live Auto-Sync dijeda. Klik untuk mengaktifkan kembali.'
+                }
+                className={`inline-flex cursor-pointer items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50 ${
+                  !isShopeeConnected
+                    ? 'border-slate-200 bg-slate-100 text-slate-500'
+                    : isLiveAutoSync
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                      : 'border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {isAutoSyncing ? (
+                  <>
+                    <SpinnerIcon className="h-3.5 w-3.5 text-emerald-600" />
+                    <span>Menyegarkan otomatis...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="relative flex h-2 w-2">
+                      {isShopeeConnected && isLiveAutoSync && (
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                      )}
+                      <span
+                        className={`relative inline-flex h-2 w-2 rounded-full ${
+                          isShopeeConnected && isLiveAutoSync ? 'bg-emerald-500' : 'bg-slate-400'
+                        }`}
+                      />
+                    </span>
+                    {!isShopeeConnected ? (
+                      <span>Live Auto-Sync: Nonaktif</span>
+                    ) : isLiveAutoSync ? (
+                      <span className="tabular-nums">
+                        Live Auto-Sync:{' '}
+                        <strong className="font-mono font-bold">{liveCountdown}s</strong>
+                      </span>
+                    ) : (
+                      <span>Live Auto-Sync: Jeda</span>
+                    )}
+                  </>
                 )}
-              </div>
-            )}
-          </div>
+              </button>
+
+              {isChunkSyncing && chunkProgress ? (
+                <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-[#0B132B] px-3.5 py-2 text-xs font-semibold text-white shadow-xs">
+                  <SpinnerIcon className="h-4 w-4 text-white" />
+                  <span className="tabular-nums">
+                    Sinkron hari {chunkProgress.current}/{chunkProgress.total}...
+                  </span>
+                  <button
+                    type="button"
+                    onClick={cancelChunkSync}
+                    className="ml-1 cursor-pointer rounded-lg bg-white/15 px-2 py-0.5 text-[11px] font-semibold text-white transition-colors hover:bg-white/25"
+                  >
+                    Batal
+                  </button>
+                </div>
+              ) : (
+                <div className="relative" ref={syncMenuRef}>
+                  <button
+                    type="button"
+                    disabled={!isShopeeConnected}
+                    onClick={() => setIsSyncMenuOpen((prev) => !prev)}
+                    aria-expanded={isSyncMenuOpen}
+                    aria-haspopup="menu"
+                    title={
+                      isShopeeConnected
+                        ? 'Pilih rentang hari untuk sinkron ulang bertahap (anti-timeout)'
+                        : 'Hubungkan akun Shopee terlebih dahulu di Integrasi Shopee'
+                    }
+                    className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#0B132B] px-4 py-2.5 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.8}
+                      stroke="currentColor"
+                      className="h-4 w-4"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
+                      />
+                    </svg>
+                    <span>Sinkron Ulang</span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={2}
+                      stroke="currentColor"
+                      className={`h-3.5 w-3.5 transition-transform ${isSyncMenuOpen ? 'rotate-180' : ''}`}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </button>
+
+                  {isSyncMenuOpen && (
+                    <div
+                      role="menu"
+                      aria-label="Preset rentang Sinkron Ulang"
+                      className="absolute right-0 z-40 mt-2 w-64 rounded-2xl border border-slate-200 bg-white py-2 shadow-lg"
+                    >
+                      <div className="px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        Sinkron Bertahap (Anti-503)
+                      </div>
+                      {[
+                        {
+                          days: 1,
+                          label: 'Hari Ini (1 Hari)',
+                          desc: 'Tarik pesanan hari ini (WIB)',
+                        },
+                        {
+                          days: 3,
+                          label: '3 Hari Terakhir',
+                          desc: 'Proses bertahap 1 hari per request',
+                        },
+                        {
+                          days: 7,
+                          label: '7 Hari Terakhir',
+                          desc: 'Sinkron penuh 7 hari tanpa timeout',
+                        },
+                      ].map((preset) => (
+                        <button
+                          key={preset.days}
+                          type="button"
+                          role="menuitem"
+                          onClick={() => void runChunkedSync(preset.days)}
+                          className="flex w-full cursor-pointer items-start gap-2.5 px-3.5 py-2 text-left transition-colors hover:bg-slate-50"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            strokeWidth={1.8}
+                            stroke="currentColor"
+                            className="mt-0.5 h-4 w-4 shrink-0 text-[#EE4D2D]"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
+                            />
+                          </svg>
+                          <div>
+                            <p className="text-xs font-semibold text-slate-800">{preset.label}</p>
+                            <p className="text-[11px] text-slate-500">{preset.desc}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </section>
 
-        {/* Non-blocking Sync Alert Banner (e.g. session expired / non-JSON response) */}
-        {syncAlert && (
+        {/* Non-blocking Sync Alert Banner (e.g. session expired / non-JSON response) (Khusus Super Admin) */}
+        {isSuperAdmin && syncAlert && (
           <section
             role="alert"
             className="flex flex-col justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3.5 text-xs text-amber-900 sm:flex-row sm:items-center"
@@ -2579,7 +2570,9 @@ export default function ShopeeOrdersPage({
             <p className="mt-1 max-w-md text-xs text-slate-500">
               {hasActiveFilters
                 ? 'Coba ubah kata kunci pencarian, kurir, atau rentang tanggal pesanan untuk melihat data lainnya.'
-                : 'Gunakan tombol Sinkron Ulang di atas untuk menarik pesanan terbaru langsung dari toko Shopee Anda.'}
+                : isSuperAdmin
+                  ? 'Gunakan tombol Sinkron Ulang di atas untuk menarik pesanan terbaru langsung dari toko Shopee Anda.'
+                  : 'Belum ada pesanan pada filter ini.'}
             </p>
             <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
               {hasActiveFilters && (
@@ -2591,7 +2584,7 @@ export default function ShopeeOrdersPage({
                   Reset Filter
                 </button>
               )}
-              {isShopeeConnected && (
+              {isShopeeConnected && isSuperAdmin && (
                 <button
                   type="button"
                   disabled={isChunkSyncing}
