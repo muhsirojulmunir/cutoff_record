@@ -981,11 +981,11 @@ export default function ShipOrderModal({
 
     let finalData = result.data;
 
-    // Jika nomor resi belum terbit seketika (umumnya pada kurir pihak ketiga seperti ID Express)
-    if (!finalData.tracking_number && !isTiktok) {
+    // Jika nomor resi belum terbit seketika (umumnya pada kurir pihak ketiga seperti ID Express / J&T Express)
+    if (!finalData.tracking_number) {
       setIsPreparingWaybill(true);
       setWaybillLoadingMessage(
-        `Pengiriman berhasil diatur! Sedang menunggu nomor resi dari kurir (${order.shipping_carrier || 'ID Express'})... Mohon tunggu sebentar.`
+        `Pengiriman berhasil diatur! Sedang menunggu nomor resi dari kurir (${order.shipping_carrier || (isTiktok ? 'J&T Express' : 'SPX Express')})... Mohon tunggu sebentar.`
       );
 
       for (let attempt = 1; attempt <= 6; attempt++) {

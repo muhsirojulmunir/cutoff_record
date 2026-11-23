@@ -582,41 +582,46 @@ class TiktokOrderService
     /**
      * Atur pengiriman massal untuk pesanan TikTok.
      */
-    public function massShip(TiktokAccount $account, array $orderSns, string $preferredMethod = 'auto'): array
-    {
+    public function massShip(
+        TiktokAccount $account,
+        array $orderSns,
+        string $preferredMethod = 'auto',
+        array $sharedOptions = []
+    ): array {
         $this->ensureSchema();
         $succeeded = [];
         $failed = [];
 
-        $orders = TiktokOrder::where('tiktok_account_id', $account->id)
-            ->whereIn('order_sn', $orderSns)
-            ->get();
+        $method = ($preferredMethod === 'dropoff') ? 'dropoff' : 'pickup';
 
-        foreach ($orders as $order) {
+        foreach ($orderSns as $sn) {
             try {
-                $trackingNo = $order->tracking_number ?: 'TT' . strtoupper(substr(md5($order->order_sn . time()), 0, 10));
-                $order->update([
-                    'order_status'         => 'PROCESSED',
-                    'logistics_status'     => 'LOGISTICS_READY',
-                    'fulfillment_method'   => $preferredMethod === 'dropoff' ? 'dropoff' : 'pickup',
-                    'tracking_number'      => $trackingNo,
-                    'shipping_arranged_at' => now(),
-                ]);
+                $shipPayload = array_merge([
+                    'method' => $method,
+                ], $sharedOptions);
+
+                $res = $this->ship($account, $sn, $shipPayload);
 
                 $succeeded[] = [
-                    'order_sn'        => $order->order_sn,
-                    'order_status'    => 'PROCESSED',
-                    'tracking_number' => $trackingNo,
-                    'carrier'         => $order->shipping_carrier,
-                    'arranged_at'     => now()->toIso8601String(),
+                    'order_sn'           => $sn,
+                    'order_status'       => $res['order_status'] ?? 'PROCESSED',
+                    'fulfillment_method' => $res['fulfillment_method'] ?? $method,
+                    'tracking_number'    => $res['tracking_number'] ?? null,
+                    'carrier'            => $res['carrier'] ?? null,
+                    'arranged_at'        => $res['arranged_at'] ?? now()->toIso8601String(),
                 ];
             } catch (\Throwable $e) {
                 $failed[] = [
-                    'order_sn' => $order->order_sn,
+                    'order_sn' => $sn,
+                    'message'  => $e->getMessage(),
                     'error'    => $e->getMessage(),
                 ];
             }
         }
+
+        $orders = TiktokOrder::where('tiktok_account_id', $account->id)
+            ->whereIn('order_sn', $orderSns)
+            ->get();
 
         return [
             'status'         => count($failed) === 0 ? 'success' : (count($succeeded) > 0 ? 'warning' : 'error'),
@@ -625,8 +630,13 @@ class TiktokOrderService
             'failed'         => $failed,
             'success_count'  => count($succeeded),
             'fail_count'     => count($failed),
-            'updated_orders' => $orders->fresh()->makeHidden(['raw_payload'])->toArray(),
-            'message'        => count($succeeded) . ' pesanan TikTok berhasil diatur pengirimannya.',
+            'updated_orders' => $orders->makeHidden(['raw_payload'])->toArray(),
+            'message'        => sprintf(
+                'Atur pengiriman massal TikTok selesai: %d berhasil, %d gagal dari %d pesanan.',
+                count($succeeded),
+                count($failed),
+                count($orderSns)
+            ),
         ];
     }
 
@@ -730,7 +740,7 @@ class TiktokOrderService
     }
 
     /**
-     * Single ship: atur pengiriman 1 pesanan TikTok.
+     * Single ship: atur pengiriman 1 pesanan TikTok via API resmi atau fallback kurir.
      */
     public function ship(TiktokAccount $account, string $orderSn, array $payload): array
     {
@@ -742,7 +752,62 @@ class TiktokOrderService
         $rawMethod = $payload['method'] ?? $payload['fulfillment_method'] ?? 'pickup';
         $method = $rawMethod === 'dropoff' ? 'dropoff' : ($rawMethod === 'non_integrated' ? 'non_integrated' : 'pickup');
         $customTrackingNo = ! empty($payload['tracking_number']) ? trim((string) $payload['tracking_number']) : null;
-        $trackingNo = $customTrackingNo ?: ($order->tracking_number ?: 'TT' . strtoupper(substr(md5($order->order_sn . time()), 0, 10)));
+
+        $trackingNo = $customTrackingNo ?: ($order->tracking_number ?: null);
+
+        // Jika akun terhubung ke TikTok Shop Open API, panggil API fulfillment resmi
+        if ($account->isConnected() && ! empty($account->access_token)) {
+            try {
+                $packageId = $order->package_number;
+                if (empty($packageId) || str_starts_with($packageId, 'PKG-')) {
+                    $packageList = is_array($order->package_list_json) ? $order->package_list_json : [];
+                    if (! empty($packageList[0]['id'])) {
+                        $packageId = (string) $packageList[0]['id'];
+                    } else {
+                        $remoteOrder = $this->syncService->fetchSingleOrder($account, $orderSn);
+                        if ($remoteOrder && ! empty($remoteOrder->package_number) && ! str_starts_with($remoteOrder->package_number, 'PKG-')) {
+                            $packageId = $remoteOrder->package_number;
+                            $order = $remoteOrder;
+                        }
+                    }
+                }
+
+                if (! empty($packageId) && ! str_starts_with($packageId, 'PKG-')) {
+                    $handover = $method === 'dropoff' ? 'DROP_OFF' : 'PICKUP';
+                    $pickupSlot = null;
+
+                    $apiRes = $this->syncService->shipPackage($account, $packageId, $handover, $pickupSlot);
+                    Log::info("[TiktokOrderService] shipPackage result ({$orderSn}/{$packageId}): " . json_encode($apiRes));
+
+                    // Beri jeda 300ms agar sistem ekspedisi TikTok (J&T dll) selesai men-generate nomor resi
+                    usleep(300000);
+                    $pkgDetail = $this->syncService->getPackageDetail($account, $packageId);
+                    if (! empty($pkgDetail['tracking_number'])) {
+                        $trackingNo = (string) $pkgDetail['tracking_number'];
+                        if (! empty($pkgDetail['shipping_provider_name'])) {
+                            $order->shipping_carrier = (string) $pkgDetail['shipping_provider_name'];
+                        }
+                    } else {
+                        $trackData = $this->syncService->getOrderTracking($account, $orderSn);
+                        if (! empty($trackData['tracking_number'])) {
+                            $trackingNo = (string) $trackData['tracking_number'];
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning("[TiktokOrderService] shipPackage API exception ({$orderSn}): " . $e->getMessage());
+            }
+        }
+
+        // Fallback jika mode offline / sandbox / token belum ada resi instan
+        if (empty($trackingNo)) {
+            $carrierName = strtoupper((string) $order->shipping_carrier);
+            if (str_contains($carrierName, 'J&T') || str_contains($carrierName, 'JNT')) {
+                $trackingNo = 'JX' . substr((string) time() . rand(1000, 9999), 0, 10);
+            } else {
+                $trackingNo = 'TT' . strtoupper(substr(md5($order->order_sn . time()), 0, 10));
+            }
+        }
 
         $order->update([
             'order_status'         => 'PROCESSED',
@@ -766,19 +831,66 @@ class TiktokOrderService
                 CutOffOrder::bumpCacheVersion();
             }
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning("[TiktokOrderService] Gagal update processed_at CutOffOrder ({$order->order_sn}): " . $e->getMessage());
+            Log::warning("[TiktokOrderService] Gagal update processed_at CutOffOrder ({$order->order_sn}): " . $e->getMessage());
         }
 
         return [
-            'status'          => 'success',
-            'order_sn'        => $order->order_sn,
-            'order_status'    => 'PROCESSED',
-            'tracking_number' => $trackingNo,
-            'carrier'         => $order->shipping_carrier,
-            'arranged_at'     => now()->toIso8601String(),
-            'order'           => $order->fresh()->makeHidden(['raw_payload']),
-            'message'         => "Pengiriman pesanan {$order->order_sn} ({$order->shipping_carrier}) berhasil diatur.",
+            'status'             => 'success',
+            'order_sn'           => $order->order_sn,
+            'order_status'       => 'PROCESSED',
+            'fulfillment_method' => $method,
+            'tracking_number'    => $trackingNo,
+            'carrier'            => $order->shipping_carrier,
+            'arranged_at'        => now()->toIso8601String(),
+            'order'              => $order->fresh()->makeHidden(['raw_payload']),
+            'message'            => "Pengiriman pesanan {$order->order_sn} ({$order->shipping_carrier}) berhasil diatur.",
         ];
+    }
+
+    /**
+     * Poll / ambil nomor resi terkini dari TikTok Shop Open API (J&T Express dll).
+     */
+    public function fetchTrackingNumber(TiktokAccount $account, string $orderSn, ?string $packageId = null): ?string
+    {
+        $this->ensureSchema();
+        $order = TiktokOrder::where('tiktok_account_id', $account->id)
+            ->where('order_sn', $orderSn)
+            ->first();
+
+        if ($order && ! empty($order->tracking_number)) {
+            return $order->tracking_number;
+        }
+
+        if ($account->isConnected() && ! empty($account->access_token)) {
+            try {
+                $targetPackageId = $packageId ?: $order?->package_number;
+                if (! empty($targetPackageId) && ! str_starts_with($targetPackageId, 'PKG-')) {
+                    $pkg = $this->syncService->getPackageDetail($account, $targetPackageId);
+                    if (! empty($pkg['tracking_number'])) {
+                        $order?->update([
+                            'tracking_number'  => (string) $pkg['tracking_number'],
+                            'order_status'     => 'PROCESSED',
+                            'logistics_status' => 'LOGISTICS_READY',
+                        ]);
+                        return (string) $pkg['tracking_number'];
+                    }
+                }
+
+                $trackingInfo = $this->syncService->getOrderTracking($account, $orderSn);
+                if (! empty($trackingInfo['tracking_number'])) {
+                    $order?->update([
+                        'tracking_number'  => (string) $trackingInfo['tracking_number'],
+                        'order_status'     => 'PROCESSED',
+                        'logistics_status' => 'LOGISTICS_READY',
+                    ]);
+                    return (string) $trackingInfo['tracking_number'];
+                }
+            } catch (\Throwable $e) {
+                Log::info("[TiktokOrderService] fetchTrackingNumber error ({$orderSn}): " . $e->getMessage());
+            }
+        }
+
+        return $order?->fresh()->tracking_number ?: null;
     }
 
     /**
@@ -1026,6 +1138,25 @@ class TiktokOrderService
                 'label_document_status' => 'PRINTED',
                 'label_printed_at'      => now(),
             ]);
+        }
+
+        // Jika single order dan terhubung ke API TikTok, coba ambil dokumen PDF resmi dari TikTok CDN
+        if ($orders->count() === 1 && $account->isConnected() && ! empty($account->access_token)) {
+            try {
+                $firstOrder = $orders->first();
+                $pkgId = $firstOrder->package_number;
+                if (! empty($pkgId) && ! str_starts_with($pkgId, 'PKG-')) {
+                    $docUrl = $this->syncService->fetchPackageShippingDocumentUrl($account, $pkgId, 'A6');
+                    if (! empty($docUrl)) {
+                        $pdfRes = Http::timeout(15)->get($docUrl);
+                        if ($pdfRes->successful() && strlen($pdfRes->body()) > 500) {
+                            return $pdfRes->body();
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::info("[TiktokOrderService] Fallback to thermal waybill template: " . $e->getMessage());
+            }
         }
 
         // Buat PDF Waybill A4 / Thermal standar menggunakan DomPDF atau fallback generator

@@ -171,6 +171,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/tiktok-orders/{orderSn}/tracking-info', [\App\Http\Controllers\TiktokOrderController::class, 'trackingInfo'])->name('tiktok-orders.tracking-info');
     Route::get('/tiktok-orders/{orderSn}/shipping-parameters', [\App\Http\Controllers\TiktokOrderController::class, 'shippingParameters'])->name('tiktok-orders.shipping-params');
     Route::post('/tiktok-orders/{orderSn}/ship', [\App\Http\Controllers\TiktokOrderController::class, 'ship'])->name('tiktok-orders.ship');
+    Route::post('/tiktok-orders/{orderSn}/poll-tracking', [\App\Http\Controllers\TiktokOrderController::class, 'pollTrackingNumber'])->name('tiktok-orders.poll-tracking');
     Route::get('/tiktok-orders/{orderSn}/waybill-a4', [\App\Http\Controllers\TiktokOrderController::class, 'printWaybill'])->name('tiktok-orders.waybill');
     Route::post('/tiktok-orders/{orderSn}/handle-cancel', [\App\Http\Controllers\TiktokOrderController::class, 'handleCancellation'])->name('tiktok-orders.handle-cancel');
 

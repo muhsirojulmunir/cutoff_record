@@ -5,6 +5,9 @@
 
     RewriteEngine On
 
+    # Block access to hidden and sensitive files (.env, .git, .sql, .log, .bak, etc.)
+    RewriteRule (^|/)\.(?!well-known) - [F]
+
     # Prevent LiteSpeed Web Server connection timeout on long API sync requests
     RewriteRule .* - [E=noconntimeout:1,E=noabort:1]
 
@@ -26,3 +29,14 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 </IfModule>
+
+# Hardening: Block direct access to sensitive extensions unconditionally
+<FilesMatch "(\.(env.*|sql|log|bak|backup|sh|ini)|^\.env|^\.git)">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+</FilesMatch>

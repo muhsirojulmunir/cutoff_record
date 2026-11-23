@@ -261,12 +261,24 @@ class TiktokOrderController extends Controller
             'order_sns'        => ['required', 'array', 'min:1'],
             'order_sns.*'      => ['required', 'string'],
             'preferred_method' => ['nullable', 'string', 'in:auto,pickup,dropoff'],
+            'address_id'       => ['nullable'],
+            'pickup_time_id'   => ['nullable', 'string'],
+            'branch_id'        => ['nullable', 'string'],
+            'sender_real_name' => ['nullable', 'string', 'max:120'],
         ]);
+
+        $sharedOptions = array_filter([
+            'address_id'       => $validated['address_id'] ?? null,
+            'pickup_time_id'   => $validated['pickup_time_id'] ?? null,
+            'branch_id'        => $validated['branch_id'] ?? null,
+            'sender_real_name' => $validated['sender_real_name'] ?? null,
+        ], static fn ($v) => $v !== null);
 
         $result = $this->orderService->massShip(
             $account,
             $validated['order_sns'],
-            $validated['preferred_method'] ?? 'auto'
+            $validated['preferred_method'] ?? 'auto',
+            $sharedOptions
         );
 
         if (ob_get_length()) {
@@ -274,6 +286,41 @@ class TiktokOrderController extends Controller
         }
 
         return response()->json($result, 200);
+    }
+
+    public function pollTrackingNumber(Request $request, string $orderSn): JsonResponse
+    {
+        $this->authorizeAccess($request);
+        $account = $this->resolveTiktokAccount();
+
+        $order = TiktokOrder::where('tiktok_account_id', $account->id)
+            ->where('order_sn', $orderSn)
+            ->first();
+
+        $trackingNumber = null;
+        if ($order && ! empty($order->tracking_number)) {
+            $trackingNumber = $order->tracking_number;
+        } else {
+            $trackingNumber = $this->orderService->fetchTrackingNumber($account, $orderSn, $order?->package_number);
+            if (empty($trackingNumber)) {
+                $refreshed = $this->orderService->refreshSingleOrder($account, $orderSn);
+                $trackingNumber = $refreshed->tracking_number ?: null;
+                $order = $refreshed;
+            } else {
+                $order = $order?->fresh();
+            }
+        }
+
+        if (ob_get_length()) {
+            ob_clean();
+        }
+
+        return response()->json([
+            'status'          => 'success',
+            'has_tracking'    => ! empty($trackingNumber),
+            'tracking_number' => $trackingNumber,
+            'order'           => $order?->fresh()->makeHidden(['raw_payload']),
+        ], 200);
     }
 
     public function shippingParameters(string $orderSn): JsonResponse

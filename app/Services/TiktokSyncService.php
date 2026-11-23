@@ -842,6 +842,220 @@ class TiktokSyncService
     }
 
     /**
+     * Atur penjemputan kurir (PICKUP) atau antar ke counter (DROP_OFF) via TikTok Shop Open API.
+     * Endpoint: POST /fulfillment/202309/packages/{package_id}/ship
+     */
+    public function shipPackage(
+        TiktokAccount $account,
+        string $packageId,
+        string $handoverMethod = 'PICKUP',
+        ?array $pickupSlot = null
+    ): array {
+        try {
+            $this->ensureValidAccessToken($account);
+
+            if (empty($account->shop_cipher)) {
+                $this->fetchAuthorizedShops($account);
+            }
+
+            $shopCipher = $account->shop_cipher;
+            if (empty($shopCipher)) {
+                return ['success' => false, 'code' => -1, 'message' => 'Shop cipher TikTok tidak ditemukan.'];
+            }
+
+            $path = "/fulfillment/202309/packages/{$packageId}/ship";
+            $timestamp = time();
+
+            $queryParams = [
+                'app_key'     => $account->app_key,
+                'timestamp'   => (string) $timestamp,
+                'shop_cipher' => $shopCipher,
+            ];
+
+            $normalizedMethod = (strtoupper($handoverMethod) === 'DROPOFF' || strtoupper($handoverMethod) === 'DROP_OFF')
+                ? 'DROP_OFF'
+                : 'PICKUP';
+
+            $bodyData = [
+                'handover_method' => $normalizedMethod,
+            ];
+
+            if ($normalizedMethod === 'PICKUP' && ! empty($pickupSlot)) {
+                $bodyData['pickup_slot'] = $pickupSlot;
+            }
+
+            $bodyJson = json_encode($bodyData, JSON_UNESCAPED_SLASHES);
+            $sign = $this->generateSignature($path, $queryParams, $account->app_secret, $bodyJson);
+            $queryParams['sign'] = $sign;
+
+            $url = $this->openHost . $path . '?' . http_build_query($queryParams);
+
+            $response = Http::timeout(20)
+                ->withHeaders([
+                    'x-tts-access-token' => $account->access_token,
+                    'Content-Type'       => 'application/json',
+                ])
+                ->withBody($bodyJson, 'application/json')
+                ->post($url);
+
+            if (! $response->successful()) {
+                Log::warning("TiktokSyncService shipPackage HTTP {$response->status()} ({$packageId}): " . $response->body());
+                $errJson = $response->json();
+                return [
+                    'success' => false,
+                    'code'    => $errJson['code'] ?? $response->status(),
+                    'message' => $errJson['message'] ?? 'Gagal menghubungi API fulfillment TikTok Shop.',
+                ];
+            }
+
+            $json = $response->json();
+            $code = $json['code'] ?? -1;
+
+            if ($code !== 0) {
+                Log::info("TiktokSyncService shipPackage API error ({$packageId}): " . ($json['message'] ?? 'Error'));
+                return [
+                    'success' => false,
+                    'code'    => $code,
+                    'message' => $json['message'] ?? 'Gagal mengatur pengiriman di TikTok Shop.',
+                    'data'    => $json['data'] ?? null,
+                ];
+            }
+
+            return [
+                'success' => true,
+                'code'    => 0,
+                'message' => 'Pengiriman berhasil diatur di TikTok Shop.',
+                'data'    => $json['data'] ?? null,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning("TiktokSyncService shipPackage exception ({$packageId}): " . $e->getMessage());
+            return [
+                'success' => false,
+                'code'    => -99,
+                'message' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Ambil rincian paket dan nomor resi dari TikTok Shop Open API.
+     * Endpoint: GET /fulfillment/202309/packages/{package_id}
+     */
+    public function getPackageDetail(TiktokAccount $account, string $packageId): ?array
+    {
+        try {
+            $this->ensureValidAccessToken($account);
+
+            if (empty($account->shop_cipher)) {
+                $this->fetchAuthorizedShops($account);
+            }
+
+            $shopCipher = $account->shop_cipher;
+            if (empty($shopCipher)) {
+                return null;
+            }
+
+            $path = "/fulfillment/202309/packages/{$packageId}";
+            $timestamp = time();
+
+            $queryParams = [
+                'app_key'     => $account->app_key,
+                'timestamp'   => (string) $timestamp,
+                'shop_cipher' => $shopCipher,
+            ];
+
+            $sign = $this->generateSignature($path, $queryParams, $account->app_secret, '');
+            $queryParams['sign'] = $sign;
+
+            $url = $this->openHost . $path . '?' . http_build_query($queryParams);
+
+            $response = Http::timeout(15)
+                ->withHeaders([
+                    'x-tts-access-token' => $account->access_token,
+                    'Content-Type'       => 'application/json',
+                ])
+                ->get($url);
+
+            if (! $response->successful()) {
+                Log::info("TiktokSyncService getPackageDetail HTTP {$response->status()} ({$packageId}): " . $response->body());
+                return null;
+            }
+
+            $json = $response->json();
+            if (($json['code'] ?? -1) !== 0) {
+                Log::info("TiktokSyncService getPackageDetail API notice ({$packageId}): " . ($json['message'] ?? 'Error'));
+                return null;
+            }
+
+            return $json['data'] ?? null;
+        } catch (\Throwable $e) {
+            Log::warning("TiktokSyncService getPackageDetail error ({$packageId}): " . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Ambil tautan dokumen label pengiriman (Waybill / Resi) resmi TikTok Shop.
+     * Endpoint: GET /fulfillment/202309/packages/{package_id}/shipping_documents
+     */
+    public function fetchPackageShippingDocumentUrl(
+        TiktokAccount $account,
+        string $packageId,
+        string $docSize = 'A6'
+    ): ?string {
+        try {
+            $this->ensureValidAccessToken($account);
+
+            if (empty($account->shop_cipher)) {
+                $this->fetchAuthorizedShops($account);
+            }
+
+            $shopCipher = $account->shop_cipher;
+            if (empty($shopCipher)) {
+                return null;
+            }
+
+            $path = "/fulfillment/202309/packages/{$packageId}/shipping_documents";
+            $timestamp = time();
+
+            $queryParams = [
+                'app_key'         => $account->app_key,
+                'timestamp'       => (string) $timestamp,
+                'shop_cipher'     => $shopCipher,
+                'document_type'   => 'SHIPPING_LABEL',
+                'document_size'   => $docSize,
+                'document_format' => 'PDF',
+            ];
+
+            $sign = $this->generateSignature($path, $queryParams, $account->app_secret, '');
+            $queryParams['sign'] = $sign;
+
+            $url = $this->openHost . $path . '?' . http_build_query($queryParams);
+
+            $response = Http::timeout(15)
+                ->withHeaders([
+                    'x-tts-access-token' => $account->access_token,
+                    'Content-Type'       => 'application/json',
+                ])
+                ->get($url);
+
+            if (! $response->successful()) {
+                return null;
+            }
+
+            $json = $response->json();
+            if (($json['code'] ?? -1) !== 0) {
+                return null;
+            }
+
+            return $json['data']['doc_url'] ?? null;
+        } catch (\Throwable $e) {
+            Log::warning("TiktokSyncService fetchPackageShippingDocumentUrl error ({$packageId}): " . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Synchronize TikTok Shop returns into cut_off_returns and update matching cut_off_orders.
      */
     public function syncReturnsToCutOff(TiktokAccount $account, ?int $timeFrom = null, ?int $timeTo = null): array
