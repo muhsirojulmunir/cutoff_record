@@ -644,7 +644,7 @@ export default function BulkMapItemCodeModal({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                    2. Masukkan Kode Barang Master & Smart Size Matcher
+                    2. Masukkan Kode Barang Master Yang Benar.
                   </h4>
                   <p className="text-[11px] text-slate-500 mt-0.5">
                     Ketik kode dasar / salah satu varian (misal: <strong>01279139</strong> atau <strong>012791</strong>). Sistem otomatis menyesuaikan 2 digit terakhir kode barang dan <strong>otomatis memperbarui akhiran SKU Marketplace</strong>.
@@ -725,20 +725,6 @@ export default function BulkMapItemCodeModal({
                   ℹ Kode dasar &quot;{baseItemCode.trim().toUpperCase()}&quot; akan digunakan sebagai pola kode variasi. Anda tetap dapat mengedit kode per baris di tabel atas jika diperlukan.
                 </p>
               ) : null}
-
-              {/* Banner Panduan Fleksibilitas & SKU Otomatis */}
-              <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-xs text-blue-900 flex items-start gap-2">
-                <span className="text-blue-600 text-sm">💡</span>
-                <div className="text-[11px] space-y-1">
-                  <p className="font-bold text-blue-950">Aturan Otomatis SKU Marketplace & Kode Barang:</p>
-                  <p>
-                    • <strong>SKU Marketplace Otomatis Mengikuti:</strong> Saat Anda memasukkan kode barang (misal: <code>01279139</code>), bagian belakang SKU (misal: <code>RECORD-BLANCO-H-39_01246239</code>) akan otomatis diperbarui menjadi <code>RECORD-BLANCO-H-39_01279139</code>.
-                  </p>
-                  <p>
-                    • <strong>Bisa Ubah Satuan:</strong> Jika Anda hanya ingin mengubah ukuran 41 saja, cukup klik <strong>&quot;Hanya Ubah Ini&quot;</strong> pada ukuran 41. Ukuran lain dijamin tidak akan tersentuh.
-                  </p>
-                </div>
-              </div>
             </div>
 
             {/* Bottom Actions for Step 1 */}
