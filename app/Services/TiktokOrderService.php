@@ -647,9 +647,10 @@ class TiktokOrderService
     public function getShippingParameters(TiktokAccount $account, string $orderSn): array
     {
         $this->ensureSchema();
-        $order = TiktokOrder::where('tiktok_account_id', $account->id)
-            ->where('order_sn', $orderSn)
-            ->firstOrFail();
+        $order = TiktokOrder::where('order_sn', $orderSn)->first()
+            ?? TiktokOrder::where('tiktok_account_id', $account->id)
+                ->where('order_sn', $orderSn)
+                ->firstOrFail();
 
         $today = now()->format('Y-m-d');
         $tomorrow = now()->addDay()->format('Y-m-d');
@@ -746,9 +747,23 @@ class TiktokOrderService
     public function ship(TiktokAccount $account, string $orderSn, array $payload): array
     {
         $this->ensureSchema();
-        $order = TiktokOrder::where('tiktok_account_id', $account->id)
-            ->where('order_sn', $orderSn)
-            ->firstOrFail();
+        $order = TiktokOrder::where('order_sn', $orderSn)->first()
+            ?? TiktokOrder::where('tiktok_account_id', $account->id)
+                ->where('order_sn', $orderSn)
+                ->firstOrFail();
+
+        if ($order->tiktok_account_id) {
+            $orderAcc = TiktokAccount::find($order->tiktok_account_id);
+            if ($orderAcc && (! empty($orderAcc->access_token) || $orderAcc->isConnected())) {
+                $account = $orderAcc;
+            }
+        }
+        if (empty($account->access_token)) {
+            $tokenAcc = TiktokAccount::whereNotNull('access_token')->where('access_token', '!=', '')->first();
+            if ($tokenAcc) {
+                $account = $tokenAcc;
+            }
+        }
 
         $rawMethod = $payload['method'] ?? $payload['fulfillment_method'] ?? 'pickup';
         $method = $rawMethod === 'dropoff' ? 'dropoff' : ($rawMethod === 'non_integrated' ? 'non_integrated' : 'pickup');

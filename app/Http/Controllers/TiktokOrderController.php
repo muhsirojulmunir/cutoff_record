@@ -291,11 +291,12 @@ class TiktokOrderController extends Controller
     public function pollTrackingNumber(Request $request, string $orderSn): JsonResponse
     {
         $this->authorizeAccess($request);
-        $account = $this->resolveTiktokAccount();
+        $account = $this->resolveTiktokAccount($orderSn);
 
-        $order = TiktokOrder::where('tiktok_account_id', $account->id)
-            ->where('order_sn', $orderSn)
-            ->first();
+        $order = TiktokOrder::where('order_sn', $orderSn)->first()
+            ?? TiktokOrder::where('tiktok_account_id', $account->id)
+                ->where('order_sn', $orderSn)
+                ->first();
 
         $trackingNumber = null;
         if ($order && ! empty($order->tracking_number)) {
