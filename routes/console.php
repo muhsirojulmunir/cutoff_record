@@ -43,4 +43,12 @@ Schedule::call(function () {
     app(\App\Services\WaybillArchiveService::class)->pruneExpired(500);
 })->name('prune-expired-waybills')->dailyAt('01:00');
 
+// Auto-sync views video laporan konten harian (TikTok, Instagram, Shopee Video) setiap jam 12 malam (00:00 WIB)
+Schedule::command('content:sync-views --days=30')
+    ->dailyAt('00:00')
+    ->timezone('Asia/Jakarta')
+    ->withoutOverlapping(20)
+    ->runInBackground();
+
+
 

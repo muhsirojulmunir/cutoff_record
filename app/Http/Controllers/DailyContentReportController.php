@@ -20,6 +20,7 @@ class DailyContentReportController extends Controller
     public function index(Request $request): Response
     {
         Role::ensureKreatifRoleExists();
+        DailyContentReport::ensureViewsColumnsExist();
 
         /** @var User $user */
         $user = Auth::user();
@@ -41,9 +42,12 @@ class DailyContentReportController extends Controller
         $todayProduk  = $todayReports->where('content_type', 'produk')->count();
         $todaySemua   = $todayReports->where('content_type', 'semua')->count();
 
-        $thisMonthTotal = DailyContentReport::whereYear('reported_at', $now->year)
-            ->whereMonth('reported_at', $now->month)
-            ->count();
+        $thisMonthReports = DailyContentReport::whereYear('reported_at', $now->year)
+            ->whereMonth('reported_at', $now->month);
+        $thisMonthTotal = (clone $thisMonthReports)->count();
+        $thisMonthViews = (clone $thisMonthReports)->sum('total_views');
+
+        $lastSyncedAt = DailyContentReport::whereNotNull('views_synced_at')->max('views_synced_at');
 
         $myTodayReports   = $todayReports->where('user_id', $user->id);
         $myTodayCount     = $myTodayReports->count();
@@ -130,6 +134,8 @@ class DailyContentReportController extends Controller
                 'today_produk'       => $todayProduk,
                 'today_semua'        => $todaySemua,
                 'this_month_total'   => $thisMonthTotal,
+                'this_month_views'   => (int) $thisMonthViews,
+                'last_synced_at'     => $lastSyncedAt ? Carbon::parse($lastSyncedAt)->isoFormat('D MMMM Y, HH:mm') . ' WIB' : null,
                 'my_today_count'     => $myTodayCount,
                 'my_today_has_ig'    => $myTodayHasIg,
                 'my_today_has_tiktok'=> $myTodayHasTiktok,
@@ -379,5 +385,29 @@ class DailyContentReportController extends Controller
         $report->delete();
 
         return back()->with('success', "Laporan konten '{$title}' berhasil dihapus.");
+    }
+
+    /**
+     * Trigger sinkronisasi views secara manual (khusus Super Admin / Direktur / PIC).
+     */
+    public function syncViews(\App\Services\ContentMetricsService $service): RedirectResponse
+    {
+        /** @var User $user */
+        $user = Auth::user();
+
+        $canSync = $user->isSuperAdmin() ||
+                   in_array($user->role?->name, ['Super Admin', 'Direktur', 'PIC']) ||
+                   $user->hasPermission('content_reports.review');
+
+        if (!$canSync) {
+            abort(403, 'Hanya manajemen/supervisor yang dapat memicu sinkronisasi manual.');
+        }
+
+        $result = $service->syncRecentReports(30);
+
+        return back()->with(
+            'success',
+            "Sinkronisasi tayangan selesai! {$result['success']} laporan konten berhasil diperbarui datanya."
+        );
     }
 }

@@ -19,6 +19,12 @@ class DailyContentReport extends Model
         'tiktok_link',
         'shopee_link',
         'notes',
+        'ig_views',
+        'tiktok_views',
+        'shopee_views',
+        'total_views',
+        'views_synced_at',
+        'views_sync_status',
         'status',
         'reviewed_by',
         'reviewed_at',
@@ -27,8 +33,13 @@ class DailyContentReport extends Model
     ];
 
     protected $casts = [
-        'reported_at' => 'datetime',
-        'reviewed_at' => 'datetime',
+        'reported_at'       => 'datetime',
+        'reviewed_at'       => 'datetime',
+        'views_synced_at'   => 'datetime',
+        'ig_views'          => 'integer',
+        'tiktok_views'      => 'integer',
+        'shopee_views'      => 'integer',
+        'total_views'       => 'integer',
     ];
 
     /**
@@ -60,7 +71,41 @@ class DailyContentReport extends Model
      */
     public function scopeThisMonth($query)
     {
-        return $query->whereMonth('reported_at', now()->month)
-                     ->whereYear('reported_at', now()->year);
+        return $query->whereYear('reported_at', now()->year)
+            ->whereMonth('reported_at', now()->month);
+    }
+
+    /**
+     * Pastikan kolom metrik tayangan (views) tersedia di database.
+     */
+    public static function ensureViewsColumnsExist(): void
+    {
+        try {
+            if (\Illuminate\Support\Facades\Schema::hasTable('daily_content_reports') &&
+                !\Illuminate\Support\Facades\Schema::hasColumn('daily_content_reports', 'total_views')) {
+                \Illuminate\Support\Facades\Schema::table('daily_content_reports', function (\Illuminate\Database\Schema\Blueprint $table) {
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('daily_content_reports', 'ig_views')) {
+                        $table->unsignedBigInteger('ig_views')->default(0)->after('notes');
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('daily_content_reports', 'tiktok_views')) {
+                        $table->unsignedBigInteger('tiktok_views')->default(0)->after('ig_views');
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('daily_content_reports', 'shopee_views')) {
+                        $table->unsignedBigInteger('shopee_views')->default(0)->after('tiktok_views');
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('daily_content_reports', 'total_views')) {
+                        $table->unsignedBigInteger('total_views')->default(0)->after('shopee_views');
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('daily_content_reports', 'views_synced_at')) {
+                        $table->timestamp('views_synced_at')->nullable()->after('total_views');
+                    }
+                    if (!\Illuminate\Support\Facades\Schema::hasColumn('daily_content_reports', 'views_sync_status')) {
+                        $table->string('views_sync_status', 30)->default('pending')->after('views_synced_at');
+                    }
+                });
+            }
+        } catch (\Throwable) {
+            // Silently handle if table not ready or DB lock
+        }
     }
 }

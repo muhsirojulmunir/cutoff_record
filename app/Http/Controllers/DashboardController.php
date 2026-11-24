@@ -35,6 +35,9 @@ class DashboardController extends Controller
             $myMonthReports = $monthReports->where('user_id', $user->id);
 
             // Metrik Statistik Konten
+            $topReport = $monthReports->sortByDesc('total_views')->first();
+            $lastSync = $monthReports->whereNotNull('views_synced_at')->max('views_synced_at');
+
             $kreatifStats = [
                 'today_total'        => $todayReports->count(),
                 'my_today_total'     => $myTodayReports->count(),
@@ -43,6 +46,11 @@ class DashboardController extends Controller
                 'today_shopee'       => $todayReports->filter(fn($r) => !empty($r->shopee_link))->count(),
                 'month_total'        => $monthReports->count(),
                 'my_month_total'     => $myMonthReports->count(),
+                'month_views'        => (int) $monthReports->sum('total_views'),
+                'my_month_views'     => (int) $myMonthReports->sum('total_views'),
+                'top_video_title'    => $topReport?->title ?? 'Belum ada data',
+                'top_video_views'    => (int) ($topReport?->total_views ?? 0),
+                'last_synced_at'     => $lastSync ? Carbon::parse($lastSync)->isoFormat('D MMM, HH:mm') . ' WIB' : 'Setiap 00:00 WIB',
                 'my_has_ig'          => $myTodayReports->contains(fn($r) => !empty($r->ig_link)),
                 'my_has_tiktok'      => $myTodayReports->contains(fn($r) => !empty($r->tiktok_link)),
                 'my_has_shopee'      => $myTodayReports->contains(fn($r) => !empty($r->shopee_link)),
@@ -80,6 +88,11 @@ class DashboardController extends Controller
                     'ig_link'     => $r->ig_link,
                     'tiktok_link' => $r->tiktok_link,
                     'shopee_link' => $r->shopee_link,
+                    'total_views' => (int) ($r->total_views ?? 0),
+                    'ig_views'    => (int) ($r->ig_views ?? 0),
+                    'tiktok_views'=> (int) ($r->tiktok_views ?? 0),
+                    'shopee_views'=> (int) ($r->shopee_views ?? 0),
+                    'views_synced_at' => $r->views_synced_at ? Carbon::parse($r->views_synced_at)->isoFormat('D MMM, HH:mm') : null,
                     'status'      => $r->status,
                     'feedback'    => $r->feedback,
                 ]);

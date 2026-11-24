@@ -23,6 +23,12 @@ export interface ContentReportItem {
   tiktok_link: string | null;
   shopee_link: string | null;
   notes: string | null;
+  total_views?: number;
+  ig_views?: number;
+  tiktok_views?: number;
+  shopee_views?: number;
+  views_synced_at?: string | null;
+  views_sync_status?: string;
   status: 'submitted' | 'reviewed';
   reviewed_by: number | null;
   reviewed_at: string | null;
@@ -41,6 +47,8 @@ export interface Stats {
   today_produk?: number;
   today_semua?: number;
   this_month_total: number;
+  this_month_views?: number;
+  last_synced_at?: string | null;
   my_today_count: number;
   my_today_has_ig?: boolean;
   my_today_has_tiktok?: boolean;
@@ -283,6 +291,24 @@ export default function ContentReportsIndex({
     });
   };
 
+  const [isSyncingViews, setIsSyncingViews] = useState(false);
+
+  const handleSyncViewsNow = () => {
+    if (isSyncingViews) return;
+    setIsSyncingViews(true);
+    router.post('/content-reports/sync-views', {}, {
+      preserveScroll: true,
+      onFinish: () => setIsSyncingViews(false),
+    });
+  };
+
+  const formatViewsCount = (num?: number) => {
+    if (!num || num <= 0) return '0';
+    if (num >= 1_000_000) return (num / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (num >= 1_000) return (num / 1_000).toFixed(1).replace(/\.0$/, '') + 'k';
+    return num.toLocaleString('id-ID');
+  };
+
   const handleDeleteReport = (id: number, title: string) => {
     if (confirm(`Apakah Anda yakin ingin menghapus laporan "${title}"?`)) {
       router.delete(`/content-reports/${id}`);
@@ -332,12 +358,27 @@ export default function ContentReportsIndex({
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 self-stretch sm:self-auto">
+          <div className="flex flex-wrap items-center gap-2.5 self-stretch sm:self-auto">
+            {capabilities.can_review && (
+              <button
+                type="button"
+                disabled={isSyncingViews}
+                onClick={handleSyncViewsNow}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 px-3.5 py-2.5 text-xs font-semibold text-white active:scale-98 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                title="Tarik views video sekarang (Sistem juga otomatis sinkron tiap jam 12 malam)"
+              >
+                <svg className={`w-3.5 h-3.5 ${isSyncingViews ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+                <span>{isSyncingViews ? 'Menyinkronkan...' : '🔄 Sync Views'}</span>
+              </button>
+            )}
+
             {capabilities.can_create && (
               <button
                 type="button"
                 onClick={handleOpenCreateModal}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-[#0B132B] hover:bg-blue-50 active:scale-98 shadow-sm transition-all cursor-pointer"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-[#0B132B] hover:bg-blue-50 active:scale-98 shadow-sm transition-all cursor-pointer"
               >
                 <svg className="w-4 h-4 text-[#0B132B]" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -363,13 +404,11 @@ export default function ContentReportsIndex({
             </div>
             <div className="mt-2 text-xs flex items-center justify-between">
               <span className="text-slate-500 text-[11px]">
-                Total Bulan Ini: <strong className="text-slate-800">{stats.this_month_total}</strong>
+                Bulan Ini: <strong className="text-slate-800">{stats.this_month_total}</strong> ({formatViewsCount(stats.this_month_views)} views)
               </span>
-              {stats.today_total > 0 && (
-                <span className="text-emerald-700 font-semibold text-[11px] flex items-center gap-1">
-                  ✓ Aktif
-                </span>
-              )}
+              <span className="text-emerald-700 font-semibold text-[10px] flex items-center gap-1">
+                ⏱️ 00:00 WIB
+              </span>
             </div>
           </div>
 
@@ -638,10 +677,18 @@ export default function ContentReportsIndex({
                   <h3 className="font-extrabold text-sm text-slate-900 leading-snug">
                     {item.title}
                   </h3>
-                  <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-1">
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 mt-1">
                     <span className="font-semibold text-slate-700">{item.user?.name || 'Kreatif'}</span>
                     <span>•</span>
                     <span>{formatReportTime(item.reported_at)}</span>
+                    {item.total_views && item.total_views > 0 ? (
+                      <>
+                        <span>•</span>
+                        <span className="font-extrabold text-[#0B132B] bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded">
+                          {item.total_views.toLocaleString('id-ID')} views
+                        </span>
+                      </>
+                    ) : null}
                   </div>
                 </div>
 
@@ -787,18 +834,19 @@ export default function ContentReportsIndex({
             <table className="w-full text-left text-xs border-collapse">
               <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="py-3 px-4 min-w-[150px]">Waktu Setor</th>
-                  <th className="py-3 px-4 min-w-[140px]">Staf Kreatif</th>
-                  <th className="py-3 px-4 min-w-[200px]">Kategori & Judul Konten</th>
-                  <th className="py-3 px-4 min-w-[220px]">Link Channel Video</th>
-                  <th className="py-3 px-4 min-w-[150px]">Status & Review</th>
+                  <th className="py-3 px-4 min-w-[140px]">Waktu Setor</th>
+                  <th className="py-3 px-4 min-w-[130px]">Staf Kreatif</th>
+                  <th className="py-3 px-4 min-w-[200px]">Topik & Judul Konten</th>
+                  <th className="py-3 px-4 min-w-[200px]">Link Channel Video</th>
+                  <th className="py-3 px-4 min-w-[150px]">Tayangan (Views)</th>
+                  <th className="py-3 px-4 min-w-[140px]">Status & Review</th>
                   <th className="py-3 px-4 text-center w-28">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {reports.data.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-xs text-slate-400">
+                    <td colSpan={7} className="py-12 text-center text-xs text-slate-400">
                       Belum ada laporan konten yang sesuai dengan filter.
                     </td>
                   </tr>
@@ -903,6 +951,46 @@ export default function ContentReportsIndex({
                             <span className="text-[10px] text-slate-300 font-mono">Shopee: -</span>
                           )}
                         </div>
+                      </td>
+
+                      {/* Tayangan (Views) */}
+                      <td className="py-3 px-4">
+                        {item.total_views && item.total_views > 0 ? (
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-extrabold text-xs text-slate-900">
+                                {item.total_views.toLocaleString('id-ID')} views
+                              </span>
+                              {item.total_views >= 10000 && (
+                                <span className="inline-flex items-center rounded-md bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.2 text-[9px] font-bold">
+                                  🔥 Viral
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1 mt-1 text-[10px] text-slate-500">
+                              {item.tiktok_views ? (
+                                <span className="inline-flex items-center gap-0.5 bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-medium">
+                                  🎵 {formatViewsCount(item.tiktok_views)}
+                                </span>
+                              ) : null}
+                              {item.ig_views ? (
+                                <span className="inline-flex items-center gap-0.5 bg-pink-50 text-pink-700 px-1.5 py-0.2 rounded font-medium">
+                                  📸 {formatViewsCount(item.ig_views)}
+                                </span>
+                              ) : null}
+                              {item.shopee_views ? (
+                                <span className="inline-flex items-center gap-0.5 bg-blue-50 text-blue-800 px-1.5 py-0.2 rounded font-medium">
+                                  🛒 {formatViewsCount(item.shopee_views)}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-slate-400 text-[11px] flex items-center gap-1">
+                            <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
+                            <span>Auto 00:00 WIB</span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Status & Review */}
