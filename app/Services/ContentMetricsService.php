@@ -100,10 +100,39 @@ class ContentMetricsService
      */
     protected function fetchTiktokViews(string $url): ?int
     {
-        try {
-            $cleanUrl = trim($url);
+        $cleanUrl = trim($url);
 
-            // Ikuti redirect jika link pendek vt.tiktok.com
+        // 1. Ekstrak langsung menggunakan TikWM API (sangat cepat, akurat & tembus bot protection TikTok)
+        try {
+            $apiUrl = 'https://www.tikwm.com/api/?url=' . urlencode($cleanUrl);
+            $res = Http::timeout(8)->get($apiUrl);
+            if ($res->successful()) {
+                $data = $res->json();
+                if (isset($data['code']) && (int)$data['code'] === 0 && isset($data['data']['play_count'])) {
+                    return (int) $data['data']['play_count'];
+                }
+            }
+        } catch (\Throwable $e) {}
+
+        // 2. Jika link pendek (vt.tiktok.com / vm.tiktok.com), ikuti redirect untuk mendapatkan URL video utuh
+        if (str_contains($cleanUrl, 'vt.tiktok.com') || str_contains($cleanUrl, 'vm.tiktok.com')) {
+            try {
+                $redir = Http::timeout(5)->withOptions(['allow_redirects' => false])->get($cleanUrl);
+                if ($redir->status() >= 300 && $redir->status() < 400 && $redir->header('Location')) {
+                    $canonicalUrl = $redir->header('Location');
+                    $res2 = Http::timeout(8)->get('https://www.tikwm.com/api/?url=' . urlencode($canonicalUrl));
+                    if ($res2->successful()) {
+                        $d = $res2->json();
+                        if (isset($d['code']) && (int)$d['code'] === 0 && isset($d['data']['play_count'])) {
+                            return (int) $d['data']['play_count'];
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        // 3. Fallback: Request halaman langsung jika memungkinkan
+        try {
             $response = Http::withHeaders([
                 'User-Agent'      => $this->userAgent,
                 'Accept-Language' => 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -113,7 +142,6 @@ class ContentMetricsService
             if ($response->successful()) {
                 $html = $response->body();
 
-                // Cari pola playCount di dalam script state TikTok
                 if (preg_match('/["&quot;]playCount["&quot;]:\s*(\d+)/i', $html, $matches)) {
                     return (int) $matches[1];
                 }
@@ -126,9 +154,7 @@ class ContentMetricsService
                     return (int) $matches[1];
                 }
             }
-        } catch (\Throwable $e) {
-            // Safe fallback
-        }
+        } catch (\Throwable $e) {}
 
         return null;
     }

@@ -426,4 +426,58 @@ class DailyContentReportController extends Controller
             "Sinkronisasi tayangan selesai! {$result['success']} laporan konten berhasil diperbarui datanya."
         );
     }
+
+    /**
+     * Sinkronkan tayangan untuk SATU laporan konten secara langsung.
+     */
+    public function syncSingleView(int $id, \App\Services\ContentMetricsService $service): RedirectResponse
+    {
+        DailyContentReport::ensureViewsColumnsExist();
+
+        $report = DailyContentReport::findOrFail($id);
+        $service->syncReportViews($report);
+        $report->refresh();
+
+        $formattedViews = number_format((int)$report->total_views, 0, ',', '.');
+
+        return back()->with(
+            'success',
+            "Tayangan video '{$report->title}' berhasil disinkronkan: {$formattedViews} views!"
+        );
+    }
+
+    /**
+     * Update tayangan secara langsung/manual jika platform membatasi akses publik.
+     */
+    public function updateViewsManual(Request $request, int $id): RedirectResponse
+    {
+        DailyContentReport::ensureViewsColumnsExist();
+
+        $report = DailyContentReport::findOrFail($id);
+
+        $validated = $request->validate([
+            'tiktok_views' => 'nullable|integer|min:0',
+            'ig_views'     => 'nullable|integer|min:0',
+            'shopee_views' => 'nullable|integer|min:0',
+        ]);
+
+        $tiktok = (int) ($validated['tiktok_views'] ?? ($report->tiktok_views ?? 0));
+        $ig     = (int) ($validated['ig_views'] ?? ($report->ig_views ?? 0));
+        $shopee = (int) ($validated['shopee_views'] ?? ($report->shopee_views ?? 0));
+        $total  = $tiktok + $ig + $shopee;
+
+        $report->update([
+            'tiktok_views'      => $tiktok,
+            'ig_views'          => $ig,
+            'shopee_views'      => $shopee,
+            'total_views'       => $total,
+            'views_synced_at'   => Carbon::now(),
+            'views_sync_status' => 'manual',
+        ]);
+
+        return back()->with(
+            'success',
+            "Performa tayangan '{$report->title}' berhasil diperbarui ({$total} views)!"
+        );
+    }
 }

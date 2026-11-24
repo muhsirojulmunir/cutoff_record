@@ -154,6 +154,46 @@ export default function ContentReportsIndex({
     feedback: '',
   });
 
+  const [syncingRowId, setSyncingRowId] = useState<number | null>(null);
+  const [viewsModalReport, setViewsModalReport] = useState<ContentReportItem | null>(null);
+
+  // Form Koreksi Views
+  const viewsForm = useForm({
+    tiktok_views: 0,
+    ig_views: 0,
+    shopee_views: 0,
+  });
+
+  const handleSyncSingleRow = (report: ContentReportItem) => {
+    if (syncingRowId !== null) return;
+    setSyncingRowId(report.id);
+    router.post(`/content-reports/${report.id}/sync-views`, {}, {
+      preserveScroll: true,
+      onFinish: () => setSyncingRowId(null),
+    });
+  };
+
+  const handleOpenViewsModal = (report: ContentReportItem) => {
+    setViewsModalReport(report);
+    viewsForm.setData({
+      tiktok_views: report.tiktok_views || 0,
+      ig_views: report.ig_views || 0,
+      shopee_views: report.shopee_views || 0,
+    });
+  };
+
+  const handleSubmitViewsModal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!viewsModalReport) return;
+    viewsForm.post(`/content-reports/${viewsModalReport.id}/update-views`, {
+      preserveScroll: true,
+      onSuccess: () => {
+        setViewsModalReport(null);
+        viewsForm.reset();
+      },
+    });
+  };
+
   const handleOpenCreateModal = () => {
     createForm.setData({
       title: '',
@@ -689,6 +729,25 @@ export default function ContentReportsIndex({
                         </span>
                       </>
                     ) : null}
+                    <button
+                      type="button"
+                      disabled={syncingRowId === item.id}
+                      onClick={() => handleSyncSingleRow(item)}
+                      className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded font-semibold cursor-pointer"
+                      title="Cek Views Sekarang"
+                    >
+                      {syncingRowId === item.id ? 'Cek...' : '🔄 Cek'}
+                    </button>
+                    {(capabilities.can_create || capabilities.can_review) && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenViewsModal(item)}
+                        className="text-[10px] text-slate-500 hover:text-blue-600 cursor-pointer p-0.5"
+                        title="Koreksi Views Manual"
+                      >
+                        ✏️
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -955,42 +1014,67 @@ export default function ContentReportsIndex({
 
                       {/* Tayangan (Views) */}
                       <td className="py-3 px-4">
-                        {item.total_views && item.total_views > 0 ? (
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-extrabold text-xs text-slate-900">
-                                {item.total_views.toLocaleString('id-ID')} views
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-extrabold text-xs text-slate-900">
+                              {item.total_views && item.total_views > 0
+                                ? `${item.total_views.toLocaleString('id-ID')} views`
+                                : '0 views'}
+                            </span>
+                            {item.total_views && item.total_views >= 10000 ? (
+                              <span className="inline-flex items-center rounded-md bg-amber-50 text-amber-700 border border-amber-200 px-1 py-0.2 text-[9px] font-bold">
+                                🔥 Viral
                               </span>
-                              {item.total_views >= 10000 && (
-                                <span className="inline-flex items-center rounded-md bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.2 text-[9px] font-bold">
-                                  🔥 Viral
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-1 mt-1 text-[10px] text-slate-500">
-                              {item.tiktok_views ? (
-                                <span className="inline-flex items-center gap-0.5 bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-medium">
-                                  🎵 {formatViewsCount(item.tiktok_views)}
-                                </span>
-                              ) : null}
-                              {item.ig_views ? (
-                                <span className="inline-flex items-center gap-0.5 bg-pink-50 text-pink-700 px-1.5 py-0.2 rounded font-medium">
-                                  📸 {formatViewsCount(item.ig_views)}
-                                </span>
-                              ) : null}
-                              {item.shopee_views ? (
-                                <span className="inline-flex items-center gap-0.5 bg-blue-50 text-blue-800 px-1.5 py-0.2 rounded font-medium">
-                                  🛒 {formatViewsCount(item.shopee_views)}
-                                </span>
-                              ) : null}
-                            </div>
+                            ) : null}
+
+                            {/* Tombol Tarik/Cek Views Langsung untuk baris ini */}
+                            <button
+                              type="button"
+                              disabled={syncingRowId === item.id}
+                              onClick={() => handleSyncSingleRow(item)}
+                              className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#0B132B] hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-1.5 py-0.5 rounded transition-colors cursor-pointer disabled:opacity-50"
+                              title="Tarik & Cek Views Link Ini Sekarang"
+                            >
+                              <svg className={`w-3 h-3 ${syncingRowId === item.id ? 'animate-spin text-blue-600' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                              </svg>
+                              <span>{syncingRowId === item.id ? 'Cek...' : 'Cek'}</span>
+                            </button>
+
+                            {/* Tombol Koreksi / Input Views Manual */}
+                            {(capabilities.can_create || capabilities.can_review) && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenViewsModal(item)}
+                                className="text-[10px] p-0.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors cursor-pointer"
+                                title="Koreksi / Isi Views Manual"
+                              >
+                                ✏️
+                              </button>
+                            )}
                           </div>
-                        ) : (
-                          <div className="text-slate-400 text-[11px] flex items-center gap-1">
-                            <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
-                            <span>Auto 00:00 WIB</span>
+
+                          <div className="flex flex-wrap items-center gap-1 text-[10px] text-slate-500">
+                            {item.tiktok_views ? (
+                              <span className="inline-flex items-center gap-0.5 bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-medium">
+                                🎵 {formatViewsCount(item.tiktok_views)}
+                              </span>
+                            ) : null}
+                            {item.ig_views ? (
+                              <span className="inline-flex items-center gap-0.5 bg-pink-50 text-pink-700 px-1.5 py-0.2 rounded font-medium">
+                                📸 {formatViewsCount(item.ig_views)}
+                              </span>
+                            ) : null}
+                            {item.shopee_views ? (
+                              <span className="inline-flex items-center gap-0.5 bg-blue-50 text-blue-800 px-1.5 py-0.2 rounded font-medium">
+                                🛒 {formatViewsCount(item.shopee_views)}
+                              </span>
+                            ) : null}
+                            {(!item.total_views || item.total_views === 0) && (
+                              <span className="text-slate-400 text-[10px] italic">Audit lanjut 00:00 WIB</span>
+                            )}
                           </div>
-                        )}
+                        </div>
                       </td>
 
                       {/* Status & Review */}
@@ -1616,6 +1700,106 @@ export default function ContentReportsIndex({
                 className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-2 text-xs font-bold text-white hover:bg-emerald-700 shadow-xs transition-colors cursor-pointer"
               >
                 {reviewForm.processing ? 'Menyimpan...' : '✓ Tandai Sudah Ditinjau'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* MODAL KOREKSI / UPDATE TAYANGAN (VIEWS) */}
+      <Modal
+        show={Boolean(viewsModalReport)}
+        onClose={() => setViewsModalReport(null)}
+        title="Perbarui / Koreksi Tayangan (Views)"
+        maxWidth="md"
+      >
+        {viewsModalReport && (
+          <form onSubmit={handleSubmitViewsModal} className="space-y-4">
+            <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 space-y-1 text-xs">
+              <div className="font-bold text-slate-900 text-sm">
+                {viewsModalReport.title}
+              </div>
+              <div className="text-slate-600">
+                Oleh: <strong>{viewsModalReport.user?.name}</strong> •{' '}
+                {formatReportTime(viewsModalReport.reported_at)}
+              </div>
+              <p className="text-[11px] text-slate-500 pt-1">
+                Gunakan tombol <strong>Cek</strong> di tabel untuk auto-sync instan. Jika platform membatasi akses publik atau ingin koreksi manual, masukkan angka di bawah:
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {viewsModalReport.tiktok_link && (
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    🎵 Tayangan TikTok:
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={viewsForm.data.tiktok_views}
+                    onChange={(e) => viewsForm.setData('tiktok_views', parseInt(e.target.value) || 0)}
+                    placeholder="0"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                  />
+                </div>
+              )}
+
+              {viewsModalReport.ig_link && (
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    📸 Tayangan Instagram:
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={viewsForm.data.ig_views}
+                    onChange={(e) => viewsForm.setData('ig_views', parseInt(e.target.value) || 0)}
+                    placeholder="0"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                  />
+                </div>
+              )}
+
+              {viewsModalReport.shopee_link && (
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    🛒 Tayangan Shopee Video:
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={viewsForm.data.shopee_views}
+                    onChange={(e) => viewsForm.setData('shopee_views', parseInt(e.target.value) || 0)}
+                    placeholder="0"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                  />
+                </div>
+              )}
+
+              <div className="rounded-xl bg-blue-50/70 border border-blue-200 p-2.5 text-xs flex items-center justify-between">
+                <span className="font-semibold text-slate-700">Estimasi Total Tayangan:</span>
+                <span className="font-extrabold text-[#0B132B] text-sm">
+                  {((viewsForm.data.tiktok_views || 0) + (viewsForm.data.ig_views || 0) + (viewsForm.data.shopee_views || 0)).toLocaleString('id-ID')} views
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+              <button
+                type="button"
+                disabled={viewsForm.processing}
+                onClick={() => setViewsModalReport(null)}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={viewsForm.processing}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#0B132B] px-5 py-2 text-xs font-bold text-white hover:bg-blue-900 shadow-xs transition-colors cursor-pointer"
+              >
+                {viewsForm.processing ? 'Menyimpan...' : 'Simpan Tayangan'}
               </button>
             </div>
           </form>

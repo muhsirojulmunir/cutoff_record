@@ -21,7 +21,13 @@ class DashboardController extends Controller
 
         $now = Carbon::now();
         $user = $request->user();
-        $isKreatif = $user && ($user->role?->name === 'Kreatif' || ($user->roles && $user->roles->contains('name', 'Kreatif')));
+        
+        $roleName = strtolower($user?->role?->name ?? '');
+        $isKreatif = $user && (
+            str_contains($roleName, 'kreatif') ||
+            str_contains($roleName, 'creator') ||
+            ($user->roles && $user->roles->contains(fn($r) => str_contains(strtolower($r->name ?? ''), 'kreatif') || str_contains(strtolower($r->name ?? ''), 'creator')))
+        );
 
         // Dashboard Eksklusif untuk Role Kreatif (Fokus 100% pada performa konten & social media)
         if ($isKreatif) {

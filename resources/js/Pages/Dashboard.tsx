@@ -192,7 +192,10 @@ export default function Dashboard({
   recentReports = [],
 }: DashboardProps) {
   const { auth } = usePage().props as any;
-  const isKreatif = isKreatifProp || auth?.user?.role?.name === 'Kreatif' || auth?.user?.roles?.includes('Kreatif');
+  const userRoleName = (auth?.user?.role?.name || '').toLowerCase();
+  const userRolesList = (auth?.user?.roles || []).map((r: any) => typeof r === 'string' ? r.toLowerCase() : (r.name || '').toLowerCase());
+  const isKreatifRole = userRoleName.includes('kreatif') || userRoleName.includes('creator') || userRolesList.some((r: string) => r.includes('kreatif') || r.includes('creator'));
+  const isKreatif = isKreatifProp || isKreatifRole;
 
   // VIEW KHUSUS ROLE KREATIF (Fokus 100% pada performa konten & social media)
   if (isKreatif) {

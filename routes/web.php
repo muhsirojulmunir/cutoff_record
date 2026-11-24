@@ -122,6 +122,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/content-reports', [\App\Http\Controllers\DailyContentReportController::class, 'index'])->name('content-reports.index');
     Route::post('/content-reports', [\App\Http\Controllers\DailyContentReportController::class, 'store'])->name('content-reports.store');
     Route::post('/content-reports/sync-views', [\App\Http\Controllers\DailyContentReportController::class, 'syncViews'])->name('content-reports.sync-views');
+    Route::post('/content-reports/{id}/sync-views', [\App\Http\Controllers\DailyContentReportController::class, 'syncSingleView'])->name('content-reports.sync-single-view');
+    Route::post('/content-reports/{id}/update-views', [\App\Http\Controllers\DailyContentReportController::class, 'updateViewsManual'])->name('content-reports.update-views-manual');
     Route::put('/content-reports/{id}', [\App\Http\Controllers\DailyContentReportController::class, 'update'])->name('content-reports.update');
     Route::post('/content-reports/{id}/review', [\App\Http\Controllers\DailyContentReportController::class, 'review'])->name('content-reports.review');
     Route::delete('/content-reports/{id}', [\App\Http\Controllers\DailyContentReportController::class, 'destroy'])->name('content-reports.destroy');
