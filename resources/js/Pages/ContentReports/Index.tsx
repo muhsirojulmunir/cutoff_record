@@ -1785,7 +1785,7 @@ export default function ContentReportsIndex({
                 {formatReportTime(viewsModalReport.reported_at)}
               </div>
               <p className="text-[11px] text-slate-500 pt-1">
-                Gunakan tombol <strong>Cek</strong> di tabel untuk auto-sync instan. Jika platform membatasi akses publik atau ingin koreksi manual, masukkan angka di bawah:
+                Tayangan <strong>TikTok</strong> otomatis ditarik via sistem saat upload & klik Cek. Untuk Instagram & Shopee Video, Anda dapat mengisi atau menyesuaikan angka tayangannya secara mandiri di bawah ini:
               </p>
             </div>
 
@@ -1796,8 +1796,8 @@ export default function ContentReportsIndex({
                     <label className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
                       <span>🎵</span> Tayangan TikTok:
                     </label>
-                    <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded font-medium">
-                      TikWM Auto-Sync
+                    <span className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.2 rounded font-semibold">
+                      ✓ Auto-Sync Aktif
                     </span>
                   </div>
                   <input
@@ -1808,6 +1808,9 @@ export default function ContentReportsIndex({
                     placeholder="0"
                     className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
                   />
+                  <span className="text-[10px] text-slate-500 mt-1 block">
+                    Otomatis ditarik saat link disetor atau tombol Cek ditekan.
+                  </span>
                 </div>
               )}
 
@@ -1818,7 +1821,7 @@ export default function ContentReportsIndex({
                       <span>📸</span> Tayangan Instagram (Reels):
                     </label>
                     <span className="text-[10px] bg-pink-100 text-pink-700 px-1.5 py-0.2 rounded font-medium">
-                      Meta Login Guard
+                      Input Manual
                     </span>
                   </div>
                   <input
@@ -1830,7 +1833,7 @@ export default function ContentReportsIndex({
                     className="w-full rounded-xl border border-pink-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-pink-600 focus:ring-1 focus:ring-pink-600"
                   />
                   <span className="text-[10px] text-pink-700/80 mt-1 block">
-                    Meta mewajibkan login akun untuk scraping. Silakan isi / update angka tayangan Reels di sini.
+                    Masukkan angka tayangan Reels dari aplikasi Instagram (Opsional).
                   </span>
                 </div>
               )}
@@ -1842,7 +1845,7 @@ export default function ContentReportsIndex({
                       <span>🛒</span> Tayangan Shopee Video:
                     </label>
                     <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded font-medium">
-                      App Deep-Link
+                      Input Manual
                     </span>
                   </div>
                   <input
@@ -1854,7 +1857,7 @@ export default function ContentReportsIndex({
                     className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-amber-600 focus:ring-1 focus:ring-amber-600"
                   />
                   <span className="text-[10px] text-amber-700/80 mt-1 block">
-                    Shopee Video membuka aplikasi ponsel. Masukkan angka views yang tertera pada aplikasi Shopee di sini.
+                    Masukkan angka views yang tertera pada aplikasi Shopee (Opsional).
                   </span>
                 </div>
               )}

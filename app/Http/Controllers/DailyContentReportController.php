@@ -445,10 +445,13 @@ class DailyContentReportController extends Controller
         $report->refresh();
 
         $formattedViews = number_format((int)$report->total_views, 0, ',', '.');
+        $tiktokMsg = ($report->tiktok_views && $report->tiktok_views > 0)
+            ? " (TikTok: " . number_format($report->tiktok_views, 0, ',', '.') . " views)"
+            : "";
 
         return back()->with(
             'success',
-            "Tayangan video '{$report->title}' berhasil disinkronkan: {$formattedViews} views!"
+            "Tayangan video '{$report->title}' berhasil diperbarui: {$formattedViews} views{$tiktokMsg}!"
         );
     }
 

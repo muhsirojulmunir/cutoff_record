@@ -173,9 +173,13 @@ class ContentMetricsService
         $token     = config('services.instagram.access_token') ?: env('INSTAGRAM_ACCESS_TOKEN');
         $accountId = config('services.instagram.account_id') ?: env('INSTAGRAM_ACCOUNT_ID');
 
-        // 1. Integrasi Resmi: Meta Graph API (Khusus Akun Instagram Bisnis/Creator)
-        if (!empty($token)) {
-            try {
+        // Jika token belum diatur, lewati pengecekan jaringan (fokus otomatisasi instan pada TikTok)
+        if (empty($token)) {
+            return null;
+        }
+
+        // 1. Integrasi Resmi: Meta Graph API (Jika token tersedia di .env)
+        try {
                 // A. Query melalui Instagram Business Account ID jika tersedia
                 if (!empty($accountId)) {
                     $endpoint = "https://graph.facebook.com/v21.0/{$accountId}/media";
