@@ -57,6 +57,11 @@ return [
         'auth_url'  => env('TIKTOK_AUTH_URL', 'https://services.tiktokshop.com/open/authorize'),
     ],
 
+    'instagram' => [
+        'access_token' => env('INSTAGRAM_ACCESS_TOKEN'),
+        'account_id'   => env('INSTAGRAM_ACCOUNT_ID'),
+    ],
+
     'warehouse' => [
         'name'     => env('WAREHOUSE_NAME', 'Gudang Utama Record Shoes'),
         'address'  => env('WAREHOUSE_ADDRESS', 'Jalan Kyai Tambak Deres No. 32, Bulak'),

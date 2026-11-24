@@ -160,13 +160,80 @@ class ContentMetricsService
     }
 
     /**
-     * Ambil estimasi/angka views publik dari link video Instagram (Reels/Post).
+     * Ambil estimasi/angka views dari link video Instagram (Reels/Post) via Meta Graph API atau fallback.
      */
     protected function fetchInstagramViews(string $url): ?int
     {
-        try {
-            $cleanUrl = trim($url);
+        $cleanUrl = trim($url);
 
+        // Ekstrak shortcode dari link Instagram (misal: /reel/C8-q0V1S5j2/ atau /p/C8-q0V1S5j2/)
+        preg_match('/(?:reel|p)\/([A-Za-z0-9_-]+)/', $cleanUrl, $matches);
+        $shortcode = $matches[1] ?? null;
+
+        $token     = config('services.instagram.access_token') ?: env('INSTAGRAM_ACCESS_TOKEN');
+        $accountId = config('services.instagram.account_id') ?: env('INSTAGRAM_ACCOUNT_ID');
+
+        // 1. Integrasi Resmi: Meta Graph API (Khusus Akun Instagram Bisnis/Creator)
+        if (!empty($token)) {
+            try {
+                // A. Query melalui Instagram Business Account ID jika tersedia
+                if (!empty($accountId)) {
+                    $endpoint = "https://graph.facebook.com/v21.0/{$accountId}/media";
+                    $res = Http::timeout(8)->get($endpoint, [
+                        'fields'       => 'id,shortcode,permalink,insights.metric(plays,views)',
+                        'limit'        => 50,
+                        'access_token' => $token,
+                    ]);
+
+                    if ($res->successful()) {
+                        $items = $res->json('data') ?? [];
+                        foreach ($items as $item) {
+                            if ((isset($item['shortcode']) && $item['shortcode'] === $shortcode) ||
+                                (isset($item['permalink']) && $shortcode && str_contains($item['permalink'], (string)$shortcode))) {
+                                if (isset($item['insights']['data'])) {
+                                    foreach ($item['insights']['data'] as $insight) {
+                                        if (in_array($insight['name'], ['plays', 'views'])) {
+                                            $val = $insight['values'][0]['value'] ?? null;
+                                            if ($val !== null && (int)$val > 0) {
+                                                return (int)$val;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // B. Query langsung per media insight jika numeric ID berhasil dihitung
+                if ($shortcode) {
+                    $numericMediaId = $this->shortcodeToInstagramMediaId($shortcode);
+                    if ($numericMediaId) {
+                        $insightUrl = "https://graph.facebook.com/v21.0/{$numericMediaId}/insights";
+                        $resDirect = Http::timeout(8)->get($insightUrl, [
+                            'metric'       => 'plays,views',
+                            'access_token' => $token,
+                        ]);
+                        if ($resDirect->successful()) {
+                            $insights = $resDirect->json('data') ?? [];
+                            foreach ($insights as $insight) {
+                                if (in_array($insight['name'], ['plays', 'views'])) {
+                                    $val = $insight['values'][0]['value'] ?? null;
+                                    if ($val !== null && (int)$val > 0) {
+                                        return (int)$val;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning("Instagram Graph API error: " . $e->getMessage());
+            }
+        }
+
+        // 2. Fallback: Request metadata publik jika memungkinkan
+        try {
             $response = Http::withHeaders([
                 'User-Agent' => $this->userAgent,
                 'Accept'     => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -175,7 +242,6 @@ class ContentMetricsService
             if ($response->successful()) {
                 $html = $response->body();
 
-                // Cek OpenGraph video view count jika tersedia
                 if (preg_match('/"video_view_count":\s*(\d+)/i', $html, $matches)) {
                     return (int) $matches[1];
                 }
@@ -189,6 +255,26 @@ class ContentMetricsService
         }
 
         return null;
+    }
+
+    /**
+     * Konversi Instagram URL shortcode menjadi numeric media ID.
+     */
+    protected function shortcodeToInstagramMediaId(string $shortcode): ?string
+    {
+        $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+        $id = '0';
+        for ($i = 0; $i < strlen($shortcode); $i++) {
+            $char = $shortcode[$i];
+            $pos = strpos($alphabet, $char);
+            if ($pos === false) return null;
+            if (function_exists('bcmul') && function_exists('bcadd')) {
+                $id = bcadd(bcmul($id, '64'), (string)$pos);
+            } else {
+                $id = (string) (((int)$id * 64) + $pos);
+            }
+        }
+        return (string)$id;
     }
 
     /**
