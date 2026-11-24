@@ -47,10 +47,15 @@ class CreativeRoleAndUserSeeder extends Seeder
         ]);
         $kreatifRole->permissions()->sync($kreatifPermissions);
 
-        // 3. Tambahkan permission ke Super Admin, Direktur, PIC
+        // 3. Tambahkan permission ke Super Admin, Admin, Direktur, PIC
         $superAdmin = Role::where('name', 'Super Admin')->first();
         if ($superAdmin) {
             $superAdmin->permissions()->syncWithoutDetaching([$permView->id, $permCreate->id, $permReview->id]);
+        }
+
+        $admin = Role::where('name', 'Admin')->first();
+        if ($admin) {
+            $admin->permissions()->syncWithoutDetaching([$permView->id, $permCreate->id, $permReview->id]);
         }
 
         $direktur = Role::where('name', 'Direktur')->first();
