@@ -48,6 +48,9 @@ export interface Stats {
   today_semua?: number;
   this_month_total: number;
   this_month_views?: number;
+  this_month_ig_views?: number;
+  this_month_tiktok_views?: number;
+  this_month_shopee_views?: number;
   last_synced_at?: string | null;
   my_today_count: number;
   my_today_has_ig?: boolean;
@@ -468,9 +471,12 @@ export default function ContentReportsIndex({
               </span>
               <span className="text-[11px] text-slate-400">video hari ini</span>
             </div>
-            <p className="mt-2 text-[11px] text-slate-500">
-              Video promosi, tren & story Instagram.
-            </p>
+            <div className="mt-2 text-xs flex items-center justify-between">
+              <span className="text-slate-500 text-[11px]">
+                Bulan Ini: <strong className="text-pink-700">{formatViewsCount(stats.this_month_ig_views || 0)}</strong> views
+              </span>
+              <span className="text-slate-400 text-[10px]">Instagram</span>
+            </div>
           </div>
 
           {/* Card 3: Konten TikTok */}
@@ -489,9 +495,12 @@ export default function ContentReportsIndex({
               </span>
               <span className="text-[11px] text-slate-400">video hari ini</span>
             </div>
-            <p className="mt-2 text-[11px] text-slate-500">
-              Video sound tren, gaya hidup & FYP TikTok.
-            </p>
+            <div className="mt-2 text-xs flex items-center justify-between">
+              <span className="text-slate-500 text-[11px]">
+                Bulan Ini: <strong className="text-slate-900">{formatViewsCount(stats.this_month_tiktok_views || 0)}</strong> views
+              </span>
+              <span className="text-slate-400 text-[10px]">TikTok</span>
+            </div>
           </div>
 
           {/* Card 4: Shopee Video */}
@@ -510,9 +519,12 @@ export default function ContentReportsIndex({
               </span>
               <span className="text-[11px] text-slate-400">video hari ini</span>
             </div>
-            <p className="mt-2 text-[11px] text-slate-500">
-              Review sepatu & keranjang kuning Shopee.
-            </p>
+            <div className="mt-2 text-xs flex items-center justify-between">
+              <span className="text-slate-500 text-[11px]">
+                Bulan Ini: <strong className="text-amber-700">{formatViewsCount(stats.this_month_shopee_views || 0)}</strong> views
+              </span>
+              <span className="text-slate-400 text-[10px]">Shopee</span>
+            </div>
           </div>
         </div>
 
@@ -721,33 +733,57 @@ export default function ContentReportsIndex({
                     <span className="font-semibold text-slate-700">{item.user?.name || 'Kreatif'}</span>
                     <span>•</span>
                     <span>{formatReportTime(item.reported_at)}</span>
-                    {item.total_views && item.total_views > 0 ? (
-                      <>
-                        <span>•</span>
-                        <span className="font-extrabold text-[#0B132B] bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded">
-                          {item.total_views.toLocaleString('id-ID')} views
+                  </div>
+
+                  {/* Rincian Views per Platform (Mobile) */}
+                  <div className="mt-2 pt-2 border-t border-slate-100 flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-extrabold text-[#0B132B]">
+                        Total: {(item.total_views || 0).toLocaleString('id-ID')} views
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          disabled={syncingRowId === item.id}
+                          onClick={() => handleSyncSingleRow(item)}
+                          className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded font-semibold cursor-pointer"
+                          title="Cek Views Sekarang"
+                        >
+                          {syncingRowId === item.id ? 'Cek...' : '🔄 Cek'}
+                        </button>
+                        {(capabilities.can_create || capabilities.can_review) && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenViewsModal(item)}
+                            className="text-[10px] text-slate-600 hover:text-blue-600 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded cursor-pointer font-medium"
+                            title="Koreksi Views Manual"
+                          >
+                            ✏️ Edit
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                      {item.ig_link && (
+                        <span className="inline-flex items-center gap-1 bg-pink-50 text-pink-800 border border-pink-200 px-2 py-0.5 rounded-md font-semibold">
+                          <span>📸 IG:</span>
+                          <strong className="font-mono">{(item.ig_views || 0).toLocaleString('id-ID')}</strong>
                         </span>
-                      </>
-                    ) : null}
-                    <button
-                      type="button"
-                      disabled={syncingRowId === item.id}
-                      onClick={() => handleSyncSingleRow(item)}
-                      className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded font-semibold cursor-pointer"
-                      title="Cek Views Sekarang"
-                    >
-                      {syncingRowId === item.id ? 'Cek...' : '🔄 Cek'}
-                    </button>
-                    {(capabilities.can_create || capabilities.can_review) && (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenViewsModal(item)}
-                        className="text-[10px] text-slate-500 hover:text-blue-600 cursor-pointer p-0.5"
-                        title="Koreksi Views Manual"
-                      >
-                        ✏️
-                      </button>
-                    )}
+                      )}
+                      {item.tiktok_link && (
+                        <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-900 border border-slate-300 px-2 py-0.5 rounded-md font-semibold">
+                          <span>🎵 TikTok:</span>
+                          <strong className="font-mono">{(item.tiktok_views || 0).toLocaleString('id-ID')}</strong>
+                        </span>
+                      )}
+                      {item.shopee_link && (
+                        <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-md font-semibold">
+                          <span>🛒 Shopee:</span>
+                          <strong className="font-mono">{(item.shopee_views || 0).toLocaleString('id-ID')}</strong>
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1012,66 +1048,91 @@ export default function ContentReportsIndex({
                         </div>
                       </td>
 
-                      {/* Tayangan (Views) */}
-                      <td className="py-3 px-4">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-extrabold text-xs text-slate-900">
-                              {item.total_views && item.total_views > 0
-                                ? `${item.total_views.toLocaleString('id-ID')} views`
-                                : '0 views'}
-                            </span>
-                            {item.total_views && item.total_views >= 10000 ? (
-                              <span className="inline-flex items-center rounded-md bg-amber-50 text-amber-700 border border-amber-200 px-1 py-0.2 text-[9px] font-bold">
-                                🔥 Viral
+                      {/* Tayangan (Views) - Dirinci secara Jelas per Platform */}
+                      <td className="py-3 px-4 min-w-[210px]">
+                        <div className="space-y-1.5">
+                          {/* Header Total Views & Actions */}
+                          <div className="flex items-center justify-between gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-extrabold text-xs text-slate-900">
+                                {(item.total_views || 0).toLocaleString('id-ID')} views
                               </span>
-                            ) : null}
+                              {item.total_views && item.total_views >= 10000 ? (
+                                <span className="inline-flex items-center rounded bg-amber-50 text-amber-700 border border-amber-200 px-1 py-0.2 text-[9px] font-bold">
+                                  🔥 Viral
+                                </span>
+                              ) : null}
+                            </div>
 
-                            {/* Tombol Tarik/Cek Views Langsung untuk baris ini */}
-                            <button
-                              type="button"
-                              disabled={syncingRowId === item.id}
-                              onClick={() => handleSyncSingleRow(item)}
-                              className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#0B132B] hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-1.5 py-0.5 rounded transition-colors cursor-pointer disabled:opacity-50"
-                              title="Tarik & Cek Views Link Ini Sekarang"
-                            >
-                              <svg className={`w-3 h-3 ${syncingRowId === item.id ? 'animate-spin text-blue-600' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                              </svg>
-                              <span>{syncingRowId === item.id ? 'Cek...' : 'Cek'}</span>
-                            </button>
-
-                            {/* Tombol Koreksi / Input Views Manual */}
-                            {(capabilities.can_create || capabilities.can_review) && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              {/* Tombol Cek Views Otomatis */}
                               <button
                                 type="button"
-                                onClick={() => handleOpenViewsModal(item)}
-                                className="text-[10px] p-0.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors cursor-pointer"
-                                title="Koreksi / Isi Views Manual"
+                                disabled={syncingRowId === item.id}
+                                onClick={() => handleSyncSingleRow(item)}
+                                className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#0B132B] hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-1.5 py-0.5 rounded transition-colors cursor-pointer disabled:opacity-50"
+                                title="Tarik & Cek Views Otomatis"
                               >
-                                ✏️
+                                <svg className={`w-3 h-3 ${syncingRowId === item.id ? 'animate-spin text-blue-600' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                </svg>
+                                <span>{syncingRowId === item.id ? '...' : 'Cek'}</span>
                               </button>
-                            )}
+
+                              {/* Tombol Input/Koreksi Views Manual */}
+                              {(capabilities.can_create || capabilities.can_review) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenViewsModal(item)}
+                                  className="text-[10px] p-0.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors cursor-pointer"
+                                  title="Edit / Isi Views per Channel"
+                                >
+                                  ✏️
+                                </button>
+                              )}
+                            </div>
                           </div>
 
-                          <div className="flex flex-wrap items-center gap-1 text-[10px] text-slate-500">
-                            {item.tiktok_views ? (
-                              <span className="inline-flex items-center gap-0.5 bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-medium">
-                                🎵 {formatViewsCount(item.tiktok_views)}
-                              </span>
-                            ) : null}
-                            {item.ig_views ? (
-                              <span className="inline-flex items-center gap-0.5 bg-pink-50 text-pink-700 px-1.5 py-0.2 rounded font-medium">
-                                📸 {formatViewsCount(item.ig_views)}
-                              </span>
-                            ) : null}
-                            {item.shopee_views ? (
-                              <span className="inline-flex items-center gap-0.5 bg-blue-50 text-blue-800 px-1.5 py-0.2 rounded font-medium">
-                                🛒 {formatViewsCount(item.shopee_views)}
-                              </span>
-                            ) : null}
+                          {/* Rincian Terpisah Setiap Channel */}
+                          <div className="flex flex-col gap-1 text-[10px]">
+                            {item.ig_link && (
+                              <div className="flex items-center justify-between bg-pink-50/80 border border-pink-200/70 px-2 py-0.5 rounded text-pink-900">
+                                <span className="font-semibold flex items-center gap-1">
+                                  <span>📸</span> Instagram:
+                                </span>
+                                <strong className="font-bold font-mono">
+                                  {(item.ig_views || 0).toLocaleString('id-ID')} views
+                                </strong>
+                              </div>
+                            )}
+
+                            {item.tiktok_link && (
+                              <div className="flex items-center justify-between bg-slate-100 border border-slate-300/80 px-2 py-0.5 rounded text-slate-900">
+                                <span className="font-semibold flex items-center gap-1">
+                                  <span>🎵</span> TikTok:
+                                </span>
+                                <strong className="font-bold font-mono">
+                                  {(item.tiktok_views || 0).toLocaleString('id-ID')} views
+                                </strong>
+                              </div>
+                            )}
+
+                            {item.shopee_link && (
+                              <div className="flex items-center justify-between bg-amber-50/80 border border-amber-200/80 px-2 py-0.5 rounded text-amber-900">
+                                <span className="font-semibold flex items-center gap-1">
+                                  <span>🛒</span> Shopee:
+                                </span>
+                                <strong className="font-bold font-mono">
+                                  {(item.shopee_views || 0).toLocaleString('id-ID')} views
+                                </strong>
+                              </div>
+                            )}
+
                             {(!item.total_views || item.total_views === 0) && (
-                              <span className="text-slate-400 text-[10px] italic">Audit lanjut 00:00 WIB</span>
+                              <span className="text-slate-400 text-[9px] italic flex items-center gap-1">
+                                <span className="h-1 w-1 rounded-full bg-slate-300" />
+                                Audit otomatis 00:00 WIB / klik Cek / ✏️
+                              </span>
                             )}
                           </div>
                         </div>
@@ -1730,10 +1791,15 @@ export default function ContentReportsIndex({
 
             <div className="space-y-3">
               {viewsModalReport.tiktok_link && (
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    🎵 Tayangan TikTok:
-                  </label>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                      <span>🎵</span> Tayangan TikTok:
+                    </label>
+                    <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded font-medium">
+                      TikWM Auto-Sync
+                    </span>
+                  </div>
                   <input
                     type="number"
                     min="0"
@@ -1746,34 +1812,50 @@ export default function ContentReportsIndex({
               )}
 
               {viewsModalReport.ig_link && (
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    📸 Tayangan Instagram:
-                  </label>
+                <div className="rounded-xl border border-pink-200 bg-pink-50/30 p-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-pink-900 flex items-center gap-1.5">
+                      <span>📸</span> Tayangan Instagram (Reels):
+                    </label>
+                    <span className="text-[10px] bg-pink-100 text-pink-700 px-1.5 py-0.2 rounded font-medium">
+                      Meta Login Guard
+                    </span>
+                  </div>
                   <input
                     type="number"
                     min="0"
                     value={viewsForm.data.ig_views}
                     onChange={(e) => viewsForm.setData('ig_views', parseInt(e.target.value) || 0)}
                     placeholder="0"
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                    className="w-full rounded-xl border border-pink-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-pink-600 focus:ring-1 focus:ring-pink-600"
                   />
+                  <span className="text-[10px] text-pink-700/80 mt-1 block">
+                    Meta mewajibkan login akun untuk scraping. Silakan isi / update angka tayangan Reels di sini.
+                  </span>
                 </div>
               )}
 
               {viewsModalReport.shopee_link && (
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    🛒 Tayangan Shopee Video:
-                  </label>
+                <div className="rounded-xl border border-amber-200 bg-amber-50/30 p-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                      <span>🛒</span> Tayangan Shopee Video:
+                    </label>
+                    <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded font-medium">
+                      App Deep-Link
+                    </span>
+                  </div>
                   <input
                     type="number"
                     min="0"
                     value={viewsForm.data.shopee_views}
                     onChange={(e) => viewsForm.setData('shopee_views', parseInt(e.target.value) || 0)}
                     placeholder="0"
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                    className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-amber-600 focus:ring-1 focus:ring-amber-600"
                   />
+                  <span className="text-[10px] text-amber-700/80 mt-1 block">
+                    Shopee Video membuka aplikasi ponsel. Masukkan angka views yang tertera pada aplikasi Shopee di sini.
+                  </span>
                 </div>
               )}
 

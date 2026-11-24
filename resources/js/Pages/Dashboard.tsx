@@ -74,6 +74,9 @@ interface KreatifStats {
   month_total: number;
   my_month_total: number;
   month_views?: number;
+  month_ig_views?: number;
+  month_tiktok_views?: number;
+  month_shopee_views?: number;
   my_month_views?: number;
   top_video_title?: string;
   top_video_views?: number;
@@ -278,9 +281,11 @@ export default function Dashboard({
                 <span className="text-xs font-semibold text-slate-400">video hari ini</span>
               </div>
               <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                <span className="text-slate-500">Status Anda:</span>
+                <span className="text-slate-500">
+                  Bulan Ini: <strong className="text-pink-700">{(kreatifStats?.month_ig_views ?? 0).toLocaleString('id-ID')}</strong> views
+                </span>
                 <strong className={kreatifStats?.my_has_ig ? 'text-emerald-700 font-bold' : 'text-[#0B132B] font-bold'}>
-                  {kreatifStats?.my_has_ig ? '✓ Sudah Disetor' : 'Belum Disetor'}
+                  {kreatifStats?.my_has_ig ? '✓ Disetor' : 'Belum'}
                 </strong>
               </div>
             </div>
@@ -302,9 +307,11 @@ export default function Dashboard({
                 <span className="text-xs font-semibold text-slate-400">video hari ini</span>
               </div>
               <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                <span className="text-slate-500">Status Anda:</span>
+                <span className="text-slate-500">
+                  Bulan Ini: <strong className="text-slate-900">{(kreatifStats?.month_tiktok_views ?? 0).toLocaleString('id-ID')}</strong> views
+                </span>
                 <strong className={kreatifStats?.my_has_tiktok ? 'text-emerald-700 font-bold' : 'text-[#0B132B] font-bold'}>
-                  {kreatifStats?.my_has_tiktok ? '✓ Sudah Disetor' : 'Belum Disetor'}
+                  {kreatifStats?.my_has_tiktok ? '✓ Disetor' : 'Belum'}
                 </strong>
               </div>
             </div>
@@ -326,9 +333,11 @@ export default function Dashboard({
                 <span className="text-xs font-semibold text-slate-400">video hari ini</span>
               </div>
               <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                <span className="text-slate-500">Status Anda:</span>
+                <span className="text-slate-500">
+                  Bulan Ini: <strong className="text-amber-700">{(kreatifStats?.month_shopee_views ?? 0).toLocaleString('id-ID')}</strong> views
+                </span>
                 <strong className={kreatifStats?.my_has_shopee ? 'text-emerald-700 font-bold' : 'text-[#0B132B] font-bold'}>
-                  {kreatifStats?.my_has_shopee ? '✓ Sudah Disetor' : 'Belum Disetor'}
+                  {kreatifStats?.my_has_shopee ? '✓ Disetor' : 'Belum'}
                 </strong>
               </div>
             </div>
@@ -632,21 +641,36 @@ export default function Dashboard({
                             )}
                           </div>
                         </td>
-                        <td className="py-3 px-4 whitespace-nowrap">
-                          {item.total_views && item.total_views > 0 ? (
-                            <div className="flex items-center gap-1.5">
+                        <td className="py-3 px-4 min-w-[150px]">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1">
                               <span className="font-extrabold text-slate-900">
-                                {item.total_views.toLocaleString('id-ID')}
+                                {(item.total_views || 0).toLocaleString('id-ID')} views
                               </span>
-                              {item.total_views >= 10000 && (
+                              {item.total_views && item.total_views >= 10000 ? (
                                 <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-1 py-0.2 rounded font-bold">
                                   🔥
                                 </span>
+                              ) : null}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1 text-[9px]">
+                              {item.ig_link && (
+                                <span className="text-pink-800 bg-pink-50 border border-pink-200/60 px-1 py-0.2 rounded font-medium">
+                                  📸 {(item.ig_views || 0).toLocaleString('id-ID')}
+                                </span>
+                              )}
+                              {item.tiktok_link && (
+                                <span className="text-slate-900 bg-slate-100 border border-slate-300/70 px-1 py-0.2 rounded font-medium">
+                                  🎵 {(item.tiktok_views || 0).toLocaleString('id-ID')}
+                                </span>
+                              )}
+                              {item.shopee_link && (
+                                <span className="text-amber-900 bg-amber-50 border border-amber-200 px-1 py-0.2 rounded font-medium">
+                                  🛒 {(item.shopee_views || 0).toLocaleString('id-ID')}
+                                </span>
                               )}
                             </div>
-                          ) : (
-                            <span className="text-[10px] text-slate-400">Jam 00:00</span>
-                          )}
+                          </div>
                         </td>
                         <td className="py-3 px-4">
                           {item.status === 'reviewed' ? (

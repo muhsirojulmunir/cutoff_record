@@ -46,6 +46,9 @@ class DailyContentReportController extends Controller
             ->whereMonth('reported_at', $now->month);
         $thisMonthTotal = (clone $thisMonthReports)->count();
         $thisMonthViews = (clone $thisMonthReports)->sum('total_views');
+        $thisMonthIgViews = (int) (clone $thisMonthReports)->sum('ig_views');
+        $thisMonthTiktokViews = (int) (clone $thisMonthReports)->sum('tiktok_views');
+        $thisMonthShopeeViews = (int) (clone $thisMonthReports)->sum('shopee_views');
 
         $lastSyncedAt = DailyContentReport::whereNotNull('views_synced_at')->max('views_synced_at');
 
@@ -133,8 +136,11 @@ class DailyContentReportController extends Controller
                 'today_santai'       => $todaySantai,
                 'today_produk'       => $todayProduk,
                 'today_semua'        => $todaySemua,
-                'this_month_total'   => $thisMonthTotal,
-                'this_month_views'   => (int) $thisMonthViews,
+                'this_month_total'        => $thisMonthTotal,
+                'this_month_views'        => (int) $thisMonthViews,
+                'this_month_ig_views'     => (int) $thisMonthIgViews,
+                'this_month_tiktok_views' => (int) $thisMonthTiktokViews,
+                'this_month_shopee_views' => (int) $thisMonthShopeeViews,
                 'last_synced_at'     => $lastSyncedAt ? Carbon::parse($lastSyncedAt)->isoFormat('D MMMM Y, HH:mm') . ' WIB' : null,
                 'my_today_count'     => $myTodayCount,
                 'my_today_has_ig'    => $myTodayHasIg,
