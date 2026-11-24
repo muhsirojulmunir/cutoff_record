@@ -63,6 +63,11 @@ class RoleController extends Controller
                 'description' => 'Akses manajemen user, role hak akses, dan pengaturan integrasi toko',
                 'prefixes'    => ['user.', 'role.', 'settings.'],
             ],
+            'konten' => [
+                'title'       => 'Report Harian Konten',
+                'description' => 'Akses input report konten harian dan verifikasi/review konten',
+                'prefixes'    => ['content_reports.'],
+            ],
         ];
 
         $allPermissions = Permission::orderBy('id')->get();

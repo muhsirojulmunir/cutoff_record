@@ -41,6 +41,7 @@ const roleBadgeColor: Record<string, string> = {
   'PIC':         'bg-emerald-50 border-emerald-200 text-emerald-700',
   'Direktur':    'bg-slate-100 border-slate-300 text-slate-800',
   'PIC Gudang':  'bg-cyan-50 border-cyan-200 text-cyan-800',
+  'Kreatif':     'bg-pink-50 border-pink-200 text-pink-700',
 };
 
 export default function Index({ users, roles, filters }: UserIndexProps) {
