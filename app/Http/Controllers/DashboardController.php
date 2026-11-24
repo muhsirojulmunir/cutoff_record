@@ -19,6 +19,98 @@ class DashboardController extends Controller
 
         Carbon::setLocale('id');
 
+        $now = Carbon::now();
+        $user = $request->user();
+        $isKreatif = $user && ($user->role?->name === 'Kreatif' || ($user->roles && $user->roles->contains('name', 'Kreatif')));
+
+        // Dashboard Eksklusif untuk Role Kreatif (Fokus 100% pada performa konten & social media)
+        if ($isKreatif) {
+            $todayStr = $now->toDateString();
+            $todayReports = \App\Models\DailyContentReport::whereDate('reported_at', $todayStr)->get();
+            $myTodayReports = $todayReports->where('user_id', $user->id);
+
+            $monthReports = \App\Models\DailyContentReport::whereYear('reported_at', $now->year)
+                ->whereMonth('reported_at', $now->month)
+                ->get();
+            $myMonthReports = $monthReports->where('user_id', $user->id);
+
+            // Metrik Statistik Konten
+            $kreatifStats = [
+                'today_total'        => $todayReports->count(),
+                'my_today_total'     => $myTodayReports->count(),
+                'today_ig'           => $todayReports->filter(fn($r) => !empty($r->ig_link))->count(),
+                'today_tiktok'       => $todayReports->filter(fn($r) => !empty($r->tiktok_link))->count(),
+                'today_shopee'       => $todayReports->filter(fn($r) => !empty($r->shopee_link))->count(),
+                'month_total'        => $monthReports->count(),
+                'my_month_total'     => $myMonthReports->count(),
+                'my_has_ig'          => $myTodayReports->contains(fn($r) => !empty($r->ig_link)),
+                'my_has_tiktok'      => $myTodayReports->contains(fn($r) => !empty($r->tiktok_link)),
+                'my_has_shopee'      => $myTodayReports->contains(fn($r) => !empty($r->shopee_link)),
+            ];
+
+            // 7 Hari Terakhir Trend Upload Konten
+            $contentDailyTrend = [];
+            for ($i = 6; $i >= 0; $i--) {
+                $targetDate = $now->copy()->subDays($i);
+                $dateKey = $targetDate->toDateString();
+                $dayReports = \App\Models\DailyContentReport::whereDate('reported_at', $dateKey)->get();
+
+                $contentDailyTrend[] = [
+                    'date'         => $dateKey,
+                    'label'        => $targetDate->isoFormat('D MMM'),
+                    'dayName'      => $targetDate->isoFormat('ddd'),
+                    'total'        => $dayReports->count(),
+                    'ig_count'     => $dayReports->filter(fn($r) => !empty($r->ig_link))->count(),
+                    'tiktok_count' => $dayReports->filter(fn($r) => !empty($r->tiktok_link))->count(),
+                    'shopee_count' => $dayReports->filter(fn($r) => !empty($r->shopee_link))->count(),
+                ];
+            }
+
+            // 6 Laporan Terakhir
+            $recentReports = \App\Models\DailyContentReport::with(['user:id,name', 'reviewer:id,name'])
+                ->orderBy('reported_at', 'desc')
+                ->take(6)
+                ->get()
+                ->map(fn($r) => [
+                    'id'          => $r->id,
+                    'title'       => $r->title,
+                    'author'      => $r->user?->name ?? 'Kreatif',
+                    'is_mine'     => (int)$r->user_id === (int)$user->id,
+                    'reported_at' => $r->reported_at ? Carbon::parse($r->reported_at)->isoFormat('D MMM Y, HH:mm') . ' WIB' : '-',
+                    'ig_link'     => $r->ig_link,
+                    'tiktok_link' => $r->tiktok_link,
+                    'shopee_link' => $r->shopee_link,
+                    'status'      => $r->status,
+                    'feedback'    => $r->feedback,
+                ]);
+
+            return Inertia::render('Dashboard', [
+                'isKreatif'         => true,
+                'kreatifStats'      => $kreatifStats,
+                'contentDailyTrend' => $contentDailyTrend,
+                'recentReports'     => $recentReports,
+                'timeframeTitle'    => 'Dashboard Konten & Sosial Media',
+                'dateSubtitle'      => $now->isoFormat('dddd, D MMMM Y'),
+                'filters'           => ['range' => 'today', 'channel' => 'all'],
+                'channels'          => [],
+                'summary'           => [
+                    'omset' => 0, 'omsetChange' => '', 'labaBersih' => 0, 'labaChange' => '',
+                    'totalOrders' => 0, 'ordersChange' => '', 'pengiriman' => 0, 'pengirimanChange' => '',
+                ],
+                'profitFunnel'      => [],
+                'dailyTrend'        => [],
+                'channelBreakdown'  => [],
+                'courierBreakdown'  => [],
+                'topProducts'       => [],
+                'stats'             => [
+                    'totalUsers'  => User::count(),
+                    'activeUsers' => User::where('status', 'active')->count(),
+                    'totalRoles'  => Role::count(),
+                    'appName'     => config('app.name'),
+                ],
+            ]);
+        }
+
         // Parameter filter
         $range = $request->query('range', 'year'); // 'today', 'week', 'month', 'year', 'all'
         $channel = $request->query('channel', 'all');

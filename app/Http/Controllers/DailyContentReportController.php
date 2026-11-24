@@ -19,6 +19,8 @@ class DailyContentReportController extends Controller
      */
     public function index(Request $request): Response
     {
+        Role::ensureKreatifRoleExists();
+
         /** @var User $user */
         $user = Auth::user();
 
@@ -29,9 +31,12 @@ class DailyContentReportController extends Controller
         $now = Carbon::now();
         $todayDate = $now->toDateString();
 
-        // 1. Ambil Statistik Ringkasan Konten
+        // 1. Ambil Statistik Ringkasan Konten Berdasarkan Channel
         $todayReports = DailyContentReport::whereDate('reported_at', $todayDate)->get();
         $todayTotal   = $todayReports->count();
+        $todayIg      = $todayReports->filter(fn ($r) => !empty($r->ig_link))->count();
+        $todayTiktok  = $todayReports->filter(fn ($r) => !empty($r->tiktok_link))->count();
+        $todayShopee  = $todayReports->filter(fn ($r) => !empty($r->shopee_link))->count();
         $todaySantai  = $todayReports->where('content_type', 'santai')->count();
         $todayProduk  = $todayReports->where('content_type', 'produk')->count();
         $todaySemua   = $todayReports->where('content_type', 'semua')->count();
@@ -40,8 +45,11 @@ class DailyContentReportController extends Controller
             ->whereMonth('reported_at', $now->month)
             ->count();
 
-        $myTodayReports = $todayReports->where('user_id', $user->id);
-        $myTodayCount   = $myTodayReports->count();
+        $myTodayReports   = $todayReports->where('user_id', $user->id);
+        $myTodayCount     = $myTodayReports->count();
+        $myTodayHasIg     = $myTodayReports->contains(fn ($r) => !empty($r->ig_link));
+        $myTodayHasTiktok = $myTodayReports->contains(fn ($r) => !empty($r->tiktok_link));
+        $myTodayHasShopee = $myTodayReports->contains(fn ($r) => !empty($r->shopee_link));
         $myTodayHasSantai = $myTodayReports->contains(fn ($r) => in_array($r->content_type, ['santai', 'semua']));
         $myTodayHasProduk = $myTodayReports->contains(fn ($r) => in_array($r->content_type, ['produk', 'semua']));
 
@@ -115,11 +123,17 @@ class DailyContentReportController extends Controller
             ],
             'stats' => [
                 'today_total'        => $todayTotal,
+                'today_ig'           => $todayIg,
+                'today_tiktok'       => $todayTiktok,
+                'today_shopee'       => $todayShopee,
                 'today_santai'       => $todaySantai,
                 'today_produk'       => $todayProduk,
                 'today_semua'        => $todaySemua,
                 'this_month_total'   => $thisMonthTotal,
                 'my_today_count'     => $myTodayCount,
+                'my_today_has_ig'    => $myTodayHasIg,
+                'my_today_has_tiktok'=> $myTodayHasTiktok,
+                'my_today_has_shopee'=> $myTodayHasShopee,
                 'my_today_has_santai'=> $myTodayHasSantai,
                 'my_today_has_produk'=> $myTodayHasProduk,
                 'server_time'        => $now->isoFormat('D MMMM Y, HH:mm') . ' WIB',

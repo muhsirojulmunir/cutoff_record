@@ -65,6 +65,42 @@ interface TopProductItem {
   percent: number;
 }
 
+interface KreatifStats {
+  today_total: number;
+  my_today_total: number;
+  today_ig: number;
+  today_tiktok: number;
+  today_shopee: number;
+  month_total: number;
+  my_month_total: number;
+  my_has_ig: boolean;
+  my_has_tiktok: boolean;
+  my_has_shopee: boolean;
+}
+
+interface ContentDailyTrendItem {
+  date: string;
+  label: string;
+  dayName: string;
+  total: number;
+  ig_count: number;
+  tiktok_count: number;
+  shopee_count: number;
+}
+
+interface RecentReportItem {
+  id: number;
+  title: string;
+  author: string;
+  is_mine: boolean;
+  reported_at: string;
+  ig_link: string | null;
+  tiktok_link: string | null;
+  shopee_link: string | null;
+  status: string;
+  feedback: string | null;
+}
+
 interface DashboardProps {
   filters: {
     range: string;
@@ -85,6 +121,10 @@ interface DashboardProps {
     totalRoles: number;
     appName: string;
   };
+  isKreatif?: boolean;
+  kreatifStats?: KreatifStats;
+  contentDailyTrend?: ContentDailyTrendItem[];
+  recentReports?: RecentReportItem[];
 }
 
 function formatRupiah(val: number | string | null | undefined): string {
@@ -136,7 +176,418 @@ export default function Dashboard({
   channelBreakdown = [],
   courierBreakdown = [],
   topProducts = [],
+  isKreatif: isKreatifProp,
+  kreatifStats,
+  contentDailyTrend = [],
+  recentReports = [],
 }: DashboardProps) {
+  const { auth } = usePage().props as any;
+  const isKreatif = isKreatifProp || auth?.user?.role?.name === 'Kreatif' || auth?.user?.roles?.includes('Kreatif');
+
+  // VIEW KHUSUS ROLE KREATIF (Fokus 100% pada performa konten & social media)
+  if (isKreatif) {
+    const maxContentTrend = Math.max(...(contentDailyTrend.map((t) => t.total)), 1);
+
+    return (
+      <AppLayout>
+        <Head title="Dashboard Konten & Sosial Media" />
+
+        <div className="space-y-6 max-w-7xl mx-auto pb-10">
+          {/* 1. Header Banner Tim Kreatif (Biru Navy #0B132B ke #1E3A8A) */}
+          <div className="rounded-2xl border border-slate-800 bg-gradient-to-r from-[#0B132B] to-[#1E3A8A] p-5 sm:p-6 text-white shadow-md">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-200 bg-white/10 px-2.5 py-1 rounded-full border border-white/20">
+                  Tim Kreatif & Social Media
+                </span>
+                <h1 className="text-xl sm:text-2xl font-extrabold text-white mt-2">
+                  Halo, {auth?.user?.name || 'Kreatif'}! 👋
+                </h1>
+                <p className="text-xs text-blue-100/90 mt-1 max-w-xl">
+                  Pantau konsistensi unggahan video harian Anda di Instagram, TikTok, dan Shopee Video.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2.5 self-stretch sm:self-auto">
+                <Link
+                  href="/content-reports?create=1"
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-[#0B132B] hover:bg-blue-50 shadow-xs transition-all active:scale-98 cursor-pointer"
+                >
+                  <svg className="w-4 h-4 text-[#0B132B]" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                  <span>+ Setor Konten Baru</span>
+                </Link>
+                <Link
+                  href="/content-reports"
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/25 px-4 py-2.5 text-xs font-semibold text-white transition-all active:scale-98 cursor-pointer"
+                >
+                  <span>Lihat Semua Laporan →</span>
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Empat Kartu Statistik Utama Khusus Konten */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Card 1: Total Konten Hari Ini */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                Total Konten Hari Ini
+              </span>
+              <div className="mt-2 flex items-baseline justify-between">
+                <span className="text-3xl font-black text-slate-900">
+                  {kreatifStats?.today_total ?? 0}
+                </span>
+                <span className="text-xs font-semibold text-slate-400">konten diunggah</span>
+              </div>
+              <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                <span>Total Bulan Ini: <strong className="text-slate-800">{kreatifStats?.month_total ?? 0}</strong></span>
+                <span className="text-emerald-700 font-bold">
+                  {kreatifStats?.my_today_total ?? 0} oleh Anda
+                </span>
+              </div>
+            </div>
+
+            {/* Card 2: Instagram Video */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#0B132B]">
+                  📸 Instagram Video
+                </span>
+                <span className="text-[10px] bg-pink-50 text-pink-700 px-2 py-0.5 rounded-full font-bold border border-pink-200">
+                  Reels & Story
+                </span>
+              </div>
+              <div className="mt-2 flex items-baseline justify-between">
+                <span className="text-3xl font-black text-slate-900">
+                  {kreatifStats?.today_ig ?? 0}
+                </span>
+                <span className="text-xs font-semibold text-slate-400">video hari ini</span>
+              </div>
+              <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                <span className="text-slate-500">Status Anda:</span>
+                <strong className={kreatifStats?.my_has_ig ? 'text-emerald-700 font-bold' : 'text-[#0B132B] font-bold'}>
+                  {kreatifStats?.my_has_ig ? '✓ Sudah Disetor' : 'Belum Disetor'}
+                </strong>
+              </div>
+            </div>
+
+            {/* Card 3: TikTok Video */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#0B132B]">
+                  🎵 TikTok Video
+                </span>
+                <span className="text-[10px] bg-slate-100 text-slate-900 px-2 py-0.5 rounded-full font-bold border border-slate-300">
+                  FYP & Tren
+                </span>
+              </div>
+              <div className="mt-2 flex items-baseline justify-between">
+                <span className="text-3xl font-black text-slate-900">
+                  {kreatifStats?.today_tiktok ?? 0}
+                </span>
+                <span className="text-xs font-semibold text-slate-400">video hari ini</span>
+              </div>
+              <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                <span className="text-slate-500">Status Anda:</span>
+                <strong className={kreatifStats?.my_has_tiktok ? 'text-emerald-700 font-bold' : 'text-[#0B132B] font-bold'}>
+                  {kreatifStats?.my_has_tiktok ? '✓ Sudah Disetor' : 'Belum Disetor'}
+                </strong>
+              </div>
+            </div>
+
+            {/* Card 4: Shopee Video */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#0B132B]">
+                  🛒 Shopee Video
+                </span>
+                <span className="text-[10px] bg-blue-50 text-[#0B132B] px-2 py-0.5 rounded-full font-bold border border-blue-200">
+                  Keranjang Kuning
+                </span>
+              </div>
+              <div className="mt-2 flex items-baseline justify-between">
+                <span className="text-3xl font-black text-slate-900">
+                  {kreatifStats?.today_shopee ?? 0}
+                </span>
+                <span className="text-xs font-semibold text-slate-400">video hari ini</span>
+              </div>
+              <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                <span className="text-slate-500">Status Anda:</span>
+                <strong className={kreatifStats?.my_has_shopee ? 'text-emerald-700 font-bold' : 'text-[#0B132B] font-bold'}>
+                  {kreatifStats?.my_has_shopee ? '✓ Sudah Disetor' : 'Belum Disetor'}
+                </strong>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Baris Dua Kolom: Tren Aktivitas 7 Hari + Checklist Upload */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Kolom Kiri: Tren Unggahan 7 Hari Terakhir */}
+            <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Aktivitas Upload 7 Hari Terakhir
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Grafik konsistensi unggahan video seluruh channel dalam 1 minggu
+                  </p>
+                </div>
+                <span className="text-[11px] font-bold text-[#0B132B] bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg">
+                  7 Hari
+                </span>
+              </div>
+
+              {/* Bar Chart Sederhana */}
+              <div className="pt-4 pb-2">
+                <div className="h-44 flex items-end justify-between gap-2 sm:gap-4 px-2 border-b border-slate-100">
+                  {contentDailyTrend.map((item, idx) => {
+                    const heightPercent = maxContentTrend > 0 ? Math.max((item.total / maxContentTrend) * 100, 8) : 8;
+                    const isToday = idx === contentDailyTrend.length - 1;
+
+                    return (
+                      <div key={item.date} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end group relative">
+                        {/* Tooltip Hover */}
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-8 bg-slate-900 text-white text-[10px] font-semibold py-1 px-2 rounded-md whitespace-nowrap pointer-events-none shadow-md z-10">
+                          {item.label}: {item.total} video (IG:{item.ig_count}, TT:{item.tiktok_count}, SP:{item.shopee_count})
+                        </div>
+
+                        {/* Bar */}
+                        <span className="text-[10px] font-bold text-slate-600 mb-0.5">
+                          {item.total}
+                        </span>
+                        <div
+                          style={{ height: `${heightPercent}%` }}
+                          className={`w-full max-w-[36px] rounded-t-lg transition-all ${
+                            isToday
+                              ? 'bg-gradient-to-t from-[#0B132B] to-[#1E3A8A] shadow-xs'
+                              : 'bg-slate-200 group-hover:bg-blue-600'
+                          }`}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Labels Tanggal */}
+                <div className="flex items-center justify-between gap-2 sm:gap-4 px-2 mt-2">
+                  {contentDailyTrend.map((item, idx) => {
+                    const isToday = idx === contentDailyTrend.length - 1;
+                    return (
+                      <div key={item.date} className="flex-1 text-center">
+                        <span className={`text-[10px] block ${isToday ? 'font-bold text-[#0B132B]' : 'text-slate-500'}`}>
+                          {item.dayName}
+                        </span>
+                        <span className="text-[9px] text-slate-400 block font-mono">
+                          {item.label.split(' ')[0]}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Kolom Kanan: Status & Tips Unggahan Harian */}
+            <div className="lg:col-span-5 space-y-4">
+              {/* Box Status Checklist Hari Ini */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Target Setoran Hari Ini
+                  </h3>
+                  <span className="text-[10px] font-bold text-slate-400 font-mono">
+                    {dateSubtitle}
+                  </span>
+                </div>
+
+                <div className="space-y-2.5">
+                  {/* IG Item */}
+                  <div className={`p-3 rounded-xl border flex items-center justify-between text-xs transition-colors ${
+                    kreatifStats?.my_has_ig ? 'bg-emerald-50/60 border-emerald-200' : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-base">📸</span>
+                      <div>
+                        <span className="font-bold text-slate-900 block">Instagram Video</span>
+                        <span className="text-[10px] text-slate-500">Reels / Feed / Story</span>
+                      </div>
+                    </div>
+                    {kreatifStats?.my_has_ig ? (
+                      <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-md">
+                        ✓ Disetor
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-bold text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded-md">
+                        Belum
+                      </span>
+                    )}
+                  </div>
+
+                  {/* TikTok Item */}
+                  <div className={`p-3 rounded-xl border flex items-center justify-between text-xs transition-colors ${
+                    kreatifStats?.my_has_tiktok ? 'bg-emerald-50/60 border-emerald-200' : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-base">🎵</span>
+                      <div>
+                        <span className="font-bold text-slate-900 block">TikTok Video</span>
+                        <span className="text-[10px] text-slate-500">Sound Tren & FYP</span>
+                      </div>
+                    </div>
+                    {kreatifStats?.my_has_tiktok ? (
+                      <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-md">
+                        ✓ Disetor
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-bold text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded-md">
+                        Belum
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Shopee Video Item */}
+                  <div className={`p-3 rounded-xl border flex items-center justify-between text-xs transition-colors ${
+                    kreatifStats?.my_has_shopee ? 'bg-emerald-50/60 border-emerald-200' : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-base">🛒</span>
+                      <div>
+                        <span className="font-bold text-slate-900 block">Shopee Video</span>
+                        <span className="text-[10px] text-slate-500">Review & Keranjang Kuning</span>
+                      </div>
+                    </div>
+                    {kreatifStats?.my_has_shopee ? (
+                      <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-md">
+                        ✓ Disetor
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-bold text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded-md">
+                        Belum
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {(!kreatifStats?.my_has_ig || !kreatifStats?.my_has_tiktok || !kreatifStats?.my_has_shopee) && (
+                  <Link
+                    href="/content-reports?create=1"
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#0B132B] to-[#1E3A8A] text-white py-2.5 px-4 text-xs font-bold shadow-xs hover:opacity-95 transition-all cursor-pointer text-center"
+                  >
+                    Setor Laporan Konten Hari Ini →
+                  </Link>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 4. Tabel Konten Terbaru */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">
+                  Laporan Konten Terbaru
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Daftar unggahan konten terakhir dari tim kreatif
+                </p>
+              </div>
+              <Link
+                href="/content-reports"
+                className="text-xs font-bold text-[#0B132B] hover:underline"
+              >
+                Lihat Semua ({kreatifStats?.month_total ?? 0}) →
+              </Link>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-700">
+                <thead className="bg-slate-50 border-b border-slate-200/80 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  <tr>
+                    <th className="py-3 px-4">Waktu</th>
+                    <th className="py-3 px-4">Judul Konten</th>
+                    <th className="py-3 px-4">Creator</th>
+                    <th className="py-3 px-4">Link Video</th>
+                    <th className="py-3 px-4">Status Review</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {recentReports.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-slate-400">
+                        Belum ada laporan konten yang disetor.
+                      </td>
+                    </tr>
+                  ) : (
+                    recentReports.map((item) => (
+                      <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3 px-4 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                          {item.reported_at}
+                        </td>
+                        <td className="py-3 px-4 font-bold text-slate-900 max-w-[260px] truncate">
+                          {item.title}
+                        </td>
+                        <td className="py-3 px-4 font-medium text-slate-600">
+                          {item.author} {item.is_mine && <span className="text-[10px] text-blue-600 font-bold">(Anda)</span>}
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {item.ig_link && (
+                              <a
+                                href={item.ig_link}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-2 py-0.5 rounded-md bg-pink-50 text-pink-700 border border-pink-200 text-[10px] font-bold hover:bg-pink-100"
+                              >
+                                📸 IG ↗
+                              </a>
+                            )}
+                            {item.tiktok_link && (
+                              <a
+                                href={item.tiktok_link}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-900 border border-slate-300 text-[10px] font-bold hover:bg-slate-200"
+                              >
+                                🎵 TikTok ↗
+                              </a>
+                            )}
+                            {item.shopee_link && (
+                              <a
+                                href={item.shopee_link}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-2 py-0.5 rounded-md bg-blue-50 text-[#0B132B] border border-blue-200 text-[10px] font-bold hover:bg-blue-100"
+                              >
+                                🛒 Shopee ↗
+                              </a>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          {item.status === 'reviewed' ? (
+                            <span className="inline-flex items-center rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold">
+                              ✓ Ditinjau
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-md bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 text-[10px] font-medium">
+                              Menunggu Review
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  // VIEW DASHBOARD REGULER (Super Admin, Admin, Direktur, PIC, Gudang)
   const [selectedChannel, setSelectedChannel] = useState(filters.channel || 'all');
   const [activeRange, setActiveRange] = useState(filters.range || 'year');
   const [hoveredTrend, setHoveredTrend] = useState<DailyTrendItem | null>(null);
@@ -169,48 +620,11 @@ export default function Dashboard({
   const maxTrendCount = Math.max(...dailyTrend.map((t) => t.order_count), 1);
   const periodTotal = summary.totalOrders || 1;
 
-  const { auth } = usePage().props as any;
-  const isKreatif = auth?.user?.role?.name === 'Kreatif';
-
   return (
     <AppLayout>
       <Head title="Dashboard Performa" />
 
       <div className="space-y-6 max-w-7xl mx-auto pb-10">
-        {/* Banner Khusus Tim Kreatif */}
-        {isKreatif && (
-          <div className="rounded-2xl border border-slate-800 bg-gradient-to-r from-[#0B132B] to-[#1E3A8A] p-5 sm:p-6 text-white shadow-md">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-200 bg-white/10 px-2.5 py-1 rounded-full border border-white/20">
-                  Tim Kreatif & Social Media
-                </span>
-                <h2 className="text-xl font-extrabold text-white mt-2">
-                  Halo, {auth?.user?.name || 'Tim Kreatif'}! 👋
-                </h2>
-                <p className="text-xs text-blue-100/90 mt-1 max-w-xl">
-                  Jangan lupa untuk menyetorkan laporan unggahan <strong>Konten Santai (IG & TikTok)</strong> dan <strong>Konten Produk (Shopee Video)</strong> hari ini.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2.5 self-stretch sm:self-auto">
-                <Link
-                  href="/content-reports"
-                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-[#0B132B] hover:bg-blue-50 shadow-xs transition-all active:scale-98 cursor-pointer"
-                >
-                  <span>📝 Buka Report Harian</span>
-                  <span>→</span>
-                </Link>
-                <Link
-                  href="/customer-service"
-                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/25 px-4 py-2.5 text-xs font-semibold text-white transition-all active:scale-98 cursor-pointer"
-                >
-                  <span>💬 Customer Service</span>
-                </Link>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Top Header Row */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-4">

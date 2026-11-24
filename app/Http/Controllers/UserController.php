@@ -18,6 +18,8 @@ class UserController extends Controller
     {
         Gate::authorize('user.view');
 
+        Role::ensureKreatifRoleExists();
+
         $search = $request->input('search');
         $roleId = $request->input('role_id');
         $status = $request->input('status');
@@ -51,6 +53,8 @@ class UserController extends Controller
     public function create(): Response
     {
         Gate::authorize('user.create');
+
+        Role::ensureKreatifRoleExists();
 
         $roles = Role::orderBy('name')->get(['id', 'name']);
 
@@ -88,6 +92,8 @@ class UserController extends Controller
     public function edit(User $user): Response
     {
         Gate::authorize('user.edit');
+
+        Role::ensureKreatifRoleExists();
 
         $roles = Role::orderBy('name')->get(['id', 'name']);
 

@@ -34,13 +34,19 @@ export interface ContentReportItem {
 
 export interface Stats {
   today_total: number;
-  today_santai: number;
-  today_produk: number;
-  today_semua: number;
+  today_ig?: number;
+  today_tiktok?: number;
+  today_shopee?: number;
+  today_santai?: number;
+  today_produk?: number;
+  today_semua?: number;
   this_month_total: number;
   my_today_count: number;
-  my_today_has_santai: boolean;
-  my_today_has_produk: boolean;
+  my_today_has_ig?: boolean;
+  my_today_has_tiktok?: boolean;
+  my_today_has_shopee?: boolean;
+  my_today_has_santai?: boolean;
+  my_today_has_produk?: boolean;
   server_time: string;
 }
 
@@ -355,75 +361,78 @@ export default function ContentReportsIndex({
               </span>
               <span className="text-[11px] text-slate-400">konten diunggah</span>
             </div>
-            <div className="mt-2 text-xs flex items-center gap-1.5">
-              {stats.today_total > 0 ? (
-                <span className="text-emerald-700 font-semibold flex items-center gap-1">
-                  ✓ Sudah ada laporan hari ini
-                </span>
-              ) : (
-                <span className="text-slate-500 font-semibold flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-slate-300" />
-                  Belum ada laporan hari ini
+            <div className="mt-2 text-xs flex items-center justify-between">
+              <span className="text-slate-500 text-[11px]">
+                Total Bulan Ini: <strong className="text-slate-800">{stats.this_month_total}</strong>
+              </span>
+              {stats.today_total > 0 && (
+                <span className="text-emerald-700 font-semibold text-[11px] flex items-center gap-1">
+                  ✓ Aktif
                 </span>
               )}
             </div>
           </div>
 
-          {/* Card 2: Konten Santai (IG & TikTok) */}
+          {/* Card 2: Konten Instagram */}
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold uppercase tracking-wider text-[#0B132B]">
-                ☕ Konten Santai
+                📸 Konten Instagram
+              </span>
+              <span className="text-[10px] bg-pink-50 text-pink-700 px-2 py-0.5 rounded-full font-bold border border-pink-200">
+                Reels & Story
+              </span>
+            </div>
+            <div className="mt-2 flex items-baseline justify-between">
+              <span className="text-2xl font-black text-slate-900">
+                {stats.today_ig ?? stats.today_santai ?? 0}
+              </span>
+              <span className="text-[11px] text-slate-400">video hari ini</span>
+            </div>
+            <p className="mt-2 text-[11px] text-slate-500">
+              Video promosi, tren & story Instagram.
+            </p>
+          </div>
+
+          {/* Card 3: Konten TikTok */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#0B132B]">
+                🎵 Konten TikTok
+              </span>
+              <span className="text-[10px] bg-slate-100 text-slate-900 px-2 py-0.5 rounded-full font-bold border border-slate-300">
+                FYP & Tren
+              </span>
+            </div>
+            <div className="mt-2 flex items-baseline justify-between">
+              <span className="text-2xl font-black text-slate-900">
+                {stats.today_tiktok ?? stats.today_santai ?? 0}
+              </span>
+              <span className="text-[11px] text-slate-400">video hari ini</span>
+            </div>
+            <p className="mt-2 text-[11px] text-slate-500">
+              Video sound tren, gaya hidup & FYP TikTok.
+            </p>
+          </div>
+
+          {/* Card 4: Shopee Video */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#0B132B]">
+                🛒 Shopee Video
               </span>
               <span className="text-[10px] bg-blue-50 text-[#0B132B] px-2 py-0.5 rounded-full font-bold border border-blue-200">
-                IG & TikTok
+                Keranjang Kuning
               </span>
             </div>
             <div className="mt-2 flex items-baseline justify-between">
               <span className="text-2xl font-black text-slate-900">
-                {stats.today_santai}
+                {stats.today_shopee ?? stats.today_produk ?? 0}
               </span>
-              <span className="text-[11px] text-slate-400">hari ini</span>
+              <span className="text-[11px] text-slate-400">video hari ini</span>
             </div>
             <p className="mt-2 text-[11px] text-slate-500">
-              Format hiburan, tren, gaya hidup, atau daily update.
-            </p>
-          </div>
-
-          {/* Card 3: Konten Produk (Shopee Video) */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#0B132B]">
-                👟 Konten Produk
-              </span>
-              <span className="text-[10px] bg-[#0B132B]/5 text-[#0B132B] px-2 py-0.5 rounded-full font-bold border border-[#0B132B]/15">
-                Shopee Video
-              </span>
-            </div>
-            <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-2xl font-black text-slate-900">
-                {stats.today_produk}
-              </span>
-              <span className="text-[11px] text-slate-400">hari ini</span>
-            </div>
-            <p className="mt-2 text-[11px] text-slate-500">
-              Review sepatu, detail bahan, ukuran, dan promo toko.
-            </p>
-          </div>
-
-          {/* Card 4: Total Konten Bulan Ini */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Total Bulan Ini
-            </span>
-            <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-2xl font-black text-slate-900">
-                {stats.this_month_total}
-              </span>
-              <span className="text-[11px] text-slate-400">konten</span>
-            </div>
-            <p className="mt-2 text-[11px] text-slate-500">
-              Konsistensi upload konten sosial media & Shopee.
+              Review sepatu & keranjang kuning Shopee.
             </p>
           </div>
         </div>
@@ -432,36 +441,47 @@ export default function ContentReportsIndex({
         {capabilities.is_kreatif && (
           <div
             className={`rounded-2xl border p-4 text-xs transition-all shadow-2xs ${
-              stats.my_today_has_santai && stats.my_today_has_produk
+              stats.my_today_has_ig && stats.my_today_has_tiktok && stats.my_today_has_shopee
                 ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
                 : 'bg-gradient-to-r from-blue-50/90 via-slate-50 to-blue-50/60 border-blue-200 text-[#0B132B]'
             }`}
           >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-[#0B132B] to-[#1E3A8A] text-white shrink-0 shadow-2xs">
-                  {stats.my_today_has_santai && stats.my_today_has_produk ? '✓' : '📢'}
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-[#0B132B] to-[#1E3A8A] text-white shrink-0 shadow-2xs font-bold text-xs">
+                  {stats.my_today_has_ig && stats.my_today_has_tiktok && stats.my_today_has_shopee ? '✓' : '📢'}
                 </div>
                 <div>
                   <h4 className="font-bold text-slate-900">
-                    {stats.my_today_has_santai && stats.my_today_has_produk
-                      ? 'Luar biasa! Target laporan konten hari ini lengkap.'
-                      : 'Cek Kelengkapan Laporan Konten Hari Ini:'}
+                    {stats.my_today_has_ig && stats.my_today_has_tiktok && stats.my_today_has_shopee
+                      ? 'Luar biasa! Target upload ketiga channel hari ini lengkap.'
+                      : 'Status Upload Konten Hari Ini:'}
                   </h4>
-                  <p className="text-[11px] mt-0.5 text-slate-600">
-                    • Konten Santai (IG & TikTok):{' '}
-                    <strong className={stats.my_today_has_santai ? 'text-emerald-700 font-bold' : 'text-[#0B132B] font-bold'}>
-                      {stats.my_today_has_santai ? '✓ Sudah Disetor' : 'Belum Disetor'}
-                    </strong>
-                    {' | '}
-                    • Konten Produk (Shopee Video):{' '}
-                    <strong className={stats.my_today_has_produk ? 'text-emerald-700 font-bold' : 'text-[#0B132B] font-bold'}>
-                      {stats.my_today_has_produk ? '✓ Sudah Disetor' : 'Belum Disetor'}
-                    </strong>
-                  </p>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] mt-1 text-slate-600">
+                    <span>
+                      📸 Instagram:{' '}
+                      <strong className={stats.my_today_has_ig ? 'text-emerald-700 font-bold' : 'text-[#0B132B] font-bold'}>
+                        {stats.my_today_has_ig ? '✓ Sudah Disetor' : 'Belum Disetor'}
+                      </strong>
+                    </span>
+                    <span>•</span>
+                    <span>
+                      🎵 TikTok:{' '}
+                      <strong className={stats.my_today_has_tiktok ? 'text-emerald-700 font-bold' : 'text-[#0B132B] font-bold'}>
+                        {stats.my_today_has_tiktok ? '✓ Sudah Disetor' : 'Belum Disetor'}
+                      </strong>
+                    </span>
+                    <span>•</span>
+                    <span>
+                      🛒 Shopee Video:{' '}
+                      <strong className={stats.my_today_has_shopee ? 'text-emerald-700 font-bold' : 'text-[#0B132B] font-bold'}>
+                        {stats.my_today_has_shopee ? '✓ Sudah Disetor' : 'Belum Disetor'}
+                      </strong>
+                    </span>
+                  </div>
                 </div>
               </div>
-              {(!stats.my_today_has_santai || !stats.my_today_has_produk) && (
+              {(!stats.my_today_has_ig || !stats.my_today_has_tiktok || !stats.my_today_has_shopee) && (
                 <button
                   type="button"
                   onClick={handleOpenCreateModal}
@@ -491,20 +511,20 @@ export default function ContentReportsIndex({
               />
             </div>
 
-            {/* Tipe Konten */}
+            {/* Tipe / Channel Konten */}
             <div>
               <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                Kategori Konten
+                Channel Konten
               </label>
               <select
                 value={contentTypeFilter}
                 onChange={(e) => setContentTypeFilter(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B]"
               >
-                <option value="">Semua Kategori</option>
-                <option value="santai">☕ Konten Santai (IG/TikTok)</option>
-                <option value="produk">👟 Konten Produk (Shopee)</option>
-                <option value="semua">🌐 Semua Channel</option>
+                <option value="">Semua Channel</option>
+                <option value="santai">📸 🎵 Instagram & TikTok</option>
+                <option value="produk">🛒 Shopee Video</option>
+                <option value="semua">🌐 Semua Platform</option>
               </select>
             </div>
 
@@ -585,19 +605,19 @@ export default function ContentReportsIndex({
                 {/* Header Card: Status & Category Badge */}
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    {item.content_type === 'santai' && (
-                      <span className="inline-flex items-center rounded-md bg-blue-50 text-[#0B132B] border border-blue-200 px-2 py-0.5 text-[10px] font-bold">
-                        ☕ Konten Santai
+                    {item.ig_link && (
+                      <span className="inline-flex items-center rounded-md bg-pink-50 text-pink-700 border border-pink-200 px-1.5 py-0.5 text-[9px] font-bold">
+                        📸 Instagram
                       </span>
                     )}
-                    {item.content_type === 'produk' && (
-                      <span className="inline-flex items-center rounded-md bg-slate-100 text-[#0B132B] border border-slate-300 px-2 py-0.5 text-[10px] font-bold">
-                        👟 Konten Produk
+                    {item.tiktok_link && (
+                      <span className="inline-flex items-center rounded-md bg-slate-100 text-slate-900 border border-slate-300 px-1.5 py-0.5 text-[9px] font-bold">
+                        🎵 TikTok
                       </span>
                     )}
-                    {item.content_type === 'semua' && (
-                      <span className="inline-flex items-center rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold">
-                        🌐 Semua Channel
+                    {item.shopee_link && (
+                      <span className="inline-flex items-center rounded-md bg-blue-50 text-[#0B132B] border border-blue-200 px-1.5 py-0.5 text-[9px] font-bold">
+                        🛒 Shopee
                       </span>
                     )}
                   </div>
@@ -790,7 +810,7 @@ export default function ContentReportsIndex({
                         <div className="font-semibold text-slate-900">
                           {formatReportTime(item.reported_at)}
                         </div>
-                        <span className="text-[10px] text-slate-400">Otomatis Terkunci</span>
+                        <span className="text-[10px] text-slate-400">Waktu Tayang</span>
                       </td>
 
                       {/* Staf Kreatif */}
@@ -805,20 +825,20 @@ export default function ContentReportsIndex({
 
                       {/* Kategori & Judul */}
                       <td className="py-3 px-4">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          {item.content_type === 'santai' && (
-                            <span className="inline-flex items-center rounded-md bg-blue-50 text-[#0B132B] border border-blue-200 px-2 py-0.5 text-[10px] font-bold">
-                              ☕ Konten Santai
+                        <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                          {item.ig_link && (
+                            <span className="inline-flex items-center rounded-md bg-pink-50 text-pink-700 border border-pink-200 px-1.5 py-0.5 text-[9px] font-bold">
+                              📸 Instagram
                             </span>
                           )}
-                          {item.content_type === 'produk' && (
-                            <span className="inline-flex items-center rounded-md bg-slate-100 text-[#0B132B] border border-slate-300 px-2 py-0.5 text-[10px] font-bold">
-                              👟 Konten Produk
+                          {item.tiktok_link && (
+                            <span className="inline-flex items-center rounded-md bg-slate-100 text-slate-900 border border-slate-300 px-1.5 py-0.5 text-[9px] font-bold">
+                              🎵 TikTok
                             </span>
                           )}
-                          {item.content_type === 'semua' && (
-                            <span className="inline-flex items-center rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold">
-                              🌐 Semua Channel
+                          {item.shopee_link && (
+                            <span className="inline-flex items-center rounded-md bg-blue-50 text-[#0B132B] border border-blue-200 px-1.5 py-0.5 text-[9px] font-bold">
+                              🛒 Shopee
                             </span>
                           )}
                         </div>

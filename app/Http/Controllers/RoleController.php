@@ -16,6 +16,8 @@ class RoleController extends Controller
     {
         Gate::authorize('role.view');
 
+        Role::ensureKreatifRoleExists();
+
         $roles = Role::with(['permissions', 'users'])
             ->orderBy('id')
             ->get()
