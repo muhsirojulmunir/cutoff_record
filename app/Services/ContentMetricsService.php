@@ -108,21 +108,21 @@ class ContentMetricsService
                 'User-Agent'      => $this->userAgent,
                 'Accept-Language' => 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
                 'Accept'          => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            ])->timeout(6)->withOptions(['allow_redirects' => true])->get($cleanUrl);
+            ])->timeout(4)->withOptions(['allow_redirects' => true])->get($cleanUrl);
 
             if ($response->successful()) {
                 $html = $response->body();
 
                 // Cari pola playCount di dalam script state TikTok
-                if (preg_match('/"playCount":\s*(\d+)/i', $html, $matches)) {
+                if (preg_match('/["&quot;]playCount["&quot;]:\s*(\d+)/i', $html, $matches)) {
                     return (int) $matches[1];
                 }
 
-                if (preg_match('/playCount&quot;:\s*(\d+)/i', $html, $matches)) {
+                if (preg_match('/["&quot;]viewCount["&quot;]:\s*["&quot;]*(\d+)["&quot;]*/i', $html, $matches)) {
                     return (int) $matches[1];
                 }
 
-                if (preg_match('/"viewCount":\s*"*(\d+)"*/i', $html, $matches)) {
+                if (preg_match('/"play_count":\s*(\d+)/i', $html, $matches)) {
                     return (int) $matches[1];
                 }
             }
@@ -144,7 +144,7 @@ class ContentMetricsService
             $response = Http::withHeaders([
                 'User-Agent' => $this->userAgent,
                 'Accept'     => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            ])->timeout(6)->withOptions(['allow_redirects' => true])->get($cleanUrl);
+            ])->timeout(4)->withOptions(['allow_redirects' => true])->get($cleanUrl);
 
             if ($response->successful()) {
                 $html = $response->body();
@@ -175,7 +175,7 @@ class ContentMetricsService
 
             $response = Http::withHeaders([
                 'User-Agent' => $this->userAgent,
-            ])->timeout(6)->withOptions(['allow_redirects' => true])->get($cleanUrl);
+            ])->timeout(4)->withOptions(['allow_redirects' => true])->get($cleanUrl);
 
             if ($response->successful()) {
                 $html = $response->body();

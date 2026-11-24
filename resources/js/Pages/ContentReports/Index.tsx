@@ -1293,22 +1293,27 @@ export default function ContentReportsIndex({
           </div>
 
           {/* Modal Actions */}
-          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-3 border-t border-slate-200">
-            <button
-              type="button"
-              disabled={createForm.processing}
-              onClick={() => setShowCreateModal(false)}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer text-center"
-            >
-              Batal
-            </button>
-            <button
-              type="submit"
-              disabled={createForm.processing}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#0B132B] to-[#1E3A8A] px-5 py-2.5 text-xs font-bold text-white hover:opacity-95 active:scale-98 disabled:opacity-50 shadow-xs transition-all cursor-pointer text-center"
-            >
-              {createForm.processing ? 'Mengirim Laporan...' : 'Kirim Report Konten'}
-            </button>
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-slate-200">
+            <span className="text-[10px] text-slate-400 italic">
+              ⚡ Link langsung diaudit saat disimpan & diperbarui berkala jam 00:00 WIB.
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={createForm.processing}
+                onClick={() => setShowCreateModal(false)}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer text-center"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={createForm.processing}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#0B132B] to-[#1E3A8A] px-5 py-2.5 text-xs font-bold text-white hover:opacity-95 active:scale-98 disabled:opacity-50 shadow-xs transition-all cursor-pointer text-center"
+              >
+                {createForm.processing ? 'Menyimpan & Audit Link...' : 'Kirim Report Konten'}
+              </button>
+            </div>
           </div>
         </form>
       </Modal>
@@ -1525,7 +1530,7 @@ export default function ContentReportsIndex({
                 disabled={editForm.processing}
                 className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#0B132B] to-[#1E3A8A] px-5 py-2.5 text-xs font-bold text-white hover:opacity-95 active:scale-98 disabled:opacity-50 shadow-xs transition-all cursor-pointer text-center"
               >
-                {editForm.processing ? 'Menyimpan Perubahan...' : 'Simpan Perubahan'}
+                {editForm.processing ? 'Menyimpan & Re-Audit...' : 'Simpan Perubahan'}
               </button>
             </div>
           </form>

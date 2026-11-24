@@ -231,7 +231,7 @@ class DailyContentReportController extends Controller
             }
         }
 
-        DailyContentReport::create([
+        $report = DailyContentReport::create([
             'user_id'      => $user->id,
             'content_type' => $contentType,
             'title'        => trim($validated['title']),
@@ -243,11 +243,22 @@ class DailyContentReportController extends Controller
             'reported_at'  => $reportedAt,
         ]);
 
+        // Audit instan saat upload: Langsung cek & tarik views saat link disetor
+        try {
+            app(\App\Services\ContentMetricsService::class)->syncReportViews($report);
+            $report->refresh();
+        } catch (\Throwable $e) {
+            // Tetap aman jika jaringan luar bermasalah
+        }
+
         $waktuFormatted = $reportedAt->isoFormat('D MMMM Y, HH:mm') . ' WIB';
+        $viewMsg = ($report->total_views && $report->total_views > 0)
+            ? " — Terdeteksi " . number_format($report->total_views, 0, ',', '.') . " tayangan saat upload"
+            : "";
 
         return redirect()->route('content-reports.index')->with(
             'success',
-            "Report konten '{$validated['title']}' berhasil disimpan pada waktu {$waktuFormatted}!"
+            "Report konten '{$validated['title']}' berhasil disimpan pada waktu {$waktuFormatted}{$viewMsg}!"
         );
     }
 
@@ -323,6 +334,11 @@ class DailyContentReportController extends Controller
             'notes'        => !empty($validated['notes']) ? trim($validated['notes']) : null,
             'reported_at'  => $reportedAt,
         ]);
+
+        // Audit instan saat link diperbarui
+        try {
+            app(\App\Services\ContentMetricsService::class)->syncReportViews($report);
+        } catch (\Throwable $e) {}
 
         $waktuFormatted = Carbon::parse($reportedAt)->isoFormat('D MMMM Y, HH:mm') . ' WIB';
 
