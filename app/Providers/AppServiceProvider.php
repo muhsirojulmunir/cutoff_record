@@ -24,7 +24,7 @@ class AppServiceProvider extends ServiceProvider
         date_default_timezone_set('Asia/Jakarta');
         \Illuminate\Support\Facades\Schema::defaultStringLength(191);
 
-        if (app()->environment('production') || str_starts_with((string) config('app.url'), 'https://') || request()->header('X-Forwarded-Proto') === 'https') {
+        if (app()->environment('production') || str_starts_with((string) config('app.url'), 'https://') || (!app()->runningInConsole() && app()->bound('request') && request()->header('X-Forwarded-Proto') === 'https')) {
             \Illuminate\Support\Facades\URL::forceScheme('https');
         }
 
