@@ -273,8 +273,9 @@ export default function ContentReportsIndex({
                   ✓ Sudah ada laporan hari ini
                 </span>
               ) : (
-                <span className="text-amber-600 font-semibold flex items-center gap-1">
-                  ⚠️ Belum ada laporan hari ini
+                <span className="text-slate-500 font-semibold flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-slate-300" />
+                  Belum ada laporan hari ini
                 </span>
               )}
             </div>
@@ -283,10 +284,10 @@ export default function ContentReportsIndex({
           {/* Card 2: Konten Santai (IG & TikTok) */}
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-700">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#0B132B]">
                 ☕ Konten Santai
               </span>
-              <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-bold border border-indigo-200">
+              <span className="text-[10px] bg-blue-50 text-[#0B132B] px-2 py-0.5 rounded-full font-bold border border-blue-200">
                 IG & TikTok
               </span>
             </div>
@@ -304,10 +305,10 @@ export default function ContentReportsIndex({
           {/* Card 3: Konten Produk (Shopee Video) */}
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-700">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#0B132B]">
                 👟 Konten Produk
               </span>
-              <span className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-bold border border-amber-200">
+              <span className="text-[10px] bg-[#0B132B]/5 text-[#0B132B] px-2 py-0.5 rounded-full font-bold border border-[#0B132B]/15">
                 Shopee Video
               </span>
             </div>
@@ -339,34 +340,34 @@ export default function ContentReportsIndex({
           </div>
         </div>
 
-        {/* PENGINGAT SPESIFIK UNTUK ROLE KREATIF */}
+        {/* PENGINGAT SPESIFIK UNTUK ROLE KREATIF (Harmonisasi Biru Navy) */}
         {capabilities.is_kreatif && (
           <div
-            className={`rounded-2xl border p-4 text-xs transition-all ${
+            className={`rounded-2xl border p-4 text-xs transition-all shadow-2xs ${
               stats.my_today_has_santai && stats.my_today_has_produk
-                ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
-                : 'bg-amber-50/80 border-amber-200 text-amber-900'
+                ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+                : 'bg-gradient-to-r from-blue-50/90 via-slate-50 to-blue-50/60 border-blue-200 text-[#0B132B]'
             }`}
           >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-base">
-                  {stats.my_today_has_santai && stats.my_today_has_produk ? '🎉' : '📢'}
-                </span>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-[#0B132B] to-[#1E3A8A] text-white shrink-0 shadow-2xs">
+                  {stats.my_today_has_santai && stats.my_today_has_produk ? '✓' : '📢'}
+                </div>
                 <div>
-                  <h4 className="font-bold">
+                  <h4 className="font-bold text-slate-900">
                     {stats.my_today_has_santai && stats.my_today_has_produk
                       ? 'Luar biasa! Target laporan konten hari ini lengkap.'
                       : 'Cek Kelengkapan Laporan Konten Hari Ini:'}
                   </h4>
-                  <p className="text-[11px] mt-0.5">
+                  <p className="text-[11px] mt-0.5 text-slate-600">
                     • Konten Santai (IG & TikTok):{' '}
-                    <strong className={stats.my_today_has_santai ? 'text-emerald-700' : 'text-amber-700'}>
+                    <strong className={stats.my_today_has_santai ? 'text-emerald-700 font-bold' : 'text-[#0B132B] font-bold'}>
                       {stats.my_today_has_santai ? '✓ Sudah Disetor' : 'Belum Disetor'}
                     </strong>
                     {' | '}
                     • Konten Produk (Shopee Video):{' '}
-                    <strong className={stats.my_today_has_produk ? 'text-emerald-700' : 'text-amber-700'}>
+                    <strong className={stats.my_today_has_produk ? 'text-emerald-700 font-bold' : 'text-[#0B132B] font-bold'}>
                       {stats.my_today_has_produk ? '✓ Sudah Disetor' : 'Belum Disetor'}
                     </strong>
                   </p>
@@ -376,7 +377,7 @@ export default function ContentReportsIndex({
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(true)}
-                  className="rounded-xl bg-amber-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-amber-700 self-start sm:self-auto cursor-pointer"
+                  className="rounded-xl bg-gradient-to-r from-[#0B132B] to-[#1E3A8A] px-4 py-2 text-xs font-bold text-white hover:opacity-95 active:scale-98 shadow-xs transition-all self-start sm:self-auto cursor-pointer"
                 >
                   Setor Sekarang →
                 </button>
@@ -398,7 +399,7 @@ export default function ContentReportsIndex({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Ketik judul konten / sepatu / creator..."
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B]"
               />
             </div>
 
@@ -410,7 +411,7 @@ export default function ContentReportsIndex({
               <select
                 value={contentTypeFilter}
                 onChange={(e) => setContentTypeFilter(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B]"
               >
                 <option value="">Semua Kategori</option>
                 <option value="santai">☕ Konten Santai (IG/TikTok)</option>
@@ -427,7 +428,7 @@ export default function ContentReportsIndex({
               <select
                 value={creatorFilter}
                 onChange={(e) => setCreatorFilter(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B]"
               >
                 <option value="">Semua Staf</option>
                 {creators.map((c) => (
@@ -446,7 +447,7 @@ export default function ContentReportsIndex({
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B]"
               >
                 <option value="">Semua Status</option>
                 <option value="submitted">Terkirim (Belum Dicek)</option>
@@ -458,7 +459,7 @@ export default function ContentReportsIndex({
             <div className="flex items-end gap-2">
               <button
                 type="submit"
-                className="flex-1 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                className="flex-1 rounded-xl bg-gradient-to-r from-[#0B132B] to-[#1E3A8A] px-4 py-2 text-xs font-bold text-white hover:opacity-95 active:scale-98 transition-all cursor-pointer shadow-xs"
               >
                 Filter
               </button>
@@ -497,17 +498,17 @@ export default function ContentReportsIndex({
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {item.content_type === 'santai' && (
-                      <span className="inline-flex items-center rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 text-[10px] font-bold">
+                      <span className="inline-flex items-center rounded-md bg-blue-50 text-[#0B132B] border border-blue-200 px-2 py-0.5 text-[10px] font-bold">
                         ☕ Konten Santai
                       </span>
                     )}
                     {item.content_type === 'produk' && (
-                      <span className="inline-flex items-center rounded-md bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 text-[10px] font-bold">
+                      <span className="inline-flex items-center rounded-md bg-slate-100 text-[#0B132B] border border-slate-300 px-2 py-0.5 text-[10px] font-bold">
                         👟 Konten Produk
                       </span>
                     )}
                     {item.content_type === 'semua' && (
-                      <span className="inline-flex items-center rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold">
+                      <span className="inline-flex items-center rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold">
                         🌐 Semua Channel
                       </span>
                     )}
@@ -709,17 +710,17 @@ export default function ContentReportsIndex({
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-1.5 mb-1">
                           {item.content_type === 'santai' && (
-                            <span className="inline-flex items-center rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 text-[10px] font-bold">
+                            <span className="inline-flex items-center rounded-md bg-blue-50 text-[#0B132B] border border-blue-200 px-2 py-0.5 text-[10px] font-bold">
                               ☕ Konten Santai
                             </span>
                           )}
                           {item.content_type === 'produk' && (
-                            <span className="inline-flex items-center rounded-md bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 text-[10px] font-bold">
+                            <span className="inline-flex items-center rounded-md bg-slate-100 text-[#0B132B] border border-slate-300 px-2 py-0.5 text-[10px] font-bold">
                               👟 Konten Produk
                             </span>
                           )}
                           {item.content_type === 'semua' && (
-                            <span className="inline-flex items-center rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold">
+                            <span className="inline-flex items-center rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold">
                               🌐 Semua Channel
                             </span>
                           )}
@@ -895,7 +896,7 @@ export default function ContentReportsIndex({
               <label
                 className={`flex flex-col p-3 rounded-xl border cursor-pointer transition-all ${
                   createForm.data.content_type === 'santai'
-                    ? 'border-indigo-500 bg-indigo-50/50 text-indigo-950 ring-1 ring-indigo-500'
+                    ? 'border-[#0B132B] bg-blue-50/50 text-[#0B132B] ring-1 ring-[#0B132B]'
                     : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
                 }`}
               >
@@ -906,7 +907,7 @@ export default function ContentReportsIndex({
                     value="santai"
                     checked={createForm.data.content_type === 'santai'}
                     onChange={() => createForm.setData('content_type', 'santai')}
-                    className="accent-indigo-600 cursor-pointer"
+                    className="accent-[#0B132B] cursor-pointer"
                   />
                   <span className="font-bold text-xs">☕ Konten Santai</span>
                 </div>
@@ -918,7 +919,7 @@ export default function ContentReportsIndex({
               <label
                 className={`flex flex-col p-3 rounded-xl border cursor-pointer transition-all ${
                   createForm.data.content_type === 'produk'
-                    ? 'border-amber-500 bg-amber-50/50 text-amber-950 ring-1 ring-amber-500'
+                    ? 'border-[#1E3A8A] bg-blue-50/50 text-[#0B132B] ring-1 ring-[#1E3A8A]'
                     : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
                 }`}
               >
@@ -929,7 +930,7 @@ export default function ContentReportsIndex({
                     value="produk"
                     checked={createForm.data.content_type === 'produk'}
                     onChange={() => createForm.setData('content_type', 'produk')}
-                    className="accent-amber-600 cursor-pointer"
+                    className="accent-[#0B132B] cursor-pointer"
                   />
                   <span className="font-bold text-xs">👟 Konten Produk</span>
                 </div>
@@ -1057,10 +1058,10 @@ export default function ContentReportsIndex({
             {/* Shopee Video Link */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-semibold text-orange-700 flex items-center gap-1">
+                <label className="text-[11px] font-semibold text-slate-800 flex items-center gap-1">
                   <span>🛒 Link Shopee Video:</span>
                   {createForm.data.content_type === 'produk' && (
-                    <span className="text-[10px] bg-orange-100 text-orange-800 px-1.5 py-0.2 rounded font-bold">
+                    <span className="text-[10px] bg-blue-50 text-[#0B132B] px-1.5 py-0.2 rounded font-bold border border-blue-200">
                       Utama Produk
                     </span>
                   )}
@@ -1068,7 +1069,7 @@ export default function ContentReportsIndex({
                 <button
                   type="button"
                   onClick={() => handlePasteToField('shopee_link')}
-                  className="text-[10px] font-bold text-[#EE4D2D] hover:text-orange-900 bg-orange-50 hover:bg-orange-100 px-2 py-0.5 rounded-lg border border-orange-200 transition-colors cursor-pointer"
+                  className="text-[10px] font-bold text-[#0B132B] hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-lg border border-blue-200 transition-colors cursor-pointer"
                 >
                   📋 Tempel
                 </button>
@@ -1078,7 +1079,7 @@ export default function ContentReportsIndex({
                 value={createForm.data.shopee_link}
                 onChange={(e) => createForm.setData('shopee_link', e.target.value)}
                 placeholder="https://id.shp.ee/v/... atau link video Shopee"
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 shadow-2xs"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B] shadow-2xs"
               />
               {createForm.errors.shopee_link && (
                 <p className="text-[11px] text-rose-600 mt-1">{createForm.errors.shopee_link}</p>

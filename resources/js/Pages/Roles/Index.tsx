@@ -37,7 +37,7 @@ const roleBadgeColor: Record<string, string> = {
   'PIC':         'from-emerald-600 to-teal-600',
   'Direktur':    'from-slate-700 to-slate-900',
   'PIC Gudang':  'from-cyan-700 to-blue-800',
-  'Kreatif':     'from-pink-600 to-rose-600',
+  'Kreatif':     'from-[#0B132B] to-blue-800',
 };
 
 const moduleIcons: Record<string, string> = {
