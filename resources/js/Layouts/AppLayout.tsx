@@ -3,6 +3,7 @@ import { ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from
 
 import NotificationBell from '../Components/NotificationBell';
 import SideChatDock from '../Components/CustomerService/SideChatDock';
+import MobileBottomNav from '../Components/MobileBottomNav';
 import { PageProps } from '../Types';
 
 /** Key sessionStorage untuk menyimpan posisi scroll sidebar antar navigasi Inertia. */
@@ -234,6 +235,10 @@ export default function AppLayout({ children, headerRight }: Props) {
     user?.role?.name === 'Super Admin' ||
     user?.roles?.includes('Super Admin')
   );
+  const isKreatif = Boolean(
+    user?.role?.name === 'Kreatif' ||
+    user?.roles?.includes('Kreatif')
+  );
 
   const [isChatDrawerOpen, setIsChatDrawerOpen] = useState(false);
   const [csUnreadCount, setCsUnreadCount] = useState<number>(0);
@@ -375,7 +380,7 @@ export default function AppLayout({ children, headerRight }: Props) {
     <div className="h-screen overflow-hidden bg-slate-50 text-slate-900 flex font-sans">
       {/* Sidebar (Clean Crisp White Modern SaaS) */}
       <aside
-        className={`${sidebarOpen ? 'w-64' : 'w-[72px]'} ${justLoggedIn ? 'anim-slide-left' : ''} h-full bg-white border-r border-slate-200 transition-[width] duration-200 ease-in-out flex flex-col z-20 shrink-0 shadow-xs`}
+        className={`${isKreatif ? 'hidden md:flex ' : 'flex '}${sidebarOpen ? 'w-64' : 'w-[72px]'} ${justLoggedIn ? 'anim-slide-left' : ''} h-full bg-white border-r border-slate-200 transition-[width] duration-200 ease-in-out flex-col z-20 shrink-0 shadow-xs`}
       >
         {/* Logo Branding */}
         <div className="h-16 flex items-center gap-3 px-4 border-b border-slate-100 shrink-0 overflow-hidden">
@@ -604,15 +609,38 @@ export default function AppLayout({ children, headerRight }: Props) {
       <div className="flex-1 flex flex-col min-w-0 h-full md:mr-14">
         {/* Topbar (Crisp White + subtle border) */}
         <header className={`${justLoggedIn ? 'anim-fade-down anim-d1' : ''} h-16 border-b border-slate-200 bg-white flex items-center justify-between px-6 shrink-0 z-10 shadow-xs`}>
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-2 rounded-xl text-slate-600 hover:text-blue-900 hover:bg-slate-100 transition-all border border-slate-200"
-            title={sidebarOpen ? 'Tutup sidebar' : 'Buka sidebar'}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-            </svg>
-          </button>
+          {isKreatif ? (
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="hidden md:inline-flex p-2 rounded-xl text-slate-600 hover:text-blue-900 hover:bg-slate-100 transition-all border border-slate-200"
+                title={sidebarOpen ? 'Tutup sidebar' : 'Buka sidebar'}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                </svg>
+              </button>
+              <div className="flex md:hidden items-center gap-2">
+                <div className="h-8 w-8 rounded-xl bg-gradient-to-r from-[#0B132B] to-[#1E3A8A] flex items-center justify-center text-white font-bold text-xs shadow-2xs">
+                  K
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-slate-900 leading-tight">Tim Kreatif</span>
+                  <span className="text-[10px] text-slate-500 font-medium">Koding App</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-2 rounded-xl text-slate-600 hover:text-blue-900 hover:bg-slate-100 transition-all border border-slate-200"
+              title={sidebarOpen ? 'Tutup sidebar' : 'Buka sidebar'}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              </svg>
+            </button>
+          )}
 
           {/* Topbar right items */}
           <div className="flex items-center gap-2.5">
@@ -657,7 +685,7 @@ export default function AppLayout({ children, headerRight }: Props) {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 min-h-0 p-6 sm:p-8 overflow-y-auto sidebar-scroll bg-slate-50">
+        <main className={`flex-1 min-h-0 p-4 sm:p-6 lg:p-8 overflow-y-auto sidebar-scroll bg-slate-50 ${isKreatif ? 'pb-24 md:pb-8' : ''}`}>
           <div key={currentPath} className={justLoggedIn ? 'anim-zoom-in anim-d2' : 'page-enter'}>
             {children}
           </div>
@@ -710,6 +738,11 @@ export default function AppLayout({ children, headerRight }: Props) {
 
       {/* Slide-out Drawer Panel (Positioned adjacent to Right Rail Dock on desktop) */}
       <SideChatDock isOpen={isChatDrawerOpen} onClose={() => setIsChatDrawerOpen(false)} />
+
+      {/* Navigasi Bawah Khusus Role Kreatif di Layar HP */}
+      {isKreatif && (
+        <MobileBottomNav unreadChatCount={csUnreadCount} />
+      )}
     </div>
   );
 }

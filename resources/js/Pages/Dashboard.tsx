@@ -179,31 +179,32 @@ export default function Dashboard({
       <div className="space-y-6 max-w-7xl mx-auto pb-10">
         {/* Banner Khusus Tim Kreatif */}
         {isKreatif && (
-          <div className="rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-5 shadow-2xs">
+          <div className="rounded-2xl border border-slate-800 bg-gradient-to-r from-[#0B132B] to-[#1E3A8A] p-5 sm:p-6 text-white shadow-md">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100/60 px-2.5 py-0.5 rounded-full border border-blue-200">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-200 bg-white/10 px-2.5 py-1 rounded-full border border-white/20">
                   Tim Kreatif & Social Media
                 </span>
-                <h2 className="text-lg font-extrabold text-slate-900 mt-1">
+                <h2 className="text-xl font-extrabold text-white mt-2">
                   Halo, {auth?.user?.name || 'Tim Kreatif'}! 👋
                 </h2>
-                <p className="text-xs text-slate-600 mt-0.5">
+                <p className="text-xs text-blue-100/90 mt-1 max-w-xl">
                   Jangan lupa untuk menyetorkan laporan unggahan <strong>Konten Santai (IG & TikTok)</strong> dan <strong>Konten Produk (Shopee Video)</strong> hari ini.
                 </p>
               </div>
-              <div className="flex items-center gap-2 self-start sm:self-auto">
+              <div className="flex flex-wrap items-center gap-2.5 self-stretch sm:self-auto">
                 <Link
                   href="/content-reports"
-                  className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 shadow-xs transition-colors"
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-[#0B132B] hover:bg-blue-50 shadow-xs transition-all active:scale-98 cursor-pointer"
                 >
-                  📝 Buka Report Harian →
+                  <span>📝 Buka Report Harian</span>
+                  <span>→</span>
                 </Link>
                 <Link
                   href="/customer-service"
-                  className="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/25 px-4 py-2.5 text-xs font-semibold text-white transition-all active:scale-98 cursor-pointer"
                 >
-                  💬 Customer Service
+                  <span>💬 Customer Service</span>
                 </Link>
               </div>
             </div>

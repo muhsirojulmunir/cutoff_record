@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Head, router, useForm } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
 import Modal from '../../Components/Modal';
@@ -112,6 +112,31 @@ export default function ContentReportsIndex({
     feedback: '',
   });
 
+  // Auto-buka modal jika diakses dari tombol navigasi cepat ?create=1
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('create') === '1') {
+        setShowCreateModal(true);
+      }
+    } catch {
+      // Abaikan jika URLSearchParams tidak tersedia
+    }
+  }, []);
+
+  const handlePasteToField = async (field: 'ig_link' | 'tiktok_link' | 'shopee_link') => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim().startsWith('http')) {
+          createForm.setData(field, text.trim());
+        }
+      }
+    } catch {
+      // Abaikan jika izin clipboard ditolak browser
+    }
+  };
+
   const handleApplyFilter = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     router.get(
@@ -190,37 +215,40 @@ export default function ContentReportsIndex({
       <Head title="Report Harian Konten — Tim Kreatif" />
 
       <div className="space-y-6">
-        {/* HEADER BAR */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-700 border border-blue-200">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
-                </svg>
-              </span>
-              <div>
-                <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">
+        {/* HEADER BAR (Biru Navy #0B132B ke #1E3A8A) */}
+        <div className="rounded-2xl border border-slate-800 bg-gradient-to-r from-[#0B132B] to-[#1E3A8A] p-5 sm:p-6 text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white border border-white/20 shadow-inner">
+              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+              </svg>
+            </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-extrabold text-white tracking-tight">
                   Report Harian Konten
                 </h1>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Laporan unggahan video Instagram, TikTok, dan Shopee Video tim kreatif.
-                </p>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-200 bg-white/15 px-2 py-0.5 rounded-md border border-white/20">
+                  Tim Kreatif
+                </span>
               </div>
+              <p className="text-xs text-blue-100/90 mt-0.5">
+                Laporan unggahan video Instagram, TikTok, dan Shopee Video tim kreatif.
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 self-start md:self-auto">
+          <div className="flex items-center gap-2.5 self-stretch sm:self-auto">
             {capabilities.can_create && (
               <button
                 type="button"
                 onClick={() => setShowCreateModal(true)}
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700 active:scale-98 shadow-sm transition-all cursor-pointer"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-[#0B132B] hover:bg-blue-50 active:scale-98 shadow-sm transition-all cursor-pointer"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                <svg className="w-4 h-4 text-[#0B132B]" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                 </svg>
-                <span>+ Upload / Setor Laporan Konten</span>
+                <span>+ Upload / Setor Konten</span>
               </button>
             )}
           </div>
@@ -446,8 +474,197 @@ export default function ContentReportsIndex({
           </form>
         </div>
 
-        {/* TABEL DAFTAR REPORT KONTEN */}
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
+        {/* MOBILE VIEW: FEED CARDS INTERAKTIF (< md) */}
+        <div className="block md:hidden space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Daftar Laporan ({reports.total})
+            </span>
+            <span className="text-[11px] text-slate-400">Sentuh link untuk buka video</span>
+          </div>
+
+          {reports.data.length === 0 ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-xs text-slate-400">
+              Belum ada laporan konten yang sesuai dengan filter.
+            </div>
+          ) : (
+            reports.data.map((item) => (
+              <div
+                key={`mobile-${item.id}`}
+                className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs space-y-3 transition-all"
+              >
+                {/* Header Card: Status & Category Badge */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {item.content_type === 'santai' && (
+                      <span className="inline-flex items-center rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 text-[10px] font-bold">
+                        ☕ Konten Santai
+                      </span>
+                    )}
+                    {item.content_type === 'produk' && (
+                      <span className="inline-flex items-center rounded-md bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 text-[10px] font-bold">
+                        👟 Konten Produk
+                      </span>
+                    )}
+                    {item.content_type === 'semua' && (
+                      <span className="inline-flex items-center rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold">
+                        🌐 Semua Channel
+                      </span>
+                    )}
+                  </div>
+
+                  {item.status === 'reviewed' ? (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold shrink-0">
+                      ✓ Ditinjau
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center rounded-md bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 text-[10px] font-medium shrink-0">
+                      Menunggu Review
+                    </span>
+                  )}
+                </div>
+
+                {/* Judul Konten & User */}
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900 leading-snug">
+                    {item.title}
+                  </h3>
+                  <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-1">
+                    <span className="font-semibold text-slate-700">{item.user?.name || 'Kreatif'}</span>
+                    <span>•</span>
+                    <span>{formatReportTime(item.reported_at)}</span>
+                  </div>
+                </div>
+
+                {/* Catatan jika ada */}
+                {item.notes && (
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-[11px] text-slate-600 italic">
+                    &quot;{item.notes}&quot;
+                  </div>
+                )}
+
+                {/* Feedback Reviewer jika ada */}
+                {item.feedback && (
+                  <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-800">
+                    <span className="font-bold">Feedback {item.reviewer?.name || 'PIC'}:</span> &quot;{item.feedback}&quot;
+                  </div>
+                )}
+
+                {/* Touch-Friendly Link Buttons (Grid 3 Kolom) */}
+                <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-100">
+                  {item.ig_link ? (
+                    <a
+                      href={item.ig_link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-200 text-center transition-colors cursor-pointer"
+                    >
+                      <span className="text-xs font-bold flex items-center gap-0.5">
+                        📸 IG <span className="text-[10px]">↗</span>
+                      </span>
+                      <span className="text-[9px] text-pink-600 font-medium truncate w-full">Buka Post</span>
+                    </a>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-slate-50 text-slate-300 border border-slate-100 text-center">
+                      <span className="text-xs font-medium">📸 IG</span>
+                      <span className="text-[9px] text-slate-300 font-mono">-</span>
+                    </div>
+                  )}
+
+                  {item.tiktok_link ? (
+                    <a
+                      href={item.tiktok_link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-center transition-colors cursor-pointer"
+                    >
+                      <span className="text-xs font-bold flex items-center gap-0.5">
+                        🎵 TikTok <span className="text-[10px]">↗</span>
+                      </span>
+                      <span className="text-[9px] text-slate-300 font-medium truncate w-full">Buka Video</span>
+                    </a>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-slate-50 text-slate-300 border border-slate-100 text-center">
+                      <span className="text-xs font-medium">🎵 TikTok</span>
+                      <span className="text-[9px] text-slate-300 font-mono">-</span>
+                    </div>
+                  )}
+
+                  {item.shopee_link ? (
+                    <a
+                      href={item.shopee_link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-orange-50 hover:bg-orange-100 text-[#EE4D2D] border border-orange-200 text-center transition-colors cursor-pointer"
+                    >
+                      <span className="text-xs font-bold flex items-center gap-0.5">
+                        🛒 Shopee <span className="text-[10px]">↗</span>
+                      </span>
+                      <span className="text-[9px] text-orange-600 font-medium truncate w-full">Lihat Video</span>
+                    </a>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-slate-50 text-slate-300 border border-slate-100 text-center">
+                      <span className="text-xs font-medium">🛒 Shopee</span>
+                      <span className="text-[9px] text-slate-300 font-mono">-</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Bottom Actions di Mobile Card */}
+                <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
+                  {capabilities.can_review && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenReview(item)}
+                      className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
+                    >
+                      Review
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteReport(item.id, item.title)}
+                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-600 px-3 py-1.5 text-xs font-semibold text-slate-500 transition-colors cursor-pointer"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                    </svg>
+                    <span>Hapus</span>
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+
+          {/* Pagination Mobile */}
+          {reports.total > reports.per_page && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-3 flex flex-col gap-2 text-xs text-slate-600">
+              <div className="text-center font-medium">
+                Halaman {reports.current_page} dari {reports.last_page} ({reports.total} laporan)
+              </div>
+              <div className="flex items-center justify-center gap-1 flex-wrap">
+                {reports.links.map((link, idx) => (
+                  <button
+                    key={`m-link-${idx}`}
+                    disabled={!link.url}
+                    onClick={() => link.url && router.get(link.url)}
+                    dangerouslySetInnerHTML={{ __html: link.label }}
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                      link.active
+                        ? 'bg-[#0B132B] text-white border-[#0B132B]'
+                        : link.url
+                        ? 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100 cursor-pointer'
+                        : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* DESKTOP VIEW: TABEL DAFTAR REPORT KONTEN (>= md) */}
+        <div className="hidden md:block rounded-2xl border border-slate-200 bg-white shadow-2xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
@@ -777,14 +994,23 @@ export default function ContentReportsIndex({
 
             {/* Instagram Link */}
             <div>
-              <label className="block text-[11px] font-semibold text-pink-700 mb-1 flex items-center gap-1">
-                <span>📸 Link Instagram (Reels / Feed / Story):</span>
-                {createForm.data.content_type === 'santai' && (
-                  <span className="text-[10px] bg-pink-50 text-pink-700 px-1.5 py-0.2 rounded font-bold">
-                    Utama
-                  </span>
-                )}
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-semibold text-pink-700 flex items-center gap-1">
+                  <span>📸 Link Instagram (Reels / Feed / Story):</span>
+                  {createForm.data.content_type === 'santai' && (
+                    <span className="text-[10px] bg-pink-50 text-pink-700 px-1.5 py-0.2 rounded font-bold">
+                      Utama
+                    </span>
+                  )}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => handlePasteToField('ig_link')}
+                  className="text-[10px] font-bold text-pink-700 hover:text-pink-900 bg-pink-50 hover:bg-pink-100 px-2 py-0.5 rounded-lg border border-pink-200 transition-colors cursor-pointer"
+                >
+                  📋 Tempel
+                </button>
+              </div>
               <input
                 type="url"
                 value={createForm.data.ig_link}
@@ -799,14 +1025,23 @@ export default function ContentReportsIndex({
 
             {/* TikTok Link */}
             <div>
-              <label className="block text-[11px] font-semibold text-slate-900 mb-1 flex items-center gap-1">
-                <span>🎵 Link TikTok Video:</span>
-                {createForm.data.content_type === 'santai' && (
-                  <span className="text-[10px] bg-slate-100 text-slate-900 px-1.5 py-0.2 rounded font-bold">
-                    Utama
-                  </span>
-                )}
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-semibold text-slate-900 flex items-center gap-1">
+                  <span>🎵 Link TikTok Video:</span>
+                  {createForm.data.content_type === 'santai' && (
+                    <span className="text-[10px] bg-slate-100 text-slate-900 px-1.5 py-0.2 rounded font-bold">
+                      Utama
+                    </span>
+                  )}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => handlePasteToField('tiktok_link')}
+                  className="text-[10px] font-bold text-slate-800 hover:text-slate-950 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded-lg border border-slate-300 transition-colors cursor-pointer"
+                >
+                  📋 Tempel
+                </button>
+              </div>
               <input
                 type="url"
                 value={createForm.data.tiktok_link}
@@ -821,14 +1056,23 @@ export default function ContentReportsIndex({
 
             {/* Shopee Video Link */}
             <div>
-              <label className="block text-[11px] font-semibold text-orange-700 mb-1 flex items-center gap-1">
-                <span>🛒 Link Shopee Video:</span>
-                {createForm.data.content_type === 'produk' && (
-                  <span className="text-[10px] bg-orange-100 text-orange-800 px-1.5 py-0.2 rounded font-bold">
-                    Utama Produk
-                  </span>
-                )}
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-semibold text-orange-700 flex items-center gap-1">
+                  <span>🛒 Link Shopee Video:</span>
+                  {createForm.data.content_type === 'produk' && (
+                    <span className="text-[10px] bg-orange-100 text-orange-800 px-1.5 py-0.2 rounded font-bold">
+                      Utama Produk
+                    </span>
+                  )}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => handlePasteToField('shopee_link')}
+                  className="text-[10px] font-bold text-[#EE4D2D] hover:text-orange-900 bg-orange-50 hover:bg-orange-100 px-2 py-0.5 rounded-lg border border-orange-200 transition-colors cursor-pointer"
+                >
+                  📋 Tempel
+                </button>
+              </div>
               <input
                 type="url"
                 value={createForm.data.shopee_link}
@@ -863,19 +1107,19 @@ export default function ContentReportsIndex({
           </div>
 
           {/* Modal Actions */}
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-3 border-t border-slate-200">
             <button
               type="button"
               disabled={createForm.processing}
               onClick={() => setShowCreateModal(false)}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer text-center"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={createForm.processing}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50 shadow-xs transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#0B132B] to-[#1E3A8A] px-5 py-2.5 text-xs font-bold text-white hover:opacity-95 active:scale-98 disabled:opacity-50 shadow-xs transition-all cursor-pointer text-center"
             >
               {createForm.processing ? 'Mengirim Laporan...' : 'Kirim Report Konten'}
             </button>

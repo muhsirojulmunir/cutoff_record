@@ -201,6 +201,7 @@ export default function CustomerServiceIndex({
   const [selectedConvId, setSelectedConvId] = useState<string>(
     initialConversations[0]?.id || ''
   );
+  const [mobileViewingChat, setMobileViewingChat] = useState<boolean>(false);
   const [channelFilter, setChannelFilter] = useState<'all' | 'shopee' | 'tiktok'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'unread' | 'resolved'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -460,6 +461,7 @@ export default function CustomerServiceIndex({
   // Select conversation and mark as read
   const handleSelectConversation = (conv: Conversation) => {
     setSelectedConvId(conv.id);
+    setMobileViewingChat(true);
     if (conv.unread_count > 0 || conv.status === 'unread') {
       setConversations((prev) =>
         prev.map((c) => (c.id === conv.id ? { ...c, unread_count: 0, status: 'read', manual_unread: false } : c))
@@ -791,7 +793,7 @@ export default function CustomerServiceIndex({
           {/* ========================================================= */}
           {/* COLUMN 1: Conversation List & Filter (Width: 340px)       */}
           {/* ========================================================= */}
-          <aside className="flex w-80 md:w-88 flex-col border-r border-slate-200 bg-white shrink-0">
+          <aside className={`${mobileViewingChat ? 'hidden md:flex' : 'flex w-full'} md:w-88 flex-col border-r border-slate-200 bg-white shrink-0`}>
             {/* Search & Channel Tabs */}
             <div className="border-b border-slate-100 p-3 space-y-2.5">
               {/* Search Bar */}
@@ -1004,12 +1006,23 @@ export default function CustomerServiceIndex({
           {/* ========================================================= */}
           {/* COLUMN 2: Active Chat Room & Reply Input (Flex-1)        */}
           {/* ========================================================= */}
-          <main className="flex flex-1 flex-col bg-slate-50/60 overflow-hidden">
+          <main className={`${mobileViewingChat ? 'flex' : 'hidden md:flex'} flex-1 flex-col bg-slate-50/60 overflow-hidden`}>
             {activeConv ? (
               <>
                 {/* Active Chat Header */}
-                <header className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5 py-3 shadow-2xs">
-                  <div className="flex items-center gap-3">
+                <header className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-5 py-3 shadow-2xs">
+                  <div className="flex items-center gap-2.5 sm:gap-3">
+                    {/* Tombol Kembali ke Daftar Chat (Mobile < md) */}
+                    <button
+                      type="button"
+                      onClick={() => setMobileViewingChat(false)}
+                      className="md:hidden p-1.5 -ml-1 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+                      title="Kembali ke daftar percakapan"
+                    >
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+                      </svg>
+                    </button>
                     <div className="relative">
                       <div
                         className={`flex h-10 w-10 items-center justify-center rounded-full font-bold text-sm ${
