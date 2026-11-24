@@ -118,6 +118,12 @@ Route::middleware('auth')->group(function () {
     Route::post('/customer-service/{id}/toggle-unread', [\App\Http\Controllers\CustomerServiceController::class, 'toggleUnread'])->name('customer-service.toggle-unread');
     Route::post('/customer-service/{id}/notes', [\App\Http\Controllers\CustomerServiceController::class, 'saveNotes'])->name('customer-service.notes');
 
+    // Report Harian Konten (Kreatif, PIC, Direktur, Super Admin)
+    Route::get('/content-reports', [\App\Http\Controllers\DailyContentReportController::class, 'index'])->name('content-reports.index');
+    Route::post('/content-reports', [\App\Http\Controllers\DailyContentReportController::class, 'store'])->name('content-reports.store');
+    Route::post('/content-reports/{id}/review', [\App\Http\Controllers\DailyContentReportController::class, 'review'])->name('content-reports.review');
+    Route::delete('/content-reports/{id}', [\App\Http\Controllers\DailyContentReportController::class, 'destroy'])->name('content-reports.destroy');
+
     // Naikkan Produk Shopee (Eksklusif Admin & Super Admin)
     Route::get('/shopee/boost-products', [\App\Http\Controllers\ShopeeBoostController::class, 'index'])->name('shopee.boost-products.index');
     Route::get('/shopee/boost-products/status', [\App\Http\Controllers\ShopeeBoostController::class, 'status'])->name('shopee.boost-products.status');

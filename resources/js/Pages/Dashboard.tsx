@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import AppLayout from '../Layouts/AppLayout';
 
 interface ChannelItem {
@@ -169,11 +169,47 @@ export default function Dashboard({
   const maxTrendCount = Math.max(...dailyTrend.map((t) => t.order_count), 1);
   const periodTotal = summary.totalOrders || 1;
 
+  const { auth } = usePage().props as any;
+  const isKreatif = auth?.user?.role?.name === 'Kreatif';
+
   return (
     <AppLayout>
       <Head title="Dashboard Performa" />
 
       <div className="space-y-6 max-w-7xl mx-auto pb-10">
+        {/* Banner Khusus Tim Kreatif */}
+        {isKreatif && (
+          <div className="rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-5 shadow-2xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100/60 px-2.5 py-0.5 rounded-full border border-blue-200">
+                  Tim Kreatif & Social Media
+                </span>
+                <h2 className="text-lg font-extrabold text-slate-900 mt-1">
+                  Halo, {auth?.user?.name || 'Tim Kreatif'}! 👋
+                </h2>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Jangan lupa untuk menyetorkan laporan unggahan <strong>Konten Santai (IG & TikTok)</strong> dan <strong>Konten Produk (Shopee Video)</strong> hari ini.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <Link
+                  href="/content-reports"
+                  className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 shadow-xs transition-colors"
+                >
+                  📝 Buka Report Harian →
+                </Link>
+                <Link
+                  href="/customer-service"
+                  className="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  💬 Customer Service
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Top Header Row */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-4">
