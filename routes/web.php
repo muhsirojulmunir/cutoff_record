@@ -195,20 +195,6 @@ Route::middleware('auth')->group(function () {
     Route::post('/stock-forecast/propose', [\App\Http\Controllers\StockForecastController::class, 'propose'])->name('stock-forecast.propose');
     Route::post('/stock-forecast/proposals/{poProposal}/approve', [\App\Http\Controllers\StockForecastController::class, 'approve'])->name('stock-forecast.proposals.approve');
     Route::post('/stock-forecast/proposals/{poProposal}/reject', [\App\Http\Controllers\StockForecastController::class, 'reject'])->name('stock-forecast.proposals.reject');
-
-    // System Utilities (Super Admin)
-    Route::get('/system/migrate', function () {
-        $user = auth()->user();
-        if (! $user || (! (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) && $user->role?->name !== 'Super Admin')) {
-            abort(403, 'Hanya Super Admin yang diizinkan menjalankan migrasi sistem.');
-        }
-        \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
-        return response()->json([
-            'status'  => 'success',
-            'message' => 'Migrasi database berhasil dijalankan.',
-            'output'  => \Illuminate\Support\Facades\Artisan::output(),
-        ]);
-    })->name('system.migrate');
 });
 
 // Web Cron Trigger untuk sinkronisasi otomatis Cut Off dari cPanel (via curl / wget)
@@ -309,26 +295,50 @@ Route::match(['get', 'post'], '/cron/shopee-auto-boost/{token?}', function (\Ill
     }
 })->name('cron.shopee-auto-boost');
 
-// Helper untuk menjalankan migrasi database otomatis dari cPanel / browser
+// Helper untuk menjalankan migrasi database otomatis & inisialisasi role dari cPanel / browser
 Route::match(['get', 'post'], '/system/migrate/{token?}', function (\Illuminate\Http\Request $request, $token = null) {
     $providedToken = $token ?? $request->query('token') ?? $request->header('X-Cron-Token');
     $expectedToken = env('CRON_SYNC_TOKEN', 'recordsh_cutoff_sync_2026');
 
-    if ($providedToken && $providedToken !== $expectedToken) {
-        return response()->json(['status' => 'error', 'message' => 'Unauthorized'], 403);
+    $user = auth()->user();
+    $isSuperAdmin = $user && ((method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) || $user->role?->name === 'Super Admin');
+
+    if (! $isSuperAdmin && $providedToken !== $expectedToken) {
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'Unauthorized: Token tidak valid atau belum login sebagai Super Admin.',
+        ], 403);
     }
 
     try {
+        // 1. Jalankan Migrasi Database
         \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
-        $output = \Illuminate\Support\Facades\Artisan::output();
+        $migrateOutput = \Illuminate\Support\Facades\Artisan::output();
+
+        // 2. Jalankan Seeder Role Kreatif & Permissions
+        \Illuminate\Support\Facades\Artisan::call('db:seed', [
+            '--class' => 'Database\\Seeders\\CreativeRoleAndUserSeeder',
+            '--force' => true,
+        ]);
+        $seedOutput = \Illuminate\Support\Facades\Artisan::output();
+
+        // 3. Bersihkan Cache Sistem
+        \Illuminate\Support\Facades\Artisan::call('optimize:clear');
+        $clearOutput = \Illuminate\Support\Facades\Artisan::output();
 
         return response()->json([
-            'status'  => 'success',
-            'message' => 'Database migration completed successfully.',
-            'output'  => trim($output),
+            'status'         => 'success',
+            'message'        => 'Migrasi database, inisialisasi role Kreatif, dan pembersihan cache berhasil!',
+            'migrate_output' => trim($migrateOutput),
+            'seed_output'    => trim($seedOutput),
+            'clear_output'   => trim($clearOutput),
         ]);
     } catch (\Throwable $e) {
-        return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+        return response()->json([
+            'status'  => 'error',
+            'message' => $e->getMessage(),
+            'trace'   => $e->getTraceAsString(),
+        ], 500);
     }
 })->name('system.migrate');
 
