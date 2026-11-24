@@ -121,6 +121,7 @@ Route::middleware('auth')->group(function () {
     // Report Harian Konten (Kreatif, PIC, Direktur, Super Admin)
     Route::get('/content-reports', [\App\Http\Controllers\DailyContentReportController::class, 'index'])->name('content-reports.index');
     Route::post('/content-reports', [\App\Http\Controllers\DailyContentReportController::class, 'store'])->name('content-reports.store');
+    Route::put('/content-reports/{id}', [\App\Http\Controllers\DailyContentReportController::class, 'update'])->name('content-reports.update');
     Route::post('/content-reports/{id}/review', [\App\Http\Controllers\DailyContentReportController::class, 'review'])->name('content-reports.review');
     Route::delete('/content-reports/{id}', [\App\Http\Controllers\DailyContentReportController::class, 'destroy'])->name('content-reports.destroy');
 

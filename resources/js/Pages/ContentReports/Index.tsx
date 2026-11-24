@@ -78,6 +78,21 @@ export interface Props {
   capabilities: Capabilities;
 }
 
+function getTodayDateString(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getCurrentTimeString(): string {
+  const d = new Date();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
 export default function ContentReportsIndex({
   reports,
   filters,
@@ -87,6 +102,7 @@ export default function ContentReportsIndex({
 }: Props) {
   // Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingReport, setEditingReport] = useState<ContentReportItem | null>(null);
   const [reviewingReport, setReviewingReport] = useState<ContentReportItem | null>(null);
 
   // Filter Form State
@@ -97,10 +113,22 @@ export default function ContentReportsIndex({
   const [dateFrom, setDateFrom] = useState(filters.date_from || '');
   const [dateTo, setDateTo] = useState(filters.date_to || '');
 
-  // Form Input Report Baru
+  // Form Input Report Baru (Default Hari Ini & Jam Sekarang)
   const createForm = useForm({
-    content_type: 'santai' as 'santai' | 'produk' | 'semua',
     title: '',
+    reported_date: getTodayDateString(),
+    reported_time: getCurrentTimeString(),
+    ig_link: '',
+    tiktok_link: '',
+    shopee_link: '',
+    notes: '',
+  });
+
+  // Form Edit Report
+  const editForm = useForm({
+    title: '',
+    reported_date: '',
+    reported_time: '',
     ig_link: '',
     tiktok_link: '',
     shopee_link: '',
@@ -112,24 +140,84 @@ export default function ContentReportsIndex({
     feedback: '',
   });
 
+  const handleOpenCreateModal = () => {
+    createForm.setData({
+      title: '',
+      reported_date: getTodayDateString(),
+      reported_time: getCurrentTimeString(),
+      ig_link: '',
+      tiktok_link: '',
+      shopee_link: '',
+      notes: '',
+    });
+    createForm.clearErrors();
+    setShowCreateModal(true);
+  };
+
+  const handleOpenEdit = (item: ContentReportItem) => {
+    setEditingReport(item);
+    let dateStr = getTodayDateString();
+    let timeStr = getCurrentTimeString();
+    if (item.reported_at) {
+      const d = new Date(item.reported_at);
+      if (!isNaN(d.getTime())) {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        dateStr = `${year}-${month}-${day}`;
+        timeStr = `${hours}:${minutes}`;
+      }
+    }
+    editForm.setData({
+      title: item.title,
+      reported_date: dateStr,
+      reported_time: timeStr,
+      ig_link: item.ig_link || '',
+      tiktok_link: item.tiktok_link || '',
+      shopee_link: item.shopee_link || '',
+      notes: item.notes || '',
+    });
+    editForm.clearErrors();
+  };
+
+  const handleUpdateReport = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingReport) return;
+    editForm.put(`/content-reports/${editingReport.id}`, {
+      onSuccess: () => {
+        setEditingReport(null);
+        editForm.reset();
+      },
+    });
+  };
+
   // Auto-buka modal jika diakses dari tombol navigasi cepat ?create=1
   useEffect(() => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
       if (urlParams.get('create') === '1') {
-        setShowCreateModal(true);
+        handleOpenCreateModal();
       }
     } catch {
       // Abaikan jika URLSearchParams tidak tersedia
     }
   }, []);
 
-  const handlePasteToField = async (field: 'ig_link' | 'tiktok_link' | 'shopee_link') => {
+  const handlePasteToField = async (
+    field: 'ig_link' | 'tiktok_link' | 'shopee_link',
+    targetForm: 'create' | 'edit' = 'create'
+  ) => {
     try {
       if (navigator.clipboard && navigator.clipboard.readText) {
         const text = await navigator.clipboard.readText();
         if (text && text.trim().startsWith('http')) {
-          createForm.setData(field, text.trim());
+          if (targetForm === 'create') {
+            createForm.setData(field, text.trim());
+          } else {
+            editForm.setData(field, text.trim());
+          }
         }
       }
     } catch {
@@ -242,7 +330,7 @@ export default function ContentReportsIndex({
             {capabilities.can_create && (
               <button
                 type="button"
-                onClick={() => setShowCreateModal(true)}
+                onClick={handleOpenCreateModal}
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-[#0B132B] hover:bg-blue-50 active:scale-98 shadow-sm transition-all cursor-pointer"
               >
                 <svg className="w-4 h-4 text-[#0B132B]" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
@@ -376,7 +464,7 @@ export default function ContentReportsIndex({
               {(!stats.my_today_has_santai || !stats.my_today_has_produk) && (
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(true)}
+                  onClick={handleOpenCreateModal}
                   className="rounded-xl bg-gradient-to-r from-[#0B132B] to-[#1E3A8A] px-4 py-2 text-xs font-bold text-white hover:opacity-95 active:scale-98 shadow-xs transition-all self-start sm:self-auto cursor-pointer"
                 >
                   Setor Sekarang →
@@ -622,6 +710,15 @@ export default function ContentReportsIndex({
                       Review
                     </button>
                   )}
+                  {(capabilities.can_create || capabilities.can_review) && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEdit(item)}
+                      className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors cursor-pointer"
+                    >
+                      ✏️ <span>Edit</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => handleDeleteReport(item.id, item.title)}
@@ -823,6 +920,18 @@ export default function ContentReportsIndex({
                             </button>
                           )}
 
+                          {/* Tombol Edit Laporan */}
+                          {(capabilities.can_create || capabilities.can_review) && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEdit(item)}
+                              className="rounded-lg border border-slate-200 bg-white hover:bg-slate-100 hover:text-[#0B132B] text-slate-600 px-2 py-1 text-[11px] font-semibold transition-colors cursor-pointer"
+                              title="Edit Laporan / Waktu"
+                            >
+                              Edit
+                            </button>
+                          )}
+
                           {/* Tombol Hapus */}
                           <button
                             type="button"
@@ -887,87 +996,76 @@ export default function ContentReportsIndex({
         maxWidth="2xl"
       >
         <form onSubmit={handleSubmitReport} className="space-y-4">
-          {/* Pilihan Kategori Konten */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-              1. Pilih Kategori Konten:
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <label
-                className={`flex flex-col p-3 rounded-xl border cursor-pointer transition-all ${
-                  createForm.data.content_type === 'santai'
-                    ? 'border-[#0B132B] bg-blue-50/50 text-[#0B132B] ring-1 ring-[#0B132B]'
-                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="content_type"
-                    value="santai"
-                    checked={createForm.data.content_type === 'santai'}
-                    onChange={() => createForm.setData('content_type', 'santai')}
-                    className="accent-[#0B132B] cursor-pointer"
-                  />
-                  <span className="font-bold text-xs">☕ Konten Santai</span>
+          {/* 1. Waktu & Jam Tayang Konten (Paling Atas - Default Hari Ini & Jam Sekarang, Bisa Diedit) */}
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-gradient-to-br from-[#0B132B] to-[#1E3A8A] text-white text-xs shadow-2xs">
+                  ⏱️
                 </div>
-                <span className="text-[10px] text-slate-500 mt-1 pl-5">
-                  Fokus di Instagram & TikTok (lifestyle/tren)
-                </span>
-              </label>
+                <div>
+                  <label className="text-xs font-bold text-slate-900 block">
+                    Waktu & Jam Tayang Konten
+                  </label>
+                  <span className="text-[11px] text-slate-500">
+                    Tercatat otomatis hari ini & jam sekarang (dapat Anda sesuaikan).
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  createForm.setData((prev) => ({
+                    ...prev,
+                    reported_date: getTodayDateString(),
+                    reported_time: getCurrentTimeString(),
+                  }));
+                }}
+                className="text-[10px] font-bold text-[#0B132B] bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shrink-0"
+                title="Set waktu ke menit saat ini"
+              >
+                ⚡ Jam Sekarang
+              </button>
+            </div>
 
-              <label
-                className={`flex flex-col p-3 rounded-xl border cursor-pointer transition-all ${
-                  createForm.data.content_type === 'produk'
-                    ? 'border-[#1E3A8A] bg-blue-50/50 text-[#0B132B] ring-1 ring-[#1E3A8A]'
-                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="content_type"
-                    value="produk"
-                    checked={createForm.data.content_type === 'produk'}
-                    onChange={() => createForm.setData('content_type', 'produk')}
-                    className="accent-[#0B132B] cursor-pointer"
-                  />
-                  <span className="font-bold text-xs">👟 Konten Produk</span>
-                </div>
-                <span className="text-[10px] text-slate-500 mt-1 pl-5">
-                  Shopee Video review sepatu & keranjang
-                </span>
-              </label>
-
-              <label
-                className={`flex flex-col p-3 rounded-xl border cursor-pointer transition-all ${
-                  createForm.data.content_type === 'semua'
-                    ? 'border-emerald-500 bg-emerald-50/50 text-emerald-950 ring-1 ring-emerald-500'
-                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="content_type"
-                    value="semua"
-                    checked={createForm.data.content_type === 'semua'}
-                    onChange={() => createForm.setData('content_type', 'semua')}
-                    className="accent-emerald-600 cursor-pointer"
-                  />
-                  <span className="font-bold text-xs">🌐 Semua Channel</span>
-                </div>
-                <span className="text-[10px] text-slate-500 mt-1 pl-5">
-                  Post serentak di IG, TikTok & Shopee
-                </span>
-              </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Tanggal Upload:
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={createForm.data.reported_date}
+                  onChange={(e) => createForm.setData('reported_date', e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B] shadow-2xs cursor-pointer"
+                />
+                {createForm.errors.reported_date && (
+                  <p className="text-[11px] text-rose-600 mt-1">{createForm.errors.reported_date}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Jam / Menit Tayang:
+                </label>
+                <input
+                  type="time"
+                  required
+                  value={createForm.data.reported_time}
+                  onChange={(e) => createForm.setData('reported_time', e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B] shadow-2xs cursor-pointer"
+                />
+                {createForm.errors.reported_time && (
+                  <p className="text-[11px] text-rose-600 mt-1">{createForm.errors.reported_time}</p>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Judul / Topik Konten */}
+          {/* 2. Judul / Topik Konten */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-              2. Judul / Topik Konten & Sepatu: <span className="text-rose-500">*</span>
+              Judul / Topik Konten & Sepatu: <span className="text-rose-500">*</span>
             </label>
             <input
               type="text"
@@ -975,18 +1073,18 @@ export default function ContentReportsIndex({
               value={createForm.data.title}
               onChange={(e) => createForm.setData('title', e.target.value)}
               placeholder="Contoh: Review Blanco Hitam 39 / OOTD Sekolah Kylie / Dance Tren"
-              className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs text-slate-900 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 shadow-2xs"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs text-slate-900 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B] shadow-2xs"
             />
             {createForm.errors.title && (
               <p className="text-[11px] text-rose-600 mt-1">{createForm.errors.title}</p>
             )}
           </div>
 
-          {/* Input Link Tautan */}
+          {/* 3. Input Link Tautan */}
           <div className="space-y-3 pt-2 border-t border-slate-100">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                3. Masukkan Tautan Video yang Diunggah:
+                Masukkan Tautan Video yang Diunggah:
               </label>
               <span className="text-[11px] text-slate-400">
                 (Isi minimal salah satu tautan)
@@ -996,18 +1094,13 @@ export default function ContentReportsIndex({
             {/* Instagram Link */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-semibold text-pink-700 flex items-center gap-1">
+                <label className="text-[11px] font-semibold text-slate-800 flex items-center gap-1.5">
                   <span>📸 Link Instagram (Reels / Feed / Story):</span>
-                  {createForm.data.content_type === 'santai' && (
-                    <span className="text-[10px] bg-pink-50 text-pink-700 px-1.5 py-0.2 rounded font-bold">
-                      Utama
-                    </span>
-                  )}
                 </label>
                 <button
                   type="button"
-                  onClick={() => handlePasteToField('ig_link')}
-                  className="text-[10px] font-bold text-pink-700 hover:text-pink-900 bg-pink-50 hover:bg-pink-100 px-2 py-0.5 rounded-lg border border-pink-200 transition-colors cursor-pointer"
+                  onClick={() => handlePasteToField('ig_link', 'create')}
+                  className="text-[10px] font-bold text-[#0B132B] hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-lg border border-blue-200 transition-colors cursor-pointer"
                 >
                   📋 Tempel
                 </button>
@@ -1017,7 +1110,7 @@ export default function ContentReportsIndex({
                 value={createForm.data.ig_link}
                 onChange={(e) => createForm.setData('ig_link', e.target.value)}
                 placeholder="https://www.instagram.com/reel/..."
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:border-pink-600 focus:ring-1 focus:ring-pink-600 shadow-2xs"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B] shadow-2xs"
               />
               {createForm.errors.ig_link && (
                 <p className="text-[11px] text-rose-600 mt-1">{createForm.errors.ig_link}</p>
@@ -1027,18 +1120,13 @@ export default function ContentReportsIndex({
             {/* TikTok Link */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-semibold text-slate-900 flex items-center gap-1">
+                <label className="text-[11px] font-semibold text-slate-800 flex items-center gap-1.5">
                   <span>🎵 Link TikTok Video:</span>
-                  {createForm.data.content_type === 'santai' && (
-                    <span className="text-[10px] bg-slate-100 text-slate-900 px-1.5 py-0.2 rounded font-bold">
-                      Utama
-                    </span>
-                  )}
                 </label>
                 <button
                   type="button"
-                  onClick={() => handlePasteToField('tiktok_link')}
-                  className="text-[10px] font-bold text-slate-800 hover:text-slate-950 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded-lg border border-slate-300 transition-colors cursor-pointer"
+                  onClick={() => handlePasteToField('tiktok_link', 'create')}
+                  className="text-[10px] font-bold text-[#0B132B] hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-lg border border-blue-200 transition-colors cursor-pointer"
                 >
                   📋 Tempel
                 </button>
@@ -1048,7 +1136,7 @@ export default function ContentReportsIndex({
                 value={createForm.data.tiktok_link}
                 onChange={(e) => createForm.setData('tiktok_link', e.target.value)}
                 placeholder="https://vt.tiktok.com/... atau https://www.tiktok.com/@..."
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 shadow-2xs"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B] shadow-2xs"
               />
               {createForm.errors.tiktok_link && (
                 <p className="text-[11px] text-rose-600 mt-1">{createForm.errors.tiktok_link}</p>
@@ -1058,17 +1146,12 @@ export default function ContentReportsIndex({
             {/* Shopee Video Link */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-semibold text-slate-800 flex items-center gap-1">
+                <label className="text-[11px] font-semibold text-slate-800 flex items-center gap-1.5">
                   <span>🛒 Link Shopee Video:</span>
-                  {createForm.data.content_type === 'produk' && (
-                    <span className="text-[10px] bg-blue-50 text-[#0B132B] px-1.5 py-0.2 rounded font-bold border border-blue-200">
-                      Utama Produk
-                    </span>
-                  )}
                 </label>
                 <button
                   type="button"
-                  onClick={() => handlePasteToField('shopee_link')}
+                  onClick={() => handlePasteToField('shopee_link', 'create')}
                   className="text-[10px] font-bold text-[#0B132B] hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-lg border border-blue-200 transition-colors cursor-pointer"
                 >
                   📋 Tempel
@@ -1097,14 +1180,8 @@ export default function ContentReportsIndex({
               value={createForm.data.notes}
               onChange={(e) => createForm.setData('notes', e.target.value)}
               placeholder="Contoh: Menggunakan hashtag kampanye sekolah, keranjang kuning tertaut ke artikel Kylie Hitam 38."
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-800 focus:ring-1 focus:ring-slate-800"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B]"
             />
-          </div>
-
-          {/* Info Timestamp Otomatis */}
-          <div className="rounded-xl bg-slate-50 border border-slate-200 p-2.5 text-[11px] text-slate-500 flex items-center justify-between">
-            <span>⏱ Waktu Lapor: <strong>{stats.server_time}</strong></span>
-            <span className="text-emerald-700 font-semibold">Tercatat Otomatis Realtime</span>
           </div>
 
           {/* Modal Actions */}
@@ -1126,6 +1203,225 @@ export default function ContentReportsIndex({
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* MODAL EDIT LAPORAN KONTEN */}
+      <Modal
+        show={Boolean(editingReport)}
+        onClose={() => setEditingReport(null)}
+        title="Edit Laporan Konten Harian"
+        maxWidth="2xl"
+      >
+        {editingReport && (
+          <form onSubmit={handleUpdateReport} className="space-y-4">
+            {/* Waktu & Jam Tayang Konten (Paling Atas) */}
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-gradient-to-br from-[#0B132B] to-[#1E3A8A] text-white text-xs shadow-2xs">
+                    ⏱️
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-900 block">
+                      Waktu & Jam Tayang Konten
+                    </label>
+                    <span className="text-[11px] text-slate-500">
+                      Sesuaikan tanggal dan jam unggah konten ini jika diperlukan.
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    editForm.setData((prev) => ({
+                      ...prev,
+                      reported_date: getTodayDateString(),
+                      reported_time: getCurrentTimeString(),
+                    }));
+                  }}
+                  className="text-[10px] font-bold text-[#0B132B] bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shrink-0"
+                  title="Set ke waktu sekarang"
+                >
+                  ⚡ Set Jam Sekarang
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Tanggal Upload:
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editForm.data.reported_date}
+                    onChange={(e) => editForm.setData('reported_date', e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B] shadow-2xs cursor-pointer"
+                  />
+                  {editForm.errors.reported_date && (
+                    <p className="text-[11px] text-rose-600 mt-1">{editForm.errors.reported_date}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Jam / Menit Tayang:
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={editForm.data.reported_time}
+                    onChange={(e) => editForm.setData('reported_time', e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B] shadow-2xs cursor-pointer"
+                  />
+                  {editForm.errors.reported_time && (
+                    <p className="text-[11px] text-rose-600 mt-1">{editForm.errors.reported_time}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Judul / Topik Konten */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                Judul / Topik Konten & Sepatu: <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={editForm.data.title}
+                onChange={(e) => editForm.setData('title', e.target.value)}
+                placeholder="Contoh: Review Blanco Hitam 39 / OOTD Sekolah Kylie / Dance Tren"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs text-slate-900 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B] shadow-2xs"
+              />
+              {editForm.errors.title && (
+                <p className="text-[11px] text-rose-600 mt-1">{editForm.errors.title}</p>
+              )}
+            </div>
+
+            {/* Input Link Tautan */}
+            <div className="space-y-3 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                  Tautan Video yang Diunggah:
+                </label>
+                <span className="text-[11px] text-slate-400">
+                  (Minimal salah satu tautan)
+                </span>
+              </div>
+
+              {/* Instagram Link */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-semibold text-slate-800 flex items-center gap-1.5">
+                    <span>📸 Link Instagram (Reels / Feed / Story):</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handlePasteToField('ig_link', 'edit')}
+                    className="text-[10px] font-bold text-[#0B132B] hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-lg border border-blue-200 transition-colors cursor-pointer"
+                  >
+                    📋 Tempel
+                  </button>
+                </div>
+                <input
+                  type="url"
+                  value={editForm.data.ig_link}
+                  onChange={(e) => editForm.setData('ig_link', e.target.value)}
+                  placeholder="https://www.instagram.com/reel/..."
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B] shadow-2xs"
+                />
+                {editForm.errors.ig_link && (
+                  <p className="text-[11px] text-rose-600 mt-1">{editForm.errors.ig_link}</p>
+                )}
+              </div>
+
+              {/* TikTok Link */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-semibold text-slate-800 flex items-center gap-1.5">
+                    <span>🎵 Link TikTok Video:</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handlePasteToField('tiktok_link', 'edit')}
+                    className="text-[10px] font-bold text-[#0B132B] hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-lg border border-blue-200 transition-colors cursor-pointer"
+                  >
+                    📋 Tempel
+                  </button>
+                </div>
+                <input
+                  type="url"
+                  value={editForm.data.tiktok_link}
+                  onChange={(e) => editForm.setData('tiktok_link', e.target.value)}
+                  placeholder="https://vt.tiktok.com/... atau https://www.tiktok.com/@..."
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B] shadow-2xs"
+                />
+                {editForm.errors.tiktok_link && (
+                  <p className="text-[11px] text-rose-600 mt-1">{editForm.errors.tiktok_link}</p>
+                )}
+              </div>
+
+              {/* Shopee Video Link */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-semibold text-slate-800 flex items-center gap-1.5">
+                    <span>🛒 Link Shopee Video:</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handlePasteToField('shopee_link', 'edit')}
+                    className="text-[10px] font-bold text-[#0B132B] hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-lg border border-blue-200 transition-colors cursor-pointer"
+                  >
+                    📋 Tempel
+                  </button>
+                </div>
+                <input
+                  type="url"
+                  value={editForm.data.shopee_link}
+                  onChange={(e) => editForm.setData('shopee_link', e.target.value)}
+                  placeholder="https://id.shp.ee/v/... atau link video Shopee"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B] shadow-2xs"
+                />
+                {editForm.errors.shopee_link && (
+                  <p className="text-[11px] text-rose-600 mt-1">{editForm.errors.shopee_link}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Catatan Tambahan (Opsional) */}
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                Catatan Tambahan (Opsional):
+              </label>
+              <textarea
+                rows={2}
+                value={editForm.data.notes}
+                onChange={(e) => editForm.setData('notes', e.target.value)}
+                placeholder="Contoh: Menggunakan hashtag kampanye sekolah, keranjang kuning tertaut ke artikel Kylie Hitam 38."
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B]"
+              />
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              <button
+                type="button"
+                disabled={editForm.processing}
+                onClick={() => setEditingReport(null)}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer text-center"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={editForm.processing}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#0B132B] to-[#1E3A8A] px-5 py-2.5 text-xs font-bold text-white hover:opacity-95 active:scale-98 disabled:opacity-50 shadow-xs transition-all cursor-pointer text-center"
+              >
+                {editForm.processing ? 'Menyimpan Perubahan...' : 'Simpan Perubahan'}
+              </button>
+            </div>
+          </form>
+        )}
       </Modal>
 
       {/* MODAL REVIEW PIC / DIREKTUR / MANAGEMENT */}

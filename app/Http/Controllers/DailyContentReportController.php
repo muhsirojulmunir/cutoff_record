@@ -146,12 +146,14 @@ class DailyContentReportController extends Controller
         }
 
         $validated = $request->validate([
-            'content_type' => 'required|in:santai,produk,semua',
-            'title'        => 'required|string|max:255',
-            'ig_link'      => 'nullable|string|url|max:1000',
-            'tiktok_link'  => 'nullable|string|url|max:1000',
-            'shopee_link'  => 'nullable|string|url|max:1000',
-            'notes'        => 'nullable|string|max:2000',
+            'content_type'  => 'nullable|in:santai,produk,semua',
+            'title'         => 'required|string|max:255',
+            'reported_date' => 'nullable|date',
+            'reported_time' => 'nullable|string|max:8',
+            'ig_link'       => 'nullable|string|url|max:1000',
+            'tiktok_link'   => 'nullable|string|url|max:1000',
+            'shopee_link'   => 'nullable|string|url|max:1000',
+            'notes'         => 'nullable|string|max:2000',
         ], [
             'title.required' => 'Judul / topik konten wajib diisi.',
             'ig_link.url'    => 'Link Instagram harus berupa format URL valid (https://...).',
@@ -170,25 +172,143 @@ class DailyContentReportController extends Controller
             ])->withInput();
         }
 
+        // Tentukan content_type secara otomatis jika tidak disediakan
+        $contentType = $validated['content_type'] ?? null;
+        if (empty($contentType)) {
+            if (!empty($shopeeLink) && (!empty($igLink) || !empty($tiktokLink))) {
+                $contentType = 'semua';
+            } elseif (!empty($shopeeLink)) {
+                $contentType = 'produk';
+            } else {
+                $contentType = 'santai';
+            }
+        }
+
+        // Waktu lapor: default hari itu juga & jam sekarang, dapat disesuaikan jika diedit
         $now = Carbon::now();
+        $reportedAt = $now;
+
+        $reportedDate = trim((string) ($request->input('reported_date', '')));
+        $reportedTime = trim((string) ($request->input('reported_time', '')));
+
+        if ($reportedDate !== '' && $reportedTime !== '') {
+            try {
+                $reportedAt = Carbon::parse("{$reportedDate} {$reportedTime}");
+            } catch (\Throwable $e) {
+                $reportedAt = $now;
+            }
+        } elseif ($reportedDate !== '') {
+            try {
+                $reportedAt = Carbon::parse("{$reportedDate} " . $now->format('H:i:s'));
+            } catch (\Throwable $e) {
+                $reportedAt = $now;
+            }
+        } elseif ($reportedTime !== '') {
+            try {
+                $reportedAt = Carbon::parse($now->toDateString() . " {$reportedTime}");
+            } catch (\Throwable $e) {
+                $reportedAt = $now;
+            }
+        }
 
         DailyContentReport::create([
             'user_id'      => $user->id,
-            'content_type' => $validated['content_type'],
+            'content_type' => $contentType,
             'title'        => trim($validated['title']),
             'ig_link'      => $igLink !== '' ? $igLink : null,
             'tiktok_link'  => $tiktokLink !== '' ? $tiktokLink : null,
             'shopee_link'  => $shopeeLink !== '' ? $shopeeLink : null,
             'notes'        => !empty($validated['notes']) ? trim($validated['notes']) : null,
             'status'       => 'submitted',
-            'reported_at'  => $now,
+            'reported_at'  => $reportedAt,
         ]);
 
-        $waktuFormatted = $now->format('H:i') . ' WIB';
+        $waktuFormatted = $reportedAt->isoFormat('D MMMM Y, HH:mm') . ' WIB';
 
         return redirect()->route('content-reports.index')->with(
             'success',
-            "Report konten '{$validated['title']}' berhasil dikirim dan tercatat otomatis pada pukul {$waktuFormatted}!"
+            "Report konten '{$validated['title']}' berhasil disimpan pada waktu {$waktuFormatted}!"
+        );
+    }
+
+    /**
+     * Perbarui data laporan konten yang sudah ada.
+     */
+    public function update(Request $request, int $id): RedirectResponse
+    {
+        /** @var User $user */
+        $user = Auth::user();
+        $report = DailyContentReport::findOrFail($id);
+
+        $isOwner = (int) $report->user_id === (int) $user->id;
+        $isManager = $user->isSuperAdmin() || in_array($user->role?->name, ['Super Admin', 'Direktur', 'PIC']);
+
+        if (!$isOwner && !$isManager) {
+            abort(403, 'Anda tidak memiliki hak akses untuk mengubah laporan ini.');
+        }
+
+        $validated = $request->validate([
+            'content_type'  => 'nullable|in:santai,produk,semua',
+            'title'         => 'required|string|max:255',
+            'reported_date' => 'nullable|date',
+            'reported_time' => 'nullable|string|max:8',
+            'ig_link'       => 'nullable|string|url|max:1000',
+            'tiktok_link'   => 'nullable|string|url|max:1000',
+            'shopee_link'   => 'nullable|string|url|max:1000',
+            'notes'         => 'nullable|string|max:2000',
+        ], [
+            'title.required' => 'Judul / topik konten wajib diisi.',
+            'ig_link.url'    => 'Link Instagram harus berupa format URL valid (https://...).',
+            'tiktok_link.url'=> 'Link TikTok harus berupa format URL valid (https://...).',
+            'shopee_link.url'=> 'Link Shopee Video harus berupa format URL valid (https://...).',
+        ]);
+
+        $igLink     = trim((string) ($validated['ig_link'] ?? ''));
+        $tiktokLink = trim((string) ($validated['tiktok_link'] ?? ''));
+        $shopeeLink = trim((string) ($validated['shopee_link'] ?? ''));
+
+        if (empty($igLink) && empty($tiktokLink) && empty($shopeeLink)) {
+            return back()->withErrors([
+                'ig_link' => 'Harap isi minimal salah satu tautan konten (Instagram, TikTok, atau Shopee Video).',
+            ])->withInput();
+        }
+
+        $contentType = $validated['content_type'] ?? null;
+        if (empty($contentType)) {
+            if (!empty($shopeeLink) && (!empty($igLink) || !empty($tiktokLink))) {
+                $contentType = 'semua';
+            } elseif (!empty($shopeeLink)) {
+                $contentType = 'produk';
+            } else {
+                $contentType = 'santai';
+            }
+        }
+
+        $reportedAt = $report->reported_at;
+        $reportedDate = trim((string) ($request->input('reported_date', '')));
+        $reportedTime = trim((string) ($request->input('reported_time', '')));
+
+        if ($reportedDate !== '' && $reportedTime !== '') {
+            try {
+                $reportedAt = Carbon::parse("{$reportedDate} {$reportedTime}");
+            } catch (\Throwable $e) {}
+        }
+
+        $report->update([
+            'content_type' => $contentType,
+            'title'        => trim($validated['title']),
+            'ig_link'      => $igLink !== '' ? $igLink : null,
+            'tiktok_link'  => $tiktokLink !== '' ? $tiktokLink : null,
+            'shopee_link'  => $shopeeLink !== '' ? $shopeeLink : null,
+            'notes'        => !empty($validated['notes']) ? trim($validated['notes']) : null,
+            'reported_at'  => $reportedAt,
+        ]);
+
+        $waktuFormatted = Carbon::parse($reportedAt)->isoFormat('D MMMM Y, HH:mm') . ' WIB';
+
+        return back()->with(
+            'success',
+            "Report konten '{$report->title}' berhasil diperbarui (Waktu: {$waktuFormatted})!"
         );
     }
 
