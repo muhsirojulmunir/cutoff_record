@@ -383,13 +383,13 @@ export default function AppLayout({ children, headerRight }: Props) {
         className={`${isKreatif ? 'hidden md:flex ' : 'flex '}${sidebarOpen ? 'w-64' : 'w-[72px]'} ${justLoggedIn ? 'anim-slide-left' : ''} h-full bg-white border-r border-slate-200 transition-[width] duration-200 ease-in-out flex-col z-20 shrink-0 shadow-xs`}
       >
         {/* Logo Branding */}
-        <div className={`h-16 flex items-center justify-center ${sidebarOpen ? 'px-4' : 'px-2'} border-b border-slate-100 shrink-0 overflow-hidden`}>
+        <div className={`h-16 flex items-center ${sidebarOpen ? 'px-6 justify-start' : 'px-2 justify-center'} border-b border-slate-100 shrink-0 overflow-hidden`}>
           {sidebarOpen ? (
-            <div className="flex flex-col items-center text-center min-w-0 gap-1">
+            <div className="flex flex-col items-start text-left min-w-0 gap-1">
               <img
                 src="/images/logo-brand.png"
                 alt="Record"
-                className="h-6 w-auto max-w-[175px] object-contain"
+                className="h-5 w-auto max-w-[148px] object-contain object-left"
               />
               <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold leading-none truncate">
                 ERP & Operasional Sistem
