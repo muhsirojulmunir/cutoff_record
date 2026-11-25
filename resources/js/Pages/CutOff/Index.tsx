@@ -549,6 +549,13 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
     };
   }, [editingOrder, isCreateModalOpen, isImportModalOpen, isImportJlModalOpen]);
 
+  // Live Monitor: Langsung reload data saat halaman pertama dibuka (tanpa delay 30 detik)
+  useEffect(() => {
+    if (!isLiveActive) return;
+    // Reload sekali saat mount agar data langsung up-to-date
+    router.reload({ only: ['orders', 'summary'] });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Live Monitor: Real-time clock tick & silent periodic background refresh
   useEffect(() => {
     const timer = setInterval(() => {
