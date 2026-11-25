@@ -871,7 +871,11 @@ class ShopeeOrderService
                 ? ['UNPAID', 'CANCELLED']
                 : ['UNPAID', 'READY_TO_SHIP', 'RETRY_SHIP', 'CANCELLED'];
 
-            if (in_array($order->order_status, $blockedStatuses, true)) {
+            // Jika pesanan baru saja berhasil diatur pengirimannya (ada shipping_arranged_at atau tracking_number),
+            // skip validasi blocked status karena Shopee mungkin belum update status order di sisi mereka.
+            $isJustShipped = ! empty($order->tracking_number) || ! empty($order->shipping_arranged_at);
+
+            if (! $isJustShipped && in_array($order->order_status, $blockedStatuses, true)) {
                 $label = ShopeeOrder::statusLabel($order->order_status);
                 $invalidReasons[] = "{$order->order_sn} ({$label})";
             }
