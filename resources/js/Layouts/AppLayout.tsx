@@ -383,21 +383,25 @@ export default function AppLayout({ children, headerRight }: Props) {
         className={`${isKreatif ? 'hidden md:flex ' : 'flex '}${sidebarOpen ? 'w-64' : 'w-[72px]'} ${justLoggedIn ? 'anim-slide-left' : ''} h-full bg-white border-r border-slate-200 transition-[width] duration-200 ease-in-out flex-col z-20 shrink-0 shadow-xs`}
       >
         {/* Logo Branding */}
-        <div className="h-16 flex items-center gap-3 px-4 border-b border-slate-100 shrink-0 overflow-hidden">
-          <div className="h-9 w-9 rounded-xl bg-[#0B132B] flex items-center justify-center shrink-0 shadow-xs">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-white">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
-            </svg>
-          </div>
-          {sidebarOpen && (
-            <div className="flex flex-col min-w-0">
-              <span className="font-bold text-sm text-slate-900 tracking-wide uppercase truncate">
-                Koding App
-              </span>
-              <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
-                Control Panel
+        <div className={`h-16 flex items-center ${sidebarOpen ? 'px-5' : 'justify-center px-2'} border-b border-slate-100 shrink-0 overflow-hidden`}>
+          {sidebarOpen ? (
+            <div className="flex flex-col min-w-0 gap-1">
+              <img
+                src="/images/logo-brand.png"
+                alt="Record"
+                className="h-6 w-auto max-w-[165px] object-contain object-left"
+              />
+              <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold leading-none truncate">
+                ERP & Operasional Sistem
               </span>
             </div>
+          ) : (
+            <img
+              src="/images/logo-mark.png"
+              alt="Record"
+              className="h-8 w-8 object-contain shrink-0"
+              title="Record — ERP & Operasional Sistem"
+            />
           )}
         </div>
 
@@ -621,12 +625,16 @@ export default function AppLayout({ children, headerRight }: Props) {
                 </svg>
               </button>
               <div className="flex md:hidden items-center gap-2">
-                <div className="h-8 w-8 rounded-xl bg-gradient-to-r from-[#0B132B] to-[#1E3A8A] flex items-center justify-center text-white font-bold text-xs shadow-2xs">
-                  K
+                <div className="h-8 w-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center p-1 shrink-0 shadow-2xs">
+                  <img
+                    src="/images/logo-mark.png"
+                    alt="Record"
+                    className="h-full w-full object-contain"
+                  />
                 </div>
                 <div className="flex flex-col">
                   <span className="text-xs font-bold text-slate-900 leading-tight">Tim Kreatif</span>
-                  <span className="text-[10px] text-slate-500 font-medium">Koding App</span>
+                  <span className="text-[10px] text-slate-500 font-medium">Record Operasional</span>
                 </div>
               </div>
             </div>

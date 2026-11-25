@@ -113,6 +113,11 @@ export default function Login() {
 
           {/* Heading */}
           <div className="mb-8 anim-fade-up anim-d1">
+            <img
+              src="/images/logo-brand.png"
+              alt="Record"
+              className="h-7 w-auto object-contain mb-4"
+            />
             <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Masuk ke Sistem</h2>
             <p className="text-slate-500 text-sm mt-1">Silakan masukkan username dan password Anda.</p>
           </div>

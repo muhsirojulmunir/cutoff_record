@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
     {{-- Dipakai permintaan fetch() di luar Inertia, mis. pratinjau impor produk. --}}
     <meta name="csrf-token" content="{{ csrf_token() }}" />
+    <link rel="icon" type="image/png" href="/images/logo-mark.png" />
     
     @viteReactRefresh
     @vite(['resources/js/app.tsx', 'resources/css/app.css'])
