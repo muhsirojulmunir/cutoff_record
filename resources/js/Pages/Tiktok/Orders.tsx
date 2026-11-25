@@ -1263,6 +1263,78 @@ export default function TiktokOrdersPage({
       setPrintingTarget(marker);
 
       try {
+        // Untuk TikTok mass print: buka tab terpisah per order agar format resi resmi TikTok terjaga.
+        // Endpoint single order (/waybill-a4) selalu mengambil PDF resmi dari TikTok API,
+        // sedangkan mass endpoint menghasilkan format template yang berbeda.
+        if (isMass && capped.length > 1) {
+          // Buka resi pertama di modal (agar tidak terblokir popup blocker), sisanya di tab baru
+          const fetchSingle = async (orderSn: string) =>
+            fetch(`/tiktok-orders/${encodeURIComponent(orderSn)}/waybill-a4`, {
+              method: 'GET',
+              credentials: 'same-origin',
+              signal: controller.signal,
+              headers: {
+                Accept: 'application/pdf, application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+              },
+            });
+
+          const firstResponse = await fetchSingle(capped[0].order_sn);
+          if (controller.signal.aborted || !isMountedRef.current) return;
+
+          const contentType = firstResponse.headers.get('content-type') ?? '';
+          if (!firstResponse.ok || !contentType.toLowerCase().includes('application/pdf')) {
+            let errMessage = `Gagal menyiapkan PDF Resi TikTok (HTTP ${firstResponse.status}).`;
+            try {
+              const payload = (await firstResponse.json()) as { message?: string };
+              if (payload?.message) errMessage = payload.message;
+            } catch { /* Non-JSON */ }
+            showToast('error', errMessage);
+            return;
+          }
+
+          const firstBlob = await firstResponse.blob();
+          if (controller.signal.aborted || !isMountedRef.current) return;
+
+          const tiktokDocUrl = firstResponse.headers.get('x-tiktok-doc-url') || undefined;
+          revokeActiveBlobUrl();
+          const blobUrl = URL.createObjectURL(firstBlob);
+          activeBlobUrlRef.current = blobUrl;
+
+          setWaybillModal({
+            show: true,
+            pdfUrl: blobUrl,
+            externalPdfUrl: tiktokDocUrl,
+            title: `Resi TikTok — ${capped[0].order_sn} (1 dari ${capped.length})`,
+            filename: `resi-tiktok-${capped[0].order_sn}.pdf`,
+            orderCount: capped.length,
+            warnings:
+              capped.length > 1
+                ? [...warnings, `${capped.length - 1} resi lainnya akan terbuka di tab baru secara berurutan.`]
+                : warnings,
+          });
+
+          // Buka resi pesanan berikutnya di tab baru satu per satu (dengan jeda agar tidak terblokir)
+          for (let i = 1; i < capped.length; i++) {
+            if (controller.signal.aborted || !isMountedRef.current) break;
+            await new Promise<void>((resolve) => setTimeout(resolve, 600));
+            if (controller.signal.aborted || !isMountedRef.current) break;
+            window.open(
+              `/tiktok-orders/${encodeURIComponent(capped[i].order_sn)}/waybill-a4`,
+              '_blank',
+              'noopener,noreferrer'
+            );
+          }
+
+          showToast(
+            'success',
+            `PDF Resi TikTok berhasil disiapkan untuk ${capped.length} pesanan (format resmi TikTok Shop).`
+          );
+
+          router.reload({ only: ['orders', 'tabCounts'] });
+          return;
+        }
+
         const response = isMass
           ? await fetch('/tiktok-orders/mass-waybill-a4', {
               method: 'POST',
