@@ -282,7 +282,7 @@ export default function Dashboard({
               </div>
               <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
                 <span className="text-slate-500">
-                  Bulan Ini: <strong className="text-pink-700">{(kreatifStats?.month_ig_views ?? 0).toLocaleString('id-ID')}</strong> views
+                  Target: Reels & Story
                 </span>
                 <strong className={kreatifStats?.my_has_ig ? 'text-emerald-700 font-bold' : 'text-[#0B132B] font-bold'}>
                   {kreatifStats?.my_has_ig ? '✓ Disetor' : 'Belum'}
@@ -308,7 +308,7 @@ export default function Dashboard({
               </div>
               <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
                 <span className="text-slate-500">
-                  Bulan Ini: <strong className="text-slate-900">{(kreatifStats?.month_tiktok_views ?? 0).toLocaleString('id-ID')}</strong> views
+                  Target: FYP & Tren
                 </span>
                 <strong className={kreatifStats?.my_has_tiktok ? 'text-emerald-700 font-bold' : 'text-[#0B132B] font-bold'}>
                   {kreatifStats?.my_has_tiktok ? '✓ Disetor' : 'Belum'}
@@ -334,65 +334,11 @@ export default function Dashboard({
               </div>
               <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
                 <span className="text-slate-500">
-                  Bulan Ini: <strong className="text-amber-700">{(kreatifStats?.month_shopee_views ?? 0).toLocaleString('id-ID')}</strong> views
+                  Target: Keranjang Kuning
                 </span>
                 <strong className={kreatifStats?.my_has_shopee ? 'text-emerald-700 font-bold' : 'text-[#0B132B] font-bold'}>
                   {kreatifStats?.my_has_shopee ? '✓ Disetor' : 'Belum'}
                 </strong>
-              </div>
-            </div>
-          </div>
-
-          {/* 2.5 Row Metrik Tayangan (Views) - Disinkronkan Otomatis Setiap 00:00 WIB */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Card Views Bulan Ini */}
-            <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-white to-blue-50/40 p-5 shadow-2xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  Total Tayangan Bulan Ini
-                </span>
-                <span className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-full font-bold">
-                  📊 Auto-Sync 00:00 WIB
-                </span>
-              </div>
-              <div className="mt-2 flex items-baseline justify-between">
-                <span className="text-3xl font-black text-slate-900">
-                  {(kreatifStats?.month_views ?? 0).toLocaleString('id-ID')}
-                </span>
-                <span className="text-xs font-semibold text-slate-400">total views</span>
-              </div>
-              <p className="mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
-                <span>Oleh Anda: <strong className="text-slate-800">{(kreatifStats?.my_month_views ?? 0).toLocaleString('id-ID')}</strong></span>
-                <span className="text-slate-400">Tiap jam 12 malam</span>
-              </p>
-            </div>
-
-            {/* Card Video Terpopuler */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs md:col-span-2 flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[#0B132B] flex items-center gap-1.5">
-                  <span>🔥 Video Terpopuler Bulan Ini</span>
-                </span>
-                <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full font-bold">
-                  Top Views
-                </span>
-              </div>
-              <div className="mt-2">
-                <h4 className="text-sm font-extrabold text-slate-900 line-clamp-1">
-                  {kreatifStats?.top_video_title || 'Belum ada data video'}
-                </h4>
-                <div className="mt-1 flex items-baseline gap-2">
-                  <span className="text-2xl font-black text-[#0B132B]">
-                    {(kreatifStats?.top_video_views ?? 0).toLocaleString('id-ID')}
-                  </span>
-                  <span className="text-xs text-slate-400">tayangan</span>
-                </div>
-              </div>
-              <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-                <span>Terakhir diperbarui: <strong className="text-slate-700">{kreatifStats?.last_synced_at || 'Setiap 00:00 WIB'}</strong></span>
-                <Link href="/content-reports" className="text-[#0B132B] font-bold hover:underline">
-                  Lihat Semua Konten →
-                </Link>
               </div>
             </div>
           </div>
@@ -584,14 +530,13 @@ export default function Dashboard({
                     <th className="py-3 px-4">Judul Konten</th>
                     <th className="py-3 px-4">Creator</th>
                     <th className="py-3 px-4">Link Video</th>
-                    <th className="py-3 px-4">Tayangan</th>
                     <th className="py-3 px-4">Status Review</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {recentReports.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-slate-400">
+                      <td colSpan={5} className="py-8 text-center text-slate-400">
                         Belum ada laporan konten yang disetor.
                       </td>
                     </tr>
@@ -641,37 +586,6 @@ export default function Dashboard({
                             )}
                           </div>
                         </td>
-                        <td className="py-3 px-4 min-w-[150px]">
-                          <div className="space-y-0.5">
-                            <div className="flex items-center gap-1">
-                              <span className="font-extrabold text-slate-900">
-                                {(item.total_views || 0).toLocaleString('id-ID')} views
-                              </span>
-                              {item.total_views && item.total_views >= 10000 ? (
-                                <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-1 py-0.2 rounded font-bold">
-                                  🔥
-                                </span>
-                              ) : null}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-1 text-[9px]">
-                              {item.ig_link && (
-                                <span className="text-pink-800 bg-pink-50 border border-pink-200/60 px-1 py-0.2 rounded font-medium">
-                                  📸 {(item.ig_views || 0).toLocaleString('id-ID')}
-                                </span>
-                              )}
-                              {item.tiktok_link && (
-                                <span className="text-slate-900 bg-slate-100 border border-slate-300/70 px-1 py-0.2 rounded font-medium">
-                                  🎵 {(item.tiktok_views || 0).toLocaleString('id-ID')}
-                                </span>
-                              )}
-                              {item.shopee_link && (
-                                <span className="text-amber-900 bg-amber-50 border border-amber-200 px-1 py-0.2 rounded font-medium">
-                                  🛒 {(item.shopee_views || 0).toLocaleString('id-ID')}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </td>
                         <td className="py-3 px-4">
                           {item.status === 'reviewed' ? (
                             <span className="inline-flex items-center rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold">
@@ -679,7 +593,7 @@ export default function Dashboard({
                             </span>
                           ) : (
                             <span className="inline-flex items-center rounded-md bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 text-[10px] font-medium">
-                              Menunggu Review
+                              Belum ada review
                             </span>
                           )}
                         </td>
