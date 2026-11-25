@@ -270,7 +270,7 @@ export default function Dashboard({
                 <span className="text-[11px] font-bold uppercase tracking-wider text-[#0B132B]">
                   📸 Instagram Video
                 </span>
-                <span className="text-[10px] bg-pink-50 text-pink-700 px-2 py-0.5 rounded-full font-bold border border-pink-200">
+                <span className="text-[10px] bg-blue-50 text-[#0B132B] px-2 py-0.5 rounded-full font-bold border border-blue-200">
                   Reels & Story
                 </span>
               </div>
@@ -296,7 +296,7 @@ export default function Dashboard({
                 <span className="text-[11px] font-bold uppercase tracking-wider text-[#0B132B]">
                   🎵 TikTok Video
                 </span>
-                <span className="text-[10px] bg-slate-100 text-slate-900 px-2 py-0.5 rounded-full font-bold border border-slate-300">
+                <span className="text-[10px] bg-blue-50 text-[#0B132B] px-2 py-0.5 rounded-full font-bold border border-blue-200">
                   FYP & Tren
                 </span>
               </div>
@@ -559,7 +559,7 @@ export default function Dashboard({
                                 href={item.ig_link}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="px-2 py-0.5 rounded-md bg-pink-50 text-pink-700 border border-pink-200 text-[10px] font-bold hover:bg-pink-100"
+                                className="px-2 py-0.5 rounded-md bg-blue-50 text-[#0B132B] border border-blue-200 text-[10px] font-bold hover:bg-blue-100"
                               >
                                 📸 IG ↗
                               </a>
@@ -569,7 +569,7 @@ export default function Dashboard({
                                 href={item.tiktok_link}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-900 border border-slate-300 text-[10px] font-bold hover:bg-slate-200"
+                                className="px-2 py-0.5 rounded-md bg-blue-50 text-[#0B132B] border border-blue-200 text-[10px] font-bold hover:bg-blue-100"
                               >
                                 🎵 TikTok ↗
                               </a>

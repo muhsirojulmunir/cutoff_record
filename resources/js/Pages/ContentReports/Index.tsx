@@ -385,7 +385,7 @@ export default function ContentReportsIndex({
               <span className="text-[11px] font-bold uppercase tracking-wider text-[#0B132B]">
                 📸 Konten Instagram
               </span>
-              <span className="text-[10px] bg-pink-50 text-pink-700 px-2 py-0.5 rounded-full font-bold border border-pink-200">
+              <span className="text-[10px] bg-blue-50 text-[#0B132B] px-2 py-0.5 rounded-full font-bold border border-blue-200">
                 Reels & Story
               </span>
             </div>
@@ -409,7 +409,7 @@ export default function ContentReportsIndex({
               <span className="text-[11px] font-bold uppercase tracking-wider text-[#0B132B]">
                 🎵 Konten TikTok
               </span>
-              <span className="text-[10px] bg-slate-100 text-slate-900 px-2 py-0.5 rounded-full font-bold border border-slate-300">
+              <span className="text-[10px] bg-blue-50 text-[#0B132B] px-2 py-0.5 rounded-full font-bold border border-blue-200">
                 FYP & Tren
               </span>
             </div>
@@ -617,26 +617,8 @@ export default function ContentReportsIndex({
                 key={`mobile-${item.id}`}
                 className="rounded-2xl border border-slate-200/90 bg-white p-4 shadow-2xs space-y-3 transition-all"
               >
-                {/* Header Card: Status & Category Badge */}
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {item.ig_link && (
-                      <span className="inline-flex items-center rounded-md bg-pink-50 text-pink-700 border border-pink-200 px-1.5 py-0.5 text-[9px] font-bold">
-                        📸 Instagram
-                      </span>
-                    )}
-                    {item.tiktok_link && (
-                      <span className="inline-flex items-center rounded-md bg-slate-100 text-slate-900 border border-slate-300 px-1.5 py-0.5 text-[9px] font-bold">
-                        🎵 TikTok
-                      </span>
-                    )}
-                    {item.shopee_link && (
-                      <span className="inline-flex items-center rounded-md bg-blue-50 text-[#0B132B] border border-blue-200 px-1.5 py-0.5 text-[9px] font-bold">
-                        🛒 Shopee
-                      </span>
-                    )}
-                  </div>
-
+                {/* Header Card: Status */}
+                <div className="flex items-center justify-end">
                   {item.status === 'reviewed' ? (
                     <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold shrink-0">
                       ✓ Ditinjau
@@ -681,12 +663,12 @@ export default function ContentReportsIndex({
                       href={item.ig_link}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-200 text-center transition-colors cursor-pointer"
+                      className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#0B132B] border border-blue-200 text-center transition-colors cursor-pointer"
                     >
                       <span className="text-xs font-bold flex items-center gap-0.5">
                         📸 IG <span className="text-[10px]">↗</span>
                       </span>
-                      <span className="text-[9px] text-pink-600 font-medium truncate w-full">Buka Post</span>
+                      <span className="text-[9px] text-blue-700 font-medium truncate w-full">Buka Post</span>
                     </a>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-slate-50 text-slate-300 border border-slate-100 text-center">
@@ -700,12 +682,12 @@ export default function ContentReportsIndex({
                       href={item.tiktok_link}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-center transition-colors cursor-pointer"
+                      className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#0B132B] border border-blue-200 text-center transition-colors cursor-pointer"
                     >
                       <span className="text-xs font-bold flex items-center gap-0.5">
                         🎵 TikTok <span className="text-[10px]">↗</span>
                       </span>
-                      <span className="text-[9px] text-slate-300 font-medium truncate w-full">Buka Video</span>
+                      <span className="text-[9px] text-blue-700 font-medium truncate w-full">Buka Video</span>
                     </a>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-slate-50 text-slate-300 border border-slate-100 text-center">
@@ -719,12 +701,12 @@ export default function ContentReportsIndex({
                       href={item.shopee_link}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-orange-50 hover:bg-orange-100 text-[#EE4D2D] border border-orange-200 text-center transition-colors cursor-pointer"
+                      className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#0B132B] border border-blue-200 text-center transition-colors cursor-pointer"
                     >
                       <span className="text-xs font-bold flex items-center gap-0.5">
                         🛒 Shopee <span className="text-[10px]">↗</span>
                       </span>
-                      <span className="text-[9px] text-orange-600 font-medium truncate w-full">Lihat Video</span>
+                      <span className="text-[9px] text-blue-700 font-medium truncate w-full">Lihat Video</span>
                     </a>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-slate-50 text-slate-300 border border-slate-100 text-center">
@@ -804,7 +786,7 @@ export default function ContentReportsIndex({
                 <tr>
                   <th className="py-3 px-4 min-w-[140px]">Waktu Setor</th>
                   <th className="py-3 px-4 min-w-[130px]">Staf Kreatif</th>
-                  <th className="py-3 px-4 min-w-[200px]">Topik & Judul Konten</th>
+                  <th className="py-3 px-4 min-w-[200px]">Judul Konten</th>
                   <th className="py-3 px-4 min-w-[200px]">Link Channel Video</th>
                   <th className="py-3 px-4 min-w-[140px]">Status & Review</th>
                   <th className="py-3 px-4 text-center w-28">Aksi</th>
@@ -838,25 +820,8 @@ export default function ContentReportsIndex({
                         </div>
                       </td>
 
-                      {/* Kategori & Judul */}
+                      {/* Judul Konten */}
                       <td className="py-3 px-4">
-                        <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                          {item.ig_link && (
-                            <span className="inline-flex items-center rounded-md bg-pink-50 text-pink-700 border border-pink-200 px-1.5 py-0.5 text-[9px] font-bold">
-                              📸 Instagram
-                            </span>
-                          )}
-                          {item.tiktok_link && (
-                            <span className="inline-flex items-center rounded-md bg-slate-100 text-slate-900 border border-slate-300 px-1.5 py-0.5 text-[9px] font-bold">
-                              🎵 TikTok
-                            </span>
-                          )}
-                          {item.shopee_link && (
-                            <span className="inline-flex items-center rounded-md bg-blue-50 text-[#0B132B] border border-blue-200 px-1.5 py-0.5 text-[9px] font-bold">
-                              🛒 Shopee
-                            </span>
-                          )}
-                        </div>
                         <div className="font-extrabold text-slate-900 text-xs">
                           {item.title}
                         </div>
@@ -876,7 +841,7 @@ export default function ContentReportsIndex({
                               href={item.ig_link}
                               target="_blank"
                               rel="noreferrer"
-                              className="inline-flex items-center gap-1 rounded-lg border border-pink-200 bg-pink-50 hover:bg-pink-100 text-pink-700 px-2.5 py-1 text-[11px] font-bold transition-colors cursor-pointer"
+                              className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-[#0B132B] px-2.5 py-1 text-[11px] font-bold transition-colors cursor-pointer"
                               title="Buka Instagram"
                             >
                               <span>📸 Instagram</span>
@@ -892,7 +857,7 @@ export default function ContentReportsIndex({
                               href={item.tiktok_link}
                               target="_blank"
                               rel="noreferrer"
-                              className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-white px-2.5 py-1 text-[11px] font-bold transition-colors cursor-pointer"
+                              className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-[#0B132B] px-2.5 py-1 text-[11px] font-bold transition-colors cursor-pointer"
                               title="Buka TikTok"
                             >
                               <span>🎵 TikTok</span>
@@ -908,7 +873,7 @@ export default function ContentReportsIndex({
                               href={item.shopee_link}
                               target="_blank"
                               rel="noreferrer"
-                              className="inline-flex items-center gap-1 rounded-lg border border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-700 px-2.5 py-1 text-[11px] font-bold transition-colors cursor-pointer"
+                              className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-[#0B132B] px-2.5 py-1 text-[11px] font-bold transition-colors cursor-pointer"
                               title="Buka Shopee Video"
                             >
                               <span>🛒 Shopee Video</span>
