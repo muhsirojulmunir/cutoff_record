@@ -110,6 +110,21 @@ function getCurrentTimeString(): string {
   return `${hours}:${minutes}`;
 }
 
+type LinkFieldKey = 'ig_links' | 'tiktok_links' | 'shopee_links';
+
+function parseLinks(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(/\r?\n/)
+    .map((u) => u.trim())
+    .filter(Boolean);
+}
+
+function toFormLinks(raw: string | null | undefined): string[] {
+  const list = parseLinks(raw);
+  return list.length > 0 ? list : [''];
+}
+
 export default function ContentReportsIndex({
   reports,
   filters,
@@ -135,9 +150,9 @@ export default function ContentReportsIndex({
     title: '',
     reported_date: getTodayDateString(),
     reported_time: getCurrentTimeString(),
-    ig_link: '',
-    tiktok_link: '',
-    shopee_link: '',
+    ig_links: [''],
+    tiktok_links: [''],
+    shopee_links: [''],
     notes: '',
   });
 
@@ -146,9 +161,9 @@ export default function ContentReportsIndex({
     title: '',
     reported_date: '',
     reported_time: '',
-    ig_link: '',
-    tiktok_link: '',
-    shopee_link: '',
+    ig_links: [''],
+    tiktok_links: [''],
+    shopee_links: [''],
     notes: '',
   });
 
@@ -162,9 +177,9 @@ export default function ContentReportsIndex({
       title: '',
       reported_date: getTodayDateString(),
       reported_time: getCurrentTimeString(),
-      ig_link: '',
-      tiktok_link: '',
-      shopee_link: '',
+      ig_links: [''],
+      tiktok_links: [''],
+      shopee_links: [''],
       notes: '',
     });
     createForm.clearErrors();
@@ -191,9 +206,9 @@ export default function ContentReportsIndex({
       title: item.title,
       reported_date: dateStr,
       reported_time: timeStr,
-      ig_link: item.ig_link || '',
-      tiktok_link: item.tiktok_link || '',
-      shopee_link: item.shopee_link || '',
+      ig_links: toFormLinks(item.ig_link),
+      tiktok_links: toFormLinks(item.tiktok_link),
+      shopee_links: toFormLinks(item.shopee_link),
       notes: item.notes || '',
     });
     editForm.clearErrors();
@@ -222,19 +237,55 @@ export default function ContentReportsIndex({
     }
   }, []);
 
+  const updateLinkField = (
+    field: LinkFieldKey,
+    index: number,
+    value: string,
+    targetForm: 'create' | 'edit' = 'create'
+  ) => {
+    const form = targetForm === 'create' ? createForm : editForm;
+    form.setData((prev) => {
+      const next = [...prev[field]];
+      next[index] = value;
+      return { ...prev, [field]: next };
+    });
+  };
+
+  const addLinkField = (
+    field: LinkFieldKey,
+    targetForm: 'create' | 'edit' = 'create'
+  ) => {
+    const form = targetForm === 'create' ? createForm : editForm;
+    form.setData((prev) => {
+      if (prev[field].length >= 20) return prev;
+      return { ...prev, [field]: [...prev[field], ''] };
+    });
+  };
+
+  const removeLinkField = (
+    field: LinkFieldKey,
+    index: number,
+    targetForm: 'create' | 'edit' = 'create'
+  ) => {
+    const form = targetForm === 'create' ? createForm : editForm;
+    form.setData((prev) => {
+      if (prev[field].length <= 1) {
+        return { ...prev, [field]: [''] };
+      }
+      return { ...prev, [field]: prev[field].filter((_, i) => i !== index) };
+    });
+  };
+
   const handlePasteToField = async (
-    field: 'ig_link' | 'tiktok_link' | 'shopee_link',
+    field: LinkFieldKey,
+    index: number,
     targetForm: 'create' | 'edit' = 'create'
   ) => {
     try {
       if (navigator.clipboard && navigator.clipboard.readText) {
         const text = await navigator.clipboard.readText();
         if (text && text.trim().startsWith('http')) {
-          if (targetForm === 'create') {
-            createForm.setData(field, text.trim());
-          } else {
-            editForm.setData(field, text.trim());
-          }
+          updateLinkField(field, index, text.trim(), targetForm);
         }
       }
     } catch {
@@ -313,6 +364,107 @@ export default function ContentReportsIndex({
     } catch {
       return dateStr;
     }
+  };
+
+  const channelConfigs: Array<{
+    field: LinkFieldKey;
+    label: string;
+    addLabel: string;
+    placeholder: string;
+  }> = [
+    {
+      field: 'ig_links',
+      label: '📸 Link Instagram (Reels / Feed / Story):',
+      addLabel: '+ Tambah Link Instagram',
+      placeholder: 'https://www.instagram.com/reel/...',
+    },
+    {
+      field: 'tiktok_links',
+      label: '🎵 Link TikTok Video:',
+      addLabel: '+ Tambah Link TikTok',
+      placeholder: 'https://vt.tiktok.com/... atau https://www.tiktok.com/@...',
+    },
+    {
+      field: 'shopee_links',
+      label: '🛒 Link Shopee Video:',
+      addLabel: '+ Tambah Link Shopee Video',
+      placeholder: 'https://id.shp.ee/v/... atau link video Shopee',
+    },
+  ];
+
+  const renderChannelLinkFields = (targetForm: 'create' | 'edit') => {
+    const formData = targetForm === 'create' ? createForm.data : editForm.data;
+    const formErrors = (targetForm === 'create' ? createForm.errors : editForm.errors) as Record<string, string | undefined>;
+
+    return channelConfigs.map((cfg) => {
+      const links = formData[cfg.field];
+      const groupError =
+        formErrors[cfg.field] ||
+        (cfg.field === 'ig_links' ? formErrors.ig_link : undefined) ||
+        (cfg.field === 'tiktok_links' ? formErrors.tiktok_link : undefined) ||
+        (cfg.field === 'shopee_links' ? formErrors.shopee_link : undefined);
+
+      return (
+        <div key={`${targetForm}-${cfg.field}`} className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="text-[11px] font-semibold text-slate-800 flex items-center gap-1.5">
+              <span>{cfg.label}</span>
+            </label>
+            <button
+              type="button"
+              onClick={() => addLinkField(cfg.field, targetForm)}
+              className="text-[11px] font-bold text-[#0B132B] hover:text-blue-900 hover:underline cursor-pointer"
+            >
+              {cfg.addLabel}
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {links.map((linkVal, idx) => {
+              const rowError = formErrors[`${cfg.field}.${idx}`];
+              return (
+                <div key={`${targetForm}-${cfg.field}-${idx}`}>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="url"
+                      value={linkVal}
+                      onChange={(e) => updateLinkField(cfg.field, idx, e.target.value, targetForm)}
+                      placeholder={links.length > 1 ? `${cfg.placeholder} (Video #${idx + 1})` : cfg.placeholder}
+                      className="flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B] shadow-2xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handlePasteToField(cfg.field, idx, targetForm)}
+                      className="text-[10px] font-bold text-[#0B132B] hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2.5 py-2 rounded-xl border border-blue-200 transition-colors cursor-pointer shrink-0"
+                      title="Tempel link dari clipboard"
+                    >
+                      📋 Tempel
+                    </button>
+                    {links.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeLinkField(cfg.field, idx, targetForm)}
+                        className="text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-2.5 py-2 rounded-xl border border-rose-200 transition-colors cursor-pointer shrink-0"
+                        title="Hapus baris link ini"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                  {rowError && (
+                    <p className="text-[11px] text-rose-600 mt-1">{rowError}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {groupError && (
+            <p className="text-[11px] text-rose-600 mt-1">{groupError}</p>
+          )}
+        </div>
+      );
+    });
   };
 
   return (
@@ -656,20 +808,25 @@ export default function ContentReportsIndex({
                   </div>
                 )}
 
-                {/* Touch-Friendly Link Buttons (Grid 3 Kolom) */}
+                {/* Touch-Friendly Link Buttons */}
                 <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-100">
-                  {item.ig_link ? (
-                    <a
-                      href={item.ig_link}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#0B132B] border border-blue-200 text-center transition-colors cursor-pointer"
-                    >
-                      <span className="text-xs font-bold flex items-center gap-0.5">
-                        📸 IG <span className="text-[10px]">↗</span>
-                      </span>
-                      <span className="text-[9px] text-blue-700 font-medium truncate w-full">Buka Post</span>
-                    </a>
+                  {parseLinks(item.ig_link).length > 0 ? (
+                    <div className="flex flex-col gap-1.5">
+                      {parseLinks(item.ig_link).map((url, idx, arr) => (
+                        <a
+                          key={`m-ig-${idx}`}
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#0B132B] border border-blue-200 text-center transition-colors cursor-pointer"
+                        >
+                          <span className="text-xs font-bold flex items-center gap-0.5">
+                            📸 IG{arr.length > 1 ? ` #${idx + 1}` : ''} <span className="text-[10px]">↗</span>
+                          </span>
+                          <span className="text-[9px] text-blue-700 font-medium truncate w-full">Buka Post</span>
+                        </a>
+                      ))}
+                    </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-slate-50 text-slate-300 border border-slate-100 text-center">
                       <span className="text-xs font-medium">📸 IG</span>
@@ -677,18 +834,23 @@ export default function ContentReportsIndex({
                     </div>
                   )}
 
-                  {item.tiktok_link ? (
-                    <a
-                      href={item.tiktok_link}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#0B132B] border border-blue-200 text-center transition-colors cursor-pointer"
-                    >
-                      <span className="text-xs font-bold flex items-center gap-0.5">
-                        🎵 TikTok <span className="text-[10px]">↗</span>
-                      </span>
-                      <span className="text-[9px] text-blue-700 font-medium truncate w-full">Buka Video</span>
-                    </a>
+                  {parseLinks(item.tiktok_link).length > 0 ? (
+                    <div className="flex flex-col gap-1.5">
+                      {parseLinks(item.tiktok_link).map((url, idx, arr) => (
+                        <a
+                          key={`m-tt-${idx}`}
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#0B132B] border border-blue-200 text-center transition-colors cursor-pointer"
+                        >
+                          <span className="text-xs font-bold flex items-center gap-0.5">
+                            🎵 TikTok{arr.length > 1 ? ` #${idx + 1}` : ''} <span className="text-[10px]">↗</span>
+                          </span>
+                          <span className="text-[9px] text-blue-700 font-medium truncate w-full">Buka Video</span>
+                        </a>
+                      ))}
+                    </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-slate-50 text-slate-300 border border-slate-100 text-center">
                       <span className="text-xs font-medium">🎵 TikTok</span>
@@ -696,18 +858,23 @@ export default function ContentReportsIndex({
                     </div>
                   )}
 
-                  {item.shopee_link ? (
-                    <a
-                      href={item.shopee_link}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#0B132B] border border-blue-200 text-center transition-colors cursor-pointer"
-                    >
-                      <span className="text-xs font-bold flex items-center gap-0.5">
-                        🛒 Shopee <span className="text-[10px]">↗</span>
-                      </span>
-                      <span className="text-[9px] text-blue-700 font-medium truncate w-full">Lihat Video</span>
-                    </a>
+                  {parseLinks(item.shopee_link).length > 0 ? (
+                    <div className="flex flex-col gap-1.5">
+                      {parseLinks(item.shopee_link).map((url, idx, arr) => (
+                        <a
+                          key={`m-sp-${idx}`}
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#0B132B] border border-blue-200 text-center transition-colors cursor-pointer"
+                        >
+                          <span className="text-xs font-bold flex items-center gap-0.5">
+                            🛒 Shopee{arr.length > 1 ? ` #${idx + 1}` : ''} <span className="text-[10px]">↗</span>
+                          </span>
+                          <span className="text-[9px] text-blue-700 font-medium truncate w-full">Lihat Video</span>
+                        </a>
+                      ))}
+                    </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-slate-50 text-slate-300 border border-slate-100 text-center">
                       <span className="text-xs font-medium">🛒 Shopee</span>
@@ -836,49 +1003,58 @@ export default function ContentReportsIndex({
                       <td className="py-3 px-4">
                         <div className="flex flex-wrap items-center gap-1.5">
                           {/* IG Link */}
-                          {item.ig_link ? (
-                            <a
-                              href={item.ig_link}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-[#0B132B] px-2.5 py-1 text-[11px] font-bold transition-colors cursor-pointer"
-                              title="Buka Instagram"
-                            >
-                              <span>📸 Instagram</span>
-                              <span className="text-[10px]">↗</span>
-                            </a>
+                          {parseLinks(item.ig_link).length > 0 ? (
+                            parseLinks(item.ig_link).map((url, idx, arr) => (
+                              <a
+                                key={`d-ig-${idx}`}
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-[#0B132B] px-2.5 py-1 text-[11px] font-bold transition-colors cursor-pointer"
+                                title="Buka Instagram"
+                              >
+                                <span>📸 Instagram{arr.length > 1 ? ` #${idx + 1}` : ''}</span>
+                                <span className="text-[10px]">↗</span>
+                              </a>
+                            ))
                           ) : (
                             <span className="text-[10px] text-slate-300 font-mono">IG: -</span>
                           )}
 
                           {/* TikTok Link */}
-                          {item.tiktok_link ? (
-                            <a
-                              href={item.tiktok_link}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-[#0B132B] px-2.5 py-1 text-[11px] font-bold transition-colors cursor-pointer"
-                              title="Buka TikTok"
-                            >
-                              <span>🎵 TikTok</span>
-                              <span className="text-[10px]">↗</span>
-                            </a>
+                          {parseLinks(item.tiktok_link).length > 0 ? (
+                            parseLinks(item.tiktok_link).map((url, idx, arr) => (
+                              <a
+                                key={`d-tt-${idx}`}
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-[#0B132B] px-2.5 py-1 text-[11px] font-bold transition-colors cursor-pointer"
+                                title="Buka TikTok"
+                              >
+                                <span>🎵 TikTok{arr.length > 1 ? ` #${idx + 1}` : ''}</span>
+                                <span className="text-[10px]">↗</span>
+                              </a>
+                            ))
                           ) : (
                             <span className="text-[10px] text-slate-300 font-mono">TikTok: -</span>
                           )}
 
                           {/* Shopee Video Link */}
-                          {item.shopee_link ? (
-                            <a
-                              href={item.shopee_link}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-[#0B132B] px-2.5 py-1 text-[11px] font-bold transition-colors cursor-pointer"
-                              title="Buka Shopee Video"
-                            >
-                              <span>🛒 Shopee Video</span>
-                              <span className="text-[10px]">↗</span>
-                            </a>
+                          {parseLinks(item.shopee_link).length > 0 ? (
+                            parseLinks(item.shopee_link).map((url, idx, arr) => (
+                              <a
+                                key={`d-sp-${idx}`}
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-[#0B132B] px-2.5 py-1 text-[11px] font-bold transition-colors cursor-pointer"
+                                title="Buka Shopee Video"
+                              >
+                                <span>🛒 Shopee Video{arr.length > 1 ? ` #${idx + 1}` : ''}</span>
+                                <span className="text-[10px]">↗</span>
+                              </a>
+                            ))
                           ) : (
                             <span className="text-[10px] text-slate-300 font-mono">Shopee: -</span>
                           )}
@@ -1091,83 +1267,7 @@ export default function ContentReportsIndex({
               </span>
             </div>
 
-            {/* Instagram Link */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-semibold text-slate-800 flex items-center gap-1.5">
-                  <span>📸 Link Instagram (Reels / Feed / Story):</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => handlePasteToField('ig_link', 'create')}
-                  className="text-[10px] font-bold text-[#0B132B] hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-lg border border-blue-200 transition-colors cursor-pointer"
-                >
-                  📋 Tempel
-                </button>
-              </div>
-              <input
-                type="url"
-                value={createForm.data.ig_link}
-                onChange={(e) => createForm.setData('ig_link', e.target.value)}
-                placeholder="https://www.instagram.com/reel/..."
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B] shadow-2xs"
-              />
-              {createForm.errors.ig_link && (
-                <p className="text-[11px] text-rose-600 mt-1">{createForm.errors.ig_link}</p>
-              )}
-            </div>
-
-            {/* TikTok Link */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-semibold text-slate-800 flex items-center gap-1.5">
-                  <span>🎵 Link TikTok Video:</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => handlePasteToField('tiktok_link', 'create')}
-                  className="text-[10px] font-bold text-[#0B132B] hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-lg border border-blue-200 transition-colors cursor-pointer"
-                >
-                  📋 Tempel
-                </button>
-              </div>
-              <input
-                type="url"
-                value={createForm.data.tiktok_link}
-                onChange={(e) => createForm.setData('tiktok_link', e.target.value)}
-                placeholder="https://vt.tiktok.com/... atau https://www.tiktok.com/@..."
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B] shadow-2xs"
-              />
-              {createForm.errors.tiktok_link && (
-                <p className="text-[11px] text-rose-600 mt-1">{createForm.errors.tiktok_link}</p>
-              )}
-            </div>
-
-            {/* Shopee Video Link */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-semibold text-slate-800 flex items-center gap-1.5">
-                  <span>🛒 Link Shopee Video:</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => handlePasteToField('shopee_link', 'create')}
-                  className="text-[10px] font-bold text-[#0B132B] hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-lg border border-blue-200 transition-colors cursor-pointer"
-                >
-                  📋 Tempel
-                </button>
-              </div>
-              <input
-                type="url"
-                value={createForm.data.shopee_link}
-                onChange={(e) => createForm.setData('shopee_link', e.target.value)}
-                placeholder="https://id.shp.ee/v/... atau link video Shopee"
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B] shadow-2xs"
-              />
-              {createForm.errors.shopee_link && (
-                <p className="text-[11px] text-rose-600 mt-1">{createForm.errors.shopee_link}</p>
-              )}
-            </div>
+            {renderChannelLinkFields('create')}
           </div>
 
           {/* Catatan Tambahan (Opsional) */}
@@ -1185,27 +1285,22 @@ export default function ContentReportsIndex({
           </div>
 
           {/* Modal Actions */}
-          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-slate-200">
-            <span className="text-[10px] text-slate-400 italic">
-              ⚡ Link langsung diaudit saat disimpan & diperbarui berkala jam 00:00 WIB.
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={createForm.processing}
-                onClick={() => setShowCreateModal(false)}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer text-center"
-              >
-                Batal
-              </button>
-              <button
-                type="submit"
-                disabled={createForm.processing}
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#0B132B] to-[#1E3A8A] px-5 py-2.5 text-xs font-bold text-white hover:opacity-95 active:scale-98 disabled:opacity-50 shadow-xs transition-all cursor-pointer text-center"
-              >
-                {createForm.processing ? 'Menyimpan & Audit Link...' : 'Kirim Report Konten'}
-              </button>
-            </div>
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-3 border-t border-slate-200">
+            <button
+              type="button"
+              disabled={createForm.processing}
+              onClick={() => setShowCreateModal(false)}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer text-center"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              disabled={createForm.processing}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#0B132B] to-[#1E3A8A] px-5 py-2.5 text-xs font-bold text-white hover:opacity-95 active:scale-98 disabled:opacity-50 shadow-xs transition-all cursor-pointer text-center"
+            >
+              {createForm.processing ? 'Menyimpan & Audit Link...' : 'Kirim Report Konten'}
+            </button>
           </div>
         </form>
       </Modal>
@@ -1314,83 +1409,7 @@ export default function ContentReportsIndex({
                 </span>
               </div>
 
-              {/* Instagram Link */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[11px] font-semibold text-slate-800 flex items-center gap-1.5">
-                    <span>📸 Link Instagram (Reels / Feed / Story):</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => handlePasteToField('ig_link', 'edit')}
-                    className="text-[10px] font-bold text-[#0B132B] hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-lg border border-blue-200 transition-colors cursor-pointer"
-                  >
-                    📋 Tempel
-                  </button>
-                </div>
-                <input
-                  type="url"
-                  value={editForm.data.ig_link}
-                  onChange={(e) => editForm.setData('ig_link', e.target.value)}
-                  placeholder="https://www.instagram.com/reel/..."
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B] shadow-2xs"
-                />
-                {editForm.errors.ig_link && (
-                  <p className="text-[11px] text-rose-600 mt-1">{editForm.errors.ig_link}</p>
-                )}
-              </div>
-
-              {/* TikTok Link */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[11px] font-semibold text-slate-800 flex items-center gap-1.5">
-                    <span>🎵 Link TikTok Video:</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => handlePasteToField('tiktok_link', 'edit')}
-                    className="text-[10px] font-bold text-[#0B132B] hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-lg border border-blue-200 transition-colors cursor-pointer"
-                  >
-                    📋 Tempel
-                  </button>
-                </div>
-                <input
-                  type="url"
-                  value={editForm.data.tiktok_link}
-                  onChange={(e) => editForm.setData('tiktok_link', e.target.value)}
-                  placeholder="https://vt.tiktok.com/... atau https://www.tiktok.com/@..."
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B] shadow-2xs"
-                />
-                {editForm.errors.tiktok_link && (
-                  <p className="text-[11px] text-rose-600 mt-1">{editForm.errors.tiktok_link}</p>
-                )}
-              </div>
-
-              {/* Shopee Video Link */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[11px] font-semibold text-slate-800 flex items-center gap-1.5">
-                    <span>🛒 Link Shopee Video:</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => handlePasteToField('shopee_link', 'edit')}
-                    className="text-[10px] font-bold text-[#0B132B] hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-lg border border-blue-200 transition-colors cursor-pointer"
-                  >
-                    📋 Tempel
-                  </button>
-                </div>
-                <input
-                  type="url"
-                  value={editForm.data.shopee_link}
-                  onChange={(e) => editForm.setData('shopee_link', e.target.value)}
-                  placeholder="https://id.shp.ee/v/... atau link video Shopee"
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:border-[#0B132B] focus:ring-1 focus:ring-[#0B132B] shadow-2xs"
-                />
-                {editForm.errors.shopee_link && (
-                  <p className="text-[11px] text-rose-600 mt-1">{editForm.errors.shopee_link}</p>
-                )}
-              </div>
+              {renderChannelLinkFields('edit')}
             </div>
 
             {/* Catatan Tambahan (Opsional) */}
@@ -1446,37 +1465,40 @@ export default function ContentReportsIndex({
                 Oleh: <strong>{reviewingReport.user?.name}</strong> •{' '}
                 {formatReportTime(reviewingReport.reported_at)}
               </div>
-              <div className="flex items-center gap-2 pt-1">
-                {reviewingReport.ig_link && (
+              <div className="flex items-center flex-wrap gap-2 pt-1">
+                {parseLinks(reviewingReport.ig_link).map((url, idx, arr) => (
                   <a
-                    href={reviewingReport.ig_link}
+                    key={`rev-ig-${idx}`}
+                    href={url}
                     target="_blank"
                     rel="noreferrer"
                     className="text-pink-700 font-bold underline"
                   >
-                    Buka IG ↗
+                    Buka IG{arr.length > 1 ? ` #${idx + 1}` : ''} ↗
                   </a>
-                )}
-                {reviewingReport.tiktok_link && (
+                ))}
+                {parseLinks(reviewingReport.tiktok_link).map((url, idx, arr) => (
                   <a
-                    href={reviewingReport.tiktok_link}
+                    key={`rev-tt-${idx}`}
+                    href={url}
                     target="_blank"
                     rel="noreferrer"
                     className="text-slate-900 font-bold underline"
                   >
-                    Buka TikTok ↗
+                    Buka TikTok{arr.length > 1 ? ` #${idx + 1}` : ''} ↗
                   </a>
-                )}
-                {reviewingReport.shopee_link && (
+                ))}
+                {parseLinks(reviewingReport.shopee_link).map((url, idx, arr) => (
                   <a
-                    href={reviewingReport.shopee_link}
+                    key={`rev-sp-${idx}`}
+                    href={url}
                     target="_blank"
                     rel="noreferrer"
                     className="text-orange-700 font-bold underline"
                   >
-                    Buka Shopee ↗
+                    Buka Shopee{arr.length > 1 ? ` #${idx + 1}` : ''} ↗
                   </a>
-                )}
+                ))}
               </div>
             </div>
 

@@ -47,9 +47,9 @@ class DashboardController extends Controller
             $kreatifStats = [
                 'today_total'        => $todayReports->count(),
                 'my_today_total'     => $myTodayReports->count(),
-                'today_ig'           => $todayReports->filter(fn($r) => !empty($r->ig_link))->count(),
-                'today_tiktok'       => $todayReports->filter(fn($r) => !empty($r->tiktok_link))->count(),
-                'today_shopee'       => $todayReports->filter(fn($r) => !empty($r->shopee_link))->count(),
+                'today_ig'           => $todayReports->sum(fn($r) => \App\Models\DailyContentReport::countLinks($r->ig_link)),
+                'today_tiktok'       => $todayReports->sum(fn($r) => \App\Models\DailyContentReport::countLinks($r->tiktok_link)),
+                'today_shopee'       => $todayReports->sum(fn($r) => \App\Models\DailyContentReport::countLinks($r->shopee_link)),
                 'month_total'        => $monthReports->count(),
                 'my_month_total'     => $myMonthReports->count(),
                 'month_views'        => (int) $monthReports->sum('total_views'),
@@ -77,9 +77,9 @@ class DashboardController extends Controller
                     'label'        => $targetDate->isoFormat('D MMM'),
                     'dayName'      => $targetDate->isoFormat('ddd'),
                     'total'        => $dayReports->count(),
-                    'ig_count'     => $dayReports->filter(fn($r) => !empty($r->ig_link))->count(),
-                    'tiktok_count' => $dayReports->filter(fn($r) => !empty($r->tiktok_link))->count(),
-                    'shopee_count' => $dayReports->filter(fn($r) => !empty($r->shopee_link))->count(),
+                    'ig_count'     => $dayReports->sum(fn($r) => \App\Models\DailyContentReport::countLinks($r->ig_link)),
+                    'tiktok_count' => $dayReports->sum(fn($r) => \App\Models\DailyContentReport::countLinks($r->tiktok_link)),
+                    'shopee_count' => $dayReports->sum(fn($r) => \App\Models\DailyContentReport::countLinks($r->shopee_link)),
                 ];
             }
 

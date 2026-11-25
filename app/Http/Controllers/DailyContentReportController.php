@@ -35,9 +35,9 @@ class DailyContentReportController extends Controller
         // 1. Ambil Statistik Ringkasan Konten Berdasarkan Channel
         $todayReports = DailyContentReport::whereDate('reported_at', $todayDate)->get();
         $todayTotal   = $todayReports->count();
-        $todayIg      = $todayReports->filter(fn ($r) => !empty($r->ig_link))->count();
-        $todayTiktok  = $todayReports->filter(fn ($r) => !empty($r->tiktok_link))->count();
-        $todayShopee  = $todayReports->filter(fn ($r) => !empty($r->shopee_link))->count();
+        $todayIg      = $todayReports->sum(fn ($r) => DailyContentReport::countLinks($r->ig_link));
+        $todayTiktok  = $todayReports->sum(fn ($r) => DailyContentReport::countLinks($r->tiktok_link));
+        $todayShopee  = $todayReports->sum(fn ($r) => DailyContentReport::countLinks($r->shopee_link));
         $todaySantai  = $todayReports->where('content_type', 'santai')->count();
         $todayProduk  = $todayReports->where('content_type', 'produk')->count();
         $todaySemua   = $todayReports->where('content_type', 'semua')->count();
@@ -171,30 +171,17 @@ class DailyContentReportController extends Controller
             abort(403, 'Anda tidak memiliki hak akses untuk membuat laporan konten.');
         }
 
-        $validated = $request->validate([
-            'content_type'  => 'nullable|in:santai,produk,semua',
-            'title'         => 'required|string|max:255',
-            'reported_date' => 'nullable|date',
-            'reported_time' => 'nullable|string|max:8',
-            'ig_link'       => 'nullable|string|url|max:1000',
-            'tiktok_link'   => 'nullable|string|url|max:1000',
-            'shopee_link'   => 'nullable|string|url|max:1000',
-            'notes'         => 'nullable|string|max:2000',
-        ], [
-            'title.required' => 'Judul / topik konten wajib diisi.',
-            'ig_link.url'    => 'Link Instagram harus berupa format URL valid (https://...).',
-            'tiktok_link.url'=> 'Link TikTok harus berupa format URL valid (https://...).',
-            'shopee_link.url'=> 'Link Shopee Video harus berupa format URL valid (https://...).',
-        ]);
+        $validated = $this->validateReportRequest($request);
 
-        $igLink     = trim((string) ($validated['ig_link'] ?? ''));
-        $tiktokLink = trim((string) ($validated['tiktok_link'] ?? ''));
-        $shopeeLink = trim((string) ($validated['shopee_link'] ?? ''));
+        $igLink     = $this->normalizeLinks($validated['ig_links'] ?? null, $validated['ig_link'] ?? null);
+        $tiktokLink = $this->normalizeLinks($validated['tiktok_links'] ?? null, $validated['tiktok_link'] ?? null);
+        $shopeeLink = $this->normalizeLinks($validated['shopee_links'] ?? null, $validated['shopee_link'] ?? null);
 
         // Validasi: minimal ada 1 link yang diisi
-        if (empty($igLink) && empty($tiktokLink) && empty($shopeeLink)) {
+        if ($igLink === '' && $tiktokLink === '' && $shopeeLink === '') {
             return back()->withErrors([
-                'ig_link' => 'Harap isi minimal salah satu tautan konten (Instagram, TikTok, atau Shopee Video).',
+                'ig_links' => 'Harap isi minimal salah satu tautan konten (Instagram, TikTok, atau Shopee Video).',
+                'ig_link'  => 'Harap isi minimal salah satu tautan konten (Instagram, TikTok, atau Shopee Video).',
             ])->withInput();
         }
 
@@ -284,29 +271,16 @@ class DailyContentReportController extends Controller
             abort(403, 'Anda tidak memiliki hak akses untuk mengubah laporan ini.');
         }
 
-        $validated = $request->validate([
-            'content_type'  => 'nullable|in:santai,produk,semua',
-            'title'         => 'required|string|max:255',
-            'reported_date' => 'nullable|date',
-            'reported_time' => 'nullable|string|max:8',
-            'ig_link'       => 'nullable|string|url|max:1000',
-            'tiktok_link'   => 'nullable|string|url|max:1000',
-            'shopee_link'   => 'nullable|string|url|max:1000',
-            'notes'         => 'nullable|string|max:2000',
-        ], [
-            'title.required' => 'Judul / topik konten wajib diisi.',
-            'ig_link.url'    => 'Link Instagram harus berupa format URL valid (https://...).',
-            'tiktok_link.url'=> 'Link TikTok harus berupa format URL valid (https://...).',
-            'shopee_link.url'=> 'Link Shopee Video harus berupa format URL valid (https://...).',
-        ]);
+        $validated = $this->validateReportRequest($request);
 
-        $igLink     = trim((string) ($validated['ig_link'] ?? ''));
-        $tiktokLink = trim((string) ($validated['tiktok_link'] ?? ''));
-        $shopeeLink = trim((string) ($validated['shopee_link'] ?? ''));
+        $igLink     = $this->normalizeLinks($validated['ig_links'] ?? null, $validated['ig_link'] ?? null);
+        $tiktokLink = $this->normalizeLinks($validated['tiktok_links'] ?? null, $validated['tiktok_link'] ?? null);
+        $shopeeLink = $this->normalizeLinks($validated['shopee_links'] ?? null, $validated['shopee_link'] ?? null);
 
-        if (empty($igLink) && empty($tiktokLink) && empty($shopeeLink)) {
+        if ($igLink === '' && $tiktokLink === '' && $shopeeLink === '') {
             return back()->withErrors([
-                'ig_link' => 'Harap isi minimal salah satu tautan konten (Instagram, TikTok, atau Shopee Video).',
+                'ig_links' => 'Harap isi minimal salah satu tautan konten (Instagram, TikTok, atau Shopee Video).',
+                'ig_link'  => 'Harap isi minimal salah satu tautan konten (Instagram, TikTok, atau Shopee Video).',
             ])->withInput();
         }
 
@@ -488,5 +462,60 @@ class DailyContentReportController extends Controller
             'success',
             "Performa tayangan '{$report->title}' berhasil diperbarui ({$total} views)!"
         );
+    }
+
+    /**
+     * Validasi payload laporan konten harian (mendukung array multi-link maupun single link).
+     */
+    private function validateReportRequest(Request $request): array
+    {
+        return $request->validate([
+            'content_type'     => 'nullable|in:santai,produk,semua',
+            'title'            => 'required|string|max:255',
+            'reported_date'    => 'nullable|date',
+            'reported_time'    => 'nullable|string|max:8',
+            'ig_link'          => 'nullable|string|url|max:1000',
+            'tiktok_link'      => 'nullable|string|url|max:1000',
+            'shopee_link'      => 'nullable|string|url|max:1000',
+            'ig_links'         => 'nullable|array|max:20',
+            'ig_links.*'       => 'nullable|string|url|max:1000',
+            'tiktok_links'     => 'nullable|array|max:20',
+            'tiktok_links.*'   => 'nullable|string|url|max:1000',
+            'shopee_links'     => 'nullable|array|max:20',
+            'shopee_links.*'   => 'nullable|string|url|max:1000',
+            'notes'            => 'nullable|string|max:2000',
+        ], [
+            'title.required'       => 'Judul / topik konten wajib diisi.',
+            'ig_link.url'          => 'Link Instagram harus berupa format URL valid (https://...).',
+            'tiktok_link.url'      => 'Link TikTok harus berupa format URL valid (https://...).',
+            'shopee_link.url'      => 'Link Shopee Video harus berupa format URL valid (https://...).',
+            'ig_links.*.url'       => 'Semua link Instagram harus berupa format URL valid (https://...).',
+            'tiktok_links.*.url'   => 'Semua link TikTok harus berupa format URL valid (https://...).',
+            'shopee_links.*.url'   => 'Semua link Shopee Video harus berupa format URL valid (https://...).',
+        ]);
+    }
+
+    /**
+     * Gabungkan input array multi-link (atau fallback single link) menjadi string dipisah baris baru.
+     */
+    private function normalizeLinks(?array $links, ?string $singleLink): string
+    {
+        $items = [];
+
+        if (is_array($links)) {
+            foreach ($links as $url) {
+                $trimmed = trim((string) $url);
+                if ($trimmed !== '') {
+                    $items[] = $trimmed;
+                }
+            }
+        }
+
+        $singleTrimmed = trim((string) ($singleLink ?? ''));
+        if ($singleTrimmed !== '' && !in_array($singleTrimmed, $items, true)) {
+            $items[] = $singleTrimmed;
+        }
+
+        return implode("\n", $items);
     }
 }

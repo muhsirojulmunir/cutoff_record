@@ -76,6 +76,30 @@ class DailyContentReport extends Model
     }
 
     /**
+     * Pecah kolom link (multi-baris) menjadi array URL bersih.
+     *
+     * @return array<int, string>
+     */
+    public static function parseLinks(?string $raw): array
+    {
+        if ($raw === null || trim($raw) === '') {
+            return [];
+        }
+
+        $parts = preg_split('/\r?\n/', $raw) ?: [];
+
+        return array_values(array_filter(array_map('trim', $parts), fn (string $url) => $url !== ''));
+    }
+
+    /**
+     * Hitung jumlah URL dalam satu kolom link.
+     */
+    public static function countLinks(?string $raw): int
+    {
+        return count(self::parseLinks($raw));
+    }
+
+    /**
      * Pastikan kolom metrik tayangan (views) tersedia di database.
      */
     public static function ensureViewsColumnsExist(): void

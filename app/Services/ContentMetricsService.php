@@ -57,27 +57,48 @@ class ContentMetricsService
         $igViews     = $report->ig_views ?? 0;
         $shopeeViews = $report->shopee_views ?? 0;
 
-        // 1. Ekstrak views dari TikTok
-        if (!empty($report->tiktok_link)) {
-            $fetchedTiktokViews = $this->fetchTiktokViews($report->tiktok_link);
-            if ($fetchedTiktokViews !== null && $fetchedTiktokViews > 0) {
-                $tiktokViews = $fetchedTiktokViews;
+        // 1. Ekstrak views dari TikTok (mendukung multi-link per laporan)
+        $tiktokUrls = DailyContentReport::parseLinks($report->tiktok_link);
+        if (!empty($tiktokUrls)) {
+            $fetchedTiktokSum = 0;
+            foreach ($tiktokUrls as $url) {
+                $v = $this->fetchTiktokViews($url);
+                if ($v !== null && $v > 0) {
+                    $fetchedTiktokSum += $v;
+                }
+            }
+            if ($fetchedTiktokSum > 0) {
+                $tiktokViews = $fetchedTiktokSum;
             }
         }
 
-        // 2. Ekstrak views dari Instagram
-        if (!empty($report->ig_link)) {
-            $fetchedIgViews = $this->fetchInstagramViews($report->ig_link);
-            if ($fetchedIgViews !== null && $fetchedIgViews > 0) {
-                $igViews = $fetchedIgViews;
+        // 2. Ekstrak views dari Instagram (mendukung multi-link per laporan)
+        $igUrls = DailyContentReport::parseLinks($report->ig_link);
+        if (!empty($igUrls)) {
+            $fetchedIgSum = 0;
+            foreach ($igUrls as $url) {
+                $v = $this->fetchInstagramViews($url);
+                if ($v !== null && $v > 0) {
+                    $fetchedIgSum += $v;
+                }
+            }
+            if ($fetchedIgSum > 0) {
+                $igViews = $fetchedIgSum;
             }
         }
 
-        // 3. Ekstrak views dari Shopee Video
-        if (!empty($report->shopee_link)) {
-            $fetchedShopeeViews = $this->fetchShopeeViews($report->shopee_link);
-            if ($fetchedShopeeViews !== null && $fetchedShopeeViews > 0) {
-                $shopeeViews = $fetchedShopeeViews;
+        // 3. Ekstrak views dari Shopee Video (mendukung multi-link per laporan)
+        $shopeeUrls = DailyContentReport::parseLinks($report->shopee_link);
+        if (!empty($shopeeUrls)) {
+            $fetchedShopeeSum = 0;
+            foreach ($shopeeUrls as $url) {
+                $v = $this->fetchShopeeViews($url);
+                if ($v !== null && $v > 0) {
+                    $fetchedShopeeSum += $v;
+                }
+            }
+            if ($fetchedShopeeSum > 0) {
+                $shopeeViews = $fetchedShopeeSum;
             }
         }
 
@@ -234,7 +255,6 @@ class ContentMetricsService
             } catch (\Throwable $e) {
                 Log::warning("Instagram Graph API error: " . $e->getMessage());
             }
-        }
 
         // 2. Fallback: Request metadata publik jika memungkinkan
         try {

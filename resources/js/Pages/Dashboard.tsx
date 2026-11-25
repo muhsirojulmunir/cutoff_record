@@ -554,36 +554,39 @@ export default function Dashboard({
                         </td>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            {item.ig_link && (
+                            {(item.ig_link ? item.ig_link.split(/\r?\n/).map((u) => u.trim()).filter(Boolean) : []).map((url, idx, arr) => (
                               <a
-                                href={item.ig_link}
+                                key={`ig-${idx}`}
+                                href={url}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="px-2 py-0.5 rounded-md bg-blue-50 text-[#0B132B] border border-blue-200 text-[10px] font-bold hover:bg-blue-100"
                               >
-                                📸 IG ↗
+                                📸 IG{arr.length > 1 ? ` #${idx + 1}` : ''} ↗
                               </a>
-                            )}
-                            {item.tiktok_link && (
+                            ))}
+                            {(item.tiktok_link ? item.tiktok_link.split(/\r?\n/).map((u) => u.trim()).filter(Boolean) : []).map((url, idx, arr) => (
                               <a
-                                href={item.tiktok_link}
+                                key={`tt-${idx}`}
+                                href={url}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="px-2 py-0.5 rounded-md bg-blue-50 text-[#0B132B] border border-blue-200 text-[10px] font-bold hover:bg-blue-100"
                               >
-                                🎵 TikTok ↗
+                                🎵 TikTok{arr.length > 1 ? ` #${idx + 1}` : ''} ↗
                               </a>
-                            )}
-                            {item.shopee_link && (
+                            ))}
+                            {(item.shopee_link ? item.shopee_link.split(/\r?\n/).map((u) => u.trim()).filter(Boolean) : []).map((url, idx, arr) => (
                               <a
-                                href={item.shopee_link}
+                                key={`sp-${idx}`}
+                                href={url}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="px-2 py-0.5 rounded-md bg-blue-50 text-[#0B132B] border border-blue-200 text-[10px] font-bold hover:bg-blue-100"
                               >
-                                🛒 Shopee ↗
+                                🛒 Shopee{arr.length > 1 ? ` #${idx + 1}` : ''} ↗
                               </a>
-                            )}
+                            ))}
                           </div>
                         </td>
                         <td className="py-3 px-4">
