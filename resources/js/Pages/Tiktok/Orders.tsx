@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Head, Link, router, usePage } from '@inertiajs/react';
+import { PDFDocument } from 'pdf-lib';
 import AppLayout from '../../Layouts/AppLayout';
 import DualCalendarRangePicker, { formatDateIndo } from '../../Components/DualCalendarRangePicker';
 import ShipOrderModal from '../../Components/Shopee/ShipOrderModal';
@@ -1263,72 +1264,113 @@ export default function TiktokOrdersPage({
       setPrintingTarget(marker);
 
       try {
-        // Untuk TikTok mass print: buka tab terpisah per order agar format resi resmi TikTok terjaga.
-        // Endpoint single order (/waybill-a4) selalu mengambil PDF resmi dari TikTok API,
-        // sedangkan mass endpoint menghasilkan format template yang berbeda.
+        // Untuk TikTok mass print (> 1 order): ambil PDF resmi TikTok per order lalu gabungkan menjadi 1 PDF multi-halaman
+        // agar semua resi langsung tampil bersamaan dalam satu tampilan cetak/preview tanpa membuka tab satu per satu.
         if (isMass && capped.length > 1) {
-          // Buka resi pertama di modal (agar tidak terblokir popup blocker), sisanya di tab baru
-          const fetchSingle = async (orderSn: string) =>
-            fetch(`/tiktok-orders/${encodeURIComponent(orderSn)}/waybill-a4`, {
-              method: 'GET',
-              credentials: 'same-origin',
-              signal: controller.signal,
-              headers: {
-                Accept: 'application/pdf, application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-              },
-            });
+          const fetchSinglePdfBytes = async (orderSn: string): Promise<{ orderSn: string; bytes?: ArrayBuffer; error?: string }> => {
+            try {
+              const res = await fetch(`/tiktok-orders/${encodeURIComponent(orderSn)}/waybill-a4`, {
+                method: 'GET',
+                credentials: 'same-origin',
+                signal: controller.signal,
+                headers: {
+                  Accept: 'application/pdf, application/json',
+                  'X-Requested-With': 'XMLHttpRequest',
+                },
+              });
 
-          const firstResponse = await fetchSingle(capped[0].order_sn);
+              const resType = res.headers.get('content-type') ?? '';
+              if (!res.ok || !resType.toLowerCase().includes('application/pdf')) {
+                let msg = `HTTP ${res.status}`;
+                try {
+                  const errPayload = (await res.json()) as { message?: string };
+                  if (errPayload?.message) msg = errPayload.message;
+                } catch {
+                  // Non-JSON response
+                }
+                return { orderSn, error: msg };
+              }
+
+              const bytes = await res.arrayBuffer();
+              if (bytes.byteLength === 0) {
+                return { orderSn, error: 'File PDF kosong' };
+              }
+              return { orderSn, bytes };
+            } catch (err: unknown) {
+              if (err instanceof DOMException && err.name === 'AbortError') {
+                throw err;
+              }
+              return { orderSn, error: err instanceof Error ? err.message : 'Kendala jaringan' };
+            }
+          };
+
+          // Ambil secara bertahap (maksimal 3 request paralel) untuk menjaga urutan & mencegah rate limit TikTok API
+          const concurrency = 3;
+          const results: Array<{ orderSn: string; bytes?: ArrayBuffer; error?: string }> = [];
+          for (let i = 0; i < capped.length; i += concurrency) {
+            if (controller.signal.aborted || !isMountedRef.current) return;
+            const batch = capped.slice(i, i + concurrency);
+            const batchResults = await Promise.all(batch.map((o) => fetchSinglePdfBytes(o.order_sn)));
+            results.push(...batchResults);
+          }
+
           if (controller.signal.aborted || !isMountedRef.current) return;
 
-          const contentType = firstResponse.headers.get('content-type') ?? '';
-          if (!firstResponse.ok || !contentType.toLowerCase().includes('application/pdf')) {
-            let errMessage = `Gagal menyiapkan PDF Resi TikTok (HTTP ${firstResponse.status}).`;
+          const mergedPdf = await PDFDocument.create();
+          let successCount = 0;
+          const failedOrders: string[] = [];
+
+          for (const item of results) {
+            if (!item.bytes) {
+              failedOrders.push(`${item.orderSn} (${item.error || 'gagal'})`);
+              continue;
+            }
             try {
-              const payload = (await firstResponse.json()) as { message?: string };
-              if (payload?.message) errMessage = payload.message;
-            } catch { /* Non-JSON */ }
-            showToast('error', errMessage);
+              const srcDoc = await PDFDocument.load(item.bytes, { ignoreEncryption: true });
+              const copiedPages = await mergedPdf.copyPages(srcDoc, srcDoc.getPageIndices());
+              copiedPages.forEach((page) => mergedPdf.addPage(page));
+              successCount++;
+            } catch (mergeErr) {
+              console.warn(`Gagal menggabungkan PDF resi ${item.orderSn}:`, mergeErr);
+              failedOrders.push(`${item.orderSn} (format PDF tidak valid)`);
+            }
+          }
+
+          if (successCount === 0 || mergedPdf.getPageCount() === 0) {
+            showToast(
+              'error',
+              failedOrders.length > 0
+                ? `Gagal menyiapkan PDF Resi TikTok massal: ${failedOrders[0]}`
+                : 'Gagal menyiapkan PDF Resi TikTok massal.'
+            );
             return;
           }
 
-          const firstBlob = await firstResponse.blob();
+          if (failedOrders.length > 0) {
+            warnings.push(`${failedOrders.length} pesanan gagal dimuat: ${failedOrders.slice(0, 3).join(', ')}${failedOrders.length > 3 ? '...' : ''}`);
+          }
+
+          const mergedBytes = await mergedPdf.save();
+          const mergedBlob = new Blob([new Uint8Array(mergedBytes)], { type: 'application/pdf' });
           if (controller.signal.aborted || !isMountedRef.current) return;
 
-          const tiktokDocUrl = firstResponse.headers.get('x-tiktok-doc-url') || undefined;
           revokeActiveBlobUrl();
-          const blobUrl = URL.createObjectURL(firstBlob);
+          const blobUrl = URL.createObjectURL(mergedBlob);
           activeBlobUrlRef.current = blobUrl;
 
           setWaybillModal({
             show: true,
             pdfUrl: blobUrl,
-            externalPdfUrl: tiktokDocUrl,
-            title: `Resi TikTok — ${capped[0].order_sn} (1 dari ${capped.length})`,
-            filename: `resi-tiktok-${capped[0].order_sn}.pdf`,
-            orderCount: capped.length,
-            warnings:
-              capped.length > 1
-                ? [...warnings, `${capped.length - 1} resi lainnya akan terbuka di tab baru secara berurutan.`]
-                : warnings,
+            externalPdfUrl: undefined,
+            title: `Resi Thermal Massal TikTok (${successCount} Pesanan)`,
+            filename: `resi-tiktok-massal-${successCount}-pesanan.pdf`,
+            orderCount: successCount,
+            warnings,
           });
-
-          // Buka resi pesanan berikutnya di tab baru satu per satu (dengan jeda agar tidak terblokir)
-          for (let i = 1; i < capped.length; i++) {
-            if (controller.signal.aborted || !isMountedRef.current) break;
-            await new Promise<void>((resolve) => setTimeout(resolve, 600));
-            if (controller.signal.aborted || !isMountedRef.current) break;
-            window.open(
-              `/tiktok-orders/${encodeURIComponent(capped[i].order_sn)}/waybill-a4`,
-              '_blank',
-              'noopener,noreferrer'
-            );
-          }
 
           showToast(
             'success',
-            `PDF Resi TikTok berhasil disiapkan untuk ${capped.length} pesanan (format resmi TikTok Shop).`
+            `PDF Resi Massal TikTok (${successCount} pesanan) berhasil digabungkan dalam 1 dokumen dan siap dicetak.`
           );
 
           router.reload({ only: ['orders', 'tabCounts'] });
