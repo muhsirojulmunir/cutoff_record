@@ -137,14 +137,17 @@ export default function BulkMapItemCodeModal({
   const [step, setStep] = useState<'select' | 'preview'>('select');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Search debounce timer ref
   const searchTimerRef = useRef<number | null>(null);
   const verifyTimerRef = useRef<number | null>(null);
 
-  // Reset state on open/close
+  // Reset seluruh state (termasuk pencarian) hanya saat modal ditutup
   useEffect(() => {
-    if (show) {
+    if (!show) {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+      if (verifyTimerRef.current) clearTimeout(verifyTimerRef.current);
       setSearchQuery('');
       setSearchResults([]);
       setSelectedIds(new Set());
@@ -155,6 +158,7 @@ export default function BulkMapItemCodeModal({
       setStep('select');
       setIsSubmitting(false);
       setErrorMessage(null);
+      setSuccessMessage(null);
     }
   }, [show]);
 
@@ -182,7 +186,7 @@ export default function BulkMapItemCodeModal({
 
   // Debounced search for variants
   const performSearch = useCallback(
-    async (query: string) => {
+    async (query: string, applyCurrentBase = true) => {
       const trimmed = query.trim();
       if (!trimmed) {
         setSearchResults([]);
@@ -208,7 +212,7 @@ export default function BulkMapItemCodeModal({
           setSelectedIds(new Set(items.map((item) => item.id)));
 
           // Jika baseItemCode sudah terisi, langsung hitung kode untuk varian yang baru ditemukan
-          if (baseItemCode.trim()) {
+          if (applyCurrentBase && baseItemCode.trim()) {
             applyCodeToVariants(baseItemCode, isSmartSizeEnabled, items);
           }
         } else {
@@ -226,6 +230,7 @@ export default function BulkMapItemCodeModal({
 
   const handleQueryChange = (val: string) => {
     setSearchQuery(val);
+    setSuccessMessage(null);
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     searchTimerRef.current = window.setTimeout(() => {
       performSearch(val);
@@ -365,12 +370,26 @@ export default function BulkMapItemCodeModal({
 
       const resJson = await resp.json();
       if (resJson.status === 'success') {
+        const updatedCount = resJson.updated_count || mappings.length;
         const displayCode =
           mappings.length === 1
             ? mappings[0].item_code
             : baseItemCode.trim().toUpperCase() || mappings[0].item_code;
-        onSuccess(resJson.updated_count || mappings.length, displayCode);
-        onClose();
+
+        onSuccess(updatedCount, displayCode);
+
+        // Kembali ke tampilan awal Ubah Kode Barang dengan kata kunci pencarian yang sama tetap terjaga,
+        // lalu muat ulang data varian terbaru agar perubahan SKU & Kode Barang langsung terlihat.
+        setBaseItemCode('');
+        setRowItemCodes({});
+        setVerifiedMasterItem(null);
+        setStep('select');
+        setSuccessMessage(
+          `Berhasil memperbarui ${updatedCount} varian ke Kode Barang ${displayCode}. Daftar varian untuk "${searchQuery.trim()}" telah dimuat ulang.`
+        );
+        if (searchQuery.trim()) {
+          await performSearch(searchQuery, false);
+        }
       } else {
         setErrorMessage(resJson.message || 'Gagal mengubah kode barang varian.');
       }
@@ -391,6 +410,20 @@ export default function BulkMapItemCodeModal({
       maxWidth="5xl"
     >
       <div className="space-y-4">
+        {/* Success Alert */}
+        {successMessage && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-800 flex items-center justify-between">
+            <span>✓ {successMessage}</span>
+            <button
+              type="button"
+              onClick={() => setSuccessMessage(null)}
+              className="text-emerald-600 hover:text-emerald-900 font-bold ml-2 cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Error Alert */}
         {errorMessage && (
           <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-800 flex items-center justify-between">
@@ -734,7 +767,7 @@ export default function BulkMapItemCodeModal({
                 onClick={onClose}
                 className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
               >
-                Batal
+                Tutup
               </button>
               <button
                 type="button"
