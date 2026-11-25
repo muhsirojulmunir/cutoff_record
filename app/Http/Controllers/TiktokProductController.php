@@ -443,6 +443,7 @@ class TiktokProductController extends Controller
                 if ($account) {
                     $qStats->where('tiktok_account_id', $account->id);
                 }
+                $qStats->where('item_status', 'ACTIVATE');
                 $row = $qStats->selectRaw('
                     COUNT(*) as total_skus,
                     COALESCE(SUM(stock), 0) as total_stock,
@@ -478,6 +479,7 @@ class TiktokProductController extends Controller
         if ($account) {
             $query->where('tiktok_products.tiktok_account_id', $account->id);
         }
+        $query->where('tiktok_products.item_status', 'ACTIVATE');
 
         $lightCols = $this->getLightProductColumns();
         $lightSelectCols = $lightCols === ['*']
@@ -670,6 +672,7 @@ class TiktokProductController extends Controller
         if ($account) {
             $query->where('tiktok_account_id', $account->id);
         }
+        $query->where('item_status', 'ACTIVATE');
 
         if (! empty($search)) {
             $query->where(function ($q) use ($search) {
