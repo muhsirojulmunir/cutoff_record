@@ -80,6 +80,15 @@ class User extends Authenticatable
     }
 
     /**
+     * Check if user is allowed to see marketplace stock alert notifications.
+     */
+    public function canViewStockAlerts(): bool
+    {
+        $roleName = strtolower(trim((string) ($this->role?->name ?? '')));
+        return in_array($roleName, ['super admin', 'admin', 'pic', 'pic gudang'], true);
+    }
+
+    /**
      * Check if user account is active.
      */
     public function isActive(): bool

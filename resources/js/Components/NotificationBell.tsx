@@ -41,9 +41,20 @@ export default function NotificationBell({ queue }: Props) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const isSuperAdmin = Boolean(auth?.user?.is_super_admin || auth?.user?.role?.name === 'Super Admin');
+  const userRoleNames = [
+    ...(auth?.user?.role?.name ? [auth.user.role.name] : []),
+    ...(Array.isArray(auth?.user?.roles) ? auth.user.roles : []),
+  ].map((r) => String(r).trim().toLowerCase());
+
+  const isSuperAdmin = Boolean(auth?.user?.is_super_admin || userRoleNames.includes('super admin'));
+  const canViewStockAlerts = Boolean(
+    isSuperAdmin ||
+      userRoleNames.includes('admin') ||
+      userRoleNames.includes('pic') ||
+      userRoleNames.includes('pic gudang')
+  );
   const rawItems = Array.isArray(queue?.items) ? queue.items : [];
-  const visibleItems = isSuperAdmin
+  const visibleItems = canViewStockAlerts
     ? rawItems
     : rawItems.filter(
         (item) =>
@@ -152,8 +163,8 @@ export default function NotificationBell({ queue }: Props) {
                 const iconPath = TYPE_ICONS[item.type] ?? TYPE_ICONS.stock;
                 const countFormatted = Number(item.count ?? 0).toLocaleString('id-ID');
 
-                const isShopeeCritical = item.key === 'shopee_critical_oos' && isSuperAdmin;
-                const isTiktokCritical = item.key === 'tiktok_critical_oos' && isSuperAdmin;
+                const isShopeeCritical = item.key === 'shopee_critical_oos' && canViewStockAlerts;
+                const isTiktokCritical = item.key === 'tiktok_critical_oos' && canViewStockAlerts;
 
                 if (isShopeeCritical || isTiktokCritical) {
                   const isTiktok = isTiktokCritical;
@@ -188,16 +199,18 @@ export default function NotificationBell({ queue }: Props) {
                             >
                               Lihat SKU Kritis
                             </Link>
-                            <button
-                              type="button"
-                              onClick={() => handleZeroOutCritical(isTiktok)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold transition-colors cursor-pointer"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                              </svg>
-                              <span>Kosongkan di {channelName}</span>
-                            </button>
+                            {isSuperAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => handleZeroOutCritical(isTiktok)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold transition-colors cursor-pointer"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                                </svg>
+                                <span>Kosongkan di {channelName}</span>
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>

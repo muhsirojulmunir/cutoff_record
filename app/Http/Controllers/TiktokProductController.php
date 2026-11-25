@@ -228,7 +228,7 @@ class TiktokProductController extends Controller
             $queue = self::buildStockWorkQueue($criticalOosCount, $discrepancyCount, $campaignUnlockedCount);
 
             try {
-                Cache::store('file')->put('tiktok_stock_alert_queue', $queue, 900);
+                Cache::store('file')->put('tiktok_stock_alert_queue', $queue, 3600);
             } catch (\Throwable $e) {
                 // Abaikan jika tidak bisa menulis file cache
             }
@@ -581,13 +581,15 @@ class TiktokProductController extends Controller
             count($campaignUnlockedIds)
         );
         try {
-            Cache::store('file')->put('tiktok_stock_alert_queue', $stockWorkQueue, 900);
+            Cache::store('file')->put('tiktok_stock_alert_queue', $stockWorkQueue, 3600);
         } catch (\Throwable) {
         }
 
-        $isSuperAdmin = $this->isSuperAdmin($request->user());
+        $currentUser = $request->user();
+        $isSuperAdmin = $this->isSuperAdmin($currentUser);
+        $canViewStockAlerts = $currentUser?->canViewStockAlerts() ?? $isSuperAdmin;
 
-        $shopeeQueue = app(\App\Http\Controllers\ShopeeProductController::class)->getStockAlertWorkQueue(false);
+        $shopeeQueue = app(\App\Http\Controllers\ShopeeProductController::class)->getStockAlertWorkQueue(true);
         $combinedQueue = [
             'items'    => array_values(array_merge($shopeeQueue['items'] ?? [], $stockWorkQueue['items'] ?? [])),
             'total'    => count($shopeeQueue['items'] ?? []) + count($stockWorkQueue['items'] ?? []),
@@ -623,7 +625,7 @@ class TiktokProductController extends Controller
                 'last_synced_at'          => $lastSyncedAt,
             ],
             'master_stock_summary' => $masterStockSummary,
-            'workQueue'            => $isSuperAdmin ? $combinedQueue : ['items' => [], 'total' => 0, 'critical' => 0],
+            'workQueue'            => $canViewStockAlerts ? $combinedQueue : ['items' => [], 'total' => 0, 'critical' => 0],
             'zeroRestoreSummary'   => $isSuperAdmin ? $this->buildZeroRestoreSummary($account?->id) : null,
             'account'              => $account ? [
                 'id'           => $account->id,

@@ -228,7 +228,7 @@ class ShopeeProductController extends Controller
             $queue = self::buildStockWorkQueue($criticalOosCount, $discrepancyCount, $campaignUnlockedCount);
 
             try {
-                Cache::store('file')->put('shopee_stock_alert_queue', $queue, 900);
+                Cache::store('file')->put('shopee_stock_alert_queue', $queue, 3600);
             } catch (\Throwable $e) {
                 // Abaikan jika tidak bisa menulis file cache
             }
@@ -666,14 +666,16 @@ class ShopeeProductController extends Controller
             count($campaignUnlockedIds)
         );
         try {
-            \Illuminate\Support\Facades\Cache::store('file')->put('shopee_stock_alert_queue', $stockWorkQueue, 900);
+            \Illuminate\Support\Facades\Cache::store('file')->put('shopee_stock_alert_queue', $stockWorkQueue, 3600);
         } catch (\Throwable $e) {
             // Abaikan error cache file pada environment hosting terbatas
         }
 
-        $isSuperAdmin = $request->user()?->isSuperAdmin() ?? false;
+        $currentUser = $request->user();
+        $isSuperAdmin = $currentUser?->isSuperAdmin() ?? false;
+        $canViewStockAlerts = $currentUser?->canViewStockAlerts() ?? false;
 
-        $tiktokQueue = app(\App\Http\Controllers\TiktokProductController::class)->getStockAlertWorkQueue(false);
+        $tiktokQueue = app(\App\Http\Controllers\TiktokProductController::class)->getStockAlertWorkQueue(true);
         $combinedQueue = [
             'items'    => array_values(array_merge($stockWorkQueue['items'] ?? [], $tiktokQueue['items'] ?? [])),
             'total'    => count($stockWorkQueue['items'] ?? []) + count($tiktokQueue['items'] ?? []),
@@ -709,7 +711,7 @@ class ShopeeProductController extends Controller
                 'last_synced_at'          => $lastSyncedAt,
             ],
             'master_stock_summary' => $masterStockSummary,
-            'workQueue' => $isSuperAdmin ? $combinedQueue : ['items' => [], 'total' => 0, 'critical' => 0],
+            'workQueue' => $canViewStockAlerts ? $combinedQueue : ['items' => [], 'total' => 0, 'critical' => 0],
             'zeroRestoreSummary' => $isSuperAdmin ? $this->buildZeroRestoreSummary($account?->id) : null,
             'account'  => $account ? [
                 'id'           => $account->id,
