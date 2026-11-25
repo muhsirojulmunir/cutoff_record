@@ -405,17 +405,28 @@ export default function ContentReportsIndex({
         (cfg.field === 'shopee_links' ? formErrors.shopee_link : undefined);
 
       return (
-        <div key={`${targetForm}-${cfg.field}`} className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <label className="text-[11px] font-semibold text-slate-800 flex items-center gap-1.5">
+        <div
+          key={`${targetForm}-${cfg.field}`}
+          className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
               <span>{cfg.label}</span>
+              {links.length > 1 && (
+                <span className="inline-flex items-center rounded-md bg-blue-100 text-[#0B132B] px-1.5 py-0.5 text-[10px] font-bold">
+                  {links.length} link
+                </span>
+              )}
             </label>
             <button
               type="button"
               onClick={() => addLinkField(cfg.field, targetForm)}
-              className="text-[11px] font-bold text-[#0B132B] hover:text-blue-900 hover:underline cursor-pointer"
+              className="inline-flex items-center gap-1 rounded-lg bg-[#0B132B] hover:bg-[#1E3A8A] text-white px-2.5 py-1 text-[11px] font-bold shadow-2xs transition-colors cursor-pointer shrink-0"
             >
-              {cfg.addLabel}
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              <span>{cfg.addLabel.replace(/^\+\s*/, '')}</span>
             </button>
           </div>
 
@@ -1188,20 +1199,6 @@ export default function ContentReportsIndex({
                   </span>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  createForm.setData((prev) => ({
-                    ...prev,
-                    reported_date: getTodayDateString(),
-                    reported_time: getCurrentTimeString(),
-                  }));
-                }}
-                className="text-[10px] font-bold text-[#0B132B] bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shrink-0"
-                title="Set waktu ke menit saat ini"
-              >
-                ⚡ Jam Sekarang
-              </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
@@ -1330,20 +1327,6 @@ export default function ContentReportsIndex({
                     </span>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    editForm.setData((prev) => ({
-                      ...prev,
-                      reported_date: getTodayDateString(),
-                      reported_time: getCurrentTimeString(),
-                    }));
-                  }}
-                  className="text-[10px] font-bold text-[#0B132B] bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shrink-0"
-                  title="Set ke waktu sekarang"
-                >
-                  ⚡ Set Jam Sekarang
-                </button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
