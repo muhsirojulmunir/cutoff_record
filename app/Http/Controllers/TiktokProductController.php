@@ -492,6 +492,7 @@ class TiktokProductController extends Controller
                 $q->where('tiktok_products.sku', 'like', "%{$search}%")
                   ->orWhere('tiktok_products.item_name', 'like', "%{$search}%")
                   ->orWhere('tiktok_products.model_name', 'like', "%{$search}%")
+                  ->orWhere('tiktok_products.manual_item_code', 'like', "%{$search}%")
                   ->orWhere('tiktok_products.item_id', 'like', "%{$search}%");
             });
         }
@@ -777,19 +778,29 @@ class TiktokProductController extends Controller
             return response()->json(['status' => 'success', 'data' => []]);
         }
 
-        $term = strtoupper($q);
+        $tokens = array_values(array_filter(preg_split('/\s+/', $q) ?: [], static fn (string $t): bool => $t !== ''));
+        if (empty($tokens)) {
+            return response()->json(['status' => 'success', 'data' => []]);
+        }
+
         $products = TiktokProduct::query()
-            ->where(function ($query) use ($q, $term) {
-                $query->where('sku', 'like', "%{$q}%")
-                    ->orWhere('sku', 'like', "%{$term}%")
-                    ->orWhere('item_name', 'like', "%{$q}%")
-                    ->orWhere('model_name', 'like', "%{$q}%")
-                    ->orWhere('manual_item_code', 'like', "%{$term}%");
+            ->where(function ($outerQuery) use ($tokens) {
+                foreach ($tokens as $token) {
+                    $upper = strtoupper($token);
+                    $outerQuery->where(function ($query) use ($token, $upper) {
+                        $query->where('sku', 'like', "%{$token}%")
+                            ->orWhere('sku', 'like', "%{$upper}%")
+                            ->orWhere('item_name', 'like', "%{$token}%")
+                            ->orWhere('model_name', 'like', "%{$token}%")
+                            ->orWhere('manual_item_code', 'like', "%{$upper}%")
+                            ->orWhere('item_id', 'like', "%{$token}%");
+                    });
+                }
             })
             ->select('id', 'tiktok_account_id', 'item_id', 'model_id', 'item_name', 'model_name', 'sku', 'manual_item_code', 'stock')
             ->orderBy('item_name', 'asc')
             ->orderBy('sku', 'asc')
-            ->limit(100)
+            ->limit(300)
             ->get();
 
         return response()->json([

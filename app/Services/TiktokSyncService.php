@@ -287,7 +287,7 @@ class TiktokSyncService
      */
     public function ensureValidAccessToken(TiktokAccount $account): void
     {
-        if (! $account->token_expires_at || $account->token_expires_at->isPast() || $account->token_expires_at->diffInMinutes(now()) < 30) {
+        if (! $account->token_expires_at || $account->token_expires_at->lessThanOrEqualTo(now()->addMinutes(30))) {
             if (! empty($account->refresh_token)) {
                 $this->refreshToken($account);
             }
@@ -1514,8 +1514,9 @@ class TiktokSyncService
                 ]
             );
 
-            // Inisialisasi katalog jika belum ada
-            if (\App\Models\TiktokProduct::where('tiktok_account_id', $account->id)->count() === 0) {
+            // Inisialisasi katalog demo hanya jika toko belum terhubung ke TikTok API aktif
+            if (! ($account->isConnected() && ! empty($account->access_token))
+                && \App\Models\TiktokProduct::where('tiktok_account_id', $account->id)->count() === 0) {
                 $this->seedInitialProducts($account);
             }
         } catch (\Throwable $e) {
@@ -1660,84 +1661,229 @@ class TiktokSyncService
         $token = trim((string) ($account->access_token ?? ''));
         $now = now();
 
-        // 1. Jika terhubung via token TikTok Shop Open API aktif, tarik real dari API
+        // 1. Jika terhubung via token TikTok Shop Open API aktif, tarik real seluruh halaman & varian dari API
         if ($token !== '' && $account->isConnected()) {
-            if ($progressCallback) {
-                $progressCallback('Menghubungi TikTok Shop Open Platform API untuk mengambil daftar produk...');
+            if (function_exists('set_time_limit')) {
+                @set_time_limit(180);
             }
 
-            try {
-                $path = '/product/202309/products/search';
+            if ($progressCallback) {
+                $progressCallback('Memvalidasi token dan mengambil katalog produk TikTok Shop Open Platform API...');
+            }
+
+            $this->ensureValidAccessToken($account);
+            $account->refresh();
+            $token = trim((string) ($account->access_token ?? ''));
+
+            if (empty($account->shop_cipher)) {
+                $this->fetchAuthorizedShops($account);
+                $account->refresh();
+            }
+
+            $shopCipher = trim((string) ($account->shop_cipher ?? ''));
+            if ($shopCipher === '') {
+                throw new RuntimeException('Shop Cipher TikTok tidak ditemukan. Silakan hubungkan ulang akun TikTok di menu Integrasi TikTok.');
+            }
+
+            $path = '/product/202309/products/search';
+            $pageToken = null;
+            $pageCount = 0;
+            $maxPages = 50; // Hingga 5.000 produk (100 per halaman)
+            $syncedCount = 0;
+            $totalProducts = 0;
+            $totalStockSum = 0;
+
+            do {
+                $pageCount++;
                 $timestamp = time();
-                $sign = $this->generateSignature($path, ['app_key' => $account->app_key, 'timestamp' => $timestamp], (string) $account->app_secret);
+                $queryParams = [
+                    'app_key'     => (string) $account->app_key,
+                    'timestamp'   => (string) $timestamp,
+                    'shop_cipher' => $shopCipher,
+                    'page_size'   => '100',
+                ];
+                if (! empty($pageToken)) {
+                    $queryParams['page_token'] = $pageToken;
+                }
 
-                $url = sprintf(
-                    '%s%s?app_key=%s&timestamp=%s&sign=%s',
-                    $this->openHost, $path, urlencode((string) $account->app_key), $timestamp, $sign
-                );
+                // Body JSON kosong '{}' menyertakan seluruh status produk (default ALL) dan harus ditandatangani di signature
+                $bodyJson = '{}';
+                $sign = $this->generateSignature($path, $queryParams, (string) $account->app_secret, $bodyJson);
+                $queryParams['sign'] = $sign;
 
-                $res = Http::timeout(20)->withHeaders([
-                    'x-tts-access-token' => $token,
-                    'Content-Type'       => 'application/json',
-                ])->post($url, [
-                    'page_size' => 50,
-                ]);
+                $url = $this->openHost . $path . '?' . http_build_query($queryParams);
 
-                if ($res->successful()) {
-                    $json = $res->json();
-                    $products = $json['data']['products'] ?? [];
-                    $syncedCount = 0;
-                    $totalStockSum = 0;
+                $res = Http::timeout(25)
+                    ->withHeaders([
+                        'x-tts-access-token' => $token,
+                        'Content-Type'       => 'application/json',
+                    ])
+                    ->withBody($bodyJson, 'application/json')
+                    ->send('POST', $url);
 
-                    foreach ($products as $p) {
-                        $pId = (string) ($p['id'] ?? '');
-                        $pName = (string) ($p['title'] ?? 'Produk TikTok');
-                        $skus = $p['skus'] ?? [];
+                if (! $res->successful()) {
+                    $errJson = $res->json();
+                    $detail = is_array($errJson) ? ($errJson['message'] ?? $res->body()) : $res->body();
+                    Log::error("TikTok Shop live product sync HTTP {$res->status()}: {$detail}");
+                    throw new RuntimeException("Gagal menarik produk TikTok (HTTP {$res->status()}): {$detail}");
+                }
 
-                        foreach ($skus as $sku) {
-                            $sId = (string) ($sku['id'] ?? '0');
-                            $sSku = trim((string) ($sku['seller_sku'] ?? ''));
-                            $sStock = (int) ($sku['inventory'][0]['quantity'] ?? $sku['stock_infos'][0]['available_stock'] ?? 0);
-                            $sPrice = (float) ($sku['price']['tax_exclusive_price'] ?? $sku['price']['original_price'] ?? 0);
+                $json = $res->json();
+                if (($json['code'] ?? -1) !== 0) {
+                    $code = $json['code'] ?? -1;
+                    $msg = $json['message'] ?? 'TikTok API error';
+                    Log::error("TikTok Shop live product sync API error ({$code}): {$msg}");
+                    throw new RuntimeException("TikTok Product API error ({$code}): {$msg}");
+                }
 
-                            \App\Models\TiktokProduct::updateOrCreate(
-                                [
-                                    'tiktok_account_id' => $account->id,
-                                    'item_id'           => $pId,
-                                    'model_id'          => $sId,
-                                ],
-                                [
-                                    'item_name'      => $pName,
-                                    'model_name'     => $sku['sales_attributes'][0]['value_name'] ?? null,
-                                    'sku'            => $sSku ?: null,
-                                    'stock'          => $sStock,
-                                    'reserved_stock' => 0,
-                                    'price'          => $sPrice,
-                                    'item_status'    => $p['status'] ?? 'ACTIVATE',
-                                    'has_model'      => count($skus) > 1,
-                                    'last_synced_at' => $now,
-                                    'raw_data'       => $sku,
-                                ]
-                            );
-                            $syncedCount++;
-                            $totalStockSum += $sStock;
+                $products = $json['data']['products'] ?? [];
+                $pageToken = $json['data']['next_page_token'] ?? null;
+
+                foreach ($products as $p) {
+                    $pId = (string) ($p['id'] ?? $p['product_id'] ?? '');
+                    if ($pId === '') {
+                        continue;
+                    }
+                    $totalProducts++;
+                    $pName = (string) ($p['title'] ?? $p['product_name'] ?? 'Produk TikTok');
+                    $pStatus = (string) ($p['status'] ?? $p['product_status'] ?? 'ACTIVATE');
+                    $skus = is_array($p['skus'] ?? null) ? $p['skus'] : [];
+
+                    // Jika endpoint search tidak mengembalikan rincian SKU / sales_attributes varian, ambil dari Get Product Detail
+                    $needsDetail = empty($skus);
+                    if (! $needsDetail && count($skus) > 1) {
+                        $hasAnyAttr = false;
+                        foreach ($skus as $checkSku) {
+                            if (! empty($checkSku['sales_attributes'])) {
+                                $hasAnyAttr = true;
+                                break;
+                            }
+                        }
+                        if (! $hasAnyAttr) {
+                            $needsDetail = true;
                         }
                     }
 
-                    if ($syncedCount > 0) {
-                        $account->update(['last_synced_at' => $now]);
-                        return [
-                            'status'         => 'success',
-                            'total_items'    => count($products),
-                            'total_variants' => $syncedCount,
-                            'total_stock'    => $totalStockSum,
-                            'message'        => "Sinkronisasi live TikTok Shop API berhasil! {$syncedCount} SKU produk tersinkron.",
+                    if ($needsDetail) {
+                        $detail = $this->fetchProductDetailRaw($account, $pId, $shopCipher);
+                        if (is_array($detail)) {
+                            $pName = (string) ($detail['title'] ?? $detail['product_name'] ?? $pName);
+                            $pStatus = (string) ($detail['status'] ?? $detail['product_status'] ?? $pStatus);
+                            if (! empty($detail['skus']) && is_array($detail['skus'])) {
+                                $skus = $detail['skus'];
+                            }
+                        }
+                    }
+
+                    if (empty($skus)) {
+                        $skus = [[
+                            'id'         => '0',
+                            'seller_sku' => (string) ($p['seller_sku'] ?? ''),
+                            'inventory'  => [],
+                            'price'      => [],
+                        ]];
+                    }
+
+                    foreach ($skus as $sku) {
+                        $sId = (string) ($sku['id'] ?? $sku['sku_id'] ?? '0');
+                        $sSku = trim((string) ($sku['seller_sku'] ?? ''));
+
+                        $sStock = 0;
+                        if (! empty($sku['inventory']) && is_array($sku['inventory'])) {
+                            foreach ($sku['inventory'] as $inv) {
+                                $sStock += (int) ($inv['quantity'] ?? 0);
+                            }
+                        } elseif (! empty($sku['stock_infos']) && is_array($sku['stock_infos'])) {
+                            foreach ($sku['stock_infos'] as $stInfo) {
+                                $sStock += (int) ($stInfo['available_stock'] ?? 0);
+                            }
+                        } elseif (isset($sku['available_stock'])) {
+                            $sStock = (int) $sku['available_stock'];
+                        }
+
+                        $sPrice = (float) (
+                            $sku['price']['sale_price']
+                            ?? $sku['price']['tax_exclusive_price']
+                            ?? $sku['price']['original_price']
+                            ?? 0
+                        );
+
+                        $attrNames = [];
+                        if (! empty($sku['sales_attributes']) && is_array($sku['sales_attributes'])) {
+                            foreach ($sku['sales_attributes'] as $attr) {
+                                $val = trim((string) ($attr['value_name'] ?? $attr['custom_value'] ?? ''));
+                                if ($val !== '') {
+                                    $attrNames[] = $val;
+                                }
+                            }
+                        }
+                        $modelName = ! empty($attrNames)
+                            ? implode(', ', $attrNames)
+                            : (trim((string) ($sku['sku_name'] ?? '')) ?: null);
+
+                        $existing = \App\Models\TiktokProduct::where('tiktok_account_id', $account->id)
+                            ->where('item_id', $pId)
+                            ->where('model_id', $sId)
+                            ->first();
+
+                        $attrs = [
+                            'item_name'      => $pName,
+                            'model_name'     => $modelName,
+                            'stock'          => $sStock,
+                            'reserved_stock' => 0,
+                            'price'          => $sPrice,
+                            'item_status'    => $pStatus,
+                            'has_model'      => count($skus) > 1,
+                            'last_synced_at' => $now,
+                            'raw_data'       => $sku,
                         ];
+
+                        if ($sSku !== '') {
+                            $attrs['sku'] = $sSku;
+                        } elseif (! $existing) {
+                            $attrs['sku'] = null;
+                        }
+
+                        \App\Models\TiktokProduct::updateOrCreate(
+                            [
+                                'tiktok_account_id' => $account->id,
+                                'item_id'           => $pId,
+                                'model_id'          => $sId,
+                            ],
+                            $attrs
+                        );
+                        $syncedCount++;
+                        $totalStockSum += $sStock;
                     }
                 }
-            } catch (\Throwable $e) {
-                Log::warning('TikTok Shop live product sync error: ' . $e->getMessage());
+            } while (! empty($pageToken) && $pageCount < $maxPages);
+
+            // Bersihkan produk contoh bawaan (seedInitialProducts) setelah katalog asli TikTok berhasil tersinkron
+            if ($syncedCount > 0) {
+                \App\Models\TiktokProduct::where('tiktok_account_id', $account->id)
+                    ->whereIn('item_id', [
+                        '172948291028301',
+                        '172948291028302',
+                        '172948291028303',
+                        '172948291028304',
+                        '172948291028305',
+                    ])
+                    ->delete();
             }
+
+            $account->update([
+                'last_synced_at'   => $now,
+                'last_sync_status' => 'success',
+                'last_sync_error'  => null,
+            ]);
+
+            return [
+                'status'         => 'success',
+                'total_items'    => $totalProducts,
+                'total_variants' => $syncedCount,
+                'total_stock'    => $totalStockSum,
+                'message'        => "Sinkronisasi live TikTok Shop API berhasil! {$syncedCount} SKU dari {$totalProducts} produk tersinkron.",
+            ];
         }
 
         // 2. Fallback / Mode Offline: perbarui atau seed katalog produk TikTok lokal Record Shoes
@@ -1764,6 +1910,42 @@ class TiktokSyncService
             'total_stock'    => $totalStockSum,
             'message'        => "Sinkronisasi produk TikTok berhasil! {$syncedCount} SKU tersinkron dari {$totalItems} produk dengan total {$totalStockSum} pcs stok tersedia.",
         ];
+    }
+
+    /**
+     * Ambil detail lengkap 1 produk dari TikTok Shop Open API (fallback bila products/search belum memuat skus/sales_attributes).
+     */
+    private function fetchProductDetailRaw(TiktokAccount $account, string $productId, string $shopCipher): ?array
+    {
+        try {
+            $path = "/product/202309/products/{$productId}";
+            $timestamp = time();
+            $queryParams = [
+                'app_key'     => (string) $account->app_key,
+                'timestamp'   => (string) $timestamp,
+                'shop_cipher' => $shopCipher,
+            ];
+            $queryParams['sign'] = $this->generateSignature($path, $queryParams, (string) $account->app_secret, '');
+            $url = $this->openHost . $path . '?' . http_build_query($queryParams);
+
+            $res = Http::timeout(15)->withHeaders([
+                'x-tts-access-token' => (string) $account->access_token,
+                'Content-Type'       => 'application/json',
+            ])->get($url);
+
+            if (! $res->successful()) {
+                return null;
+            }
+            $json = $res->json();
+            if (($json['code'] ?? -1) !== 0 || ! is_array($json['data'] ?? null)) {
+                return null;
+            }
+
+            return $json['data'];
+        } catch (\Throwable $e) {
+            Log::warning("TikTok fetchProductDetailRaw error ({$productId}): " . $e->getMessage());
+            return null;
+        }
     }
 
     /**
