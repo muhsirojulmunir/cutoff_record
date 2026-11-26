@@ -200,7 +200,7 @@ class CutOffOrderController extends Controller
      * Ambil data Pesanan Cut Off untuk di-export menjadi file Excel (.xlsx) di frontend.
      * Hanya mengembalikan kolom ringkas sesuai kebutuhan sheet tanpa mengubah perhitungan Est. Bersih.
      */
-    public function exportData(Request $request): JsonResponse
+    public function exportData(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse|JsonResponse
     {
         $this->ensureProcessedAtColumnReady();
 
@@ -247,6 +247,7 @@ class CutOffOrderController extends Controller
                 'est_net_income',
                 'shipping_courier',
                 'financial_breakdown',
+                'order_status',
             ])
             ->orderByRaw('DATE(COALESCE(processed_at, order_date)) ASC')
             ->orderByRaw("CASE WHEN UPPER(channel) LIKE 'SH%' THEN 1 WHEN UPPER(channel) LIKE 'TT%' THEN 2 ELSE 3 END ASC")
@@ -254,22 +255,42 @@ class CutOffOrderController extends Controller
             ->orderBy('id', 'asc')
             ->get();
 
-        $headers = [
-            'Tanggal',
-            'Nomor Urut',
-            'Platform',
-            'No Pesanan',
-            'SKU',
-            'QTY',
-            'Username',
-        ];
+        // Lookup nama penerima TikTok dari tiktok_orders (lebih akurat dari buyer_uid)
+        $ttOrderNumbers = $orders
+            ->filter(fn ($o) => str_starts_with(strtoupper(trim((string) ($o->channel ?? ''))), 'TT'))
+            ->pluck('order_number')
+            ->unique()
+            ->values()
+            ->toArray();
+
+        $ttRecipientMap = [];
+        if (!empty($ttOrderNumbers)) {
+            \App\Models\TiktokOrder::whereIn('order_sn', $ttOrderNumbers)
+                ->get(['order_sn', 'buyer_username', 'recipient_data'])
+                ->each(function ($tto) use (&$ttRecipientMap) {
+                    $recipName = '';
+                    if (is_array($tto->recipient_data) && !empty($tto->recipient_data['name'])) {
+                        $recipName = trim((string) $tto->recipient_data['name']);
+                    }
+                    if ($recipName === '' && !empty($tto->buyer_username)) {
+                        $bUser = trim((string) $tto->buyer_username);
+                        // Jangan tampilkan buyer_uid (string panjang tanpa spasi & karakter campuran)
+                        $recipName = (strlen($bUser) < 50 && !preg_match('/^[A-Za-z0-9]{30,}$/', $bUser))
+                            ? $bUser : '';
+                    }
+                    $ttRecipientMap[$tto->order_sn] = $recipName;
+                });
+        }
+
+        $headers = ['Tanggal', 'Nomor Urut', 'Platform', 'No Pesanan', 'SKU', 'QTY', 'Username'];
         if ($canViewFinancial) {
             $headers[] = 'Est Bersih';
         }
         $headers[] = 'Ekspedisi';
+        $headers[] = 'Status';
 
         $rows = [];
-        $no = 1;
+        $no   = 1;
 
         foreach ($orders as $order) {
             $rawDate = $order->processed_at ?? $order->order_date;
@@ -283,53 +304,36 @@ class CutOffOrderController extends Controller
             }
 
             $channelRaw = strtoupper(trim((string) ($order->channel ?? '')));
-            if ($channelRaw === 'SH' || str_starts_with($channelRaw, 'SH')) {
-                $platform = 'Shopee';
-            } elseif ($channelRaw === 'TT' || str_starts_with($channelRaw, 'TT')) {
-                $platform = 'TikTok';
-            } else {
-                $platform = trim((string) ($order->channel ?? ''));
-            }
+            $platform = match (true) {
+                $channelRaw === 'SH' || str_starts_with($channelRaw, 'SH') => 'Shopee',
+                $channelRaw === 'TT' || str_starts_with($channelRaw, 'TT') => 'TikTok',
+                default => trim((string) ($order->channel ?? '')),
+            };
 
-            // Ambil username — untuk TikTok: jika berformat email, ambil bagian sebelum '@'
-            $rawUsername = (string) ($order->buyer_username ?? '');
-            if ($platform === 'TikTok' && str_contains($rawUsername, '@')) {
-                $rawUsername = explode('@', $rawUsername)[0];
-            }
-
+            // Username: TikTok → pakai recipient name dari tiktok_orders
             $orderNumber = (string) ($order->order_number ?? '');
-            $courier     = (string) ($order->shipping_courier ?? '');
+            if ($platform === 'TikTok' && isset($ttRecipientMap[$orderNumber]) && $ttRecipientMap[$orderNumber] !== '') {
+                $rawUsername = $ttRecipientMap[$orderNumber];
+            } else {
+                $rawUsername = (string) ($order->buyer_username ?? '');
+                if ($platform === 'TikTok' && str_contains($rawUsername, '@')) {
+                    $rawUsername = explode('@', $rawUsername)[0];
+                }
+                // Jika masih tampak seperti buyer_uid (panjang & tanpa spasi), tampilkan '-'
+                if ($platform === 'TikTok' && strlen($rawUsername) >= 25 && preg_match('/^[A-Za-z0-9]{25,}$/', $rawUsername)) {
+                    $rawUsername = '-';
+                }
+            }
 
-            // Cek apakah ada multi-item di financial_breakdown
+            $courier     = (string) ($order->shipping_courier ?? '');
+            $isCancelled = CutOffOrder::isCancelledStatus($order->order_status ?? null);
+            $statusLabel = $isCancelled ? 'Batal' : '';
+
             $breakdownItems = is_array($order->financial_breakdown)
                 ? ($order->financial_breakdown['items'] ?? null)
                 : null;
 
-            if (is_array($breakdownItems) && count($breakdownItems) > 1 && $canViewFinancial) {
-                // Pecah menjadi beberapa baris — satu baris per item
-                foreach ($breakdownItems as $item) {
-                    $itemSku = trim((string) ($item['sku'] ?? ''));
-                    if ($itemSku === '' || $itemSku === '-') {
-                        $itemSku = trim((string) ($order->sku_utama ?? ''));
-                    }
-                    $itemQty    = max(1, (int) ($item['qty'] ?? 1));
-                    $itemEstNet = (float) ($item['est_net_income'] ?? 0);
-
-                    $row = [
-                        $formattedDate,
-                        $no++,
-                        $platform,
-                        $orderNumber,
-                        $itemSku,
-                        $itemQty,
-                        $rawUsername,
-                    ];
-                    $row[] = $itemEstNet;
-                    $row[] = $courier;
-                    $rows[] = $row;
-                }
-            } elseif (is_array($breakdownItems) && count($breakdownItems) > 1 && !$canViewFinancial) {
-                // Non-financial: tetap pecah per item tapi tanpa est_bersih
+            if (is_array($breakdownItems) && count($breakdownItems) > 1) {
                 foreach ($breakdownItems as $item) {
                     $itemSku = trim((string) ($item['sku'] ?? ''));
                     if ($itemSku === '' || $itemSku === '-') {
@@ -337,51 +341,54 @@ class CutOffOrderController extends Controller
                     }
                     $itemQty = max(1, (int) ($item['qty'] ?? 1));
 
-                    $row = [
-                        $formattedDate,
-                        $no++,
-                        $platform,
-                        $orderNumber,
-                        $itemSku,
-                        $itemQty,
-                        $rawUsername,
-                        $courier,
-                    ];
-                    $rows[] = $row;
+                    $row = [$formattedDate, $no++, $platform, $orderNumber, $itemSku, $itemQty, $rawUsername];
+                    if ($canViewFinancial) {
+                        $row[] = (float) ($item['est_net_income'] ?? 0);
+                    }
+                    $row[] = $courier;
+                    $row[] = $statusLabel;
+                    $rows[] = ['data' => $row, 'cancelled' => $isCancelled];
                 }
             } else {
-                // Pesanan 1 item — satu baris seperti biasa
                 $sku = $this->resolveExportSku($order);
-                $row = [
-                    $formattedDate,
-                    $no++,
-                    $platform,
-                    $orderNumber,
-                    $sku,
-                    (int) ($order->qty ?? 0),
-                    $rawUsername,
-                ];
+                $row = [$formattedDate, $no++, $platform, $orderNumber, $sku, (int) ($order->qty ?? 0), $rawUsername];
                 if ($canViewFinancial) {
                     $row[] = (float) ($order->est_net_income ?? 0);
                 }
                 $row[] = $courier;
-                $rows[] = $row;
+                $row[] = $statusLabel;
+                $rows[] = ['data' => $row, 'cancelled' => $isCancelled];
             }
         }
 
         $dateTag = match (true) {
             $dateFrom !== null && $dateTo !== null && $dateFrom === $dateTo => $dateFrom,
-            $dateFrom !== null && $dateTo !== null => "{$dateFrom}_sd_{$dateTo}",
-            $dateFrom !== null => "mulai_{$dateFrom}",
-            $dateTo !== null => "sampai_{$dateTo}",
-            default => now('Asia/Jakarta')->format('Y-m-d'),
+            $dateFrom !== null && $dateTo !== null                          => "{$dateFrom}_sd_{$dateTo}",
+            $dateFrom !== null                                              => "mulai_{$dateFrom}",
+            $dateTo !== null                                                => "sampai_{$dateTo}",
+            default                                                         => now('Asia/Jakarta')->format('Y-m-d'),
         };
+        $fileName = "Pesanan_Cut_Off_{$dateTag}.xlsx";
 
-        return response()->json([
-            'headers'      => $headers,
-            'rows'         => $rows,
-            'total_orders' => count($rows),
-            'file_name'    => "Pesanan_Cut_Off_{$dateTag}.xlsx",
+        // Jika request Accept JSON (fetch lama) → kembalikan JSON plain
+        if ($request->wantsJson()) {
+            return response()->json([
+                'headers'        => $headers,
+                'rows'           => array_map(fn ($r) => $r['data'], $rows),
+                'total_orders'   => count($rows),
+                'file_name'      => $fileName,
+                'cancelled_rows' => array_keys(array_filter($rows, fn ($r) => $r['cancelled'])),
+            ]);
+        }
+
+        // Stream binary .xlsx dengan styling warna merah di baris Batal
+        $xlsxBinary = $this->buildXlsx($headers, $rows);
+
+        return response()->streamDownload(function () use ($xlsxBinary) {
+            echo $xlsxBinary;
+        }, $fileName, [
+            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
         ]);
     }
 
@@ -428,6 +435,212 @@ class CutOffOrderController extends Controller
 
         $mainSku = trim((string) ($order->sku_utama ?? ''));
         return ($mainSku === '-' ? '' : $mainSku);
+    }
+
+    /**
+     * Build native OOXML .xlsx binary dengan support styling sel merah untuk baris BATAL.
+     * Tidak membutuhkan library tambahan — menggunakan ZipArchive + string XML.
+     *
+     * @param  string[]  $headers
+     * @param  array<array{data: array, cancelled: bool}>  $rows
+     */
+    private function buildXlsx(array $headers, array $rows): string
+    {
+        // ---- Shared strings ----
+        $strings = [];
+        $strIndex = function (string $s) use (&$strings): int {
+            if (!isset($strings[$s])) {
+                $strings[$s] = count($strings);
+            }
+            return $strings[$s];
+        };
+
+        $xmlEsc = fn (string $v): string => htmlspecialchars($v, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+
+        // ---- Styles ----
+        // styleId 0 = normal, 1 = header (bold), 2 = red text (batal),
+        // 3 = number plain, 4 = number currency, 5 = text (force string)
+        $stylesXml = <<<'XML'
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="4">
+    <font><sz val="10"/><name val="Calibri"/></font>
+    <font><sz val="10"/><b/><name val="Calibri"/></font>
+    <font><sz val="10"/><color rgb="FFCC0000"/><name val="Calibri"/></font>
+    <font><sz val="10"/><b/><color rgb="FFCC0000"/><name val="Calibri"/></font>
+  </fonts>
+  <fills count="2">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+  </fills>
+  <borders count="1">
+    <border><left/><right/><top/><bottom/><diagonal/></border>
+  </borders>
+  <cellStyleXfs count="1">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+  </cellStyleXfs>
+  <cellXfs count="6">
+    <xf numFmtId="0"  fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0"  fontId="1" fillId="0" borderId="0" xfId="0"><alignment horizontal="center" wrapText="1"/></xf>
+    <xf numFmtId="0"  fontId="2" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0"  fontId="2" fillId="0" borderId="0" xfId="0"><alignment horizontal="center"/></xf>
+    <xf numFmtId="4"  fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0"/>
+  </cellXfs>
+</styleSheet>
+XML;
+        // styleId map: 0=normal, 1=header, 2=redNormal, 3=redCenter, 4=currency, 5=text(force)
+
+        // ---- Build sheet rows ----
+        $sheetRows = '';
+        $rowNum    = 1;
+
+        // Header row (styleId=1)
+        $sheetRows .= "<row r=\"{$rowNum}\">";
+        $col = 0;
+        foreach ($headers as $h) {
+            $addr  = $this->xlsxCellAddr($col++, $rowNum);
+            $si    = $strIndex($h);
+            $sheetRows .= "<c r=\"{$addr}\" t=\"s\" s=\"1\"><v>{$si}</v></c>";
+        }
+        $sheetRows .= '</row>';
+        $rowNum++;
+
+        foreach ($rows as $rowMeta) {
+            $data      = $rowMeta['data'];
+            $cancelled = $rowMeta['cancelled'];
+            // base style: 0=normal, red base=2
+            $baseStyle    = $cancelled ? 2 : 0;
+            $centerStyle  = $cancelled ? 3 : 0;
+            $numStyle     = $cancelled ? 2 : 4;   // Est Bersih: currency or red
+            $textStyle    = $cancelled ? 2 : 5;   // force string
+
+            $sheetRows .= "<row r=\"{$rowNum}\">";
+            $col = 0;
+            foreach ($data as $idx => $val) {
+                $addr   = $this->xlsxCellAddr($col, $rowNum);
+                $header = $headers[$col] ?? '';
+
+                if ($header === 'Nomor Urut' || $header === 'QTY') {
+                    $n = (int) $val;
+                    $sheetRows .= "<c r=\"{$addr}\" t=\"n\" s=\"{$baseStyle}\"><v>{$n}</v></c>";
+                } elseif ($header === 'Est Bersih') {
+                    $n = (float) $val;
+                    $sheetRows .= "<c r=\"{$addr}\" t=\"n\" s=\"{$numStyle}\"><v>{$n}</v></c>";
+                } elseif ($header === 'No Pesanan') {
+                    // force text agar tidak scientific notation
+                    $si = $strIndex((string) $val);
+                    $sheetRows .= "<c r=\"{$addr}\" t=\"s\" s=\"{$textStyle}\"><v>{$si}</v></c>";
+                } elseif ($header === 'Status') {
+                    $si = $strIndex((string) $val);
+                    $sheetRows .= "<c r=\"{$addr}\" t=\"s\" s=\"{$baseStyle}\"><v>{$si}</v></c>";
+                } else {
+                    $si = $strIndex((string) $val);
+                    $sheetRows .= "<c r=\"{$addr}\" t=\"s\" s=\"{$baseStyle}\"><v>{$si}</v></c>";
+                }
+                $col++;
+            }
+            $sheetRows .= '</row>';
+            $rowNum++;
+        }
+
+        // ---- Column widths ----
+        $colWidths = '';
+        foreach ($headers as $i => $h) {
+            $maxLen = strlen($h);
+            foreach ($rows as $r) {
+                $v = (string) ($r['data'][$i] ?? '');
+                if (strlen($v) > $maxLen) $maxLen = strlen($v);
+            }
+            $w        = min(45, max(10, $maxLen + 3));
+            $ci       = $i + 1;
+            $colWidths .= "<col min=\"{$ci}\" max=\"{$ci}\" width=\"{$w}\" customWidth=\"1\"/>";
+        }
+        $totalRows  = $rowNum - 1;
+        $lastColLtr = $this->xlsxColLetter(count($headers) - 1);
+        $dimension  = "A1:{$lastColLtr}{$totalRows}";
+
+        $sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            . "<dimension ref=\"{$dimension}\"/>"
+            . "<cols>{$colWidths}</cols>"
+            . "<sheetData>{$sheetRows}</sheetData>"
+            . '</worksheet>';
+
+        // ---- Shared strings XML ----
+        $ssItems = '';
+        foreach (array_keys($strings) as $s) {
+            $ssItems .= '<si><t xml:space="preserve">' . $xmlEsc($s) . '</t></si>';
+        }
+        $ssCount  = count($strings);
+        $ssXml    = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . "<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" count=\"{$ssCount}\" uniqueCount=\"{$ssCount}\">"
+            . $ssItems . '</sst>';
+
+        // ---- Workbook & rels ----
+        $workbookXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            . '<sheets><sheet name="Pesanan Cut Off" sheetId="1" r:id="rId1"/></sheets>'
+            . '</workbook>';
+
+        $wbRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+            . '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>'
+            . '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+            . '</Relationships>';
+
+        $rootRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+            . '</Relationships>';
+
+        $contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            . '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            . '<Default Extension="xml" ContentType="application/xml"/>'
+            . '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            . '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            . '<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>'
+            . '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+            . '</Types>';
+
+        // ---- Zip assembly ----
+        $tmpFile = tempnam(sys_get_temp_dir(), 'cutoff_xlsx_');
+        $zip     = new \ZipArchive();
+        $zip->open($tmpFile, \ZipArchive::OVERWRITE);
+        $zip->addFromString('[Content_Types].xml',              $contentTypes);
+        $zip->addFromString('_rels/.rels',                      $rootRels);
+        $zip->addFromString('xl/workbook.xml',                  $workbookXml);
+        $zip->addFromString('xl/_rels/workbook.xml.rels',       $wbRels);
+        $zip->addFromString('xl/worksheets/sheet1.xml',         $sheetXml);
+        $zip->addFromString('xl/sharedStrings.xml',             $ssXml);
+        $zip->addFromString('xl/styles.xml',                    $stylesXml);
+        $zip->close();
+
+        $binary = file_get_contents($tmpFile);
+        unlink($tmpFile);
+
+        return $binary;
+    }
+
+    /** Konversi indeks kolom (0-based) ke huruf Excel (A, B, ..., Z, AA, ...) */
+    private function xlsxColLetter(int $col): string
+    {
+        $letter = '';
+        $col++;
+        while ($col > 0) {
+            $rem    = ($col - 1) % 26;
+            $letter = chr(65 + $rem) . $letter;
+            $col    = (int) (($col - $rem - 1) / 26);
+        }
+        return $letter;
+    }
+
+    /** Konversi (col 0-based, row 1-based) ke alamat sel Excel misal A1, B3 */
+    private function xlsxCellAddr(int $col, int $row): string
+    {
+        return $this->xlsxColLetter($col) . $row;
     }
 
     /**

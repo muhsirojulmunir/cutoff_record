@@ -111,104 +111,31 @@ export default function CutOffOrderExportModal({
         }
       }
 
+      // Fetch sebagai binary — backend mengembalikan .xlsx langsung (dengan styling warna merah)
       const res = await fetch(`/cut-off-orders/export-data?${params.toString()}`, {
-        headers: { Accept: 'application/json' },
+        headers: { Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
         credentials: 'same-origin',
       });
 
       if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.message || errJson.error || 'Gagal mengambil data pesanan Cut Off dari server.');
+        const errText = await res.text().catch(() => '');
+        let errMsg = 'Gagal mengambil data pesanan Cut Off dari server.';
+        try { const j = JSON.parse(errText); errMsg = j.message || j.error || errMsg; } catch { /* ignore */ }
+        throw new Error(errMsg);
       }
 
-      const data: {
-        headers: string[];
-        rows: (string | number)[][];
-        total_orders: number;
-        file_name: string;
-      } = await res.json();
-
-      if (!Array.isArray(data.rows) || data.rows.length === 0) {
+      const blob = await res.blob();
+      if (blob.size < 100) {
         setError('Tidak ada data pesanan Cut Off pada rentang tanggal dan filter yang dipilih.');
         setIsExporting(false);
         return;
       }
 
-      const headers = data.headers;
-      const aoa = [headers, ...data.rows];
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      // Ambil filename dari Content-Disposition header jika ada
+      const cd = res.headers.get('Content-Disposition') || '';
+      const fnMatch = cd.match(/filename="?([^";]+)"?/);
+      const fileName = fnMatch ? fnMatch[1] : `Pesanan_Cut_Off_${todayStr}.xlsx`;
 
-      // Pastikan format sel presisi: No Pesanan sebagai teks (mencegah scientific notation Excel),
-      // QTY / Nomor Urut / Est Bersih sebagai angka numerik yang siap di-SUM di Excel.
-      const colNoPesanan = headers.indexOf('No Pesanan');
-      const colTanggal = headers.indexOf('Tanggal');
-      const colNomorUrut = headers.indexOf('Nomor Urut');
-      const colQty = headers.indexOf('QTY');
-      const colEstBersih = headers.indexOf('Est Bersih');
-
-      for (let r = 1; r < aoa.length; r++) {
-        if (colTanggal !== -1) {
-          const addr = XLSX.utils.encode_cell({ r, c: colTanggal });
-          if (ws[addr]) {
-            ws[addr].t = 's';
-            ws[addr].z = '@';
-          }
-        }
-        if (colNoPesanan !== -1) {
-          const addr = XLSX.utils.encode_cell({ r, c: colNoPesanan });
-          if (ws[addr]) {
-            ws[addr].t = 's';
-            ws[addr].v = String(ws[addr].v ?? '');
-            ws[addr].z = '@';
-          }
-        }
-        if (colNomorUrut !== -1) {
-          const addr = XLSX.utils.encode_cell({ r, c: colNomorUrut });
-          if (ws[addr]) {
-            ws[addr].t = 'n';
-            ws[addr].z = '#,##0';
-          }
-        }
-        if (colQty !== -1) {
-          const addr = XLSX.utils.encode_cell({ r, c: colQty });
-          if (ws[addr]) {
-            ws[addr].t = 'n';
-            ws[addr].z = '#,##0';
-          }
-        }
-        if (colEstBersih !== -1) {
-          const addr = XLSX.utils.encode_cell({ r, c: colEstBersih });
-          if (ws[addr]) {
-            const num = Number(ws[addr].v ?? 0);
-            ws[addr].t = 'n';
-            ws[addr].v = num;
-            ws[addr].z = Number.isInteger(num) ? '#,##0' : '#,##0.##';
-          }
-        }
-      }
-
-      // Hitung lebar kolom otomatis agar tidak terpotong (###) saat dibuka di Excel
-      ws['!cols'] = headers.map((header, colIdx) => {
-        let maxLen = header.length;
-        for (let r = 1; r < aoa.length; r++) {
-          const cellVal = aoa[r][colIdx];
-          const str = cellVal === null || cellVal === undefined ? '' : String(cellVal);
-          if (str.length > maxLen) {
-            maxLen = str.length;
-          }
-        }
-        return { wch: Math.min(44, Math.max(10, maxLen + 3)) };
-      });
-
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Pesanan Cut Off');
-
-      const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([buffer], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      });
-
-      const fileName = data.file_name || `Pesanan_Cut_Off_${todayStr}.xlsx`;
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
