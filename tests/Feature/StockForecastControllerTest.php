@@ -189,4 +189,53 @@ class StockForecastControllerTest extends TestCase
         ]);
         $response->assertSessionHasErrors(['rejection_reason']);
     }
+
+    public function test_pic_can_edit_and_cancel_pending_po_proposal(): void
+    {
+        $proposal = PoProposal::create([
+            'po_number'             => 'PO-PRO-20261126-0099',
+            'sku'                   => 'RECORD-SPK-MH-19',
+            'product_name'          => 'SPT R.SUPER KIDS 19 () MERAH/HITAM',
+            'supplier_name'         => 'Pabrik Awal',
+            'warehouse'             => 'G',
+            'current_stock'         => 120,
+            'monthly_velocity'      => 80,
+            'stock_coverage_months' => 1.5,
+            'recommended_qty'       => 280,
+            'proposed_qty'          => 300,
+            'status'                => PoProposal::STATUS_PENDING,
+            'proposed_by'           => $this->picUser->id,
+        ]);
+
+        // Direktur tidak boleh edit/batalkan pengajuan PIC
+        $this->actingAs($this->direkturUser)
+            ->put("/stock-forecast/proposals/{$proposal->id}", [
+                'warehouse'    => 'A',
+                'proposed_qty' => 250,
+            ])
+            ->assertStatus(403);
+
+        // PIC bisa edit PO pending
+        $this->actingAs($this->picUser)
+            ->put("/stock-forecast/proposals/{$proposal->id}", [
+                'warehouse'     => 'A',
+                'supplier_name' => 'Pabrik Baru',
+                'proposed_qty'  => 350,
+                'notes'         => 'Revisi jumlah stok bulan depan',
+            ])
+            ->assertSessionHas('success');
+
+        $proposal->refresh();
+        $this->assertSame('A', $proposal->warehouse);
+        $this->assertSame('Pabrik Baru', $proposal->supplier_name);
+        $this->assertSame(350, $proposal->proposed_qty);
+        $this->assertSame('Revisi jumlah stok bulan depan', $proposal->notes);
+
+        // PIC bisa batalkan PO pending
+        $this->actingAs($this->picUser)
+            ->delete("/stock-forecast/proposals/{$proposal->id}")
+            ->assertSessionHas('success');
+
+        $this->assertSoftDeleted('po_proposals', ['id' => $proposal->id]);
+    }
 }

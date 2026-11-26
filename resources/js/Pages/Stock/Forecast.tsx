@@ -93,6 +93,7 @@ export interface ForecastPageProps {
   };
   isManagement: boolean;
   isDirekturOnly?: boolean;
+  canPropose?: boolean;
 }
 
 // ============================================================================
@@ -191,6 +192,7 @@ export default function Forecast({
   filters,
   isManagement = false,
   isDirekturOnly = false,
+  canPropose = true,
 }: ForecastPageProps) {
   const { flash } = usePage<PageProps>().props;
 
@@ -213,10 +215,11 @@ export default function Forecast({
   // Proposal filter state
   const [proposalStatusFilter, setProposalStatusFilter] = useState<'all' | 'pending_approval' | 'approved' | 'rejected'>('all');
 
-  // Propose Modal State
+  // Propose / Edit Proposal Modal State
   const [proposeModal, setProposeModal] = useState<{
     isOpen: boolean;
     row: ForecastRow | null;
+    editingProposal: PoProposalItem | null;
     proposedQty: number;
     supplierName: string;
     warehouse: 'G' | 'A';
@@ -225,6 +228,7 @@ export default function Forecast({
   }>({
     isOpen: false,
     row: null,
+    editingProposal: null,
     proposedQty: 0,
     supplierName: '',
     warehouse: 'G',
@@ -341,6 +345,7 @@ export default function Forecast({
     setProposeModal({
       isOpen: true,
       row,
+      editingProposal: null,
       proposedQty: recQty > 0 ? recQty : 100,
       supplierName: '',
       warehouse: 'G',
@@ -349,9 +354,22 @@ export default function Forecast({
     });
   }
 
+  function openEditProposalModal(proposal: PoProposalItem) {
+    setProposeModal({
+      isOpen: true,
+      row: null,
+      editingProposal: proposal,
+      proposedQty: Number(proposal.proposed_qty || 0),
+      supplierName: proposal.supplier_name || '',
+      warehouse: (proposal.warehouse === 'A' ? 'A' : 'G'),
+      notes: proposal.notes || '',
+      isSubmitting: false,
+    });
+  }
+
   function submitProposeModal(e: React.FormEvent) {
     e.preventDefault();
-    if (!proposeModal.row) return;
+    if (!proposeModal.row && !proposeModal.editingProposal) return;
 
     if (proposeModal.proposedQty <= 0) {
       alert('Jumlah unit PO harus lebih besar dari 0.');
@@ -359,6 +377,38 @@ export default function Forecast({
     }
 
     setProposeModal((prev) => ({ ...prev, isSubmitting: true }));
+
+    const resetModal = () =>
+      setProposeModal({
+        isOpen: false,
+        row: null,
+        editingProposal: null,
+        proposedQty: 0,
+        supplierName: '',
+        warehouse: 'G',
+        notes: '',
+        isSubmitting: false,
+      });
+
+    if (proposeModal.editingProposal) {
+      router.put(
+        `/stock-forecast/proposals/${proposeModal.editingProposal.id}`,
+        {
+          supplier_name: proposeModal.supplierName.trim() || null,
+          warehouse: proposeModal.warehouse,
+          proposed_qty: proposeModal.proposedQty,
+          notes: proposeModal.notes.trim() || null,
+        },
+        {
+          preserveScroll: true,
+          onSuccess: resetModal,
+          onError: () => setProposeModal((prev) => ({ ...prev, isSubmitting: false })),
+        }
+      );
+      return;
+    }
+
+    if (!proposeModal.row) return;
 
     router.post(
       '/stock-forecast/propose',
@@ -378,22 +428,22 @@ export default function Forecast({
       },
       {
         preserveScroll: true,
-        onSuccess: () => {
-          setProposeModal({
-            isOpen: false,
-            row: null,
-            proposedQty: 0,
-            supplierName: '',
-            warehouse: 'G',
-            notes: '',
-            isSubmitting: false,
-          });
-        },
+        onSuccess: resetModal,
         onError: () => {
           setProposeModal((prev) => ({ ...prev, isSubmitting: false }));
         },
       }
     );
+  }
+
+  function handleCancelProposal(proposal: PoProposalItem) {
+    if (!confirm(`Batalkan pengajuan PO ${proposal.po_number} (${proposal.product_name})?`)) {
+      return;
+    }
+
+    router.delete(`/stock-forecast/proposals/${proposal.id}`, {
+      preserveScroll: true,
+    });
   }
 
   function handleApproveProposal(proposal: PoProposalItem) {
@@ -1397,29 +1447,59 @@ export default function Forecast({
                           </div>
                         )}
 
-                        {isManagement && isPending && (
-                          <div className="flex items-center gap-2 w-full sm:w-auto">
-                            <button
-                              type="button"
-                              onClick={() => handleApproveProposal(proposal)}
-                              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer active:scale-98"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-4 h-4">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                              </svg>
-                              <span>Setujui PO</span>
-                            </button>
+                        {isPending && (canPropose || isManagement) && (
+                          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                            {canPropose && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => openEditProposalModal(proposal)}
+                                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition-colors cursor-pointer active:scale-98"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
+                                  </svg>
+                                  <span>Edit PO</span>
+                                </button>
 
-                            <button
-                              type="button"
-                              onClick={() => openRejectModal(proposal)}
-                              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold transition-colors cursor-pointer active:scale-98"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-4 h-4">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                              <span>Tolak</span>
-                            </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCancelProposal(proposal)}
+                                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-rose-200 bg-rose-50/70 hover:bg-rose-100 text-rose-700 text-xs font-semibold transition-colors cursor-pointer active:scale-98"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                                  </svg>
+                                  <span>Batalkan PO</span>
+                                </button>
+                              </>
+                            )}
+
+                            {isManagement && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApproveProposal(proposal)}
+                                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer active:scale-98"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-4 h-4">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                  </svg>
+                                  <span>Setujui PO</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => openRejectModal(proposal)}
+                                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold transition-colors cursor-pointer active:scale-98"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-4 h-4">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                  <span>Tolak</span>
+                                </button>
+                              </>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1433,10 +1513,19 @@ export default function Forecast({
       </div>
 
       {/* ==================================================================== */}
-      {/* MODAL: AJUKAN PO KE MANAJEMEN                                       */}
+      {/* MODAL: AJUKAN / EDIT PO KE MANAJEMEN                                 */}
       {/* ==================================================================== */}
-      {proposeModal.isOpen && proposeModal.row && typeof document !== 'undefined' &&
+      {proposeModal.isOpen && (proposeModal.row || proposeModal.editingProposal) && typeof document !== 'undefined' &&
         createPortal(
+          (() => {
+            const isEditing = Boolean(proposeModal.editingProposal);
+            const sku = proposeModal.editingProposal?.sku ?? proposeModal.row?.item_code ?? '';
+            const productName = proposeModal.editingProposal?.product_name ?? proposeModal.row?.item_name ?? '—';
+            const currentStock = Number(proposeModal.editingProposal?.current_stock ?? proposeModal.row?.total_stock ?? 0);
+            const velocity = Number(proposeModal.editingProposal?.monthly_velocity ?? proposeModal.row?.monthly_velocity ?? 0);
+            const recommendedQty = Number(proposeModal.editingProposal?.recommended_qty ?? proposeModal.row?.recommended_po_qty ?? 0);
+
+            return (
           <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <div
               className="bg-white border border-slate-200 rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-5 text-slate-900 animate-in fade-in zoom-in duration-150"
@@ -1451,8 +1540,12 @@ export default function Forecast({
                     </svg>
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-slate-900">Ajukan Purchase Order (PO)</h3>
-                    <p className="text-xs text-slate-500">Pengajuan akan diteruskan ke antrean Akun Manajemen</p>
+                    <h3 className="text-base font-bold text-slate-900">
+                      {isEditing ? `Edit Pengajuan PO (${proposeModal.editingProposal?.po_number})` : 'Ajukan Purchase Order (PO)'}
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      {isEditing ? 'Perbarui jumlah, gudang, supplier, atau catatan sebelum disetujui' : 'Pengajuan akan diteruskan ke antrean Akun Manajemen'}
+                    </p>
                   </div>
                 </div>
                 <button
@@ -1470,23 +1563,23 @@ export default function Forecast({
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 text-xs">
                 <div className="flex justify-between items-start">
                   <span className="text-slate-500">Kode SKU:</span>
-                  <span className="font-mono font-bold text-slate-900">{proposeModal.row.item_code}</span>
+                  <span className="font-mono font-bold text-slate-900">{sku}</span>
                 </div>
                 <div className="flex justify-between items-start">
                   <span className="text-slate-500">Nama Barang:</span>
-                  <span className="font-semibold text-slate-800 text-right max-w-xs">{proposeModal.row.item_name || '—'}</span>
+                  <span className="font-semibold text-slate-800 text-right max-w-xs">{productName}</span>
                 </div>
                 <div className="flex justify-between items-center pt-1 border-t border-slate-200/60">
                   <span className="text-slate-500">Stok Fisik Saat Ini:</span>
-                  <span className="font-mono font-bold text-slate-900">{formatNumber(proposeModal.row.total_stock)} pcs</span>
+                  <span className="font-mono font-bold text-slate-900">{formatNumber(currentStock)} pcs</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500">Kecepatan Penjualan:</span>
-                  <span className="font-mono font-bold text-slate-900">{formatDecimal(proposeModal.row.monthly_velocity)} pcs/bln</span>
+                  <span className="font-mono font-bold text-slate-900">{formatDecimal(velocity)} pcs/bln</span>
                 </div>
                 <div className="flex justify-between items-center text-blue-700 pt-1 border-t border-slate-200/60 font-semibold">
                   <span>Rekomendasi Kebutuhan PO:</span>
-                  <span className="font-mono font-black text-sm">{formatNumber(proposeModal.row.recommended_po_qty)} pcs</span>
+                  <span className="font-mono font-black text-sm">{formatNumber(recommendedQty)} pcs</span>
                 </div>
               </div>
 
@@ -1561,20 +1654,22 @@ export default function Forecast({
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0B132B] hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer active:scale-98 disabled:opacity-50"
                   >
                     {proposeModal.isSubmitting ? (
-                      <span>Mengirim Pengajuan...</span>
+                      <span>Menyimpan...</span>
                     ) : (
                       <>
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
                         </svg>
-                        <span>Kirim Pengajuan ke Manajemen</span>
+                        <span>{isEditing ? 'Simpan Perubahan PO' : 'Kirim Pengajuan ke Manajemen'}</span>
                       </>
                     )}
                   </button>
                 </div>
               </form>
             </div>
-          </div>,
+          </div>
+            );
+          })(),
           document.body
         )}
 

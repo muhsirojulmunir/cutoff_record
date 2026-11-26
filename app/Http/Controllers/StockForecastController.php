@@ -72,6 +72,21 @@ class StockForecastController extends Controller
         }
     }
 
+    private function authorizeProposer(): void
+    {
+        $user = auth()->user();
+        if (!$user) {
+            abort(403);
+        }
+
+        $roles = $this->getUserRoleNames();
+        $canPropose = in_array('Super Admin', $roles, true) || in_array('PIC', $roles, true);
+
+        if (!$canPropose) {
+            abort(403, 'Hanya PIC atau Super Admin yang dapat mengajukan, mengubah, atau membatalkan PO.');
+        }
+    }
+
     public function index(Request $request): Response
     {
         $this->authorizeAccess();
@@ -79,6 +94,7 @@ class StockForecastController extends Controller
         $roles = $this->getUserRoleNames();
         $isManagement = in_array('Super Admin', $roles, true) || in_array('Direktur', $roles, true);
         $isDirekturOnly = in_array('Direktur', $roles, true) && ! in_array('Super Admin', $roles, true);
+        $canPropose = in_array('Super Admin', $roles, true) || in_array('PIC', $roles, true);
 
         $targetMonths = max(1, min(24, (int)$request->input('target_months', 5) ?: 5));
         $leadTimeMonths = max(1, min(12, (int)$request->input('lead_time_months', 3) ?: 3));
@@ -124,12 +140,13 @@ class StockForecastController extends Controller
             ],
             'isManagement'   => $isManagement,
             'isDirekturOnly' => $isDirekturOnly,
+            'canPropose'     => $canPropose,
         ]);
     }
 
     public function propose(Request $request): RedirectResponse
     {
-        $this->authorizeAccess();
+        $this->authorizeProposer();
 
         $validated = $request->validate([
             'sku'                   => ['required', 'string', 'max:100'],
@@ -174,6 +191,45 @@ class StockForecastController extends Controller
         PoProposal::create($payload);
 
         return back()->with('success', "Pengajuan PO {$poNumber} berhasil diajukan dan diteruskan ke antrean Manajemen.");
+    }
+
+    public function updateProposal(Request $request, PoProposal $poProposal): RedirectResponse
+    {
+        $this->authorizeProposer();
+
+        if ($poProposal->status !== PoProposal::STATUS_PENDING) {
+            return back()->with('error', 'Hanya pengajuan PO dengan status Menunggu yang dapat diubah.');
+        }
+
+        $validated = $request->validate([
+            'supplier_name' => ['nullable', 'string', 'max:255'],
+            'warehouse'     => ['required', 'string', 'in:G,A'],
+            'proposed_qty'  => ['required', 'integer', 'min:1'],
+            'notes'         => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $poProposal->update([
+            'supplier_name' => $validated['supplier_name'] ?? null,
+            'warehouse'     => $validated['warehouse'],
+            'proposed_qty'  => $validated['proposed_qty'],
+            'notes'         => $validated['notes'] ?? null,
+        ]);
+
+        return back()->with('success', "Pengajuan PO {$poProposal->po_number} berhasil diperbarui.");
+    }
+
+    public function cancelProposal(PoProposal $poProposal): RedirectResponse
+    {
+        $this->authorizeProposer();
+
+        if ($poProposal->status !== PoProposal::STATUS_PENDING) {
+            return back()->with('error', 'Hanya pengajuan PO dengan status Menunggu yang dapat dibatalkan.');
+        }
+
+        $poNumber = $poProposal->po_number;
+        $poProposal->delete();
+
+        return back()->with('success', "Pengajuan PO {$poNumber} berhasil dibatalkan.");
     }
 
     public function approve(PoProposal $poProposal): RedirectResponse

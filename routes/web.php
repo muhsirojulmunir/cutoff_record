@@ -200,6 +200,8 @@ Route::middleware('auth')->group(function () {
     // Stock Forecast & PO Planning
     Route::get('/stock-forecast', [\App\Http\Controllers\StockForecastController::class, 'index'])->name('stock-forecast.index');
     Route::post('/stock-forecast/propose', [\App\Http\Controllers\StockForecastController::class, 'propose'])->name('stock-forecast.propose');
+    Route::put('/stock-forecast/proposals/{poProposal}', [\App\Http\Controllers\StockForecastController::class, 'updateProposal'])->name('stock-forecast.proposals.update');
+    Route::delete('/stock-forecast/proposals/{poProposal}', [\App\Http\Controllers\StockForecastController::class, 'cancelProposal'])->name('stock-forecast.proposals.cancel');
     Route::post('/stock-forecast/proposals/{poProposal}/approve', [\App\Http\Controllers\StockForecastController::class, 'approve'])->name('stock-forecast.proposals.approve');
     Route::post('/stock-forecast/proposals/{poProposal}/reject', [\App\Http\Controllers\StockForecastController::class, 'reject'])->name('stock-forecast.proposals.reject');
 });
