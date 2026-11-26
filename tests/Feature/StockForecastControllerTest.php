@@ -233,9 +233,51 @@ class StockForecastControllerTest extends TestCase
 
         // PIC bisa batalkan PO pending
         $this->actingAs($this->picUser)
-            ->delete("/stock-forecast/proposals/{$proposal->id}")
+            ->post("/stock-forecast/proposals/{$proposal->id}/cancel")
             ->assertSessionHas('success');
 
         $this->assertSoftDeleted('po_proposals', ['id' => $proposal->id]);
+    }
+
+    public function test_super_admin_can_cancel_approved_and_delete_any_po_proposal(): void
+    {
+        $approvedProposal = PoProposal::create([
+            'po_number'             => 'PO-PRO-20261126-0100',
+            'sku'                   => 'RECORD-SPK-MH-20',
+            'product_name'          => 'SPT R.SUPER KIDS 20',
+            'warehouse'             => 'G',
+            'current_stock'         => 50,
+            'monthly_velocity'      => 40,
+            'stock_coverage_months' => 1.25,
+            'recommended_qty'       => 150,
+            'proposed_qty'          => 150,
+            'status'                => PoProposal::STATUS_APPROVED,
+            'proposed_by'           => $this->picUser->id,
+            'reviewed_by'           => $this->direkturUser->id,
+            'reviewed_at'           => now(),
+        ]);
+
+        // PIC tidak boleh menghapus PO yang sudah disetujui
+        $this->actingAs($this->picUser)
+            ->delete("/stock-forecast/proposals/{$approvedProposal->id}")
+            ->assertSessionHas('error');
+        $this->assertNotSoftDeleted('po_proposals', ['id' => $approvedProposal->id]);
+
+        // Super Admin bisa batalkan PO yang sudah disetujui kembali ke pending
+        $this->actingAs($this->superAdminUser)
+            ->post("/stock-forecast/proposals/{$approvedProposal->id}/cancel")
+            ->assertSessionHas('success');
+
+        $approvedProposal->refresh();
+        $this->assertSame(PoProposal::STATUS_PENDING, $approvedProposal->status);
+        $this->assertNull($approvedProposal->reviewed_by);
+
+        // Approve lagi lalu test Super Admin bisa hapus PO berstatus approved
+        $approvedProposal->approveBy($this->direkturUser);
+        $this->actingAs($this->superAdminUser)
+            ->delete("/stock-forecast/proposals/{$approvedProposal->id}")
+            ->assertSessionHas('success');
+
+        $this->assertSoftDeleted('po_proposals', ['id' => $approvedProposal->id]);
     }
 }

@@ -194,7 +194,12 @@ export default function Forecast({
   isDirekturOnly = false,
   canPropose = true,
 }: ForecastPageProps) {
-  const { flash } = usePage<PageProps>().props;
+  const { flash, auth } = usePage<PageProps>().props;
+  const isSuperAdmin = Boolean(
+    auth?.user?.is_super_admin ||
+    auth?.user?.role?.name === 'Super Admin' ||
+    auth?.user?.roles?.includes('Super Admin')
+  );
 
   // Active Tab: Direktur hanya melihat daftar pengajuan PO dari PIC
   const [activeTab, setActiveTab] = useState<'projection' | 'proposals'>(
@@ -437,7 +442,21 @@ export default function Forecast({
   }
 
   function handleCancelProposal(proposal: PoProposalItem) {
-    if (!confirm(`Batalkan pengajuan PO ${proposal.po_number} (${proposal.product_name})?`)) {
+    const msg =
+      proposal.status === 'approved'
+        ? `Batalkan persetujuan PO ${proposal.po_number} (${proposal.product_name}) dan kembalikan ke antrean Menunggu?`
+        : `Batalkan pengajuan PO ${proposal.po_number} (${proposal.product_name})?`;
+    if (!confirm(msg)) {
+      return;
+    }
+
+    router.post(`/stock-forecast/proposals/${proposal.id}/cancel`, {}, {
+      preserveScroll: true,
+    });
+  }
+
+  function handleDeleteProposal(proposal: PoProposalItem) {
+    if (!confirm(`Hapus pengajuan PO ${proposal.po_number} (${proposal.product_name}) dari daftar?`)) {
       return;
     }
 
@@ -1447,10 +1466,19 @@ export default function Forecast({
                           </div>
                         )}
 
-                        {isPending && (canPropose || isManagement) && (
-                          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                            {canPropose && (
-                              <>
+                        {(() => {
+                          const canShowEdit = isPending && canPropose;
+                          const canShowCancel = (isPending && canPropose) || (isSuperAdmin && proposal.status === 'approved');
+                          const canShowDelete = isSuperAdmin || (canPropose && proposal.status === 'rejected');
+                          const canShowReview = isPending && isManagement;
+
+                          if (!canShowEdit && !canShowCancel && !canShowDelete && !canShowReview) {
+                            return null;
+                          }
+
+                          return (
+                            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                              {canShowEdit && (
                                 <button
                                   type="button"
                                   onClick={() => openEditProposalModal(proposal)}
@@ -1461,47 +1489,62 @@ export default function Forecast({
                                   </svg>
                                   <span>Edit PO</span>
                                 </button>
+                              )}
 
+                              {canShowCancel && (
                                 <button
                                   type="button"
                                   onClick={() => handleCancelProposal(proposal)}
+                                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-amber-200 bg-amber-50/70 hover:bg-amber-100 text-amber-800 text-xs font-semibold transition-colors cursor-pointer active:scale-98"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+                                  </svg>
+                                  <span>Batalkan PO</span>
+                                </button>
+                              )}
+
+                              {canShowDelete && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteProposal(proposal)}
                                   className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-rose-200 bg-rose-50/70 hover:bg-rose-100 text-rose-700 text-xs font-semibold transition-colors cursor-pointer active:scale-98"
                                 >
                                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
                                   </svg>
-                                  <span>Batalkan PO</span>
+                                  <span>Hapus PO</span>
                                 </button>
-                              </>
-                            )}
+                              )}
 
-                            {isManagement && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => handleApproveProposal(proposal)}
-                                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer active:scale-98"
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-4 h-4">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                                  </svg>
-                                  <span>Setujui PO</span>
-                                </button>
+                              {canShowReview && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveProposal(proposal)}
+                                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer active:scale-98"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-4 h-4">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                    </svg>
+                                    <span>Setujui PO</span>
+                                  </button>
 
-                                <button
-                                  type="button"
-                                  onClick={() => openRejectModal(proposal)}
-                                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold transition-colors cursor-pointer active:scale-98"
-                                >
-                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-4 h-4">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                  </svg>
-                                  <span>Tolak</span>
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        )}
+                                  <button
+                                    type="button"
+                                    onClick={() => openRejectModal(proposal)}
+                                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold transition-colors cursor-pointer active:scale-98"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-4 h-4">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                    <span>Tolak</span>
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   );

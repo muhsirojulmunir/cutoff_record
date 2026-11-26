@@ -72,6 +72,19 @@ class StockForecastController extends Controller
         }
     }
 
+    private function isSuperAdminUser(): bool
+    {
+        $user = auth()->user();
+        if (!$user) {
+            return false;
+        }
+        if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+            return true;
+        }
+
+        return in_array('Super Admin', $this->getUserRoleNames(), true);
+    }
+
     private function authorizeProposer(): void
     {
         $user = auth()->user();
@@ -79,11 +92,15 @@ class StockForecastController extends Controller
             abort(403);
         }
 
+        if ($this->isSuperAdminUser()) {
+            return;
+        }
+
         $roles = $this->getUserRoleNames();
-        $canPropose = in_array('Super Admin', $roles, true) || in_array('PIC', $roles, true);
+        $canPropose = in_array('PIC', $roles, true);
 
         if (!$canPropose) {
-            abort(403, 'Hanya PIC atau Super Admin yang dapat mengajukan, mengubah, atau membatalkan PO.');
+            abort(403, 'Hanya PIC atau Super Admin yang dapat mengajukan, mengubah, membatalkan, atau menghapus PO.');
         }
     }
 
@@ -92,9 +109,10 @@ class StockForecastController extends Controller
         $this->authorizeAccess();
 
         $roles = $this->getUserRoleNames();
-        $isManagement = in_array('Super Admin', $roles, true) || in_array('Direktur', $roles, true);
-        $isDirekturOnly = in_array('Direktur', $roles, true) && ! in_array('Super Admin', $roles, true);
-        $canPropose = in_array('Super Admin', $roles, true) || in_array('PIC', $roles, true);
+        $isSuperAdmin = $this->isSuperAdminUser();
+        $isManagement = $isSuperAdmin || in_array('Direktur', $roles, true);
+        $isDirekturOnly = in_array('Direktur', $roles, true) && ! $isSuperAdmin;
+        $canPropose = $isSuperAdmin || in_array('PIC', $roles, true);
 
         $targetMonths = max(1, min(24, (int)$request->input('target_months', 5) ?: 5));
         $leadTimeMonths = max(1, min(12, (int)$request->input('lead_time_months', 3) ?: 3));
@@ -222,14 +240,41 @@ class StockForecastController extends Controller
     {
         $this->authorizeProposer();
 
-        if ($poProposal->status !== PoProposal::STATUS_PENDING) {
-            return back()->with('error', 'Hanya pengajuan PO dengan status Menunggu yang dapat dibatalkan.');
+        $isSuperAdmin = $this->isSuperAdminUser();
+
+        if ($poProposal->status === PoProposal::STATUS_PENDING) {
+            $poNumber = $poProposal->po_number;
+            $poProposal->delete();
+
+            return back()->with('success', "Pengajuan PO {$poNumber} berhasil dibatalkan.");
+        }
+
+        if ($isSuperAdmin && $poProposal->status === PoProposal::STATUS_APPROVED) {
+            $poProposal->update([
+                'status'      => PoProposal::STATUS_PENDING,
+                'reviewed_by' => null,
+                'reviewed_at' => null,
+            ]);
+
+            return back()->with('success', "Persetujuan PO {$poProposal->po_number} dibatalkan dan dikembalikan ke status Menunggu.");
+        }
+
+        return back()->with('error', 'Hanya pengajuan PO berstatus Menunggu yang dapat dibatalkan (Super Admin juga dapat membatalkan PO yang sudah disetujui).');
+    }
+
+    public function destroyProposal(PoProposal $poProposal): RedirectResponse
+    {
+        $this->authorizeProposer();
+
+        $isSuperAdmin = $this->isSuperAdminUser();
+        if (! $isSuperAdmin && ! in_array($poProposal->status, [PoProposal::STATUS_PENDING, PoProposal::STATUS_REJECTED], true)) {
+            return back()->with('error', 'Pengajuan PO yang sudah disetujui hanya dapat dihapus oleh Super Admin.');
         }
 
         $poNumber = $poProposal->po_number;
         $poProposal->delete();
 
-        return back()->with('success', "Pengajuan PO {$poNumber} berhasil dibatalkan.");
+        return back()->with('success', "Pengajuan PO {$poNumber} berhasil dihapus.");
     }
 
     public function approve(PoProposal $poProposal): RedirectResponse
