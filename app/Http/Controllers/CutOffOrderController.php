@@ -291,23 +291,82 @@ class CutOffOrderController extends Controller
                 $platform = trim((string) ($order->channel ?? ''));
             }
 
-            $sku = $this->resolveExportSku($order);
-
-            $row = [
-                $formattedDate,
-                $no++,
-                $platform,
-                (string) ($order->order_number ?? ''),
-                $sku,
-                (int) ($order->qty ?? 0),
-                (string) ($order->buyer_username ?? ''),
-            ];
-            if ($canViewFinancial) {
-                $row[] = (float) ($order->est_net_income ?? 0);
+            // Ambil username — untuk TikTok: jika berformat email, ambil bagian sebelum '@'
+            $rawUsername = (string) ($order->buyer_username ?? '');
+            if ($platform === 'TikTok' && str_contains($rawUsername, '@')) {
+                $rawUsername = explode('@', $rawUsername)[0];
             }
-            $row[] = (string) ($order->shipping_courier ?? '');
 
-            $rows[] = $row;
+            $orderNumber = (string) ($order->order_number ?? '');
+            $courier     = (string) ($order->shipping_courier ?? '');
+
+            // Cek apakah ada multi-item di financial_breakdown
+            $breakdownItems = is_array($order->financial_breakdown)
+                ? ($order->financial_breakdown['items'] ?? null)
+                : null;
+
+            if (is_array($breakdownItems) && count($breakdownItems) > 1 && $canViewFinancial) {
+                // Pecah menjadi beberapa baris — satu baris per item
+                foreach ($breakdownItems as $item) {
+                    $itemSku = trim((string) ($item['sku'] ?? ''));
+                    if ($itemSku === '' || $itemSku === '-') {
+                        $itemSku = trim((string) ($order->sku_utama ?? ''));
+                    }
+                    $itemQty    = max(1, (int) ($item['qty'] ?? 1));
+                    $itemEstNet = (float) ($item['est_net_income'] ?? 0);
+
+                    $row = [
+                        $formattedDate,
+                        $no++,
+                        $platform,
+                        $orderNumber,
+                        $itemSku,
+                        $itemQty,
+                        $rawUsername,
+                    ];
+                    $row[] = $itemEstNet;
+                    $row[] = $courier;
+                    $rows[] = $row;
+                }
+            } elseif (is_array($breakdownItems) && count($breakdownItems) > 1 && !$canViewFinancial) {
+                // Non-financial: tetap pecah per item tapi tanpa est_bersih
+                foreach ($breakdownItems as $item) {
+                    $itemSku = trim((string) ($item['sku'] ?? ''));
+                    if ($itemSku === '' || $itemSku === '-') {
+                        $itemSku = trim((string) ($order->sku_utama ?? ''));
+                    }
+                    $itemQty = max(1, (int) ($item['qty'] ?? 1));
+
+                    $row = [
+                        $formattedDate,
+                        $no++,
+                        $platform,
+                        $orderNumber,
+                        $itemSku,
+                        $itemQty,
+                        $rawUsername,
+                        $courier,
+                    ];
+                    $rows[] = $row;
+                }
+            } else {
+                // Pesanan 1 item — satu baris seperti biasa
+                $sku = $this->resolveExportSku($order);
+                $row = [
+                    $formattedDate,
+                    $no++,
+                    $platform,
+                    $orderNumber,
+                    $sku,
+                    (int) ($order->qty ?? 0),
+                    $rawUsername,
+                ];
+                if ($canViewFinancial) {
+                    $row[] = (float) ($order->est_net_income ?? 0);
+                }
+                $row[] = $courier;
+                $rows[] = $row;
+            }
         }
 
         $dateTag = match (true) {
