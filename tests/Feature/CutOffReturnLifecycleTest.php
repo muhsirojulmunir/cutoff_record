@@ -157,6 +157,18 @@ class CutOffReturnLifecycleTest extends TestCase
             'needs_action'   => false,
         ]);
 
+        // Status REQUESTED (Peninjauan Tim Shopee) meski punya due_date & needs_action lama harus masuk platform_review, bukan awaiting_appeal
+        $requested = CutOffReturn::create([
+            'marketplace'    => 'SH',
+            'no_retur'       => '26112507UV0FT4A',
+            'nama_barang_mp' => 'RECORD-SPK19',
+            'return_status'  => 'REQUESTED',
+            'due_date'       => now('Asia/Jakarta')->addDays(2),
+            'needs_action'   => true,
+        ]);
+
+        $this->assertSame('platform_review', $requested->workflow_stage);
+
         $this->actingAs($this->admin)
             ->get('/cut-off-returns')
             ->assertOk()
@@ -164,11 +176,14 @@ class CutOffReturnLifecycleTest extends TestCase
                 ->component('CutOff/Returns')
                 ->where('summary.total_awaiting_appeal', 1)
                 ->where('summary.total_otw_office', 1)
+                ->where('summary.total_platform_review', 1)
                 ->where('summary.total_appeal_submitted', 1)
                 ->has('stageTasks.awaiting_appeal', 1)
                 ->where('stageTasks.awaiting_appeal.0.id', $awaiting->id)
                 ->has('stageTasks.otw_office', 1)
                 ->where('stageTasks.otw_office.0.id', $otw->id)
+                ->has('stageTasks.platform_review', 1)
+                ->where('stageTasks.platform_review.0.id', $requested->id)
                 ->has('stageTasks.appeal_submitted', 1)
                 ->where('stageTasks.appeal_submitted.0.id', $submitted->id)
             );

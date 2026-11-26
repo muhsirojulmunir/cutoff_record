@@ -54,10 +54,11 @@ class CutOffReturnController extends Controller
                 ")
                 ->first();
 
-            $awaitingCount   = CutOffReturn::query()->forStage('awaiting_appeal')->count();
-            $otwCount        = CutOffReturn::query()->forStage('otw_office')->count();
-            $submittedCount  = CutOffReturn::query()->forStage('appeal_submitted')->count();
-            $noAppealCount   = CutOffReturn::query()->forStage('no_appeal_needed')->count();
+            $awaitingCount       = CutOffReturn::query()->forStage('awaiting_appeal')->count();
+            $otwCount            = CutOffReturn::query()->forStage('otw_office')->count();
+            $platformReviewCount = CutOffReturn::query()->forStage('platform_review')->count();
+            $submittedCount      = CutOffReturn::query()->forStage('appeal_submitted')->count();
+            $noAppealCount       = CutOffReturn::query()->forStage('no_appeal_needed')->count();
 
             $summary = [
                 'total_retur'            => (int) ($rawSummary->total_retur ?? 0),
@@ -67,6 +68,7 @@ class CutOffReturnController extends Controller
                 'total_needs_action'     => $awaitingCount,
                 'total_awaiting_appeal'  => $awaitingCount,
                 'total_otw_office'       => $otwCount,
+                'total_platform_review'  => $platformReviewCount,
                 'total_appeal_submitted' => $submittedCount,
                 'total_no_appeal_needed' => $noAppealCount,
                 'total_lainnya'          => (int) ($rawSummary->total_lainnya ?? 0),
@@ -80,6 +82,7 @@ class CutOffReturnController extends Controller
                 'total_needs_action'     => 0,
                 'total_awaiting_appeal'  => 0,
                 'total_otw_office'       => 0,
+                'total_platform_review'  => 0,
                 'total_appeal_submitted' => 0,
                 'total_no_appeal_needed' => 0,
                 'total_lainnya'          => 0,
@@ -103,6 +106,12 @@ class CutOffReturnController extends Controller
                 ->take(30)
                 ->get();
 
+            $platformReviewTasks = CutOffReturn::query()
+                ->forStage('platform_review')
+                ->orderByDesc('updated_at')
+                ->take(30)
+                ->get();
+
             $submittedTasks = CutOffReturn::query()
                 ->forStage('appeal_submitted')
                 ->orderByDesc('dispute_action_at')
@@ -112,16 +121,19 @@ class CutOffReturnController extends Controller
 
             $this->enrichReturnItems($awaitingTasks->all());
             $this->enrichReturnItems($otwTasks->all());
+            $this->enrichReturnItems($platformReviewTasks->all());
             $this->enrichReturnItems($submittedTasks->all());
         } catch (\Throwable $e) {
-            $awaitingTasks  = collect();
-            $otwTasks       = collect();
-            $submittedTasks = collect();
+            $awaitingTasks       = collect();
+            $otwTasks            = collect();
+            $platformReviewTasks = collect();
+            $submittedTasks      = collect();
         }
 
         $stageTasks = [
             'awaiting_appeal'  => $awaitingTasks,
             'otw_office'       => $otwTasks,
+            'platform_review'  => $platformReviewTasks,
             'appeal_submitted' => $submittedTasks,
         ];
 

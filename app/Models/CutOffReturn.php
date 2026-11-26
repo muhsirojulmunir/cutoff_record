@@ -67,6 +67,11 @@ class CutOffReturn extends Model
         'JUDGING',
     ];
 
+    public const PLATFORM_REVIEW_STATUSES = [
+        'REQUESTED',
+        'RETURN_OR_REFUND_REQUEST_PENDING',
+    ];
+
     protected $table = 'cut_off_returns';
 
     protected $fillable = [
@@ -204,12 +209,22 @@ class CutOffReturn extends Model
         $awaitingValidation   = in_array($statusUpper, self::AWAITING_VALIDATION_STATUSES, true);
         $inTransitByLogistics = in_array($logisticsUpper, self::IN_TRANSIT_LOGISTICS_STATUSES, true);
         $inTransitByStatus    = in_array($statusUpper, self::IN_TRANSIT_RETURN_STATUSES, true);
+        $isPlatformReview     = in_array($statusUpper, self::PLATFORM_REVIEW_STATUSES, true);
 
         if (! $hasArrivedWarehouse && ! $arrivedByLogistics && ! $awaitingValidation && ($inTransitByLogistics || $inTransitByStatus)) {
             return 'otw_office';
         }
 
-        if ($needsAction || $arrivedByLogistics || $awaitingValidation || ($hasArrivedWarehouse && in_array($statusUpper, ['PROCESSING', 'REQUESTED'], true))) {
+        if (! $hasArrivedWarehouse && ! $arrivedByLogistics && ! $awaitingValidation && $isPlatformReview) {
+            return 'platform_review';
+        }
+
+        if (
+            $arrivedByLogistics
+            || $awaitingValidation
+            || ($hasArrivedWarehouse && in_array($statusUpper, ['PROCESSING', 'REQUESTED'], true))
+            || ($needsAction && ! $isPlatformReview)
+        ) {
             return 'awaiting_appeal';
         }
 
@@ -310,6 +325,7 @@ class CutOffReturn extends Model
         $transitLogistics = self::IN_TRANSIT_LOGISTICS_STATUSES;
         $transitStatuses = self::IN_TRANSIT_RETURN_STATUSES;
         $validationStatuses = self::AWAITING_VALIDATION_STATUSES;
+        $platformReviewStatuses = self::PLATFORM_REVIEW_STATUSES;
 
         $applyNotManualOverride = function ($sub) {
             $sub->where(function ($w) {
@@ -371,6 +387,25 @@ class CutOffReturn extends Model
                 });
         }
 
+        if ($stage === 'platform_review') {
+            return $query
+                ->tap($applyNotManualOverride)
+                ->where(function ($q) use ($closedStatuses, $disputedStatuses) {
+                    $q->whereNull('return_status')
+                      ->orWhereNotIn(\Illuminate\Support\Facades\DB::raw('UPPER(return_status)'), array_merge($closedStatuses, $disputedStatuses));
+                })
+                ->whereNull('tgl_terima_brg')
+                ->where(function ($q) use ($arrivedLogistics) {
+                    $q->whereNull('return_logistics_status')
+                      ->orWhereNotIn(\Illuminate\Support\Facades\DB::raw('UPPER(return_logistics_status)'), $arrivedLogistics);
+                })
+                ->where(function ($q) use ($transitLogistics) {
+                    $q->whereNull('return_logistics_status')
+                      ->orWhereNotIn(\Illuminate\Support\Facades\DB::raw('UPPER(return_logistics_status)'), $transitLogistics);
+                })
+                ->whereIn(\Illuminate\Support\Facades\DB::raw("UPPER(COALESCE(return_status, ''))"), $platformReviewStatuses);
+        }
+
         if ($stage === 'awaiting_appeal') {
             return $query
                 ->tap($applyNotManualOverride)
@@ -387,6 +422,12 @@ class CutOffReturn extends Model
                           $sub->whereNotIn(\Illuminate\Support\Facades\DB::raw("UPPER(COALESCE(return_logistics_status, ''))"), $transitLogistics)
                               ->whereNotIn(\Illuminate\Support\Facades\DB::raw("UPPER(COALESCE(return_status, ''))"), $transitStatuses);
                       });
+                })
+                ->where(function ($q) use ($arrivedLogistics, $platformReviewStatuses) {
+                    // Status REQUESTED (Peninjauan Tim Marketplace) tidak masuk antrean Segera Ajukan Banding kecuali barang fisik sudah tiba
+                    $q->whereNotNull('tgl_terima_brg')
+                      ->orWhereIn(\Illuminate\Support\Facades\DB::raw("UPPER(COALESCE(return_logistics_status, ''))"), $arrivedLogistics)
+                      ->orWhereNotIn(\Illuminate\Support\Facades\DB::raw("UPPER(COALESCE(return_status, ''))"), $platformReviewStatuses);
                 })
                 ->where(function ($q) use ($arrivedLogistics, $validationStatuses) {
                     $q->where('needs_action', true)
@@ -492,9 +533,11 @@ class CutOffReturn extends Model
             }
         } elseif ($inTransit) {
             $needsAction = false;
+        } elseif (! $hasArrivedGudang && ! $arrivedLogistics && ! $awaitingVal && in_array($statusUpper, self::PLATFORM_REVIEW_STATUSES, true)) {
+            $needsAction = false;
         } else {
             $activePendingStatuses = array_merge(
-                ['REQUESTED', 'PROCESSING', 'RETURN_OR_REFUND_REQUEST_PENDING'],
+                ['PROCESSING'],
                 self::AWAITING_VALIDATION_STATUSES
             );
             $needsAction = in_array($statusUpper, $activePendingStatuses, true)

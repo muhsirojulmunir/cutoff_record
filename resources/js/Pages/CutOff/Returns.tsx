@@ -39,7 +39,7 @@ interface ReturnRow {
   dispute_action_at?: string | null;
   dispute_action_by?: string | null;
   dispute_action_note?: string | null;
-  workflow_stage?: 'otw_office' | 'awaiting_appeal' | 'appeal_submitted' | 'no_appeal_needed' | 'resolved';
+  workflow_stage?: 'otw_office' | 'awaiting_appeal' | 'platform_review' | 'appeal_submitted' | 'no_appeal_needed' | 'resolved';
   refund_amount?: number | null;
   seller_solution?: string | null;
   seller_center_url?: string | null;
@@ -79,6 +79,7 @@ interface Props {
     total_needs_action?: number;
     total_awaiting_appeal?: number;
     total_otw_office?: number;
+    total_platform_review?: number;
     total_appeal_submitted?: number;
     total_no_appeal_needed?: number;
     total_lainnya: number;
@@ -87,6 +88,7 @@ interface Props {
   stageTasks?: {
     awaiting_appeal: ReturnRow[];
     otw_office: ReturnRow[];
+    platform_review?: ReturnRow[];
     appeal_submitted: ReturnRow[];
   };
   marketplaces: { name: string; count: number }[];
@@ -211,7 +213,7 @@ function getLogisticsStatusLabel(raw?: string | null): string {
   }
 }
 
-function getEffectiveStage(row: ReturnRow): 'otw_office' | 'awaiting_appeal' | 'appeal_submitted' | 'no_appeal_needed' | 'resolved' {
+function getEffectiveStage(row: ReturnRow): 'otw_office' | 'awaiting_appeal' | 'platform_review' | 'appeal_submitted' | 'no_appeal_needed' | 'resolved' {
   if (row.workflow_stage) return row.workflow_stage;
 
   const disputeAction = (row.dispute_action || '').toLowerCase();
@@ -225,7 +227,10 @@ function getEffectiveStage(row: ReturnRow): 'otw_office' | 'awaiting_appeal' | '
   if (!row.tgl_terima_brg && ['LOGISTICS_REQUEST_CREATED', 'LOGISTICS_PICKUP_DONE', 'LOGISTICS_IN_TRANSIT', 'IN_TRANSIT', 'PICKUP_DONE', 'SHIPPED', 'BUYER_SHIPPED_ITEM', 'SELLER_RECEIVING', 'AWAITING_BUYER_SHIP'].includes(log)) {
     return 'otw_office';
   }
-  if (row.needs_action || ['PROCESSING', 'REQUESTED', 'SELLER_DISPUTE_PENDING', 'AWAITING_SELLER_REVIEW'].includes(st)) {
+  if (!row.tgl_terima_brg && ['REQUESTED', 'RETURN_OR_REFUND_REQUEST_PENDING'].includes(st)) {
+    return 'platform_review';
+  }
+  if (row.needs_action || ['PROCESSING', 'SELLER_DISPUTE_PENDING', 'AWAITING_SELLER_REVIEW'].includes(st)) {
     return 'awaiting_appeal';
   }
   return 'resolved';
@@ -425,11 +430,13 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
 
   const awaitingTasks = stageTasks?.awaiting_appeal ?? disputeTasks ?? [];
   const otwTasks = stageTasks?.otw_office ?? [];
+  const platformReviewTasks = stageTasks?.platform_review ?? [];
   const submittedTasks = stageTasks?.appeal_submitted ?? [];
 
-  const [activeWidgetTab, setActiveWidgetTab] = useState<'awaiting_appeal' | 'otw_office' | 'appeal_submitted'>(() => {
+  const [activeWidgetTab, setActiveWidgetTab] = useState<'awaiting_appeal' | 'otw_office' | 'platform_review' | 'appeal_submitted'>(() => {
     if ((stageTasks?.awaiting_appeal ?? disputeTasks ?? []).length > 0) return 'awaiting_appeal';
     if ((stageTasks?.otw_office ?? []).length > 0) return 'otw_office';
+    if ((stageTasks?.platform_review ?? []).length > 0) return 'platform_review';
     return 'appeal_submitted';
   });
 
@@ -1068,7 +1075,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
         </div>
 
         {/* Widget Monitoring Retur & Adu Banding (Gradasi Biru Navy ERP) */}
-        {(awaitingTasks.length > 0 || otwTasks.length > 0 || submittedTasks.length > 0) && (
+        {(awaitingTasks.length > 0 || otwTasks.length > 0 || platformReviewTasks.length > 0 || submittedTasks.length > 0) && (
           <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
             {/* Header Gradasi Biru */}
             <div className="bg-gradient-to-r from-[#0B132B] via-[#132956] to-[#1E3A8A] px-4 sm:px-6 py-4 text-white">
@@ -1121,6 +1128,25 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                     </span>
                   </button>
 
+                  {(summary.total_platform_review ?? platformReviewTasks.length) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveWidgetTab('platform_review')}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                        activeWidgetTab === 'platform_review'
+                          ? 'bg-white text-[#0B132B] shadow-xs'
+                          : 'text-blue-100 hover:bg-white/10'
+                      }`}
+                    >
+                      <span>Peninjauan MP</span>
+                      <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                        activeWidgetTab === 'platform_review' ? 'bg-slate-200 text-slate-900' : 'bg-white/15 text-white'
+                      }`}>
+                        {summary.total_platform_review ?? platformReviewTasks.length}
+                      </span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => setActiveWidgetTab('appeal_submitted')}
@@ -1149,6 +1175,8 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                     ? awaitingTasks
                     : activeWidgetTab === 'otw_office'
                     ? otwTasks
+                    : activeWidgetTab === 'platform_review'
+                    ? platformReviewTasks
                     : submittedTasks;
 
                 if (activeList.length === 0) {
@@ -1156,6 +1184,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                     <div className="py-6 text-center text-xs text-slate-500">
                       {activeWidgetTab === 'awaiting_appeal' && 'Tidak ada paket retur yang menunggu pengajuan banding saat ini.'}
                       {activeWidgetTab === 'otw_office' && 'Tidak ada paket retur yang sedang dalam perjalanan ke kantor.'}
+                      {activeWidgetTab === 'platform_review' && 'Tidak ada pengajuan retur yang sedang ditinjau tim marketplace.'}
                       {activeWidgetTab === 'appeal_submitted' && 'Belum ada kasus retur aktif berstatus Sudah Diajukan Banding.'}
                     </div>
                   );
@@ -1184,6 +1213,11 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                                 etaSource={task.arrival_eta_source}
                                 compact
                               />
+                            )}
+                            {activeWidgetTab === 'platform_review' && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
+                                Peninjauan Tim {task.marketplace === 'TT' ? 'TikTok' : 'Shopee'}
+                              </span>
                             )}
                             {activeWidgetTab === 'appeal_submitted' && (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200 whitespace-nowrap">
@@ -1296,6 +1330,12 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                             </div>
                           )}
 
+                          {activeWidgetTab === 'platform_review' && (
+                            <span className="text-[10px] font-medium text-slate-500">
+                              Menunggu keputusan marketplace (belum perlu banding)
+                            </span>
+                          )}
+
                           {canManage && activeWidgetTab === 'appeal_submitted' && (
                             <button
                               type="button"
@@ -1394,6 +1434,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                 <option value="all">Semua Tahap</option>
                 <option value="awaiting_appeal">Segera Banding ({summary.total_awaiting_appeal ?? 0})</option>
                 <option value="otw_office">Dalam Perjalanan ({summary.total_otw_office ?? 0})</option>
+                <option value="platform_review">Peninjauan MP ({summary.total_platform_review ?? 0})</option>
                 <option value="appeal_submitted">Sudah Banding ({summary.total_appeal_submitted ?? 0})</option>
                 <option value="no_appeal_needed">Tidak Perlu Banding ({summary.total_no_appeal_needed ?? 0})</option>
               </select>
@@ -1607,6 +1648,19 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                                 <p className="text-[10px] text-slate-500">
                                   {getLogisticsStatusLabel(row.return_logistics_status || row.return_status)}
                                 </p>
+                              </div>
+                            );
+                          }
+
+                          if (stage === 'platform_review') {
+                            return (
+                              <div className="mt-1.5">
+                                <span
+                                  className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded border bg-slate-100 text-slate-700 border-slate-200 whitespace-nowrap"
+                                  title="Pengajuan sedang ditinjau tim marketplace, belum ada aksi banding untuk penjual"
+                                >
+                                  Peninjauan Tim {row.marketplace === 'TT' ? 'TikTok' : 'Shopee'}
+                                </span>
                               </div>
                             );
                           }
