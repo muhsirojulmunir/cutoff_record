@@ -21,6 +21,9 @@ class CutOffOrderController extends Controller
     public function index(Request $request): Response
     {
         $this->ensureProcessedAtColumnReady();
+        $this->ensureManagementReviewReady();
+
+        $canSeeReview = $this->canViewManagementReview($request->user());
 
         $filters = $request->only([
             'search',
@@ -33,7 +36,12 @@ class CutOffOrderController extends Controller
             'date_from',
             'date_to',
             'per_page',
+            'management_review',
         ]);
+
+        if (! $canSeeReview) {
+            unset($filters['management_review']);
+        }
 
         $perPage = (int) ($filters['per_page'] ?? 25);
         if (!in_array($perPage, [15, 25, 50, 100], true)) {
@@ -156,10 +164,32 @@ class CutOffOrderController extends Controller
                 ->values()
                 ->all();
 
+            $rawReviewSummary = CutOffOrder::query()
+                ->onlyProcessed()
+                ->whereNotNull('management_flag')
+                ->where('management_flag', '!=', '')
+                ->selectRaw(
+                    "COUNT(*) as total_flagged,
+                    COUNT(CASE WHEN management_resolved_at IS NULL THEN 1 END) as total_unresolved,
+                    COUNT(CASE WHEN management_resolved_at IS NOT NULL THEN 1 END) as total_resolved,
+                    COUNT(CASE WHEN management_flag = 'harga_bermasalah' AND management_resolved_at IS NULL THEN 1 END) as harga_bermasalah,
+                    COUNT(CASE WHEN management_flag = 'margin_tipis' AND management_resolved_at IS NULL THEN 1 END) as margin_tipis,
+                    COUNT(CASE WHEN management_flag = 'ongkir_tidak_wajar' AND management_resolved_at IS NULL THEN 1 END) as ongkir_tidak_wajar"
+                )
+                ->first();
+
             return [
-                'summary'  => $summary,
-                'channels' => $channels,
-                'couriers' => $couriers,
+                'summary'        => $summary,
+                'channels'       => $channels,
+                'couriers'       => $couriers,
+                'review_summary' => [
+                    'total_flagged'      => (int) ($rawReviewSummary->total_flagged ?? 0),
+                    'total_unresolved'   => (int) ($rawReviewSummary->total_unresolved ?? 0),
+                    'total_resolved'     => (int) ($rawReviewSummary->total_resolved ?? 0),
+                    'harga_bermasalah'   => (int) ($rawReviewSummary->harga_bermasalah ?? 0),
+                    'margin_tipis'       => (int) ($rawReviewSummary->margin_tipis ?? 0),
+                    'ongkir_tidak_wajar' => (int) ($rawReviewSummary->ongkir_tidak_wajar ?? 0),
+                ],
             ];
         };
 
@@ -168,13 +198,27 @@ class CutOffOrderController extends Controller
         } else {
             try {
                 $overview = \Illuminate\Support\Facades\Cache::store('file')->remember(
-                    "cut_off_overview_v4_{$cacheVer}_{$todayStart}",
+                    "cut_off_overview_v5_{$cacheVer}_{$todayStart}",
                     30,
                     $computeOverview
                 );
             } catch (\Throwable) {
                 $overview = $computeOverview();
             }
+        }
+
+        if (! $canSeeReview) {
+            $orders->getCollection()->transform(static function (CutOffOrder $order) {
+                $order->setAttribute('management_flag', null);
+                $order->setAttribute('management_note', null);
+                $order->setAttribute('management_reviewed_by', null);
+                $order->setAttribute('management_reviewed_by_name', null);
+                $order->setAttribute('management_reviewed_at', null);
+                $order->setAttribute('management_resolved_at', null);
+                $order->setAttribute('management_resolved_by_name', null);
+
+                return $order;
+            });
         }
 
         $sanitizeList = static function ($list): array {
@@ -188,11 +232,12 @@ class CutOffOrderController extends Controller
         };
 
         return Inertia::render('CutOff/Index', [
-            'orders'   => $orders,
-            'filters'  => ! empty($filters) ? (object) $filters : (object) ['page' => (int) $request->input('page', 1)],
-            'summary'  => (array) ($overview['summary'] ?? []),
-            'channels' => $sanitizeList($overview['channels'] ?? []),
-            'couriers' => $sanitizeList($overview['couriers'] ?? []),
+            'orders'        => $orders,
+            'filters'       => ! empty($filters) ? (object) $filters : (object) ['page' => (int) $request->input('page', 1)],
+            'summary'       => (array) ($overview['summary'] ?? []),
+            'channels'      => $sanitizeList($overview['channels'] ?? []),
+            'couriers'      => $sanitizeList($overview['couriers'] ?? []),
+            'reviewSummary' => $canSeeReview ? (array) ($overview['review_summary'] ?? []) : null,
         ]);
     }
 
@@ -937,6 +982,86 @@ XML;
     }
 
     /**
+     * Tandai atau perbarui review manajemen (Direktur) pada pesanan Cut Off.
+     */
+    public function review(Request $request, CutOffOrder $cutOffOrder): RedirectResponse
+    {
+        $this->ensureManagementReviewReady();
+
+        $user = $request->user();
+        if (! $this->canFlagManagementReview($user)) {
+            abort(403, 'Hanya Direktur atau Super Admin yang dapat memberi tanda review manajemen.');
+        }
+
+        $allowedFlags = array_keys(CutOffOrder::MANAGEMENT_FLAGS);
+        $validated = $request->validate([
+            'management_flag' => ['nullable', 'string', \Illuminate\Validation\Rule::in($allowedFlags)],
+            'management_note' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $flag = trim((string) ($validated['management_flag'] ?? ''));
+        $note = trim((string) ($validated['management_note'] ?? ''));
+
+        if ($flag === '') {
+            $cutOffOrder->update([
+                'management_flag'             => null,
+                'management_note'             => null,
+                'management_reviewed_by'      => null,
+                'management_reviewed_by_name' => null,
+                'management_reviewed_at'      => null,
+                'management_resolved_at'      => null,
+                'management_resolved_by_name' => null,
+            ]);
+
+            return back()->with('success', "Tanda review pada pesanan #{$cutOffOrder->order_number} dihapus.");
+        }
+
+        $cutOffOrder->update([
+            'management_flag'             => $flag,
+            'management_note'             => $note !== '' ? $note : null,
+            'management_reviewed_by'      => $user?->id,
+            'management_reviewed_by_name' => $user?->name ?? 'Direktur',
+            'management_reviewed_at'      => now('Asia/Jakarta'),
+            'management_resolved_at'      => null,
+            'management_resolved_by_name' => null,
+        ]);
+
+        $label = CutOffOrder::MANAGEMENT_FLAGS[$flag] ?? $flag;
+
+        return back()->with('success', "Pesanan #{$cutOffOrder->order_number} ditandai: {$label}.");
+    }
+
+    /**
+     * Tandai review manajemen sudah ditindaklanjuti oleh PIC / Super Admin.
+     */
+    public function resolveReview(Request $request, CutOffOrder $cutOffOrder): RedirectResponse
+    {
+        $this->ensureManagementReviewReady();
+
+        $user = $request->user();
+        if (! $this->canResolveManagementReview($user)) {
+            abort(403, 'Hanya PIC atau Super Admin yang dapat menandai tindak lanjut review.');
+        }
+
+        if (empty($cutOffOrder->management_flag)) {
+            return back()->with('error', "Pesanan #{$cutOffOrder->order_number} tidak memiliki tanda review aktif.");
+        }
+
+        $resolved = $request->boolean('resolved', true);
+
+        $cutOffOrder->update([
+            'management_resolved_at'      => $resolved ? now('Asia/Jakarta') : null,
+            'management_resolved_by_name' => $resolved ? ($user?->name ?? 'PIC') : null,
+        ]);
+
+        $msg = $resolved
+            ? "Review pesanan #{$cutOffOrder->order_number} ditandai sudah ditindaklanjuti."
+            : "Status tindak lanjut pesanan #{$cutOffOrder->order_number} dibuka kembali.";
+
+        return back()->with('success', $msg);
+    }
+
+    /**
      * Hapus data pesanan (soft delete).
      */
     public function destroy(Request $request, CutOffOrder $cutOffOrder): RedirectResponse
@@ -1332,5 +1457,105 @@ XML;
         CutOffOrder::bumpCacheVersion();
 
         return redirect()->route('cut-off-orders.index')->with('success', 'Semua data Pesanan Cut Off berhasil dikosongkan. Tabel kini bersih dan siap diisi data murni dari API.');
+    }
+
+    private function canViewManagementReview(?\App\Models\User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
+        return in_array($user->role?->name, ['Super Admin', 'Direktur', 'PIC'], true);
+    }
+
+    private function canFlagManagementReview(?\App\Models\User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
+        return $user->role?->name === 'Direktur';
+    }
+
+    private function canResolveManagementReview(?\App\Models\User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
+        return in_array($user->role?->name, ['Super Admin', 'PIC'], true);
+    }
+
+    /**
+     * Pastikan kolom review manajemen tersedia & akses orders Shopee/TikTok role Direktur dicabut (untuk deploy tanpa shell).
+     */
+    private function ensureManagementReviewReady(): void
+    {
+        $schemaKey = 'cut_off_management_review_schema_v1';
+        $revokeKey = 'direktur_orders_marketplace_revoked_v1';
+        $store = null;
+
+        if (! app()->runningUnitTests()) {
+            try {
+                $store = \Illuminate\Support\Facades\Cache::store('file');
+                if ($store->get($schemaKey) === true && $store->get($revokeKey) === true) {
+                    return;
+                }
+            } catch (\Throwable) {
+                $store = null;
+            }
+        }
+
+        try {
+            if (Schema::hasTable('cut_off_orders') && ! Schema::hasColumn('cut_off_orders', 'management_flag')) {
+                Schema::table('cut_off_orders', function (\Illuminate\Database\Schema\Blueprint $table) {
+                    $table->string('management_flag', 50)->nullable()->index()->after('dpp_number');
+                    $table->text('management_note')->nullable()->after('management_flag');
+                    $table->unsignedBigInteger('management_reviewed_by')->nullable()->after('management_note');
+                    $table->string('management_reviewed_by_name', 120)->nullable()->after('management_reviewed_by');
+                    $table->timestamp('management_reviewed_at')->nullable()->after('management_reviewed_by_name');
+                    $table->timestamp('management_resolved_at')->nullable()->after('management_reviewed_at');
+                    $table->string('management_resolved_by_name', 120)->nullable()->after('management_resolved_at');
+                });
+            }
+
+            if ($store !== null && Schema::hasColumn('cut_off_orders', 'management_flag')) {
+                $store->forever($schemaKey, true);
+            }
+        } catch (\Throwable) {
+            // Abaikan error sementara saat kolom dibuat bersamaan
+        }
+
+        try {
+            if (Schema::hasTable('roles') && Schema::hasTable('permissions') && Schema::hasTable('role_permission')) {
+                $direkturId = DB::table('roles')->where('name', 'Direktur')->value('id');
+                if ($direkturId) {
+                    $revokeIds = DB::table('permissions')
+                        ->whereIn('name', ['orders.shopee', 'orders.tiktok'])
+                        ->pluck('id')
+                        ->all();
+                    if (! empty($revokeIds)) {
+                        DB::table('role_permission')
+                            ->where('role_id', $direkturId)
+                            ->whereIn('permission_id', $revokeIds)
+                            ->delete();
+                    }
+                }
+                if ($store !== null) {
+                    $store->forever($revokeKey, true);
+                }
+            }
+        } catch (\Throwable) {
+            // Abaikan error sinkronisasi permission sementara
+        }
     }
 }

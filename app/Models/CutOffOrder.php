@@ -13,6 +13,12 @@ class CutOffOrder extends Model
 
     protected $table = 'cut_off_orders';
 
+    public const MANAGEMENT_FLAGS = [
+        'harga_bermasalah'   => 'Harga Bermasalah / Terlalu Rendah',
+        'margin_tipis'       => 'Margin Tipis / Voucher Kebesaran',
+        'ongkir_tidak_wajar' => 'Potongan / Ongkir Tidak Wajar',
+    ];
+
     protected $fillable = [
         'row_no',
         'order_date',
@@ -40,6 +46,13 @@ class CutOffOrder extends Model
         'marketplace_net_payout',
         'sheet_dpp',
         'dpp_number',
+        'management_flag',
+        'management_note',
+        'management_reviewed_by',
+        'management_reviewed_by_name',
+        'management_reviewed_at',
+        'management_resolved_at',
+        'management_resolved_by_name',
         'financial_breakdown',
     ];
 
@@ -53,6 +66,8 @@ class CutOffOrder extends Model
             'recheck_qty'            => 'integer',
             'est_net_income'         => 'decimal:2',
             'marketplace_net_payout' => 'decimal:2',
+            'management_reviewed_at' => 'datetime:Y-m-d H:i:s',
+            'management_resolved_at' => 'datetime:Y-m-d H:i:s',
             'financial_breakdown'    => 'array',
         ];
     }
@@ -756,6 +771,22 @@ class CutOffOrder extends Model
 
         $query->when($filters['date_to'] ?? null, function ($q, $to) {
             $q->whereDate(\Illuminate\Support\Facades\DB::raw('COALESCE(processed_at, order_date)'), '<=', $to);
+        });
+
+        $query->when($filters['management_review'] ?? null, function ($q, $reviewFilter) {
+            if ($reviewFilter === 'flagged') {
+                $q->whereNotNull('management_flag')->where('management_flag', '!=', '');
+            } elseif ($reviewFilter === 'unresolved') {
+                $q->whereNotNull('management_flag')
+                    ->where('management_flag', '!=', '')
+                    ->whereNull('management_resolved_at');
+            } elseif ($reviewFilter === 'resolved') {
+                $q->whereNotNull('management_flag')
+                    ->where('management_flag', '!=', '')
+                    ->whereNotNull('management_resolved_at');
+            } elseif (array_key_exists($reviewFilter, self::MANAGEMENT_FLAGS)) {
+                $q->where('management_flag', $reviewFilter);
+            }
         });
     }
 }

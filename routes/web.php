@@ -44,6 +44,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/cut-off-orders/sync-shopee', [CutOffOrderController::class, 'syncShopeeRecent'])->name('cut-off-orders.sync-shopee');
     Route::post('/cut-off-orders/truncate', [CutOffOrderController::class, 'truncate'])->name('cut-off-orders.truncate');
     Route::put('/cut-off-orders/{cutOffOrder}', [CutOffOrderController::class, 'update'])->name('cut-off-orders.update');
+    Route::post('/cut-off-orders/{cutOffOrder}/review', [CutOffOrderController::class, 'review'])->name('cut-off-orders.review');
+    Route::post('/cut-off-orders/{cutOffOrder}/review/resolve', [CutOffOrderController::class, 'resolveReview'])->name('cut-off-orders.review.resolve');
     Route::delete('/cut-off-orders/{cutOffOrder}', [CutOffOrderController::class, 'destroy'])->name('cut-off-orders.destroy');
 
     // Retur Online (RETURAN ONLINE FIX)

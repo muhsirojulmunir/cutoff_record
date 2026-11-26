@@ -33,7 +33,23 @@ interface CutOffOrder {
   marketplace_net_payout: number | string | null;
   sheet_dpp: string | null;
   dpp_number: string | null;
+  management_flag?: 'harga_bermasalah' | 'margin_tipis' | 'ongkir_tidak_wajar' | string | null;
+  management_note?: string | null;
+  management_reviewed_by?: number | null;
+  management_reviewed_by_name?: string | null;
+  management_reviewed_at?: string | null;
+  management_resolved_at?: string | null;
+  management_resolved_by_name?: string | null;
   financial_breakdown?: CutOffOrderFinancialBreakdown | null;
+}
+
+interface ReviewSummary {
+  total_flagged: number;
+  total_unresolved: number;
+  total_resolved: number;
+  harga_bermasalah: number;
+  margin_tipis: number;
+  ongkir_tidak_wajar: number;
 }
 
 interface CutOffOrderBreakdownItem {
@@ -120,6 +136,7 @@ interface Props {
     date_from?: string;
     date_to?: string;
     per_page?: string;
+    management_review?: string;
   };
   summary: {
     total_orders: number;
@@ -138,6 +155,55 @@ interface Props {
   };
   channels: { name: string; count: number }[];
   couriers?: { name: string; count: number }[];
+  reviewSummary?: ReviewSummary | null;
+}
+
+type ManagementFlagKey = 'harga_bermasalah' | 'margin_tipis' | 'ongkir_tidak_wajar';
+
+const MANAGEMENT_FLAG_OPTIONS: Array<{
+  key: ManagementFlagKey;
+  label: string;
+  shortLabel: string;
+  dotClass: string;
+  badgeClass: string;
+  pillActiveClass: string;
+  rowClass: string;
+  leftBorderClass: string;
+}> = [
+  {
+    key: 'harga_bermasalah',
+    label: 'Harga Bermasalah / Terlalu Rendah',
+    shortLabel: 'Harga Bermasalah',
+    dotClass: 'bg-rose-500',
+    badgeClass: 'bg-rose-50 text-rose-700 border-rose-200',
+    pillActiveClass: 'bg-rose-600 text-white border-rose-600',
+    rowClass: 'bg-rose-50/35 hover:bg-rose-50/70',
+    leftBorderClass: 'border-l-4 border-l-rose-500',
+  },
+  {
+    key: 'margin_tipis',
+    label: 'Margin Tipis / Voucher Kebesaran',
+    shortLabel: 'Margin Tipis',
+    dotClass: 'bg-amber-400',
+    badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
+    pillActiveClass: 'bg-amber-500 text-white border-amber-500',
+    rowClass: 'bg-amber-50/30 hover:bg-amber-50/60',
+    leftBorderClass: 'border-l-4 border-l-amber-400',
+  },
+  {
+    key: 'ongkir_tidak_wajar',
+    label: 'Potongan / Ongkir Tidak Wajar',
+    shortLabel: 'Ongkir Tidak Wajar',
+    dotClass: 'bg-orange-500',
+    badgeClass: 'bg-orange-50 text-orange-800 border-orange-200',
+    pillActiveClass: 'bg-orange-600 text-white border-orange-600',
+    rowClass: 'bg-orange-50/30 hover:bg-orange-50/60',
+    leftBorderClass: 'border-l-4 border-l-orange-500',
+  },
+];
+
+function getManagementFlagMeta(flag: string | null | undefined) {
+  return MANAGEMENT_FLAG_OPTIONS.find((opt) => opt.key === flag) ?? null;
 }
 
 function formatRupiah(val: number | string | null | undefined): string {
@@ -294,19 +360,27 @@ function formatBreakdownCurrency(amount: number): string {
   }).format(rounded);
 }
 
-export default function CutOffIndex({ orders, filters, summary, channels = [], couriers = [] }: Props) {
+export default function CutOffIndex({ orders, filters, summary, channels = [], couriers = [], reviewSummary = null }: Props) {
   const { auth } = usePage<any>().props;
-  const isManagement = auth?.user?.role?.name === 'Management';
-  const canManage = !isManagement;
-  const isSuperAdmin = auth?.user?.role?.name === 'Super Admin' || auth?.user?.roles?.includes('Super Admin');
+  const roleName: string = auth?.user?.role?.name ?? '';
+  const rolesList: string[] = Array.isArray(auth?.user?.roles) ? auth.user.roles : [];
+  const isSuperAdmin = Boolean(
+    auth?.user?.is_super_admin ||
+    roleName === 'Super Admin' ||
+    rolesList.includes('Super Admin')
+  );
+  const isDirektur = !isSuperAdmin && (roleName === 'Direktur' || rolesList.includes('Direktur'));
+  const isManagement = !isSuperAdmin && (roleName === 'Management' || rolesList.includes('Management'));
+  const isPic = !isSuperAdmin && (roleName === 'PIC' || rolesList.includes('PIC'));
+  const canManage = !isManagement && !isDirektur;
+  const canFlagReview = isDirektur;
+  const canSeeReview = isSuperAdmin || isDirektur || isPic;
+  const canResolveReview = isSuperAdmin || isPic;
+  const showAksiColumn = canManage || canFlagReview;
   const canViewFinancial =
     isSuperAdmin ||
-    auth?.user?.role?.name === 'Direktur' ||
-    auth?.user?.role?.name === 'Management' ||
-    (Array.isArray(auth?.user?.roles) &&
-      (auth.user.roles.includes('Super Admin') ||
-        auth.user.roles.includes('Direktur') ||
-        auth.user.roles.includes('Management')));
+    isDirektur ||
+    isManagement;
   const [isTruncating, setIsTruncating] = useState(false);
   const [isSyncingShopee, setIsSyncingShopee] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -429,6 +503,96 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
   const [selectedDpp, setSelectedDpp] = useState(filters.dpp_status ?? 'all');
   const [selectedCourier, setSelectedCourier] = useState(filters.shipping_courier ?? 'all');
   const [selectedTier, setSelectedTier] = useState(filters.shipping_tier ?? 'all');
+  const [selectedReview, setSelectedReview] = useState(filters.management_review ?? 'all');
+
+  // Direktur Review Dropdown State (Portal Popover)
+  const [reviewMenuState, setReviewMenuState] = useState<{
+    order: CutOffOrder;
+    rect: { top: number; bottom: number; left: number; right: number };
+  } | null>(null);
+  const [reviewNoteInput, setReviewNoteInput] = useState('');
+  const [savingReviewOrderId, setSavingReviewOrderId] = useState<number | null>(null);
+  const [resolvingOrderId, setResolvingOrderId] = useState<number | null>(null);
+  const reviewPopoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setSelectedReview(filters.management_review ?? 'all');
+  }, [filters.management_review]);
+
+  useEffect(() => {
+    if (!reviewMenuState) return;
+    function handleOutside(e: MouseEvent) {
+      const target = e.target as Node;
+      if (reviewPopoverRef.current && !reviewPopoverRef.current.contains(target)) {
+        setReviewMenuState(null);
+      }
+    }
+    function handleEsc(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setReviewMenuState(null);
+      }
+    }
+    const handleScroll = () => setReviewMenuState(null);
+
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('keydown', handleEsc);
+    window.addEventListener('scroll', handleScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('keydown', handleEsc);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [reviewMenuState]);
+
+  function openReviewDropdown(e: React.MouseEvent<HTMLButtonElement>, order: CutOffOrder) {
+    e.stopPropagation();
+    if (reviewMenuState?.order.id === order.id) {
+      setReviewMenuState(null);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    setReviewNoteInput(order.management_note ?? '');
+    setReviewMenuState({
+      order,
+      rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
+    });
+  }
+
+  function handleSaveReview(orderId: number, flag: ManagementFlagKey | null, note: string) {
+    setSavingReviewOrderId(orderId);
+    router.post(
+      `/cut-off-orders/${orderId}/review`,
+      {
+        management_flag: flag,
+        management_note: flag ? note.trim() : null,
+      },
+      {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+          setReviewMenuState(null);
+        },
+        onFinish: () => {
+          setSavingReviewOrderId(null);
+        },
+      }
+    );
+  }
+
+  function handleResolveReview(orderId: number, resolved: boolean) {
+    setResolvingOrderId(orderId);
+    router.post(
+      `/cut-off-orders/${orderId}/review/resolve`,
+      { resolved },
+      {
+        preserveScroll: true,
+        preserveState: true,
+        onFinish: () => {
+          setResolvingOrderId(null);
+        },
+      }
+    );
+  }
   
   // Live Monitor State (30s background auto-refresh & real-time clock)
   const [isLiveActive, setIsLiveActive] = useState(true);
@@ -453,6 +617,80 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isMoreMenuOpen]);
+
+  function renderManagementReviewCard(order: CutOffOrder) {
+    if (!canSeeReview || !order.management_flag) return null;
+    const meta = getManagementFlagMeta(order.management_flag);
+    if (!meta) return null;
+
+    const isResolved = Boolean(order.management_resolved_at);
+    const isResolvingThis = resolvingOrderId === order.id;
+
+    return (
+      <div
+        className={`mt-2 pt-2 border-t border-slate-200/80 whitespace-normal w-[215px] rounded-xl p-2 border ${
+          isResolved ? 'bg-emerald-50/70 border-emerald-200' : `${meta.badgeClass}`
+        }`}
+      >
+        <div className="flex items-start justify-between gap-1.5">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${isResolved ? 'bg-emerald-500' : meta.dotClass}`} />
+            <span className="text-[10px] font-bold leading-tight">
+              {meta.label}
+            </span>
+          </div>
+        </div>
+
+        {order.management_note && (
+          <p className="mt-1 text-[10px] text-slate-700 bg-white/75 rounded-lg px-2 py-1 border border-slate-200/70 leading-snug break-words">
+            {order.management_note}
+          </p>
+        )}
+
+        <div className="mt-1.5 flex items-center justify-between gap-1 text-[10px] text-slate-500">
+          <span className="truncate" title={order.management_reviewed_at || undefined}>
+            {order.management_reviewed_by_name || 'Direktur'}
+            {formatTime(order.management_reviewed_at) ? ` · ${formatTime(order.management_reviewed_at)}` : ''}
+          </span>
+        </div>
+
+        {isResolved ? (
+          <div className="mt-1.5 flex items-center justify-between gap-1.5">
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 shrink-0">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
+              </svg>
+              <span className="truncate">Selesai · {order.management_resolved_by_name || 'PIC'}</span>
+            </span>
+            {canResolveReview && (
+              <button
+                type="button"
+                disabled={isResolvingThis}
+                onClick={() => handleResolveReview(order.id, false)}
+                className="text-[10px] font-semibold text-slate-500 hover:text-slate-800 underline cursor-pointer shrink-0 disabled:opacity-50"
+              >
+                Buka
+              </button>
+            )}
+          </div>
+        ) : (
+          canResolveReview && (
+            <button
+              type="button"
+              disabled={isResolvingThis}
+              onClick={() => handleResolveReview(order.id, true)}
+              className="mt-1.5 w-full inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg bg-[#0B132B] hover:bg-slate-800 text-white text-[10px] font-semibold transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-3 h-3">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+              {isResolvingThis ? 'Menyimpan...' : 'Tandai Selesai'}
+            </button>
+          )
+        )}
+      </div>
+    );
+  }
 
   // Modal Edit Order State
   const [editingOrder, setEditingOrder] = useState<CutOffOrder | null>(null);
@@ -555,7 +793,7 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
   useEffect(() => {
     if (!isLiveActive) return;
     // Reload sekali saat mount agar data langsung up-to-date
-    router.reload({ only: ['orders', 'summary'] });
+    router.reload({ only: ['orders', 'summary', 'reviewSummary'] });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Live Monitor: Real-time clock tick & silent periodic background refresh
@@ -566,13 +804,13 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
       if (!isLiveActive) return;
 
       // Don't auto-refresh if user has any modal/form active
-      if (editingOrder || isCreateModalOpen || isImportModalOpen || isImportJlModalOpen) {
+      if (editingOrder || isCreateModalOpen || isImportModalOpen || isImportJlModalOpen || reviewMenuState) {
         return;
       }
 
       setLiveCountdown((prev) => {
         if (prev <= 1) {
-          router.reload({ only: ['orders', 'summary'] });
+          router.reload({ only: ['orders', 'summary', 'reviewSummary'] });
           return 30;
         }
         return prev - 1;
@@ -580,7 +818,7 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isLiveActive, editingOrder, isCreateModalOpen, isImportModalOpen, isImportJlModalOpen]);
+  }, [isLiveActive, editingOrder, isCreateModalOpen, isImportModalOpen, isImportJlModalOpen, reviewMenuState]);
 
   function parseIndonesianNumber(val: any): number {
     if (val === '' || val === null || val === undefined) return 0;
@@ -1183,6 +1421,15 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
           </div>
 
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            {isDirektur && (
+              <span className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-semibold shadow-2xs">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-amber-400">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-.005-10.499l-3.11.732a9 9 0 01-6.085-.711l-.108-.054a9 9 0 00-6.208-.682L3 4.5M3 15V4.5" />
+                </svg>
+                Mode Direktur (Review Manajemen)
+              </span>
+            )}
+
             {isManagement && (
               <span className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs font-semibold">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-blue-600">
@@ -1577,7 +1824,110 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                 <option value="no_dpp">Belum DPP</option>
               </select>
             </div>
+
+            {/* Filter Review Manajemen (Khusus Direktur, PIC & Super Admin) */}
+            {canSeeReview && (
+              <div className="lg:col-span-3">
+                <select
+                  value={selectedReview}
+                  onChange={(e) => {
+                    setSelectedReview(e.target.value);
+                    applyFilters({ management_review: e.target.value });
+                  }}
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs font-medium focus:outline-none focus:border-[#0B132B]"
+                >
+                  <option value="all">Semua Status Review</option>
+                  <option value="unresolved">Perlu Tindak Lanjut ({reviewSummary?.total_unresolved ?? 0})</option>
+                  <option value="harga_bermasalah">Harga Bermasalah / Terlalu Rendah</option>
+                  <option value="margin_tipis">Margin Tipis / Voucher Kebesaran</option>
+                  <option value="ongkir_tidak_wajar">Potongan / Ongkir Tidak Wajar</option>
+                  <option value="resolved">Sudah Ditindaklanjuti ({reviewSummary?.total_resolved ?? 0})</option>
+                  <option value="flagged">Semua yang Ditandai ({reviewSummary?.total_flagged ?? 0})</option>
+                </select>
+              </div>
+            )}
           </div>
+
+          {/* Banner Ringkasan Review Direktur (Khusus Direktur, PIC & Super Admin) */}
+          {canSeeReview && ((reviewSummary?.total_flagged ?? 0) > 0 || selectedReview !== 'all') && (
+            <div className="pt-3 border-t border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-slate-900 text-amber-400 shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-.005-10.499l-3.11.732a9 9 0 01-6.085-.711l-.108-.054a9 9 0 00-6.208-.682L3 4.5M3 15V4.5" />
+                  </svg>
+                </span>
+                <div>
+                  <span className="font-bold text-slate-900">Review Manajemen</span>
+                  <span className="text-slate-500 ml-1.5">
+                    {(reviewSummary?.total_unresolved ?? 0) > 0
+                      ? `${reviewSummary?.total_unresolved} pesanan perlu tindak lanjut`
+                      : 'Semua temuan sudah ditindaklanjuti'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {MANAGEMENT_FLAG_OPTIONS.map((opt) => {
+                  const count = reviewSummary ? Number(reviewSummary[opt.key] ?? 0) : 0;
+                  const active = selectedReview === opt.key;
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => {
+                        const next = active ? 'all' : opt.key;
+                        setSelectedReview(next);
+                        applyFilters({ management_review: next });
+                      }}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-all cursor-pointer ${
+                        active ? opt.pillActiveClass : `${opt.badgeClass} hover:opacity-85`
+                      }`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-white' : opt.dotClass}`} />
+                      <span>{opt.shortLabel}</span>
+                      <span className={`px-1 rounded text-[10px] font-bold ${active ? 'bg-white/20 text-white' : 'bg-white/80 text-slate-800'}`}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = selectedReview === 'resolved' ? 'all' : 'resolved';
+                    setSelectedReview(next);
+                    applyFilters({ management_review: next });
+                  }}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-all cursor-pointer ${
+                    selectedReview === 'resolved'
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${selectedReview === 'resolved' ? 'bg-white' : 'bg-emerald-500'}`} />
+                  <span>Selesai</span>
+                  <span className={`px-1 rounded text-[10px] font-bold ${selectedReview === 'resolved' ? 'bg-white/20 text-white' : 'bg-white/80 text-emerald-800'}`}>
+                    {reviewSummary?.total_resolved ?? 0}
+                  </span>
+                </button>
+
+                {selectedReview !== 'all' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedReview('all');
+                      applyFilters({ management_review: 'all' });
+                    }}
+                    className="px-2 py-1 rounded-lg text-[11px] font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+                  >
+                    Tampilkan Semua
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Data Table Container */}
@@ -1598,8 +1948,8 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                   ) : (
                     <th className="py-2.5 px-3">Kesiapan Kirim</th>
                   )}
-                  {canManage && (
-                    <th className="py-2.5 px-2 text-center w-12 sticky right-0 bg-slate-900 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)]">
+                  {showAksiColumn && (
+                    <th className={`py-2.5 px-2 text-center ${canFlagReview ? 'min-w-[116px]' : 'w-12'} sticky right-0 bg-slate-900 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)]`}>
                       Aksi
                     </th>
                   )}
@@ -1608,7 +1958,7 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
               <tbody className="divide-y divide-slate-100">
                 {orderList.length === 0 ? (
                   <tr>
-                    <td colSpan={canManage ? 9 : 8} className="py-16 text-center">
+                    <td colSpan={showAksiColumn ? 9 : 8} className="py-16 text-center">
                       <div className="max-w-md mx-auto flex flex-col items-center">
                         <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
@@ -1666,6 +2016,8 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                       orderStatusLower.includes('dalam pengiriman') ||
                       (orderStatusLower.includes('dikirim') && !orderStatusLower.includes('perlu') && !orderStatusLower.includes('siap') && !orderStatusLower.includes('belum'));
                     const isPendingInstant = isInstantOrder && !isCancelled && !isCompleted && !isShipped;
+                    const flagMeta = canSeeReview ? getManagementFlagMeta(order.management_flag) : null;
+                    const isReviewUnresolved = Boolean(flagMeta && !order.management_resolved_at);
 
                     return (
                       <tr
@@ -1673,6 +2025,8 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                         className={`group transition-colors ${
                           isCancelled
                             ? 'bg-rose-50/50 hover:bg-rose-100/60'
+                            : isReviewUnresolved && flagMeta
+                            ? flagMeta.rowClass
                             : isPendingInstant
                             ? 'bg-amber-50/30 hover:bg-amber-50/50'
                             : 'hover:bg-slate-50/80'
@@ -1680,7 +2034,11 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                       >
                         {/* No */}
                         <td className={`py-2.5 px-2 text-center text-xs font-bold whitespace-nowrap w-10 ${
-                          isCancelled ? 'text-rose-600 border-l-4 border-l-rose-600 bg-rose-50/60' : 'text-slate-500'
+                          isCancelled
+                            ? 'text-rose-600 border-l-4 border-l-rose-600 bg-rose-50/60'
+                            : flagMeta
+                            ? `${order.management_resolved_at ? 'border-l-4 border-l-emerald-500' : flagMeta.leftBorderClass} text-slate-700`
+                            : 'text-slate-500'
                         }`}>
                           {rowNumber}
                         </td>
@@ -2022,6 +2380,7 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                                 <span className="text-[10px] text-slate-400">Belum DPP</span>
                               )}
                             </div>
+                            {renderManagementReviewCard(order)}
                           </td>
                         ) : (
                           <td className="py-2.5 px-3 whitespace-nowrap">
@@ -2046,25 +2405,52 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                                 {order.jl_number ? `Resi: ${order.jl_number}` : 'Belum Ada Resi'}
                               </span>
                             </div>
+                            {renderManagementReviewCard(order)}
                           </td>
                         )}
 
                         {/* Aksi */}
-                        {canManage && (
+                        {showAksiColumn && (
                           <td
-                            className={`py-2.5 px-2 text-center w-12 sticky right-0 ${
+                            className={`py-2.5 px-2 text-center ${canFlagReview ? 'min-w-[116px]' : 'w-12'} sticky right-0 ${
                               isPendingInstant ? 'bg-[#fffdf7] group-hover:bg-[#fff8ea]' : 'bg-white group-hover:bg-slate-50'
                             } transition-colors shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)] z-10`}
                           >
-                            <button
-                              onClick={() => openEditModal(order)}
-                              className="p-1.5 rounded-lg text-slate-600 hover:text-white hover:bg-[#0B132B] transition-all border border-slate-200"
-                              title="Edit info pesanan / solusi gudang"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
-                              </svg>
-                            </button>
+                            {canFlagReview ? (
+                              <button
+                                type="button"
+                                onClick={(e) => openReviewDropdown(e, order)}
+                                disabled={savingReviewOrderId === order.id}
+                                className={`inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-semibold transition-all cursor-pointer whitespace-nowrap disabled:opacity-50 ${
+                                  flagMeta
+                                    ? `${flagMeta.badgeClass} hover:opacity-90`
+                                    : 'bg-white border-slate-200 text-slate-700 hover:bg-[#0B132B] hover:text-white hover:border-[#0B132B]'
+                                }`}
+                                title="Beri catatan atau tanda review manajemen"
+                              >
+                                {flagMeta ? (
+                                  <span className={`w-2 h-2 rounded-full shrink-0 ${flagMeta.dotClass}`} />
+                                ) : (
+                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5 shrink-0">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-.005-10.499l-3.11.732a9 9 0 01-6.085-.711l-.108-.054a9 9 0 00-6.208-.682L3 4.5M3 15V4.5" />
+                                  </svg>
+                                )}
+                                <span>{flagMeta ? flagMeta.shortLabel : 'Review'}</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-3 h-3 shrink-0 opacity-75">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                </svg>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => openEditModal(order)}
+                                className="p-1.5 rounded-lg text-slate-600 hover:text-white hover:bg-[#0B132B] transition-all border border-slate-200"
+                                title="Edit info pesanan / solusi gudang"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
+                                </svg>
+                              </button>
+                            )}
                           </td>
                         )}
                       </tr>
@@ -3088,6 +3474,104 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                   </div>
                 )}
               </div>
+            </div>
+          );
+        })(),
+        document.body
+      )}
+
+      {/* Dropdown Popover Review Manajemen (Khusus Direktur) */}
+      {canFlagReview && reviewMenuState && typeof document !== 'undefined' && createPortal(
+        (() => {
+          const { order, rect } = reviewMenuState;
+          const menuWidth = 288;
+          const estimatedHeight = 295;
+          const spaceBelow = window.innerHeight - rect.bottom;
+          const openUpward = spaceBelow < estimatedHeight && rect.top > estimatedHeight;
+          const top = openUpward
+            ? Math.max(12, rect.top - estimatedHeight - 6)
+            : Math.min(window.innerHeight - estimatedHeight - 12, rect.bottom + 6);
+          const left = Math.max(12, Math.min(window.innerWidth - menuWidth - 12, rect.right - menuWidth));
+          const isSaving = savingReviewOrderId === order.id;
+
+          return (
+            <div
+              ref={reviewPopoverRef}
+              style={{ top: `${top}px`, left: `${left}px`, width: `${menuWidth}px` }}
+              className="fixed z-[9998] bg-white rounded-2xl border border-slate-200 shadow-xl p-3.5 text-left"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Review Manajemen</p>
+                  <p className="text-xs font-bold text-slate-900 font-mono truncate">#{order.order_number}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReviewMenuState(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="mt-2.5">
+                <textarea
+                  value={reviewNoteInput}
+                  onChange={(e) => setReviewNoteInput(e.target.value)}
+                  rows={2}
+                  maxLength={500}
+                  placeholder="Catatan singkat untuk PIC / Super Admin (opsional)..."
+                  className="w-full px-2.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0B132B] focus:bg-white resize-none"
+                />
+              </div>
+
+              <div className="mt-2.5 space-y-1.5">
+                {MANAGEMENT_FLAG_OPTIONS.map((opt) => {
+                  const isSelected = order.management_flag === opt.key;
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      disabled={isSaving}
+                      onClick={() => handleSaveReview(order.id, opt.key, reviewNoteInput)}
+                      className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-left text-xs font-semibold transition-all cursor-pointer disabled:opacity-50 ${
+                        isSelected
+                          ? `${opt.badgeClass} ring-1 ring-inset ring-current/25`
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${opt.dotClass}`} />
+                        <span className="leading-snug">{opt.label}</span>
+                      </span>
+                      {isSelected && (
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0">
+                          <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {order.management_flag && (
+                <div className="mt-2.5 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={() => handleSaveReview(order.id, null, '')}
+                    className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Hapus Tanda Review
+                  </button>
+                </div>
+              )}
             </div>
           );
         })(),

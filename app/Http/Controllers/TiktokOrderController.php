@@ -593,10 +593,6 @@ class TiktokOrderController extends Controller
             return;
         }
 
-        if (Gate::allows('user.view')) {
-            return;
-        }
-
         abort(403, 'Akses terbatas untuk Super Admin atau pengguna dengan izin Pesanan TikTok.');
     }
 
