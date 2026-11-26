@@ -43,8 +43,15 @@ class StockForecastControllerTest extends TestCase
         // Super Admin user can access
         $this->actingAs($this->superAdminUser)->get('/stock-forecast')->assertStatus(200);
 
-        // Direktur user can access
-        $this->actingAs($this->direkturUser)->get('/stock-forecast')->assertStatus(200);
+        // Direktur user can access and sees isDirekturOnly = true
+        $this->actingAs($this->direkturUser)
+            ->get('/stock-forecast')
+            ->assertStatus(200)
+            ->assertInertia(fn ($page) => $page
+                ->component('Stock/Forecast')
+                ->where('isDirekturOnly', true)
+                ->where('isManagement', true)
+            );
     }
 
     public function test_pic_can_propose_po(): void

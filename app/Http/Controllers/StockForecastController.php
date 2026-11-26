@@ -76,17 +76,35 @@ class StockForecastController extends Controller
     {
         $this->authorizeAccess();
 
+        $roles = $this->getUserRoleNames();
+        $isManagement = in_array('Super Admin', $roles, true) || in_array('Direktur', $roles, true);
+        $isDirekturOnly = in_array('Direktur', $roles, true) && ! in_array('Super Admin', $roles, true);
+
         $targetMonths = max(1, min(24, (int)$request->input('target_months', 5) ?: 5));
         $leadTimeMonths = max(1, min(12, (int)$request->input('lead_time_months', 3) ?: 3));
         $search          = $request->input('search');
         $statusFilter    = $request->input('status', 'all');
 
-        $forecast = $this->forecastService->getForecastData(
-            $targetMonths,
-            $leadTimeMonths,
-            $search,
-            $statusFilter
-        );
+        $forecast = $isDirekturOnly
+            ? [
+                'rows'        => [],
+                'stats'       => [
+                    'total_items'          => 0,
+                    'harus_po_count'       => 0,
+                    'siap_po_count'        => 0,
+                    'aman_count'           => 0,
+                    'tenang_count'         => 0,
+                    'total_recommended_po' => 0,
+                ],
+                'date_ranges' => ['m3_label' => '', 'm2_label' => '', 'm1_label' => ''],
+                'parameters'  => ['target_months' => $targetMonths, 'lead_time_months' => $leadTimeMonths],
+            ]
+            : $this->forecastService->getForecastData(
+                $targetMonths,
+                $leadTimeMonths,
+                $search,
+                $statusFilter
+            );
 
         $proposals = Schema::hasTable('po_proposals')
             ? PoProposal::with(['proposer:id,name', 'reviewer:id,name'])
@@ -95,19 +113,17 @@ class StockForecastController extends Controller
                 ->get()
             : collect([]);
 
-        $roles = $this->getUserRoleNames();
-        $isManagement = in_array('Super Admin', $roles, true) || in_array('Direktur', $roles, true);
-
         return Inertia::render('Stock/Forecast', [
-            'forecast'     => $forecast,
-            'proposals'    => $proposals,
-            'filters'      => [
+            'forecast'       => $forecast,
+            'proposals'      => $proposals,
+            'filters'        => [
                 'target_months'    => $targetMonths,
                 'lead_time_months' => $leadTimeMonths,
                 'search'           => $search,
                 'status'           => $statusFilter,
             ],
-            'isManagement' => $isManagement,
+            'isManagement'   => $isManagement,
+            'isDirekturOnly' => $isDirekturOnly,
         ]);
     }
 
@@ -123,6 +139,8 @@ class StockForecastController extends Controller
             'current_stock'         => ['required', 'integer'],
             'monthly_velocity'      => ['required', 'numeric'],
             'stock_coverage_months' => ['nullable', 'numeric'],
+            'target_months'         => ['nullable', 'integer', 'min:1', 'max:24'],
+            'target_stock'          => ['nullable', 'integer', 'min:0'],
             'recommended_qty'       => ['required', 'integer'],
             'proposed_qty'          => ['required', 'integer', 'min:1'],
             'notes'                 => ['nullable', 'string', 'max:1000'],
@@ -130,7 +148,7 @@ class StockForecastController extends Controller
 
         $poNumber = PoProposal::generatePoNumber();
 
-        PoProposal::create([
+        $payload = [
             'po_number'             => $poNumber,
             'sku'                   => $validated['sku'],
             'product_name'          => $validated['product_name'],
@@ -144,7 +162,16 @@ class StockForecastController extends Controller
             'status'                => PoProposal::STATUS_PENDING,
             'proposed_by'           => auth()->id(),
             'notes'                 => $validated['notes'] ?? null,
-        ]);
+        ];
+
+        if (Schema::hasColumn('po_proposals', 'target_months')) {
+            $payload['target_months'] = $validated['target_months'] ?? 5;
+        }
+        if (Schema::hasColumn('po_proposals', 'target_stock')) {
+            $payload['target_stock'] = $validated['target_stock'] ?? null;
+        }
+
+        PoProposal::create($payload);
 
         return back()->with('success', "Pengajuan PO {$poNumber} berhasil diajukan dan diteruskan ke antrean Manajemen.");
     }

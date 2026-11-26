@@ -67,6 +67,8 @@ export interface PoProposalItem {
   current_stock: number;
   monthly_velocity: number | string;
   stock_coverage_months: number | string | null;
+  target_months?: number | null;
+  target_stock?: number | null;
   recommended_qty: number;
   proposed_qty: number;
   status: 'pending_approval' | 'approved' | 'rejected' | 'ordered';
@@ -90,6 +92,7 @@ export interface ForecastPageProps {
     status: string;
   };
   isManagement: boolean;
+  isDirekturOnly?: boolean;
 }
 
 // ============================================================================
@@ -129,6 +132,55 @@ function formatDateTime(dStr: string | null | undefined): string {
   }
 }
 
+const MONTHS_ID = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+];
+
+function formatMonthYearOffset(baseDateStr: string | null | undefined, offsetMonths: number): string {
+  const base = baseDateStr ? new Date(baseDateStr) : new Date();
+  const validBase = isNaN(base.getTime()) ? new Date() : base;
+  const approxDays = Math.max(0, Math.round(offsetMonths * 30));
+  const target = new Date(validBase.getTime() + approxDays * 86400 * 1000);
+  return `${MONTHS_ID[target.getMonth()] || ''} ${target.getFullYear()}`;
+}
+
+function buildPoProjectionNarrative(proposal: PoProposalItem) {
+  const velocity = Number(proposal.monthly_velocity || 0);
+  const currentStock = Number(proposal.current_stock || 0);
+  const coverage =
+    proposal.stock_coverage_months !== null && proposal.stock_coverage_months !== undefined
+      ? Number(proposal.stock_coverage_months)
+      : velocity > 0
+      ? currentStock / velocity
+      : 0;
+  const targetMonths =
+    proposal.target_months && proposal.target_months > 0
+      ? Number(proposal.target_months)
+      : velocity > 0 && proposal.recommended_qty > 0
+      ? Math.max(1, Math.round((currentStock + Number(proposal.recommended_qty)) / velocity))
+      : 5;
+  const targetStock =
+    proposal.target_stock && proposal.target_stock > 0
+      ? Number(proposal.target_stock)
+      : proposal.recommended_qty > 0
+      ? currentStock + Number(proposal.recommended_qty)
+      : Math.ceil(velocity * targetMonths);
+
+  const stockoutMonth = velocity > 0 ? formatMonthYearOffset(proposal.created_at, coverage) : '—';
+  const targetMonth = formatMonthYearOffset(proposal.created_at, targetMonths);
+
+  return {
+    velocity,
+    currentStock,
+    coverage,
+    targetMonths,
+    targetStock,
+    stockoutMonth,
+    targetMonth,
+  };
+}
+
 // ============================================================================
 // Main Component
 // ============================================================================
@@ -138,11 +190,14 @@ export default function Forecast({
   proposals = [],
   filters,
   isManagement = false,
+  isDirekturOnly = false,
 }: ForecastPageProps) {
   const { flash } = usePage<PageProps>().props;
 
-  // Active Tab: 'projection' | 'proposals'
-  const [activeTab, setActiveTab] = useState<'projection' | 'proposals'>('projection');
+  // Active Tab: Direktur hanya melihat daftar pengajuan PO dari PIC
+  const [activeTab, setActiveTab] = useState<'projection' | 'proposals'>(
+    isDirekturOnly ? 'proposals' : 'projection'
+  );
 
   // Search & Filter state for Projection Tab
   const [search, setSearch] = useState(filters.search || '');
@@ -315,6 +370,8 @@ export default function Forecast({
         current_stock: proposeModal.row.total_stock,
         monthly_velocity: proposeModal.row.monthly_velocity,
         stock_coverage_months: proposeModal.row.stock_coverage_months,
+        target_months: targetMonths,
+        target_stock: proposeModal.row.target_stock,
         recommended_qty: proposeModal.row.recommended_po_qty,
         proposed_qty: proposeModal.proposedQty,
         notes: proposeModal.notes.trim() || null,
@@ -445,11 +502,22 @@ export default function Forecast({
     total_recommended_po: 0,
   };
 
+  const proposalStats = useMemo(() => {
+    const list = proposals || [];
+    const pending = list.filter((p) => p.status === 'pending_approval');
+    return {
+      pendingCount: pending.length,
+      approvedCount: list.filter((p) => p.status === 'approved' || p.status === 'ordered').length,
+      rejectedCount: list.filter((p) => p.status === 'rejected').length,
+      pendingQty: pending.reduce((sum, p) => sum + Number(p.proposed_qty || 0), 0),
+    };
+  }, [proposals]);
+
   return (
     <AppLayout>
-      <Head title="Proyeksi Stok & Rencana PO - Koding ERP" />
+      <Head title={isDirekturOnly ? 'Pengajuan PO dari PIC - Koding ERP' : 'Proyeksi Stok & Rencana PO - Koding ERP'} />
 
-      <div className="space-y-6 w-full max-w-[1700px] mx-auto pb-12 px-2 sm:px-4">
+      <div className="space-y-4 sm:space-y-6 w-full max-w-[1700px] mx-auto pb-12 px-1 sm:px-4">
         {/* Flash Notifications */}
         {flash?.success && (
           <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center justify-between shadow-2xs">
@@ -472,36 +540,74 @@ export default function Forecast({
           </div>
         )}
 
-        {/* Header Title Banner - Konsisten dengan Master Stok & Shopee Products */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+        {/* Header Title Banner */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-xs">
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Proyeksi Stok & Rencana PO</h1>
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                {isDirekturOnly ? 'Pengajuan PO dari PIC' : 'Proyeksi Stok & Rencana PO'}
+              </h1>
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                Supply Chain & Forecasting
+                {isDirekturOnly ? 'Persetujuan Manajemen' : 'Supply Chain & Forecasting'}
               </span>
             </div>
-            <p className="text-sm text-slate-500 mt-1 max-w-3xl">
-              Analisis perputaran barang riwayat 3 bulan ({forecast?.date_ranges?.m3_label || 'M-3'} – {forecast?.date_ranges?.m1_label || 'M-1'}), estimasi ketahanan stok gudang, dan otomatisasi kalkulasi rekomendasi Purchase Order pabrik.
+            <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-3xl">
+              {isDirekturOnly
+                ? 'Daftar pengajuan Purchase Order dari PIC beserta rincian rata-rata penjualan bulanan, estimasi stok habis, dan target kebutuhan stok untuk persetujuan.'
+                : `Analisis perputaran barang riwayat 3 bulan (${forecast?.date_ranges?.m3_label || 'M-3'} – ${forecast?.date_ranges?.m1_label || 'M-1'}), estimasi ketahanan stok gudang, dan otomatisasi kalkulasi rekomendasi Purchase Order pabrik.`}
             </p>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-            <button
-              type="button"
-              onClick={handleExportExcel}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-all shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
-              title="Unduh seluruh baris proyeksi ke format Excel (.xlsx)"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-emerald-600">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-              </svg>
-              <span>Export Excel (.xlsx)</span>
-            </button>
-          </div>
+          {!isDirekturOnly && (
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-all shadow-2xs cursor-pointer whitespace-nowrap active:scale-98"
+                title="Unduh seluruh baris proyeksi ke format Excel (.xlsx)"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-emerald-600">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+                <span>Export Excel (.xlsx)</span>
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* 5 Metric Summary Cards - High-End Anti AI-Slop (Konsisten dengan Master Stok) */}
+        {/* Summary Cards: Direktur (4 KPI Pengajuan PO) vs PIC/Super Admin (5 KPI Forecasting) */}
+        {isDirekturOnly ? (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 sm:p-5 shadow-2xs">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-amber-600">Menunggu Persetujuan</span>
+              <p className="text-xl sm:text-2xl font-black text-amber-600 tracking-tight font-mono mt-2">
+                {formatNumber(proposalStats.pendingCount)}
+              </p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Pengajuan PO aktif</p>
+            </div>
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 sm:p-5 shadow-2xs">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-600">Disetujui</span>
+              <p className="text-xl sm:text-2xl font-black text-emerald-600 tracking-tight font-mono mt-2">
+                {formatNumber(proposalStats.approvedCount)}
+              </p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Siap diproses PO pabrik</p>
+            </div>
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 sm:p-5 shadow-2xs">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-rose-600">Ditolak</span>
+              <p className="text-xl sm:text-2xl font-black text-rose-600 tracking-tight font-mono mt-2">
+                {formatNumber(proposalStats.rejectedCount)}
+              </p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Ditunda / tidak disetujui</p>
+            </div>
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 sm:p-5 shadow-2xs">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-blue-600">Total Unit Pending</span>
+              <p className="text-xl sm:text-2xl font-black text-[#0B132B] tracking-tight font-mono mt-2">
+                {formatNumber(proposalStats.pendingQty)} <span className="text-xs font-medium text-slate-500 font-sans">pcs</span>
+              </p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Total diajukan PIC</p>
+            </div>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {/* Card 1: Total SKU */}
           <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs hover:border-slate-300 transition-all">
@@ -609,8 +715,10 @@ export default function Forecast({
             </div>
           </div>
         </div>
+        )}
 
-        {/* Tab Navigation Pill Bar */}
+        {/* Tab Navigation Pill Bar (Hanya untuk PIC & Super Admin) */}
+        {!isDirekturOnly && (
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="inline-flex p-1 bg-slate-200/70 rounded-xl border border-slate-200 shadow-2xs">
             <button
@@ -649,11 +757,12 @@ export default function Forecast({
             </button>
           </div>
         </div>
+        )}
 
         {/* ================================================================== */}
         {/* TAB 1: ANALISIS & PROYEKSI STOK                                   */}
         {/* ================================================================== */}
-        {activeTab === 'projection' && (
+        {!isDirekturOnly && activeTab === 'projection' && (
           <div className="space-y-4">
             {/* Parameter Forecasting Banner */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1132,189 +1241,193 @@ export default function Forecast({
               )}
             </div>
 
-            {/* Proposals Table */}
-            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50/90 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                      <th className="py-3 px-4">No. PO & Tanggal</th>
-                      <th className="py-3 px-4 min-w-[200px]">SKU & Produk</th>
-                      <th className="py-3 px-3">Gudang & Pabrik</th>
-                      <th className="py-3 px-3 text-right">Stok Fisik</th>
-                      <th className="py-3 px-3 text-right">Kecepatan</th>
-                      <th className="py-3 px-3 text-right">Rekomendasi</th>
-                      <th className="py-3 px-3 text-right">Jumlah Diajukan</th>
-                      <th className="py-3 px-3">Diajukan Oleh</th>
-                      <th className="py-3 px-3 text-center">Status</th>
-                      <th className="py-3 px-3">Ditinjau Oleh</th>
-                      {isManagement && <th className="py-3 px-4 text-center">Aksi Manajemen</th>}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs">
-                    {filteredProposals.length === 0 ? (
-                      <tr>
-                        <td colSpan={isManagement ? 11 : 10} className="py-12 text-center text-slate-400">
-                          <p className="font-semibold text-slate-600">Belum ada pengajuan PO yang sesuai filter.</p>
-                          <p className="text-xs text-slate-400 mt-1">Pengajuan PO yang dibuat oleh PIC dari tab proyeksi akan muncul di sini.</p>
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredProposals.map((proposal) => {
-                        const isPending = proposal.status === 'pending_approval';
-                        return (
-                          <tr key={proposal.id} className="hover:bg-slate-50/80 transition-colors">
-                            {/* No PO & Tanggal */}
-                            <td className="py-3 px-4">
-                              <div className="font-mono font-bold text-slate-900 tracking-tight">
-                                {proposal.po_number}
-                              </div>
-                              <div className="text-[11px] text-slate-400 mt-0.5">
-                                {formatDateTime(proposal.created_at)}
-                              </div>
-                            </td>
-
-                            {/* SKU & Produk */}
-                            <td className="py-3 px-4">
-                              <div className="font-bold font-mono text-slate-800">
-                                {proposal.sku}
-                              </div>
-                              <div className="text-slate-500 text-[11px] truncate max-w-xs mt-0.5" title={proposal.product_name}>
-                                {proposal.product_name}
-                              </div>
-                              {proposal.notes && (
-                                <button
-                                  type="button"
-                                  onClick={() => setNotesModal({ isOpen: true, title: `Catatan PIC - ${proposal.po_number}`, content: proposal.notes || '' })}
-                                  className="text-[10px] text-blue-600 hover:text-blue-800 underline mt-0.5 cursor-pointer"
-                                >
-                                  Lihat Catatan PIC
-                                </button>
-                              )}
-                            </td>
-
-                            {/* Gudang & Pabrik */}
-                            <td className="py-3 px-3">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                                Gudang {proposal.warehouse}
-                              </span>
-                              <div className="text-[11px] text-slate-600 mt-1 truncate max-w-[130px]" title={proposal.supplier_name || 'Pabrik Belum Diisi'}>
-                                {proposal.supplier_name || <span className="text-slate-400">—</span>}
-                              </div>
-                            </td>
-
-                            {/* Stok Fisik */}
-                            <td className="py-3 px-3 text-right font-mono font-semibold text-slate-800">
-                              {formatNumber(proposal.current_stock)} <span className="text-[10px] text-slate-400">pcs</span>
-                            </td>
-
-                            {/* Kecepatan */}
-                            <td className="py-3 px-3 text-right font-mono text-slate-700">
-                              {formatDecimal(proposal.monthly_velocity)}/bln
-                            </td>
-
-                            {/* Rekomendasi */}
-                            <td className="py-3 px-3 text-right font-mono text-slate-600">
-                              {formatNumber(proposal.recommended_qty)}
-                            </td>
-
-                            {/* Jumlah Diajukan */}
-                            <td className="py-3 px-3 text-right font-mono font-black text-sm text-[#0B132B]">
-                              {formatNumber(proposal.proposed_qty)} <span className="text-xs font-normal text-slate-400">pcs</span>
-                            </td>
-
-                            {/* Diajukan Oleh */}
-                            <td className="py-3 px-3">
-                              <span className="font-semibold text-slate-800">
-                                {proposal.proposer?.name || 'PIC'}
-                              </span>
-                            </td>
-
-                            {/* Status */}
-                            <td className="py-3 px-3 text-center">
-                              {proposal.status === 'pending_approval' && (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                                  Menunggu
-                                </span>
-                              )}
-                              {proposal.status === 'approved' && (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                  Disetujui
-                                </span>
-                              )}
-                              {proposal.status === 'rejected' && (
-                                <div>
-                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                                    Ditolak
-                                  </span>
-                                  {proposal.rejection_reason && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setNotesModal({ isOpen: true, title: `Alasan Penolakan - ${proposal.po_number}`, content: proposal.rejection_reason || '' })}
-                                      className="block text-[10px] text-rose-600 hover:text-rose-800 underline mt-0.5 mx-auto cursor-pointer"
-                                    >
-                                      Lihat Alasan
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-
-                            {/* Ditinjau Oleh */}
-                            <td className="py-3 px-3 text-slate-600 text-[11px]">
-                              {proposal.reviewer ? (
-                                <div>
-                                  <div className="font-semibold text-slate-800">{proposal.reviewer.name}</div>
-                                  <div className="text-[10px] text-slate-400">{formatDateTime(proposal.reviewed_at)}</div>
-                                </div>
-                              ) : (
-                                <span className="text-slate-400">—</span>
-                              )}
-                            </td>
-
-                            {/* Aksi Manajemen */}
-                            {isManagement && (
-                              <td className="py-3 px-4 text-center">
-                                {isPending ? (
-                                  <div className="flex items-center justify-center gap-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleApproveProposal(proposal)}
-                                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer active:scale-98"
-                                    >
-                                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-3.5 h-3.5">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                                      </svg>
-                                      <span>Setujui</span>
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      onClick={() => openRejectModal(proposal)}
-                                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold transition-colors cursor-pointer active:scale-98"
-                                    >
-                                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-3.5 h-3.5">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                      </svg>
-                                      <span>Tolak</span>
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <span className="text-slate-400 text-xs">—</span>
-                                )}
-                              </td>
-                            )}
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+            {/* Proposals List (Card View — Jelas & Responsif di HP maupun Laptop) */}
+            {filteredProposals.length === 0 ? (
+              <div className="bg-white border border-slate-200 rounded-2xl py-12 px-4 text-center text-slate-400 shadow-2xs">
+                <p className="text-sm font-semibold text-slate-600">Belum ada pengajuan PO yang sesuai filter.</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  Pengajuan PO yang dikirim oleh PIC akan otomatis tampil di sini beserta rincian rata-rata keluar per bulan & kebutuhan stoknya.
+                </p>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-3.5">
+                {filteredProposals.map((proposal) => {
+                  const isPending = proposal.status === 'pending_approval';
+                  const info = buildPoProjectionNarrative(proposal);
+
+                  return (
+                    <div
+                      key={proposal.id}
+                      className={`bg-white border rounded-2xl p-4 sm:p-5 shadow-2xs space-y-3.5 transition-all ${
+                        isPending
+                          ? 'border-amber-200/90 ring-1 ring-amber-100'
+                          : proposal.status === 'approved' || proposal.status === 'ordered'
+                          ? 'border-emerald-200/80'
+                          : 'border-rose-200/80'
+                      }`}
+                    >
+                      {/* Baris 1: Header PO, Status, Pengaju & Gudang */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono font-bold text-xs text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg">
+                            {proposal.po_number}
+                          </span>
+                          {proposal.status === 'pending_approval' && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                              Menunggu Persetujuan
+                            </span>
+                          )}
+                          {(proposal.status === 'approved' || proposal.status === 'ordered') && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              Disetujui
+                            </span>
+                          )}
+                          {proposal.status === 'rejected' && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                              Ditolak
+                            </span>
+                          )}
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                            Gudang {proposal.warehouse}
+                          </span>
+                          {proposal.supplier_name && (
+                            <span className="text-[11px] font-medium text-slate-600">
+                              Pabrik: <strong className="text-slate-800">{proposal.supplier_name}</strong>
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="text-[11px] text-slate-500">
+                          Diajukan <strong className="text-slate-800">{proposal.proposer?.name || 'PIC'}</strong> · {formatDateTime(proposal.created_at)}
+                        </div>
+                      </div>
+
+                      {/* Baris 2: Nama Produk & SKU */}
+                      <div>
+                        <h3 className="text-sm sm:text-base font-bold text-slate-900 leading-snug">
+                          {proposal.product_name}
+                        </h3>
+                        <p className="font-mono text-xs text-slate-500 mt-0.5">SKU: {proposal.sku}</p>
+                      </div>
+
+                      {/* Baris 3: 4 Angka Proyeksi & Narasi Alasan Jelas */}
+                      <div className="bg-slate-50/90 border border-slate-200/80 rounded-xl p-3.5 space-y-3">
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+                          <div className="bg-white rounded-xl p-2.5 border border-slate-200/70">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Rata-rata Keluar</p>
+                            <p className="text-sm sm:text-base font-extrabold text-slate-900 font-mono mt-0.5">
+                              {formatDecimal(info.velocity)} <span className="text-[11px] font-normal text-slate-500">pcs/bln</span>
+                            </p>
+                          </div>
+
+                          <div className="bg-white rounded-xl p-2.5 border border-slate-200/70">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Stok Saat Ini</p>
+                            <p className="text-sm sm:text-base font-extrabold text-slate-900 font-mono mt-0.5">
+                              {formatNumber(info.currentStock)} <span className="text-[11px] font-normal text-slate-500">pcs</span>
+                            </p>
+                            <p className="text-[10px] text-amber-700 font-medium mt-0.5">
+                              {info.velocity > 0 ? `Cukup ~${formatDecimal(info.coverage)} bln (habis ${info.stockoutMonth})` : 'Belum ada data keluar'}
+                            </p>
+                          </div>
+
+                          <div className="bg-white rounded-xl p-2.5 border border-slate-200/70">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              Target Stok ({info.targetMonth})
+                            </p>
+                            <p className="text-sm sm:text-base font-extrabold text-blue-700 font-mono mt-0.5">
+                              {formatNumber(info.targetStock)} <span className="text-[11px] font-normal text-blue-600/80">pcs</span>
+                            </p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">
+                              Ketahanan {info.targetMonths} bulan
+                            </p>
+                          </div>
+
+                          <div className="bg-[#0B132B] text-white rounded-xl p-2.5">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Jumlah PO Diajukan</p>
+                            <p className="text-sm sm:text-base font-black font-mono mt-0.5">
+                              {formatNumber(proposal.proposed_qty)} <span className="text-[11px] font-normal text-slate-300">pcs</span>
+                            </p>
+                            <p className="text-[10px] text-slate-300 mt-0.5">
+                              Rekomendasi sistem: {formatNumber(proposal.recommended_qty)} pcs
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Kalimat Alasan Jelas */}
+                        <p className="text-xs text-slate-700 leading-relaxed bg-white rounded-lg px-3 py-2 border border-slate-200/70">
+                          <strong className="text-slate-900">{proposal.proposer?.name || 'PIC'}</strong> mengajukan PO{' '}
+                          <strong className="text-[#0B132B]">{formatNumber(proposal.proposed_qty)} pcs</strong> karena rata-rata keluar{' '}
+                          <strong>{formatDecimal(info.velocity)} pcs/bulan</strong>. Stok saat ini (<strong>{formatNumber(info.currentStock)} pcs</strong>)
+                          {info.velocity > 0 ? (
+                            <>
+                              {' '}diperkirakan cukup untuk <strong>{formatDecimal(info.coverage)} bulan</strong> (habis sekitar{' '}
+                              <strong className="text-amber-700">{info.stockoutMonth}</strong>), sehingga sampai bulan{' '}
+                              <strong className="text-blue-700">{info.targetMonth}</strong> ({info.targetMonths} bulan) harus tersedia stok{' '}
+                              <strong>{formatNumber(info.targetStock)} pcs</strong>.
+                            </>
+                          ) : (
+                            <> perlu ditambah sesuai kebutuhan operasional.</>
+                          )}
+                        </p>
+
+                        {proposal.notes && (
+                          <div className="text-xs text-slate-600 bg-blue-50/50 border border-blue-100 rounded-lg px-3 py-2">
+                            <span className="font-bold text-blue-900">Catatan PIC:</span> {proposal.notes}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Baris 4: Aksi Manajemen / Status Tinjauan */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1">
+                        {proposal.reviewer ? (
+                          <div className="text-xs text-slate-600">
+                            Ditinjau oleh <strong className="text-slate-900">{proposal.reviewer.name}</strong> · {formatDateTime(proposal.reviewed_at)}
+                            {proposal.status === 'rejected' && proposal.rejection_reason && (
+                              <p className="text-rose-700 font-medium mt-1">
+                                Alasan penolakan: &ldquo;{proposal.rejection_reason}&rdquo;
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-slate-400">
+                            Menunggu keputusan Manajemen
+                          </div>
+                        )}
+
+                        {isManagement && isPending && (
+                          <div className="flex items-center gap-2 w-full sm:w-auto">
+                            <button
+                              type="button"
+                              onClick={() => handleApproveProposal(proposal)}
+                              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer active:scale-98"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-4 h-4">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                              </svg>
+                              <span>Setujui PO</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => openRejectModal(proposal)}
+                              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold transition-colors cursor-pointer active:scale-98"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-4 h-4">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                              <span>Tolak</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
