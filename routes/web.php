@@ -53,6 +53,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/cut-off-returns', [CutOffReturnController::class, 'store'])->name('cut-off-returns.store');
     Route::post('/cut-off-returns/import', [CutOffReturnController::class, 'importBatch'])->name('cut-off-returns.import');
     Route::put('/cut-off-returns/{cutOffReturn}', [CutOffReturnController::class, 'update'])->name('cut-off-returns.update');
+    Route::post('/cut-off-returns/{cutOffReturn}/dispute-action', [CutOffReturnController::class, 'disputeAction'])->name('cut-off-returns.dispute-action');
     Route::delete('/cut-off-returns/{cutOffReturn}', [CutOffReturnController::class, 'destroy'])->name('cut-off-returns.destroy');
 
     // Master Stok (Gudang A & Gudang G)

@@ -17,10 +17,13 @@ class CutOffReturnController extends Controller
      */
     public function index(Request $request): Response
     {
+        CutOffReturn::ensureReturnStageSchema();
+
         $filters = $request->only([
             'search',
             'marketplace',
             'needs_action',
+            'stage',
             'date_from',
             'date_to',
             'per_page',
@@ -37,61 +40,7 @@ class CutOffReturnController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
-        // Otomatis cari Nomer JL dan SKU Marketplace dari cut_off_orders
-        try {
-            if (Schema::hasTable('cut_off_orders')) {
-                $orderNumbers = collect();
-                foreach ($returns->items() as $item) {
-                    if (! empty($item->no_pesanan_baru)) {
-                        $orderNumbers->push($item->no_pesanan_baru);
-                    }
-                    if (! empty($item->no_invoice_mp)) {
-                        $orderNumbers->push($item->no_invoice_mp);
-                    }
-                }
-
-                if ($orderNumbers->isNotEmpty()) {
-                    $matchedOrders = DB::table('cut_off_orders')
-                        ->whereIn('order_number', $orderNumbers->unique())
-                        ->select(['order_number', 'jl_number', 'sku_utama'])
-                        ->get()
-                        ->keyBy('order_number');
-
-                    foreach ($returns->items() as $item) {
-                        $matched = $matchedOrders[$item->no_pesanan_baru]
-                            ?? $matchedOrders[$item->no_invoice_mp]
-                            ?? null;
-
-                        // Otomatis pasang Nomer JL jika belum tersimpan di data retur
-                        if (empty($item->no_invoice_baru) && $matched && ! empty($matched->jl_number)) {
-                            $item->no_invoice_baru = $matched->jl_number;
-                        }
-
-                        // Otomatis ganti Nama Barang MP dengan SKU singkat marketplace jika tersedia
-                        if ($matched && ! empty($matched->sku_utama)) {
-                            if (empty($item->nama_barang_mp) || strlen($item->nama_barang_mp) > 30 || stripos($item->nama_barang_mp, 'RECORD') !== false) {
-                                $item->nama_barang_mp = $matched->sku_utama;
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (\Throwable $e) {
-            // Abaikan jika query order tidak tersedia
-        }
-
-        $hasNeedsAction = false;
-        $hasDueDate     = false;
-        try {
-            $hasNeedsAction = Schema::hasColumn('cut_off_returns', 'needs_action');
-            $hasDueDate     = Schema::hasColumn('cut_off_returns', 'due_date');
-        } catch (\Throwable $e) {
-            // Abaikan error schema check
-        }
-
-        $needsActionSql = $hasNeedsAction
-            ? "COALESCE(SUM(CASE WHEN needs_action = 1 THEN 1 ELSE 0 END), 0) as total_needs_action,"
-            : "0 as total_needs_action,";
+        $this->enrichReturnItems($returns->items());
 
         try {
             $rawSummary = DB::table('cut_off_returns')
@@ -101,57 +50,80 @@ class CutOffReturnController extends Controller
                     COALESCE(SUM(CASE WHEN marketplace = 'SH' THEN 1 ELSE 0 END), 0) as total_shopee,
                     COALESCE(SUM(CASE WHEN marketplace = 'TT' THEN 1 ELSE 0 END), 0) as total_tokopedia,
                     COALESCE(SUM(CASE WHEN no_pesanan_baru IS NOT NULL AND no_pesanan_baru != '' THEN 1 ELSE 0 END), 0) as total_pesanan_baru,
-                    {$needsActionSql}
                     COALESCE(SUM(CASE WHEN marketplace IS NOT NULL AND marketplace NOT IN ('SH', 'TT') THEN 1 ELSE 0 END), 0) as total_lainnya
                 ")
                 ->first();
 
+            $awaitingCount   = CutOffReturn::query()->forStage('awaiting_appeal')->count();
+            $otwCount        = CutOffReturn::query()->forStage('otw_office')->count();
+            $submittedCount  = CutOffReturn::query()->forStage('appeal_submitted')->count();
+            $noAppealCount   = CutOffReturn::query()->forStage('no_appeal_needed')->count();
+
             $summary = [
-                'total_retur'        => (int) ($rawSummary->total_retur ?? 0),
-                'total_shopee'       => (int) ($rawSummary->total_shopee ?? 0),
-                'total_tokopedia'    => (int) ($rawSummary->total_tokopedia ?? 0),
-                'total_pesanan_baru' => (int) ($rawSummary->total_pesanan_baru ?? 0),
-                'total_needs_action' => (int) ($rawSummary->total_needs_action ?? 0),
-                'total_lainnya'      => (int) ($rawSummary->total_lainnya ?? 0),
+                'total_retur'            => (int) ($rawSummary->total_retur ?? 0),
+                'total_shopee'           => (int) ($rawSummary->total_shopee ?? 0),
+                'total_tokopedia'        => (int) ($rawSummary->total_tokopedia ?? 0),
+                'total_pesanan_baru'     => (int) ($rawSummary->total_pesanan_baru ?? 0),
+                'total_needs_action'     => $awaitingCount,
+                'total_awaiting_appeal'  => $awaitingCount,
+                'total_otw_office'       => $otwCount,
+                'total_appeal_submitted' => $submittedCount,
+                'total_no_appeal_needed' => $noAppealCount,
+                'total_lainnya'          => (int) ($rawSummary->total_lainnya ?? 0),
             ];
         } catch (\Throwable $e) {
             $summary = [
-                'total_retur'        => 0,
-                'total_shopee'       => 0,
-                'total_tokopedia'    => 0,
-                'total_pesanan_baru' => 0,
-                'total_needs_action' => 0,
-                'total_lainnya'      => 0,
+                'total_retur'            => 0,
+                'total_shopee'           => 0,
+                'total_tokopedia'        => 0,
+                'total_pesanan_baru'     => 0,
+                'total_needs_action'     => 0,
+                'total_awaiting_appeal'  => 0,
+                'total_otw_office'       => 0,
+                'total_appeal_submitted' => 0,
+                'total_no_appeal_needed' => 0,
+                'total_lainnya'          => 0,
             ];
         }
 
-        // Ambil daftar kasus retur/sengketa yang butuh respon / memiliki batas waktu aktif
-        $disputeTasks = collect();
-        if ($hasNeedsAction || $hasDueDate) {
-            try {
-                $disputeTasks = CutOffReturn::query()
-                    ->where(function ($q) use ($hasNeedsAction, $hasDueDate) {
-                        if ($hasNeedsAction) {
-                            $q->where('needs_action', true);
-                        }
-                        if ($hasDueDate) {
-                            $method = $hasNeedsAction ? 'orWhere' : 'where';
-                            $q->{$method}(function ($sub) {
-                                $sub->whereNotNull('due_date')
-                                    ->where('due_date', '>=', now()->subDay());
-                            });
-                        }
-                    })
-                    ->when($hasDueDate, function ($q) {
-                        $q->orderByRaw('CASE WHEN due_date IS NOT NULL AND due_date >= NOW() THEN 0 ELSE 1 END ASC')
-                          ->orderBy('due_date', 'asc');
-                    })
-                    ->take(15)
-                    ->get();
-            } catch (\Throwable $e) {
-                $disputeTasks = collect();
-            }
+        // Ambil daftar kasus per tahap workflow secara terpisah untuk widget monitoring
+        $nowStr = now()->toDateTimeString();
+        try {
+            $awaitingTasks = CutOffReturn::query()
+                ->forStage('awaiting_appeal')
+                ->orderByRaw('CASE WHEN due_date IS NOT NULL AND due_date >= ? THEN 0 ELSE 1 END ASC', [$nowStr])
+                ->orderBy('due_date', 'asc')
+                ->take(30)
+                ->get();
+
+            $otwTasks = CutOffReturn::query()
+                ->forStage('otw_office')
+                ->orderByRaw('CASE WHEN estimated_arrival_at IS NOT NULL THEN 0 ELSE 1 END ASC')
+                ->orderBy('estimated_arrival_at', 'asc')
+                ->take(30)
+                ->get();
+
+            $submittedTasks = CutOffReturn::query()
+                ->forStage('appeal_submitted')
+                ->orderByDesc('dispute_action_at')
+                ->orderByDesc('updated_at')
+                ->take(30)
+                ->get();
+
+            $this->enrichReturnItems($awaitingTasks->all());
+            $this->enrichReturnItems($otwTasks->all());
+            $this->enrichReturnItems($submittedTasks->all());
+        } catch (\Throwable $e) {
+            $awaitingTasks  = collect();
+            $otwTasks       = collect();
+            $submittedTasks = collect();
         }
+
+        $stageTasks = [
+            'awaiting_appeal'  => $awaitingTasks,
+            'otw_office'       => $otwTasks,
+            'appeal_submitted' => $submittedTasks,
+        ];
 
         $marketplaces = CutOffReturn::query()
             ->select('marketplace', DB::raw('count(*) as count'))
@@ -171,7 +143,8 @@ class CutOffReturnController extends Controller
             'returns'      => $returns,
             'filters'      => $filters,
             'summary'      => $summary,
-            'disputeTasks' => $disputeTasks,
+            'disputeTasks' => $awaitingTasks,
+            'stageTasks'   => $stageTasks,
             'marketplaces' => $marketplaces,
         ]);
     }
@@ -325,6 +298,30 @@ class CutOffReturnController extends Controller
                 }
             }
 
+            // Sinkronkan status banding manual di modal Edit agar selaras dengan workflow stage
+            if (array_key_exists('tgl_banding', $validated)) {
+                $tglBandingLower = strtolower(trim((string) ($validated['tgl_banding'] ?? '')));
+                $actorName = $request->user()?->name ?? 'Admin';
+                if (str_contains($tglBandingLower, 'tidak perlu')) {
+                    $validated['dispute_action'] = 'no_appeal_needed';
+                    $validated['dispute_action_at'] = now();
+                    $validated['dispute_action_by'] = $actorName;
+                    $validated['needs_action'] = false;
+                } elseif (str_contains($tglBandingLower, 'sudah')) {
+                    $validated['dispute_action'] = 'appeal_submitted';
+                    $validated['dispute_action_at'] = now();
+                    $validated['dispute_action_by'] = $actorName;
+                    $validated['needs_action'] = false;
+                } elseif (str_contains($tglBandingLower, 'belum') || $tglBandingLower === '') {
+                    $validated['dispute_action'] = null;
+                    $validated['dispute_action_at'] = null;
+                    $validated['dispute_action_by'] = null;
+                    $validated['dispute_action_note'] = null;
+                    $validated['tgl_banding'] = null;
+                }
+            }
+
+            CutOffReturn::ensureReturnStageSchema();
             $cutOffReturn->update($validated);
 
             $label = $cutOffReturn->no_retur ?: $cutOffReturn->id;
@@ -336,6 +333,118 @@ class CutOffReturnController extends Controller
                 'trace' => $e->getTraceAsString(),
             ]);
             return back()->with('error', "Gagal menyimpan perubahan: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Aksi cepat Admin untuk menandai status pengajuan banding atau diterima tanpa banding.
+     */
+    public function disputeAction(Request $request, CutOffReturn $cutOffReturn): RedirectResponse
+    {
+        if ($request->user() && in_array($request->user()->role?->name, ['Management', 'Direktur'])) {
+            abort(403, 'Akses ditolak. Akun Direktur / Management hanya memiliki izin melihat data (read-only).');
+        }
+
+        CutOffReturn::ensureReturnStageSchema();
+
+        $validated = $request->validate([
+            'action' => ['required', 'in:appeal_submitted,no_appeal_needed,reopen'],
+            'note'   => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $actorName = $request->user()?->name ?? 'Admin';
+        $note      = trim((string) ($validated['note'] ?? ''));
+        $label     = $cutOffReturn->no_retur ?: $cutOffReturn->no_invoice_mp ?: $cutOffReturn->id;
+
+        if ($validated['action'] === 'appeal_submitted') {
+            $cutOffReturn->update([
+                'dispute_action'      => 'appeal_submitted',
+                'dispute_action_at'   => now(),
+                'dispute_action_by'   => $actorName,
+                'dispute_action_note' => $note !== '' ? $note : null,
+                'needs_action'        => false,
+                'tgl_banding'         => 'Sudah Banding (' . now('Asia/Jakarta')->format('d M Y') . ')',
+            ]);
+
+            return back()->with('success', "Retur #{$label} ditandai Sudah Diajukan Banding.");
+        }
+
+        if ($validated['action'] === 'no_appeal_needed') {
+            $cutOffReturn->update([
+                'dispute_action'      => 'no_appeal_needed',
+                'dispute_action_at'   => now(),
+                'dispute_action_by'   => $actorName,
+                'dispute_action_note' => $note !== '' ? $note : 'Diterima / Tidak perlu ajukan banding',
+                'needs_action'        => false,
+                'tgl_banding'         => 'Tidak Perlu Banding',
+            ]);
+
+            return back()->with('success', "Retur #{$label} diterima tanpa perlu banding.");
+        }
+
+        $cutOffReturn->update([
+            'dispute_action'      => null,
+            'dispute_action_at'   => null,
+            'dispute_action_by'   => null,
+            'dispute_action_note' => null,
+            'needs_action'        => true,
+            'tgl_banding'         => null,
+        ]);
+
+        return back()->with('success', "Status banding retur #{$label} dibuka kembali ke antrean validasi.");
+    }
+
+    /**
+     * Lengkapi nomer JL dan SKU singkat dari tabel cut_off_orders.
+     */
+    private function enrichReturnItems(array $items): void
+    {
+        if (empty($items)) {
+            return;
+        }
+
+        try {
+            if (! Schema::hasTable('cut_off_orders')) {
+                return;
+            }
+
+            $orderNumbers = collect();
+            foreach ($items as $item) {
+                if (! empty($item->no_pesanan_baru)) {
+                    $orderNumbers->push($item->no_pesanan_baru);
+                }
+                if (! empty($item->no_invoice_mp)) {
+                    $orderNumbers->push($item->no_invoice_mp);
+                }
+            }
+
+            if ($orderNumbers->isEmpty()) {
+                return;
+            }
+
+            $matchedOrders = DB::table('cut_off_orders')
+                ->whereIn('order_number', $orderNumbers->unique())
+                ->select(['order_number', 'jl_number', 'sku_utama'])
+                ->get()
+                ->keyBy('order_number');
+
+            foreach ($items as $item) {
+                $matched = $matchedOrders[$item->no_pesanan_baru]
+                    ?? $matchedOrders[$item->no_invoice_mp]
+                    ?? null;
+
+                if (empty($item->no_invoice_baru) && $matched && ! empty($matched->jl_number)) {
+                    $item->no_invoice_baru = $matched->jl_number;
+                }
+
+                if ($matched && ! empty($matched->sku_utama)) {
+                    if (empty($item->nama_barang_mp) || strlen($item->nama_barang_mp) > 30 || stripos($item->nama_barang_mp, 'RECORD') !== false) {
+                        $item->nama_barang_mp = $matched->sku_utama;
+                    }
+                }
+            }
+        } catch (\Throwable) {
+            // Abaikan jika query order tidak tersedia
         }
     }
 

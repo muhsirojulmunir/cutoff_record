@@ -1250,6 +1250,8 @@ class TiktokSyncService
             Log::warning('TikTok Returns API search exception: ' . $e->getMessage());
         }
 
+        CutOffReturn::ensureReturnStageSchema();
+
         $createdCount = 0;
         $updatedCount = 0;
         $ordersLinkedCount = 0;
@@ -1283,12 +1285,13 @@ class TiktokSyncService
                 $status = trim((string) ($ret['return_status'] ?? $ret['status'] ?? ''));
                 $statusUpper = strtoupper($status);
                 $dueDateEpoch = ! empty($ret['deadline']) ? (int) $ret['deadline'] : (! empty($ret['due_date']) ? (int) $ret['due_date'] : null);
+                if ($dueDateEpoch && $dueDateEpoch > 9999999999) {
+                    $dueDateEpoch = (int) ($dueDateEpoch / 1000);
+                }
                 $dueDate = $dueDateEpoch ? Carbon::createFromTimestamp($dueDateEpoch, 'Asia/Jakarta') : null;
                 $refundAmount = ! empty($ret['refund_amount'])
                     ? (float) $ret['refund_amount']
                     : (! empty($ret['return_amount']) ? (float) $ret['return_amount'] : null);
-                $needsAction = in_array($statusUpper, ['REQUESTED', 'AWAITING_SELLER_REVIEW', 'AWAITING_SELLER_APPROVAL', 'PENDING_SELLER_RESPONSE'], true)
-                    || ($dueDateEpoch && $dueDateEpoch > time() && ! in_array($statusUpper, ['COMPLETED', 'CANCELLED', 'CLOSED', 'REJECTED'], true));
 
                 $keteranganParts = [];
                 if (! empty($status)) $keteranganParts[] = "[{$status}]";
@@ -1306,8 +1309,22 @@ class TiktokSyncService
                     })
                     ->first();
 
+                $orderCourier = ! empty($orderId)
+                    ? CutOffOrder::where('order_number', $orderId)->value('shipping_courier')
+                    : null;
+
+                $stagePayload = CutOffReturn::resolveSyncStagePayload([
+                    'return_status'           => $status,
+                    'return_logistics_status' => $ret['reverse_logistics_status'] ?? $ret['logistics_status'] ?? $ret['shipment_status'] ?? null,
+                    'due_date_epoch'          => $dueDateEpoch,
+                    'shipped_epoch'           => $ret['handover_time'] ?? $ret['ship_time'] ?? $ret['update_time'] ?? $createTime,
+                    'api_eta_epoch'           => $ret['estimated_delivery_time'] ?? $ret['delivery_due_date'] ?? null,
+                    'courier'                 => $ret['return_provider_name'] ?? $orderCourier ?? '',
+                    'existing'                => $existing,
+                ]);
+
                 if ($existing) {
-                    $existing->update([
+                    $existing->update(array_merge([
                         'nama_barang_mp' => $itemName ?: $existing->nama_barang_mp,
                         'jml_produk_mp'  => $totalQty ?: $existing->jml_produk_mp,
                         'keterangan'     => $keterangan ?: $existing->keterangan,
@@ -1316,13 +1333,12 @@ class TiktokSyncService
                         'no_invoice_mp'  => $orderId ?: $existing->no_invoice_mp,
                         'due_date'       => $dueDate ?: $existing->due_date,
                         'return_status'  => $status ?: $existing->return_status,
-                        'needs_action'   => $needsAction,
                         'refund_amount'  => $refundAmount ?: $existing->refund_amount,
-                    ]);
+                    ], $stagePayload));
                     $updatedCount++;
                 } else {
                     $lastNoUrut++;
-                    CutOffReturn::create([
+                    CutOffReturn::create(array_merge([
                         'no_urut'        => $lastNoUrut,
                         'marketplace'    => 'TT',
                         'tgl_input_mp'   => $returnDate,
@@ -1335,9 +1351,8 @@ class TiktokSyncService
                         'barcode'        => $trackingNumber,
                         'due_date'       => $dueDate,
                         'return_status'  => $status ?: null,
-                        'needs_action'   => $needsAction,
                         'refund_amount'  => $refundAmount,
-                    ]);
+                    ], $stagePayload));
                     $createdCount++;
                 }
 

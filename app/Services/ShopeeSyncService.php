@@ -2113,10 +2113,13 @@ class ShopeeSyncService
             ];
         }
 
-        // Ambil detail retur untuk mendapatkan due_date dan nominal refund resmi dari Shopee
+        // Pastikan kolom stage lifecycle retur tersedia
+        CutOffReturn::ensureReturnStageSchema();
+
+        // Ambil detail retur untuk mendapatkan due_date, logistics_status, dan nominal refund resmi dari Shopee
         foreach ($allReturns as $returnSn => &$ret) {
             $st = strtoupper((string) ($ret['status'] ?? ''));
-            if (empty($ret['due_date']) && ! in_array($st, ['CANCELLED', 'CLOSED', 'REFUND_PAID'], true)) {
+            if ((empty($ret['due_date']) || empty($ret['logistics_status'])) && ! in_array($st, ['CANCELLED', 'CLOSED', 'REFUND_PAID'], true)) {
                 try {
                     $detail = $this->fetchReturnDetailRaw($account, (string) $returnSn);
                     if (! empty($detail)) {
@@ -2187,8 +2190,6 @@ class ShopeeSyncService
                 $refundAmount = ! empty($ret['amount_before_discount'])
                     ? (float) $ret['amount_before_discount']
                     : (! empty($ret['refund_amount']) ? (float) $ret['refund_amount'] : null);
-                $needsAction = in_array($statusUpper, ['REQUESTED', 'SELLER_DISPUTE_PENDING', 'AWAITING_SELLER_REVIEW', 'PENDING_SELLER_CONFIRMATION', 'PROCESSING'], true)
-                    || ($dueDateEpoch && $dueDateEpoch > time() && ! in_array($statusUpper, ['ACCEPTED', 'CANCELLED', 'CLOSED', 'REFUND_PAID', 'SELLER_DISPUTE'], true));
 
                 $keteranganParts = [];
                 if (! empty($status)) {
@@ -2211,8 +2212,22 @@ class ShopeeSyncService
                     })
                     ->first();
 
+                $orderCourier = ! empty($orderSn)
+                    ? CutOffOrder::where('order_number', $orderSn)->value('shipping_courier')
+                    : null;
+
+                $stagePayload = CutOffReturn::resolveSyncStagePayload([
+                    'return_status'           => $status,
+                    'return_logistics_status' => $ret['logistics_status'] ?? $ret['reverse_logistics_status'] ?? null,
+                    'due_date_epoch'          => $dueDateEpoch,
+                    'shipped_epoch'           => $ret['return_pickup_time'] ?? $ret['pickup_time'] ?? $ret['shipped_time'] ?? $ret['update_time'] ?? $createTime,
+                    'api_eta_epoch'           => $ret['estimated_delivery_time'] ?? $ret['delivery_due_date'] ?? $ret['reverse_estimated_delivery_time'] ?? null,
+                    'courier'                 => $ret['shipping_carrier'] ?? $orderCourier ?? '',
+                    'existing'                => $existing,
+                ]);
+
                 if ($existing) {
-                    $existing->update([
+                    $existing->update(array_merge([
                         'nama_barang_mp' => $itemName,
                         'jml_produk_mp'  => $totalQty,
                         'keterangan'     => $keterangan ?: $existing->keterangan,
@@ -2221,13 +2236,12 @@ class ShopeeSyncService
                         'no_invoice_mp'  => $orderSn ?: $existing->no_invoice_mp,
                         'due_date'       => $dueDate ?: $existing->due_date,
                         'return_status'  => $status ?: $existing->return_status,
-                        'needs_action'   => $needsAction,
                         'refund_amount'  => $refundAmount ?: $existing->refund_amount,
-                    ]);
+                    ], $stagePayload));
                     $updatedCount++;
                 } else {
                     $lastNoUrut++;
-                    CutOffReturn::create([
+                    CutOffReturn::create(array_merge([
                         'no_urut'        => $lastNoUrut,
                         'marketplace'    => 'SH',
                         'tgl_input_mp'   => $returnDate,
@@ -2240,9 +2254,8 @@ class ShopeeSyncService
                         'barcode'        => $trackingNumber,
                         'due_date'       => $dueDate,
                         'return_status'  => $status ?: null,
-                        'needs_action'   => $needsAction,
                         'refund_amount'  => $refundAmount,
-                    ]);
+                    ], $stagePayload));
                     $createdCount++;
                 }
 

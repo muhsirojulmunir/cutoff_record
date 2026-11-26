@@ -30,7 +30,16 @@ interface ReturnRow {
   no_pesanan_baru: string | null;
   due_date?: string | null;
   return_status?: string | null;
+  return_logistics_status?: string | null;
+  return_shipped_at?: string | null;
+  estimated_arrival_at?: string | null;
+  arrival_eta_source?: string | null;
   needs_action?: boolean | null;
+  dispute_action?: string | null;
+  dispute_action_at?: string | null;
+  dispute_action_by?: string | null;
+  dispute_action_note?: string | null;
+  workflow_stage?: 'otw_office' | 'awaiting_appeal' | 'appeal_submitted' | 'no_appeal_needed' | 'resolved';
   refund_amount?: number | null;
   seller_solution?: string | null;
   seller_center_url?: string | null;
@@ -57,6 +66,7 @@ interface Props {
     search?: string;
     marketplace?: string;
     needs_action?: string;
+    stage?: string;
     date_from?: string;
     date_to?: string;
     per_page?: string;
@@ -67,9 +77,18 @@ interface Props {
     total_tokopedia: number;
     total_pesanan_baru: number;
     total_needs_action?: number;
+    total_awaiting_appeal?: number;
+    total_otw_office?: number;
+    total_appeal_submitted?: number;
+    total_no_appeal_needed?: number;
     total_lainnya: number;
   };
   disputeTasks?: ReturnRow[];
+  stageTasks?: {
+    awaiting_appeal: ReturnRow[];
+    otw_office: ReturnRow[];
+    appeal_submitted: ReturnRow[];
+  };
   marketplaces: { name: string; count: number }[];
   flash?: {
     success?: string;
@@ -163,6 +182,56 @@ function ChannelBadge({ mp }: { mp: string | null }) {
 }
 
 // ---------------------------------------------------------------------------
+// Helper Label Logistik & Resolusi Tahap Retur
+// ---------------------------------------------------------------------------
+function getLogisticsStatusLabel(raw?: string | null): string {
+  const code = (raw || '').toUpperCase().trim();
+  switch (code) {
+    case 'LOGISTICS_REQUEST_CREATED':
+    case 'AWAITING_BUYER_SHIP':
+    case 'LOGISTICS_READY':
+    case 'WAIT_FOR_PICKUP':
+      return 'Menunggu Penjemputan Kurir';
+    case 'LOGISTICS_PICKUP_DONE':
+    case 'PICKUP_DONE':
+    case 'BUYER_SHIPPED_ITEM':
+    case 'SHIPPED':
+      return 'Dalam Perjalanan Kurir';
+    case 'LOGISTICS_IN_TRANSIT':
+    case 'IN_TRANSIT':
+    case 'SELLER_RECEIVING':
+      return 'Sedang Dikirim ke Kantor';
+    case 'LOGISTICS_DELIVERY_DONE':
+    case 'DELIVERED':
+    case 'DELIVERY_DONE':
+    case 'ARRIVED':
+      return 'Paket Tiba di Kantor';
+    default:
+      return code ? code.replace(/_/g, ' ') : 'Dalam Pengiriman Retur';
+  }
+}
+
+function getEffectiveStage(row: ReturnRow): 'otw_office' | 'awaiting_appeal' | 'appeal_submitted' | 'no_appeal_needed' | 'resolved' {
+  if (row.workflow_stage) return row.workflow_stage;
+
+  const disputeAction = (row.dispute_action || '').toLowerCase();
+  const tglBanding = (row.tgl_banding || '').toLowerCase();
+  const st = (row.return_status || '').toUpperCase();
+  const log = (row.return_logistics_status || '').toUpperCase();
+
+  if (disputeAction === 'no_appeal_needed' || tglBanding.includes('tidak perlu')) return 'no_appeal_needed';
+  if (['ACCEPTED', 'CANCELLED', 'CLOSED', 'REFUND_PAID', 'COMPLETED', 'REJECTED'].includes(st)) return 'resolved';
+  if (disputeAction === 'appeal_submitted' || ['SELLER_DISPUTE', 'DISPUTING', 'DISPUTE_ONGOING', 'SELLER_DISPUTED'].includes(st) || tglBanding.includes('sudah')) return 'appeal_submitted';
+  if (!row.tgl_terima_brg && ['LOGISTICS_REQUEST_CREATED', 'LOGISTICS_PICKUP_DONE', 'LOGISTICS_IN_TRANSIT', 'IN_TRANSIT', 'PICKUP_DONE', 'SHIPPED', 'BUYER_SHIPPED_ITEM', 'SELLER_RECEIVING', 'AWAITING_BUYER_SHIP'].includes(log)) {
+    return 'otw_office';
+  }
+  if (row.needs_action || ['PROCESSING', 'REQUESTED', 'SELLER_DISPUTE_PENDING', 'AWAITING_SELLER_REVIEW'].includes(st)) {
+    return 'awaiting_appeal';
+  }
+  return 'resolved';
+}
+
+// ---------------------------------------------------------------------------
 // Helper Estimasi / Resolusi Batas Waktu Banding
 // ---------------------------------------------------------------------------
 function resolveDisputeDeadline(row: ReturnRow): string | null {
@@ -182,10 +251,7 @@ function resolveDisputeDeadline(row: ReturnRow): string | null {
     try {
       const inputDate = new Date(row.tgl_input_mp);
       if (!isNaN(inputDate.getTime())) {
-        // Estimasi respon awal sengketa jika baru diajukan (48 jam)
         const estimated = new Date(inputDate.getTime() + (48 * 3600 * 1000));
-        // HANYA gunakan estimasi awal jika waktu tersebut MASIH berjalan di masa depan
-        // Jangan pernah menampilkan "Waktu Banding Berakhir" dari estimasi awal jika status di Shopee masih aktif [PROCESSING]!
         if (estimated.getTime() > Date.now()) {
           return estimated.toISOString();
         }
@@ -196,6 +262,78 @@ function resolveDisputeDeadline(row: ReturnRow): string | null {
   }
 
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Komponen ETA Paket Dalam Perjalanan ke Kantor (OTW)
+// ---------------------------------------------------------------------------
+function EtaArrivalBadge({
+  estimatedArrivalAt,
+  shippedAt,
+  etaSource,
+  compact = false,
+}: {
+  estimatedArrivalAt?: string | null;
+  shippedAt?: string | null;
+  etaSource?: string | null;
+  compact?: boolean;
+}) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  let text = 'Dalam perjalanan ke kantor';
+  let isOverdue = false;
+
+  if (estimatedArrivalAt) {
+    const etaTime = new Date(estimatedArrivalAt).getTime();
+    if (!isNaN(etaTime)) {
+      const diffMs = etaTime - now;
+      const prefix = etaSource === 'api' ? 'Akan tiba' : 'Est. tiba ~';
+      if (diffMs > 0) {
+        const hours = Math.floor((diffMs / (1000 * 60 * 60)) % 24);
+        const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        const minutes = Math.floor((diffMs / (1000 * 60)) % 60);
+        if (days > 0) {
+          text = `${prefix}${days} hari ${hours} jam`;
+        } else if (hours > 0) {
+          text = `${prefix}${hours} jam ${minutes} mnt`;
+        } else {
+          text = `${prefix}< 1 jam`;
+        }
+      } else {
+        isOverdue = true;
+        text = 'Segera tiba · Cek resi';
+      }
+    }
+  } else if (shippedAt) {
+    const shipTime = new Date(shippedAt).getTime();
+    if (!isNaN(shipTime)) {
+      const elapsedMs = Math.max(0, now - shipTime);
+      const days = Math.floor(elapsedMs / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((elapsedMs / (1000 * 60 * 60)) % 24);
+      text = days > 0 ? `OTW sejak ${days} hari ${hours} jam` : `OTW sejak ${hours} jam lalu`;
+    }
+  }
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[10px] font-bold border whitespace-nowrap ${
+        isOverdue
+          ? 'bg-amber-50 text-amber-800 border-amber-200'
+          : 'bg-sky-50 text-sky-800 border-sky-200'
+      }`}
+      title={estimatedArrivalAt ? `Estimasi tiba: ${formatDate(estimatedArrivalAt)}` : 'Dalam pengiriman menuju gudang/kantor'}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={compact ? 'w-3 h-3 shrink-0' : 'w-3.5 h-3.5 shrink-0'}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" />
+      </svg>
+      <span>{text}</span>
+    </span>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -216,11 +354,17 @@ function DisputeCountdown({ dueDateStr, compact = false }: { dueDateStr: string 
 
   const diffMs = dueTime - now;
 
+  const clockIcon = (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3 shrink-0">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+
   if (diffMs <= 0) {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
-        <span>⏱️</span>
-        <span>Waktu Banding Berakhir</span>
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap">
+        {clockIcon}
+        <span>Batas Waktu Berakhir</span>
       </span>
     );
   }
@@ -230,40 +374,40 @@ function DisputeCountdown({ dueDateStr, compact = false }: { dueDateStr: string 
   const hours = Math.floor((diffMs / (1000 * 60 * 60)) % 24);
   const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-  const isUrgent = diffMs < 12 * 3600 * 1000; // < 12 jam
-  const isWarning = diffMs < 24 * 3600 * 1000; // < 24 jam
+  const isUrgent = diffMs < 12 * 3600 * 1000;
+  const isWarning = diffMs < 24 * 3600 * 1000;
 
   let timeString = '';
   if (days > 0) {
-    timeString = `Kurang ${days} Hari ${hours} Jam`;
+    timeString = `Tersisa ${days} hari ${hours} jam`;
   } else if (hours > 0) {
-    timeString = `Kurang ${hours} Jam ${minutes} Menit`;
+    timeString = `Tersisa ${hours} jam ${minutes} mnt`;
   } else {
-    timeString = `Kurang ${minutes} Menit ${seconds} Detik`;
+    timeString = `Tersisa ${minutes} mnt ${seconds} dtk`;
   }
 
   const colorClass = isUrgent
-    ? 'bg-rose-50 text-rose-700 border-rose-300 animate-pulse'
+    ? 'bg-rose-50 text-rose-700 border-rose-200'
     : isWarning
-    ? 'bg-amber-50 text-amber-800 border-amber-300'
-    : 'bg-emerald-50 text-emerald-800 border-emerald-300';
+    ? 'bg-amber-50 text-amber-800 border-amber-200'
+    : 'bg-blue-50 text-blue-800 border-blue-200';
 
   if (compact) {
     return (
       <span
-        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold border ${colorClass} whitespace-nowrap shadow-xs`}
+        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold border ${colorClass} whitespace-nowrap`}
         title={`Batas Waktu Banding: ${formatDate(dueDateStr)}`}
       >
-        <span>⏳</span>
+        {clockIcon}
         <span>{timeString}</span>
       </span>
     );
   }
 
   return (
-    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold border ${colorClass} whitespace-nowrap shadow-xs`}>
-      <span className="text-[11px]">⏳</span>
-      <span>Batas Banding: {timeString}</span>
+    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold border ${colorClass} whitespace-nowrap`}>
+      {clockIcon}
+      <span>{timeString}</span>
     </div>
   );
 }
@@ -271,13 +415,58 @@ function DisputeCountdown({ dueDateStr, compact = false }: { dueDateStr: string 
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
-export default function Returns({ returns, filters, summary, disputeTasks = [], marketplaces, flash }: Props) {
+export default function Returns({ returns, filters, summary, disputeTasks = [], stageTasks, marketplaces, flash }: Props) {
   const { auth } = usePage<any>().props;
   const isSuperAdmin =
     auth?.user?.role?.name === 'Super Admin' ||
     (Array.isArray(auth?.user?.roles) && auth.user.roles.includes('Super Admin'));
-  const isManagement = auth?.user?.role?.name === 'Management';
+  const isManagement = auth?.user?.role?.name === 'Management' || auth?.user?.role?.name === 'Direktur';
   const canManage = !isManagement;
+
+  const awaitingTasks = stageTasks?.awaiting_appeal ?? disputeTasks ?? [];
+  const otwTasks = stageTasks?.otw_office ?? [];
+  const submittedTasks = stageTasks?.appeal_submitted ?? [];
+
+  const [activeWidgetTab, setActiveWidgetTab] = useState<'awaiting_appeal' | 'otw_office' | 'appeal_submitted'>(() => {
+    if ((stageTasks?.awaiting_appeal ?? disputeTasks ?? []).length > 0) return 'awaiting_appeal';
+    if ((stageTasks?.otw_office ?? []).length > 0) return 'otw_office';
+    return 'appeal_submitted';
+  });
+
+  const [actionModal, setActionModal] = useState<{ row: ReturnRow; action: 'appeal_submitted' | 'no_appeal_needed' } | null>(null);
+  const [actionNote, setActionNote] = useState('');
+  const [isSubmittingAction, setIsSubmittingAction] = useState(false);
+
+  const openQuickActionModal = (row: ReturnRow, action: 'appeal_submitted' | 'no_appeal_needed') => {
+    setActionModal({ row, action });
+    setActionNote(action === 'no_appeal_needed' ? 'Barang sesuai / Retur diterima tanpa banding' : '');
+  };
+
+  const handleQuickActionSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!actionModal) return;
+    setIsSubmittingAction(true);
+    router.post(
+      `/cut-off-returns/${actionModal.row.id}/dispute-action`,
+      { action: actionModal.action, note: actionNote },
+      {
+        preserveScroll: true,
+        onFinish: () => {
+          setIsSubmittingAction(false);
+          setActionModal(null);
+          setActionNote('');
+        },
+      }
+    );
+  };
+
+  const handleReopenStage = (row: ReturnRow) => {
+    router.post(
+      `/cut-off-returns/${row.id}/dispute-action`,
+      { action: 'reopen' },
+      { preserveScroll: true }
+    );
+  };
 
   const handlePageChange = (rawUrl: string | null) => {
     if (!rawUrl) return;
@@ -293,6 +482,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
   const [search, setSearch] = useState(filters.search ?? '');
   const [selectedMp, setSelectedMp] = useState(filters.marketplace ?? 'all');
   const [needsActionFilter, setNeedsActionFilter] = useState(filters.needs_action ?? '');
+  const [stageFilter, setStageFilter] = useState(filters.stage ?? 'all');
   const [dateFrom, setDateFrom] = useState(filters.date_from ?? '');
   const [dateTo, setDateTo] = useState(filters.date_to ?? '');
 
@@ -513,7 +703,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
 
   // Kunci scroll halaman saat modal aktif
   useEffect(() => {
-    if (editingRow || isCreateModalOpen || isImportModalOpen || isShopeeSyncModalOpen || isTiktokSyncModalOpen) {
+    if (editingRow || actionModal || isCreateModalOpen || isImportModalOpen || isShopeeSyncModalOpen || isTiktokSyncModalOpen) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
@@ -623,6 +813,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
       search,
       marketplace: selectedMp,
       needs_action: needsActionFilter,
+      stage: stageFilter,
       date_from: dateFrom,
       date_to: dateTo,
       ...newFilters,
@@ -633,6 +824,9 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
     }
     if (!nextFilters.needs_action) {
       delete nextFilters.needs_action;
+    }
+    if (nextFilters.stage === 'all' || !nextFilters.stage) {
+      delete nextFilters.stage;
     }
     if (!nextFilters.search) {
       delete nextFilters.search;
@@ -698,7 +892,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                   <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                Akses Management (Read-Only)
+                Akses {auth?.user?.role?.name || 'Management'} (Read-Only)
               </span>
             )}
 
@@ -838,109 +1032,286 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
           {/* Card 5: Task Adu Banding / Respon */}
           <div
             onClick={() => {
-              const nextVal = needsActionFilter === '1' ? '' : '1';
-              setNeedsActionFilter(nextVal);
-              applyFilters({ needs_action: nextVal });
+              const nextStage = stageFilter === 'awaiting_appeal' ? 'all' : 'awaiting_appeal';
+              setStageFilter(nextStage);
+              setNeedsActionFilter(nextStage === 'awaiting_appeal' ? '1' : '');
+              applyFilters({ stage: nextStage, needs_action: nextStage === 'awaiting_appeal' ? '1' : '' });
             }}
             className={`cursor-pointer border rounded-2xl p-5 shadow-xs transition-all ${
-              needsActionFilter === '1'
-                ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20'
-                : (summary.total_needs_action ?? 0) > 0
-                ? 'bg-white border-amber-300 hover:border-amber-400'
+              stageFilter === 'awaiting_appeal' || needsActionFilter === '1'
+                ? 'bg-blue-50/70 border-blue-500 ring-2 ring-blue-500/20'
+                : (summary.total_awaiting_appeal ?? summary.total_needs_action ?? 0) > 0
+                ? 'bg-white border-blue-200 hover:border-blue-400'
                 : 'bg-white border-slate-200 hover:border-slate-300'
             }`}
-            title="Klik untuk filter kasus retur yang butuh tindakan / respon"
+            title="Klik untuk filter kasus retur yang sudah tiba & perlu diajukan banding"
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Adu Banding / Respon</span>
-              <span className={`p-2 rounded-xl ${(summary.total_needs_action ?? 0) > 0 ? 'bg-amber-100 text-amber-700 animate-pulse' : 'bg-slate-100 text-slate-500'}`}>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Segera Banding</span>
+              <span className={`p-2 rounded-xl ${(summary.total_awaiting_appeal ?? summary.total_needs_action ?? 0) > 0 ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </span>
             </div>
-            <p className={`text-2xl font-extrabold mt-3 ${(summary.total_needs_action ?? 0) > 0 ? 'text-amber-600' : 'text-slate-900'}`}>
-              {(summary.total_needs_action ?? 0).toLocaleString('id-ID')}
+            <p className={`text-2xl font-extrabold mt-3 ${(summary.total_awaiting_appeal ?? summary.total_needs_action ?? 0) > 0 ? 'text-[#0B132B]' : 'text-slate-900'}`}>
+              {(summary.total_awaiting_appeal ?? summary.total_needs_action ?? 0).toLocaleString('id-ID')}
             </p>
             <p className="text-xs text-slate-500 mt-1">
-              {(summary.total_needs_action ?? 0) > 0 ? '⚠️ Butuh respon penjual' : 'Semua respon aman'}
+              {(summary.total_otw_office ?? 0) > 0
+                ? `${summary.total_otw_office} paket dalam perjalanan ke kantor`
+                : (summary.total_awaiting_appeal ?? summary.total_needs_action ?? 0) > 0
+                ? 'Paket tiba, butuh validasi / banding'
+                : 'Semua antrean banding aman'}
             </p>
           </div>
         </div>
 
-        {/* Widget Task Adu Banding & Respon Retur Marketplace */}
-        {disputeTasks && disputeTasks.length > 0 && (
-          <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-transparent border border-amber-500/30 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2.5">
-                <span className="flex h-3 w-3 relative">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
-                </span>
-                <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                  Task Adu Banding & Respon Retur Marketplace
-                  <span className="px-2 py-0.5 rounded-full text-xs font-extrabold bg-amber-500 text-slate-950">
-                    {disputeTasks.length} Kasus
-                  </span>
-                </h2>
+        {/* Widget Monitoring Retur & Adu Banding (Gradasi Biru Navy ERP) */}
+        {(awaitingTasks.length > 0 || otwTasks.length > 0 || submittedTasks.length > 0) && (
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
+            {/* Header Gradasi Biru */}
+            <div className="bg-gradient-to-r from-[#0B132B] via-[#132956] to-[#1E3A8A] px-4 sm:px-6 py-4 text-white">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex h-2.5 w-2.5 rounded-full bg-sky-400"></span>
+                    <h2 className="text-sm font-bold uppercase tracking-wider text-white">
+                      Monitoring Retur &amp; Adu Banding Marketplace
+                    </h2>
+                  </div>
+                  <p className="text-xs text-blue-100/80 mt-0.5">
+                    Pantau paket yang sedang dalam perjalanan ke kantor, ajukan banding tepat waktu, atau terima retur yang tidak perlu banding.
+                  </p>
+                </div>
+
+                {/* Tab Status Retur */}
+                <div className="flex flex-wrap items-center gap-1.5 bg-white/10 p-1 rounded-xl border border-white/15">
+                  <button
+                    type="button"
+                    onClick={() => setActiveWidgetTab('awaiting_appeal')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      activeWidgetTab === 'awaiting_appeal'
+                        ? 'bg-white text-[#0B132B] shadow-xs'
+                        : 'text-blue-100 hover:bg-white/10'
+                    }`}
+                  >
+                    <span>Segera Ajukan Banding</span>
+                    <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                      activeWidgetTab === 'awaiting_appeal' ? 'bg-blue-100 text-blue-900' : 'bg-white/15 text-white'
+                    }`}>
+                      {summary.total_awaiting_appeal ?? awaitingTasks.length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveWidgetTab('otw_office')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      activeWidgetTab === 'otw_office'
+                        ? 'bg-white text-[#0B132B] shadow-xs'
+                        : 'text-blue-100 hover:bg-white/10'
+                    }`}
+                  >
+                    <span>Dalam Perjalanan</span>
+                    <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                      activeWidgetTab === 'otw_office' ? 'bg-sky-100 text-sky-900' : 'bg-white/15 text-white'
+                    }`}>
+                      {summary.total_otw_office ?? otwTasks.length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveWidgetTab('appeal_submitted')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      activeWidgetTab === 'appeal_submitted'
+                        ? 'bg-white text-[#0B132B] shadow-xs'
+                        : 'text-blue-100 hover:bg-white/10'
+                    }`}
+                  >
+                    <span>Sudah Diajukan Banding</span>
+                    <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                      activeWidgetTab === 'appeal_submitted' ? 'bg-emerald-100 text-emerald-900' : 'bg-white/15 text-white'
+                    }`}>
+                      {summary.total_appeal_submitted ?? submittedTasks.length}
+                    </span>
+                  </button>
+                </div>
               </div>
-              <p className="text-xs text-slate-500">
-                Segera tanggapi sebelum batas waktu berakhir agar dana tidak otomatis dikembalikan ke pembeli.
-              </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {disputeTasks.map((task) => (
-                <div key={task.id} className="bg-white border border-amber-200/90 rounded-xl p-3.5 shadow-xs flex flex-col justify-between gap-3 hover:border-amber-400 transition-all">
-                  <div>
-                    <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <ChannelBadge mp={task.marketplace} />
-                        <span className="text-xs font-mono font-bold text-slate-800 select-all truncate max-w-[130px]" title={task.no_retur || task.no_invoice_mp || ''}>
-                          {task.no_retur || task.no_invoice_mp}
-                        </span>
+            {/* Body Kartu per Tab */}
+            <div className="p-4 sm:p-5 bg-slate-50/70">
+              {(() => {
+                const activeList =
+                  activeWidgetTab === 'awaiting_appeal'
+                    ? awaitingTasks
+                    : activeWidgetTab === 'otw_office'
+                    ? otwTasks
+                    : submittedTasks;
+
+                if (activeList.length === 0) {
+                  return (
+                    <div className="py-6 text-center text-xs text-slate-500">
+                      {activeWidgetTab === 'awaiting_appeal' && 'Tidak ada paket retur yang menunggu pengajuan banding saat ini.'}
+                      {activeWidgetTab === 'otw_office' && 'Tidak ada paket retur yang sedang dalam perjalanan ke kantor.'}
+                      {activeWidgetTab === 'appeal_submitted' && 'Belum ada kasus retur aktif berstatus Sudah Diajukan Banding.'}
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                    {activeList.map((task) => (
+                      <div key={task.id} className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs flex flex-col justify-between gap-3 hover:border-blue-400 transition-all">
+                        <div>
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <ChannelBadge mp={task.marketplace} />
+                              <span className="text-xs font-mono font-bold text-slate-800 select-all truncate max-w-[130px]" title={task.no_retur || task.no_invoice_mp || ''}>
+                                {task.no_retur || task.no_invoice_mp}
+                              </span>
+                            </div>
+
+                            {activeWidgetTab === 'awaiting_appeal' && (
+                              <DisputeCountdown dueDateStr={resolveDisputeDeadline(task)} compact />
+                            )}
+                            {activeWidgetTab === 'otw_office' && (
+                              <EtaArrivalBadge
+                                estimatedArrivalAt={task.estimated_arrival_at}
+                                shippedAt={task.return_shipped_at || task.tgl_input_mp}
+                                etaSource={task.arrival_eta_source}
+                                compact
+                              />
+                            )}
+                            {activeWidgetTab === 'appeal_submitted' && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200 whitespace-nowrap">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3 shrink-0">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                                </svg>
+                                <span>Sudah Diajukan Banding</span>
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="text-xs font-semibold text-slate-900 truncate" title={task.nama_barang_mp ?? ''}>
+                            {task.nama_barang_mp ?? 'Produk Retur'}
+                          </p>
+
+                          <div className="flex items-center justify-between mt-1 text-[11px] text-slate-500">
+                            <span>Qty: <strong className="text-slate-800">{task.jml_produk_mp ?? 1} pcs</strong></span>
+                            {task.refund_amount ? (
+                              <span className="font-bold text-rose-600">Rp {Number(task.refund_amount).toLocaleString('id-ID')}</span>
+                            ) : null}
+                          </div>
+
+                          {activeWidgetTab === 'otw_office' && (
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-200">
+                                {getLogisticsStatusLabel(task.return_logistics_status || task.return_status)}
+                              </span>
+                              {task.barcode && (
+                                <button
+                                  type="button"
+                                  onClick={() => copyToClipboard(task.barcode, `resi-${task.id}`)}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-mono border border-blue-200 hover:bg-blue-100 cursor-pointer"
+                                  title="Salin resi pengiriman balik"
+                                >
+                                  <span>Resi: {task.barcode}</span>
+                                  {copiedField === `resi-${task.id}` && <span className="text-emerald-700 font-sans font-bold">· Tersalin</span>}
+                                </button>
+                              )}
+                            </div>
+                          )}
+
+                          {task.keterangan && (
+                            <p className="text-[11px] text-slate-600 line-clamp-2 mt-2 bg-slate-50 p-2 rounded-lg border border-slate-100" title={task.keterangan}>
+                              {task.keterangan}
+                            </p>
+                          )}
+
+                          {activeWidgetTab === 'appeal_submitted' && (task.dispute_action_note || task.dispute_action_by || task.tgl_banding) && (
+                            <p className="text-[11px] text-blue-900 mt-2 bg-blue-50/70 p-2 rounded-lg border border-blue-100">
+                              <span className="font-semibold">{task.tgl_banding || 'Sudah Banding'}</span>
+                              {task.dispute_action_by ? ` · oleh ${task.dispute_action_by}` : ''}
+                              {task.dispute_action_note ? ` — "${task.dispute_action_note}"` : ''}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="pt-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                          {task.seller_center_url ? (
+                            <a
+                              href={task.seller_center_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white bg-[#0B132B] hover:bg-[#1E3A8A] transition-all cursor-pointer"
+                            >
+                              <span>Buka Seller Center</span>
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3 h-3">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                              </svg>
+                            </a>
+                          ) : (
+                            <span className="text-[10px] font-medium text-slate-400">
+                              {task.return_status || 'Aktif'}
+                            </span>
+                          )}
+
+                          {canManage && activeWidgetTab === 'awaiting_appeal' && (
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => openQuickActionModal(task, 'appeal_submitted')}
+                                className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer"
+                                title="Tandai kasus ini sudah diajukan banding di Seller Center"
+                              >
+                                Sudah Banding
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openQuickActionModal(task, 'no_appeal_needed')}
+                                className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 transition-colors cursor-pointer"
+                                title="Terima retur ini tanpa perlu ajukan banding"
+                              >
+                                Tidak Perlu
+                              </button>
+                            </div>
+                          )}
+
+                          {canManage && activeWidgetTab === 'otw_office' && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-medium text-slate-400">
+                                Update otomatis saat tiba
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => openQuickActionModal(task, 'no_appeal_needed')}
+                                className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 transition-colors cursor-pointer"
+                                title="Tandai retur ini tidak perlu banding"
+                              >
+                                Tidak Perlu
+                              </button>
+                            </div>
+                          )}
+
+                          {canManage && activeWidgetTab === 'appeal_submitted' && (
+                            <button
+                              type="button"
+                              onClick={() => handleReopenStage(task)}
+                              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-colors cursor-pointer"
+                              title="Kembalikan ke daftar antrean banding"
+                            >
+                              Buka Ulang
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <DisputeCountdown dueDateStr={task.due_date} compact />
-                    </div>
-
-                    <p className="text-xs font-semibold text-slate-900 truncate" title={task.nama_barang_mp ?? ''}>
-                      {task.nama_barang_mp ?? 'Produk Retur'}
-                    </p>
-
-                    <div className="flex items-center justify-between mt-1 text-[11px] text-slate-500">
-                      <span>Qty: <strong className="text-slate-800">{task.jml_produk_mp ?? 1} pcs</strong></span>
-                      {task.refund_amount ? (
-                        <span className="font-bold text-rose-600">Rp {Number(task.refund_amount).toLocaleString('id-ID')}</span>
-                      ) : null}
-                    </div>
-
-                    {task.keterangan && (
-                      <p className="text-[11px] text-slate-600 line-clamp-2 mt-1.5 bg-slate-50 p-1.5 rounded border border-slate-100 italic" title={task.keterangan}>
-                        "{task.keterangan}"
-                      </p>
-                    )}
+                    ))}
                   </div>
-
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider truncate max-w-[120px]">
-                      {task.return_status ? `Status: ${task.return_status}` : 'Menunggu Tindakan'}
-                    </span>
-                    {task.seller_center_url && (
-                      <a
-                        href={task.seller_center_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 transition-all shadow-xs shrink-0 cursor-pointer"
-                      >
-                        <span>Buka Seller Center</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                        </svg>
-                      </a>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })()}
             </div>
           </div>
         )}
@@ -1008,9 +1379,29 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
               )}
             </form>
 
+            {/* Filter Tahap / Status Banding */}
+            <div className="lg:col-span-2">
+              <select
+                value={stageFilter}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setStageFilter(val);
+                  setNeedsActionFilter('');
+                  applyFilters({ stage: val, needs_action: '' });
+                }}
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold focus:outline-none focus:border-[#0B132B]"
+              >
+                <option value="all">Semua Tahap</option>
+                <option value="awaiting_appeal">Segera Banding ({summary.total_awaiting_appeal ?? 0})</option>
+                <option value="otw_office">Dalam Perjalanan ({summary.total_otw_office ?? 0})</option>
+                <option value="appeal_submitted">Sudah Banding ({summary.total_appeal_submitted ?? 0})</option>
+                <option value="no_appeal_needed">Tidak Perlu Banding ({summary.total_no_appeal_needed ?? 0})</option>
+              </select>
+            </div>
+
             {/* Tanggal Terima Dari */}
-            <div className="lg:col-span-3">
-              <div className="flex items-center gap-2">
+            <div className="lg:col-span-2">
+              <div className="flex items-center gap-1.5">
                 <span className="text-[11px] font-bold text-slate-400 uppercase shrink-0">Dari:</span>
                 <input
                   type="date"
@@ -1019,14 +1410,14 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                     setDateFrom(e.target.value);
                     applyFilters({ date_from: e.target.value });
                   }}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs focus:outline-none focus:border-[#0B132B]"
+                  className="w-full px-2.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs focus:outline-none focus:border-[#0B132B]"
                 />
               </div>
             </div>
 
             {/* Tanggal Terima Sampai */}
-            <div className="lg:col-span-3">
-              <div className="flex items-center gap-2">
+            <div className="lg:col-span-2">
+              <div className="flex items-center gap-1.5">
                 <span className="text-[11px] font-bold text-slate-400 uppercase shrink-0">Sampai:</span>
                 <input
                   type="date"
@@ -1035,19 +1426,21 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                     setDateTo(e.target.value);
                     applyFilters({ date_to: e.target.value });
                   }}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs focus:outline-none focus:border-[#0B132B]"
+                  className="w-full px-2.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs focus:outline-none focus:border-[#0B132B]"
                 />
               </div>
             </div>
 
             {/* Action / Reset Button */}
             <div className="lg:col-span-2 flex items-center justify-end gap-2">
-              {(search || (selectedMp && selectedMp !== 'all') || dateFrom || dateTo) && (
+              {(search || (selectedMp && selectedMp !== 'all') || (stageFilter && stageFilter !== 'all') || needsActionFilter || dateFrom || dateTo) && (
                 <button
                   type="button"
                   onClick={() => {
                     setSearch('');
                     setSelectedMp('all');
+                    setStageFilter('all');
+                    setNeedsActionFilter('');
                     setDateFrom('');
                     setDateTo('');
                     router.get('/cut-off-returns', {}, { replace: true });
@@ -1189,7 +1582,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                       </td>
 
                       {/* Keterangan & Banding */}
-                      <td className="py-3.5 px-4 max-w-[200px]">
+                      <td className="py-3.5 px-4 max-w-[230px]">
                         {row.keterangan ? (
                           <p className="text-[11px] text-slate-700 line-clamp-2" title={row.keterangan}>
                             {row.keterangan}
@@ -1199,45 +1592,96 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                         )}
 
                         {(() => {
+                          const stage = getEffectiveStage(row);
                           const deadline = resolveDisputeDeadline(row);
-                          if (deadline) {
+
+                          if (stage === 'otw_office') {
                             return (
-                              <div className="mt-1.5">
-                                <DisputeCountdown dueDateStr={deadline} compact />
+                              <div className="mt-1.5 space-y-1">
+                                <EtaArrivalBadge
+                                  estimatedArrivalAt={row.estimated_arrival_at}
+                                  shippedAt={row.return_shipped_at || row.tgl_input_mp}
+                                  etaSource={row.arrival_eta_source}
+                                  compact
+                                />
+                                <p className="text-[10px] text-slate-500">
+                                  {getLogisticsStatusLabel(row.return_logistics_status || row.return_status)}
+                                </p>
                               </div>
                             );
                           }
 
-                          const ket = (row.keterangan || '').toUpperCase();
-                          const st = (row.return_status || '').toUpperCase();
-                          const isPending = ket.includes('PROCESSING') || ket.includes('REQUESTED') || st === 'PROCESSING' || st === 'REQUESTED' || Boolean(row.needs_action);
+                          if (stage === 'awaiting_appeal') {
+                            return (
+                              <div className="mt-1.5 space-y-1.5">
+                                {deadline ? (
+                                  <DisputeCountdown dueDateStr={deadline} compact />
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200 whitespace-nowrap">
+                                    Tiba · Segera Ajukan Banding
+                                  </span>
+                                )}
+                                {canManage && (
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => openQuickActionModal(row, 'appeal_submitted')}
+                                      className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 cursor-pointer"
+                                    >
+                                      Sudah Banding
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => openQuickActionModal(row, 'no_appeal_needed')}
+                                      className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 cursor-pointer"
+                                    >
+                                      Tidak Perlu
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
 
-                          if (isPending) {
+                          if (stage === 'appeal_submitted') {
                             return (
                               <div className="mt-1.5">
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300 whitespace-nowrap shadow-xs" title="Menunggu respon / validasi penjual di Shopee Seller Center">
-                                  <span>⏳</span>
-                                  <span>Menunggu Validasi Penjual</span>
+                                <span
+                                  className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border bg-blue-50 text-blue-800 border-blue-200 max-w-[200px] truncate"
+                                  title={row.dispute_action_note || row.tgl_banding || 'Sudah Diajukan Banding'}
+                                >
+                                  {row.tgl_banding || 'Sudah Diajukan Banding'}
                                 </span>
                               </div>
                             );
                           }
 
+                          if (stage === 'no_appeal_needed') {
+                            return (
+                              <div className="mt-1.5">
+                                <span
+                                  className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded border bg-slate-100 text-slate-700 border-slate-300 max-w-[200px] truncate"
+                                  title={row.dispute_action_note || 'Tidak Perlu Banding'}
+                                >
+                                  Tidak Perlu Banding
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          if (row.tgl_banding) {
+                            return (
+                              <span
+                                className="inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded border truncate max-w-[180px] bg-slate-50 text-slate-700 border-slate-200"
+                                title={`Status Banding: ${row.tgl_banding}`}
+                              >
+                                {row.tgl_banding}
+                              </span>
+                            );
+                          }
+
                           return null;
                         })()}
-
-                        {row.tgl_banding && (
-                          <span
-                            className={`inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded border truncate max-w-[180px] ${
-                              row.tgl_banding.toLowerCase().includes('sudah')
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                : 'bg-amber-50 text-amber-800 border-amber-200'
-                            }`}
-                            title={`Status Banding: ${row.tgl_banding}`}
-                          >
-                            {row.tgl_banding}
-                          </span>
-                        )}
                       </td>
 
                       {/* Pengajuan & Pesanan Baru */}
@@ -1640,7 +2084,9 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                       <label className="block font-bold text-slate-700 uppercase mb-1 text-[11px]">Status Banding MP</label>
                       <select
                         value={
-                          (editForm.data.tgl_banding || '').toLowerCase().includes('sudah')
+                          (editForm.data.tgl_banding || '').toLowerCase().includes('tidak perlu')
+                            ? 'Tidak Perlu Banding'
+                            : (editForm.data.tgl_banding || '').toLowerCase().includes('sudah')
                             ? 'Sudah Dibanding'
                             : 'Belum Dibanding'
                         }
@@ -1649,6 +2095,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                       >
                         <option value="Belum Dibanding">Belum Dibanding</option>
                         <option value="Sudah Dibanding">Sudah Dibanding</option>
+                        <option value="Tidak Perlu Banding">Tidak Perlu Banding</option>
                       </select>
                     </div>
 
@@ -2389,6 +2836,105 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
               </button>
             </div>
           </div>
+        </div>,
+        document.body
+      )}
+      {/* Modal Konfirmasi Sudah Banding / Tidak Perlu Banding */}
+      {actionModal && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <form onSubmit={handleQuickActionSubmit} className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-md overflow-hidden">
+            <div className="bg-gradient-to-r from-[#0B132B] to-[#1E3A8A] px-5 py-4 text-white flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold">
+                  {actionModal.action === 'appeal_submitted'
+                    ? 'Tandai Sudah Diajukan Banding'
+                    : 'Terima Retur (Tidak Perlu Banding)'}
+                </h3>
+                <p className="text-[11px] text-blue-100 mt-0.5 font-mono">
+                  {actionModal.row.no_retur || actionModal.row.no_invoice_mp}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActionModal(null)}
+                className="p-1 rounded-lg text-blue-100 hover:bg-white/10 cursor-pointer"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs">
+                <p className="font-semibold text-slate-900 truncate">{actionModal.row.nama_barang_mp ?? 'Produk Retur'}</p>
+                {actionModal.row.keterangan && (
+                  <p className="text-[11px] text-slate-500 mt-1 line-clamp-2">{actionModal.row.keterangan}</p>
+                )}
+              </div>
+
+              {actionModal.action === 'no_appeal_needed' && (
+                <div className="space-y-1.5">
+                  <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">Pilih Alasan Cepat</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {['Barang sesuai / Layak', 'Kesalahan kirim toko', 'Retur normal / Diterima'].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setActionNote(preset)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
+                          actionNote === preset
+                            ? 'bg-blue-50 text-blue-800 border-blue-300'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                  {actionModal.action === 'appeal_submitted' ? 'Catatan Banding (Opsional)' : 'Alasan / Catatan'}
+                </label>
+                <textarea
+                  rows={2}
+                  value={actionNote}
+                  onChange={(e) => setActionNote(e.target.value)}
+                  placeholder={
+                    actionModal.action === 'appeal_submitted'
+                      ? 'Misal: Bukti video unboxing sudah diupload di Shopee...'
+                      : 'Misal: Kondisi barang masih bagus & sesuai...'
+                  }
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-blue-600"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={isSubmittingAction}
+                  onClick={() => setActionModal(null)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold cursor-pointer disabled:opacity-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingAction}
+                  className="px-4 py-2 rounded-xl bg-[#0B132B] hover:bg-[#1E3A8A] text-white text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingAction
+                    ? 'Menyimpan...'
+                    : actionModal.action === 'appeal_submitted'
+                    ? 'Konfirmasi Sudah Banding'
+                    : 'Simpan (Tidak Perlu Banding)'}
+                </button>
+              </div>
+            </div>
+          </form>
         </div>,
         document.body
       )}
