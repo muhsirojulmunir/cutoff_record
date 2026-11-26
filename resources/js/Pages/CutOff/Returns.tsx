@@ -1079,25 +1079,25 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
           <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
             {/* Header Gradasi Biru */}
             <div className="bg-gradient-to-r from-[#0B132B] via-[#132956] to-[#1E3A8A] px-4 sm:px-6 py-4 text-white">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                <div>
+              <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+                <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="inline-flex h-2.5 w-2.5 rounded-full bg-sky-400"></span>
+                    <span className="inline-flex h-2.5 w-2.5 rounded-full bg-sky-400 shrink-0"></span>
                     <h2 className="text-sm font-bold uppercase tracking-wider text-white">
                       Monitoring Retur &amp; Adu Banding Marketplace
                     </h2>
                   </div>
                   <p className="text-xs text-blue-100/80 mt-0.5">
-                    Pantau paket yang sedang dalam perjalanan ke kantor, ajukan banding tepat waktu, atau terima retur yang tidak perlu banding.
+                    Pantau paket menuju kantor, batas waktu banding, dan status peninjauan marketplace.
                   </p>
                 </div>
 
-                {/* Tab Status Retur */}
-                <div className="flex flex-wrap items-center gap-1.5 bg-white/10 p-1 rounded-xl border border-white/15">
+                {/* Tab Status Retur (1 baris rapi) */}
+                <div className="inline-flex flex-nowrap items-center gap-1 bg-white/10 p-1 rounded-xl border border-white/15 overflow-x-auto max-w-full shrink-0">
                   <button
                     type="button"
                     onClick={() => setActiveWidgetTab('awaiting_appeal')}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
                       activeWidgetTab === 'awaiting_appeal'
                         ? 'bg-white text-[#0B132B] shadow-xs'
                         : 'text-blue-100 hover:bg-white/10'
@@ -1114,7 +1114,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                   <button
                     type="button"
                     onClick={() => setActiveWidgetTab('otw_office')}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
                       activeWidgetTab === 'otw_office'
                         ? 'bg-white text-[#0B132B] shadow-xs'
                         : 'text-blue-100 hover:bg-white/10'
@@ -1132,7 +1132,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                     <button
                       type="button"
                       onClick={() => setActiveWidgetTab('platform_review')}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
                         activeWidgetTab === 'platform_review'
                           ? 'bg-white text-[#0B132B] shadow-xs'
                           : 'text-blue-100 hover:bg-white/10'
@@ -1150,7 +1150,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                   <button
                     type="button"
                     onClick={() => setActiveWidgetTab('appeal_submitted')}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
                       activeWidgetTab === 'appeal_submitted'
                         ? 'bg-white text-[#0B132B] shadow-xs'
                         : 'text-blue-100 hover:bg-white/10'
