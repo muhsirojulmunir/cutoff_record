@@ -552,6 +552,14 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
       setFisikSelection('');
     }
 
+    const stage = getEffectiveStage(row);
+    const resolvedStatusBanding =
+      stage === 'appeal_submitted'
+        ? (row.tgl_banding || 'Sudah Dibanding')
+        : stage === 'no_appeal_needed'
+        ? 'Tidak Perlu Banding'
+        : (row.tgl_banding || 'Belum Dibanding');
+
     editForm.setData({
       marketplace: row.marketplace ?? '',
       tgl_input_mp: row.tgl_input_mp ?? '',
@@ -567,7 +575,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
       jml_brg_fisik: row.jml_brg_fisik !== null ? String(row.jml_brg_fisik) : '',
       keterangan: row.keterangan ?? '',
       barcode: row.barcode ?? '',
-      tgl_banding: row.tgl_banding || 'Belum Dibanding',
+      tgl_banding: resolvedStatusBanding,
       due_date: row.due_date ? String(row.due_date).slice(0, 16) : '',
       no_pengajuan: row.no_pengajuan ?? '',
       no_pesanan_baru: row.no_pesanan_baru ?? '',
@@ -1314,20 +1322,10 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                             </div>
                           )}
 
-                          {canManage && activeWidgetTab === 'otw_office' && (
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] font-medium text-slate-400">
-                                Update otomatis saat tiba
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => openQuickActionModal(task, 'no_appeal_needed')}
-                                className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 transition-colors cursor-pointer"
-                                title="Tandai retur ini tidak perlu banding"
-                              >
-                                Tidak Perlu
-                              </button>
-                            </div>
+                          {activeWidgetTab === 'otw_office' && (
+                            <span className="text-[10px] font-medium text-slate-400">
+                              Update otomatis saat tiba
+                            </span>
                           )}
 
                           {activeWidgetTab === 'platform_review' && (
@@ -2136,21 +2134,14 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block font-bold text-slate-700 uppercase mb-1 text-[11px]">Status Banding MP</label>
-                      <select
-                        value={
-                          (editForm.data.tgl_banding || '').toLowerCase().includes('tidak perlu')
-                            ? 'Tidak Perlu Banding'
-                            : (editForm.data.tgl_banding || '').toLowerCase().includes('sudah')
-                            ? 'Sudah Dibanding'
-                            : 'Belum Dibanding'
-                        }
-                        onChange={(e) => editForm.setData('tgl_banding', e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 font-semibold text-slate-800 focus:outline-none focus:border-[#0B132B]"
-                      >
-                        <option value="Belum Dibanding">Belum Dibanding</option>
-                        <option value="Sudah Dibanding">Sudah Dibanding</option>
-                        <option value="Tidak Perlu Banding">Tidak Perlu Banding</option>
-                      </select>
+                      <input
+                        type="text"
+                        value={editForm.data.tgl_banding || 'Belum Dibanding'}
+                        readOnly
+                        disabled
+                        className="w-full px-3 py-2 rounded-xl bg-slate-100 text-slate-700 font-semibold border border-slate-200 cursor-not-allowed select-all text-xs"
+                        title="Terisi otomatis dari status marketplace & aksi banding"
+                      />
                     </div>
 
                     <div>

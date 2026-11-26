@@ -310,28 +310,8 @@ class CutOffReturnController extends Controller
                 }
             }
 
-            // Sinkronkan status banding manual di modal Edit agar selaras dengan workflow stage
-            if (array_key_exists('tgl_banding', $validated)) {
-                $tglBandingLower = strtolower(trim((string) ($validated['tgl_banding'] ?? '')));
-                $actorName = $request->user()?->name ?? 'Admin';
-                if (str_contains($tglBandingLower, 'tidak perlu')) {
-                    $validated['dispute_action'] = 'no_appeal_needed';
-                    $validated['dispute_action_at'] = now();
-                    $validated['dispute_action_by'] = $actorName;
-                    $validated['needs_action'] = false;
-                } elseif (str_contains($tglBandingLower, 'sudah')) {
-                    $validated['dispute_action'] = 'appeal_submitted';
-                    $validated['dispute_action_at'] = now();
-                    $validated['dispute_action_by'] = $actorName;
-                    $validated['needs_action'] = false;
-                } elseif (str_contains($tglBandingLower, 'belum') || $tglBandingLower === '') {
-                    $validated['dispute_action'] = null;
-                    $validated['dispute_action_at'] = null;
-                    $validated['dispute_action_by'] = null;
-                    $validated['dispute_action_note'] = null;
-                    $validated['tgl_banding'] = null;
-                }
-            }
+            // Status banding MP dikelola otomatis oleh sync marketplace & aksi banding (tidak diubah manual lewat form edit)
+            unset($validated['tgl_banding']);
 
             CutOffReturn::ensureReturnStageSchema();
             $cutOffReturn->update($validated);
