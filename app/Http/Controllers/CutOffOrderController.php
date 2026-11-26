@@ -1511,7 +1511,7 @@ XML;
     private function ensureManagementReviewReady(): void
     {
         $schemaKey = 'cut_off_management_review_schema_v2';
-        $revokeKey = 'direktur_orders_marketplace_revoked_v1';
+        $revokeKey = 'direktur_orders_marketplace_revoked_v2';
         $store = null;
 
         if (! app()->runningUnitTests()) {
@@ -1556,15 +1556,23 @@ XML;
             if (Schema::hasTable('roles') && Schema::hasTable('permissions') && Schema::hasTable('role_permission')) {
                 $direkturId = DB::table('roles')->where('name', 'Direktur')->value('id');
                 if ($direkturId) {
-                    $revokeIds = DB::table('permissions')
-                        ->whereIn('name', ['orders.shopee', 'orders.tiktok'])
+                    $allowedIds = DB::table('permissions')
+                        ->whereIn('name', [
+                            'orders.cutoff',
+                            'returns.online',
+                            'content_reports.view',
+                            'content_reports.create',
+                            'content_reports.review',
+                        ])
                         ->pluck('id')
                         ->all();
-                    if (! empty($revokeIds)) {
-                        DB::table('role_permission')
-                            ->where('role_id', $direkturId)
-                            ->whereIn('permission_id', $revokeIds)
-                            ->delete();
+                    DB::table('role_permission')->where('role_id', $direkturId)->delete();
+                    $rows = array_map(static fn ($pid) => [
+                        'role_id'       => $direkturId,
+                        'permission_id' => $pid,
+                    ], $allowedIds);
+                    if (! empty($rows)) {
+                        DB::table('role_permission')->insert($rows);
                     }
                 }
                 if ($store !== null) {

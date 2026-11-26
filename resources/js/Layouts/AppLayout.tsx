@@ -4,6 +4,7 @@ import { ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from
 import NotificationBell from '../Components/NotificationBell';
 import SideChatDock from '../Components/CustomerService/SideChatDock';
 import MobileBottomNav from '../Components/MobileBottomNav';
+import DirekturMobileNav from '../Components/DirekturMobileNav';
 import { PageProps } from '../Types';
 
 /** Key sessionStorage untuk menyimpan posisi scroll sidebar antar navigasi Inertia. */
@@ -184,6 +185,41 @@ const navSections: NavSection[] = [
   },
 ];
 
+const direkturNavSections: NavSection[] = [
+  {
+    title: '',
+    items: [
+      {
+        label: 'Pesanan Cut Off',
+        href: '/cut-off-orders',
+        permission: 'orders.cutoff',
+        matchPrefix: true,
+        icon: 'M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z',
+      },
+      {
+        label: 'Retur Online',
+        href: '/cut-off-returns',
+        permission: 'returns.online',
+        matchPrefix: true,
+        icon: 'M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3',
+      },
+      {
+        label: 'Rencana PO',
+        href: '/stock-forecast',
+        matchPrefix: true,
+        icon: 'M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941',
+      },
+      {
+        label: 'Report Harian Konten',
+        href: '/content-reports',
+        permission: 'content_reports.view',
+        matchPrefix: true,
+        icon: 'M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z',
+      },
+    ],
+  },
+];
+
 interface Props {
   children: ReactNode;
   headerRight?: ReactNode;
@@ -247,6 +283,10 @@ export default function AppLayout({ children, headerRight }: Props) {
     user?.role?.name === 'Kreatif' ||
     user?.roles?.includes('Kreatif')
   );
+  const isDirektur = Boolean(
+    !isSuperAdmin &&
+    (user?.role?.name === 'Direktur' || user?.roles?.includes('Direktur'))
+  );
 
   const [isChatDrawerOpen, setIsChatDrawerOpen] = useState(false);
   const [csUnreadCount, setCsUnreadCount] = useState<number>(0);
@@ -263,7 +303,12 @@ export default function AppLayout({ children, headerRight }: Props) {
 
   const currentPath = (url ? url.split('?')[0] : '') || window.location.pathname;
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [menuSearch, setMenuSearch] = useState('');
+
+  useEffect(() => {
+    setMobileDrawerOpen(false);
+  }, [currentPath]);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => readInitialOpenGroups(currentPath));
   const navRef = useRef<HTMLElement>(null);
 
@@ -332,9 +377,10 @@ export default function AppLayout({ children, headerRight }: Props) {
   }
 
   const filteredSections = useMemo(() => {
-    const keyword = menuSearch.trim().toLowerCase();
+    const sourceSections = isDirektur ? direkturNavSections : navSections;
+    const keyword = isDirektur ? '' : menuSearch.trim().toLowerCase();
 
-    return navSections
+    return sourceSections
       .map((section) => {
         const items = section.items
           .map((item) => {
@@ -369,7 +415,7 @@ export default function AppLayout({ children, headerRight }: Props) {
         return { ...section, items };
       })
       .filter((section) => section.items.length > 0);
-  }, [menuSearch, permissions, isSuperAdmin, user]);
+  }, [menuSearch, permissions, isSuperAdmin, isDirektur, user]);
 
   const noMenuFound = menuSearch.trim() !== '' && filteredSections.length === 0;
 
@@ -386,13 +432,23 @@ export default function AppLayout({ children, headerRight }: Props) {
 
   return (
     <div className="h-screen overflow-hidden bg-slate-50 text-slate-900 flex font-sans">
-      {/* Sidebar (Clean Crisp White Modern SaaS) */}
+      {/* Mobile Drawer Backdrop */}
+      {mobileDrawerOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-xs md:hidden"
+          onClick={() => setMobileDrawerOpen(false)}
+        />
+      )}
+
+      {/* Sidebar (Clean Crisp White Modern SaaS — Slide-over Drawer di HP, Fixed di Laptop) */}
       <aside
-        className={`${isKreatif ? 'hidden md:flex ' : 'flex '}${sidebarOpen ? 'w-64' : 'w-[72px]'} ${justLoggedIn ? 'anim-slide-left' : ''} h-full bg-white border-r border-slate-200 transition-[width] duration-200 ease-in-out flex-col z-20 shrink-0 shadow-xs`}
+        className={`${
+          mobileDrawerOpen ? 'fixed inset-y-0 left-0 z-50 flex w-64 shadow-xl' : 'hidden md:flex'
+        } ${sidebarOpen ? 'md:w-64' : 'md:w-[72px]'} ${justLoggedIn ? 'anim-slide-left' : ''} h-full bg-white border-r border-slate-200 transition-[width] duration-200 ease-in-out flex-col md:z-20 shrink-0 shadow-xs`}
       >
         {/* Logo Branding */}
-        <div className={`h-16 flex items-center ${sidebarOpen ? 'px-6 justify-start' : 'px-2 justify-center'} border-b border-slate-100 shrink-0 overflow-hidden`}>
-          {sidebarOpen ? (
+        <div className={`h-16 flex items-center ${sidebarOpen || mobileDrawerOpen ? 'px-6 justify-between' : 'px-2 justify-center'} border-b border-slate-100 shrink-0 overflow-hidden`}>
+          {sidebarOpen || mobileDrawerOpen ? (
             <div className="flex flex-col items-start text-left min-w-0 gap-1">
               <img
                 src="/images/logo-brand.png"
@@ -400,7 +456,7 @@ export default function AppLayout({ children, headerRight }: Props) {
                 className="h-5 w-auto max-w-[148px] object-contain object-left"
               />
               <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold leading-none truncate">
-                ERP & Operasional Sistem
+                {isDirektur ? 'Portal Manajemen' : 'ERP & Operasional Sistem'}
               </span>
             </div>
           ) : (
@@ -411,10 +467,22 @@ export default function AppLayout({ children, headerRight }: Props) {
               title="Record — ERP & Operasional Sistem"
             />
           )}
+          {mobileDrawerOpen && (
+            <button
+              type="button"
+              onClick={() => setMobileDrawerOpen(false)}
+              className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+              aria-label="Tutup menu"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
         </div>
 
-        {/* Pencarian menu */}
-        {sidebarOpen && (
+        {/* Pencarian menu (Disembunyikan di mode Direktur karena hanya 4 menu flat) */}
+        {(sidebarOpen || mobileDrawerOpen) && !isDirektur && (
           <div className="px-3 pt-3 shrink-0">
             <div className="relative">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
@@ -617,22 +685,34 @@ export default function AppLayout({ children, headerRight }: Props) {
         </div>
       </aside>
 
-      {/* Main content container (Reserve space for Right Rail Dock on desktop) */}
-      <div className="flex-1 flex flex-col min-w-0 h-full md:mr-14">
+      {/* Main content container (Reserve space for Right Rail Dock on desktop untuk non-Direktur) */}
+      <div className={`flex-1 flex flex-col min-w-0 h-full ${isDirektur ? '' : 'md:mr-14'}`}>
         {/* Topbar (Crisp White + subtle border) */}
-        <header className={`${justLoggedIn ? 'anim-fade-down anim-d1' : ''} h-16 border-b border-slate-200 bg-white flex items-center justify-between px-6 shrink-0 z-10 shadow-xs`}>
-          {isKreatif ? (
-            <div className="flex items-center gap-2.5">
-              <button
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="hidden md:inline-flex p-2 rounded-xl text-slate-600 hover:text-blue-900 hover:bg-slate-100 transition-all border border-slate-200"
-                title={sidebarOpen ? 'Tutup sidebar' : 'Buka sidebar'}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-                </svg>
-              </button>
-              <div className="flex md:hidden items-center gap-2">
+        <header className={`${justLoggedIn ? 'anim-fade-down anim-d1' : ''} h-14 sm:h-16 border-b border-slate-200 bg-white flex items-center justify-between px-3 sm:px-6 shrink-0 z-10 shadow-xs`}>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="hidden md:inline-flex p-2 rounded-xl text-slate-600 hover:text-blue-900 hover:bg-slate-100 transition-all border border-slate-200 cursor-pointer"
+              title={sidebarOpen ? 'Tutup sidebar' : 'Buka sidebar'}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              </svg>
+            </button>
+
+            {isKreatif || isDirektur ? (
+              <div className="flex md:hidden items-center gap-2 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setMobileDrawerOpen(true)}
+                  className="p-1.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 shrink-0 cursor-pointer"
+                  aria-label="Buka menu"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                  </svg>
+                </button>
                 <div className="h-8 w-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center p-1 shrink-0 shadow-2xs">
                   <img
                     src="/images/logo-mark.png"
@@ -640,47 +720,54 @@ export default function AppLayout({ children, headerRight }: Props) {
                     className="h-full w-full object-contain"
                   />
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-slate-900 leading-tight">Tim Kreatif</span>
-                  <span className="text-[10px] text-slate-500 font-medium">Record Operasional</span>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-bold text-slate-900 leading-tight truncate">
+                    {isDirektur ? 'Direktur' : 'Tim Kreatif'}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-medium truncate">
+                    {isDirektur ? 'Portal Manajemen' : 'Record Operasional'}
+                  </span>
                 </div>
               </div>
-            </div>
-          ) : (
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 rounded-xl text-slate-600 hover:text-blue-900 hover:bg-slate-100 transition-all border border-slate-200"
-              title={sidebarOpen ? 'Tutup sidebar' : 'Buka sidebar'}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-              </svg>
-            </button>
-          )}
-
-          {/* Topbar right items */}
-          <div className="flex items-center gap-2.5">
-            {headerRight}
-
-            {/* Mobile fallback only (< md screens) */}
-            <div className="flex md:hidden items-center gap-2">
+            ) : (
               <button
                 type="button"
-                onClick={() => setIsChatDrawerOpen((prev) => !prev)}
-                className="relative p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all border border-slate-200 cursor-pointer"
-                title="Buka Chat Customer Service"
+                onClick={() => setMobileDrawerOpen(true)}
+                className="md:hidden p-2 rounded-xl text-slate-600 hover:text-blue-900 hover:bg-slate-100 transition-all border border-slate-200 cursor-pointer"
+                aria-label="Buka menu"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a.75.75 0 01-.974-.965 4.966 4.966 0 00.73-1.879C3.642 16.586 3 14.412 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
                 </svg>
-                {csUnreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#EE4D2D] px-1 text-[9px] font-bold text-white shadow-2xs">
-                    {csUnreadCount > 99 ? '99+' : csUnreadCount}
-                  </span>
-                )}
               </button>
-              <NotificationBell queue={queue} />
-            </div>
+            )}
+          </div>
+
+          {/* Topbar right items */}
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+            {headerRight}
+
+            {/* Mobile fallback only (< md screens) — sembunyikan CS & Stock Alert di mode Direktur */}
+            {!isDirektur && (
+              <div className="flex md:hidden items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsChatDrawerOpen((prev) => !prev)}
+                  className="relative p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all border border-slate-200 cursor-pointer"
+                  title="Buka Chat Customer Service"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a.75.75 0 01-.974-.965 4.966 4.966 0 00.73-1.879C3.642 16.586 3 14.412 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+                  </svg>
+                  {csUnreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#EE4D2D] px-1 text-[9px] font-bold text-white shadow-2xs">
+                      {csUnreadCount > 99 ? '99+' : csUnreadCount}
+                    </span>
+                  )}
+                </button>
+                <NotificationBell queue={queue} />
+              </div>
+            )}
 
             <div className="h-4 w-[1px] bg-slate-200 hidden sm:block" />
             <span className="hidden sm:flex items-center gap-2 text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-full px-3 py-1.5">
@@ -689,76 +776,83 @@ export default function AppLayout({ children, headerRight }: Props) {
             </span>
             <button
               onClick={handleLogout}
-              className="flex items-center gap-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 active:bg-rose-800 rounded-xl px-3.5 py-1.5 shadow-2xs transition-all cursor-pointer"
+              className="flex items-center gap-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 active:bg-rose-800 rounded-xl px-2.5 sm:px-3.5 py-1.5 shadow-2xs transition-all cursor-pointer"
               title="Keluar dari sistem"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
               </svg>
-              Keluar
+              <span className="hidden sm:inline">Keluar</span>
             </button>
           </div>
         </header>
 
         {/* Page content */}
-        <main className={`flex-1 min-h-0 p-4 sm:p-6 lg:p-8 overflow-y-auto sidebar-scroll bg-slate-50 ${isKreatif ? 'pb-24 md:pb-8' : ''}`}>
+        <main className={`flex-1 min-h-0 p-3 sm:p-6 lg:p-8 overflow-y-auto sidebar-scroll bg-slate-50 ${isKreatif || isDirektur ? 'pb-24 md:pb-8' : ''}`}>
           <div key={currentPath} className={justLoggedIn ? 'anim-zoom-in anim-d2' : 'page-enter'}>
             {children}
           </div>
         </main>
       </div>
 
-      {/* Shopee-style Right Action Rail (Persis Gambar Shopee Seller Centre) */}
-      <aside className="hidden md:flex fixed top-0 right-0 bottom-0 w-14 z-40 bg-white border-l border-slate-200 flex-col items-center py-3.5 gap-4 shrink-0 select-none shadow-2xs">
-        {/* 1. Profil User Avatar */}
-        <div
-          title={`${user?.name ?? 'User'} (${user?.role?.name ?? 'Super Admin'})`}
-          className="h-9 w-9 rounded-full bg-slate-900 text-white font-bold text-xs flex items-center justify-center ring-2 ring-slate-100 hover:ring-slate-300 transition-all cursor-pointer shadow-2xs"
-        >
-          {initials}
-        </div>
-
-        {/* 2. Notification Bell (Unchanged NotificationBell.tsx) */}
-        <NotificationBell queue={queue} />
-
-        {/* 3. Shopee-style Red Chat Bubble Button */}
-        <button
-          type="button"
-          onClick={() => setIsChatDrawerOpen((prev) => !prev)}
-          title="Chat Customer Service (Shopee & TikTok)"
-          className={`relative h-9 w-9 rounded-full flex items-center justify-center transition-all cursor-pointer ${
-            isChatDrawerOpen
-              ? 'bg-[#EE4D2D] text-white shadow-xs ring-2 ring-orange-300'
-              : 'bg-[#EE4D2D] text-white hover:bg-[#d94122] shadow-2xs hover:scale-105'
-          }`}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            className="h-4.5 w-4.5"
+      {/* Shopee-style Right Action Rail (Disembunyikan di mode Direktur agar ruang lebih lega) */}
+      {!isDirektur && (
+        <aside className="hidden md:flex fixed top-0 right-0 bottom-0 w-14 z-40 bg-white border-l border-slate-200 flex-col items-center py-3.5 gap-4 shrink-0 select-none shadow-2xs">
+          {/* 1. Profil User Avatar */}
+          <div
+            title={`${user?.name ?? 'User'} (${user?.role?.name ?? 'Super Admin'})`}
+            className="h-9 w-9 rounded-full bg-slate-900 text-white font-bold text-xs flex items-center justify-center ring-2 ring-slate-100 hover:ring-slate-300 transition-all cursor-pointer shadow-2xs"
           >
-            <path
-              fillRule="evenodd"
-              d="M4.804 21.644A6.707 6.707 0 006 21.75a6.721 6.721 0 003.583-1.029c.774.182 1.584.279 2.417.279 5.322 0 9.75-3.97 9.75-9 0-5.03-4.428-9-9.75-9s-9.75 3.97-9.75 9c0 2.409 1.025 4.587 2.674 6.192.232.226.277.428.254.543a3.73 3.73 0 01-.814 1.686.75.75 0 00.44 1.223zM8.25 10.875a1.125 1.125 0 100 2.25 1.125 1.125 0 000-2.25zM10.875 12a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zm4.875-1.125a1.125 1.125 0 100 2.25 1.125 1.125 0 000-2.25z"
-              clipRule="evenodd"
-            />
-          </svg>
-          {csUnreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-bold text-white ring-2 ring-white shadow-2xs">
-              {csUnreadCount > 99 ? '99+' : csUnreadCount}
-            </span>
-          )}
-        </button>
-      </aside>
+            {initials}
+          </div>
+
+          {/* 2. Notification Bell (Unchanged NotificationBell.tsx) */}
+          <NotificationBell queue={queue} />
+
+          {/* 3. Shopee-style Red Chat Bubble Button */}
+          <button
+            type="button"
+            onClick={() => setIsChatDrawerOpen((prev) => !prev)}
+            title="Chat Customer Service (Shopee & TikTok)"
+            className={`relative h-9 w-9 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+              isChatDrawerOpen
+                ? 'bg-[#EE4D2D] text-white shadow-xs ring-2 ring-orange-300'
+                : 'bg-[#EE4D2D] text-white hover:bg-[#d94122] shadow-2xs hover:scale-105'
+            }`}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              className="h-4.5 w-4.5"
+            >
+              <path
+                fillRule="evenodd"
+                d="M4.804 21.644A6.707 6.707 0 006 21.75a6.721 6.721 0 003.583-1.029c.774.182 1.584.279 2.417.279 5.322 0 9.75-3.97 9.75-9 0-5.03-4.428-9-9.75-9s-9.75 3.97-9.75 9c0 2.409 1.025 4.587 2.674 6.192.232.226.277.428.254.543a3.73 3.73 0 01-.814 1.686.75.75 0 00.44 1.223zM8.25 10.875a1.125 1.125 0 100 2.25 1.125 1.125 0 000-2.25zM10.875 12a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zm4.875-1.125a1.125 1.125 0 100 2.25 1.125 1.125 0 000-2.25z"
+                clipRule="evenodd"
+              />
+            </svg>
+            {csUnreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-bold text-white ring-2 ring-white shadow-2xs">
+                {csUnreadCount > 99 ? '99+' : csUnreadCount}
+              </span>
+            )}
+          </button>
+        </aside>
+      )}
 
       {/* Slide-out Drawer Panel (Positioned adjacent to Right Rail Dock on desktop) */}
-      <SideChatDock isOpen={isChatDrawerOpen} onClose={() => setIsChatDrawerOpen(false)} />
+      {!isDirektur && (
+        <SideChatDock isOpen={isChatDrawerOpen} onClose={() => setIsChatDrawerOpen(false)} />
+      )}
 
       {/* Navigasi Bawah Khusus Role Kreatif di Layar HP */}
       {isKreatif && (
         <MobileBottomNav unreadChatCount={csUnreadCount} />
       )}
+
+      {/* Navigasi Bawah Khusus Role Direktur di Layar HP */}
+      {isDirektur && <DirekturMobileNav />}
     </div>
   );
 }

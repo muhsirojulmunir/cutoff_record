@@ -46,17 +46,30 @@ class CutOffManagementReviewTest extends TestCase
         ]);
     }
 
-    public function test_direktur_tidak_memiliki_akses_pesanan_shopee_dan_tiktok(): void
+    public function test_direktur_hanya_memiliki_akses_empat_menu_dan_redirect_ke_cut_off(): void
     {
         $direkturPerms = $this->direktur->getPermissions();
 
         $this->assertNotContains('orders.shopee', $direkturPerms);
         $this->assertNotContains('orders.tiktok', $direkturPerms);
+        $this->assertNotContains('dashboard.view', $direkturPerms);
+        $this->assertNotContains('stock.master', $direkturPerms);
+        $this->assertNotContains('cs.view', $direkturPerms);
+        $this->assertNotContains('user.view', $direkturPerms);
+        $this->assertNotContains('role.view', $direkturPerms);
         $this->assertContains('orders.cutoff', $direkturPerms);
         $this->assertContains('returns.online', $direkturPerms);
 
+        $this->actingAs($this->direktur)->get('/')->assertRedirect('/cut-off-orders');
+        $this->actingAs($this->direktur)->get('/dashboard')->assertRedirect('/cut-off-orders');
+        $this->actingAs($this->direktur)->get('/cut-off-orders')->assertOk();
+        $this->actingAs($this->direktur)->get('/cut-off-returns')->assertOk();
+        $this->actingAs($this->direktur)->get('/stock-forecast')->assertOk();
+        $this->actingAs($this->direktur)->get('/content-reports')->assertOk();
+
         $this->actingAs($this->direktur)->get('/shopee-orders')->assertStatus(403);
         $this->actingAs($this->direktur)->get('/tiktok-orders')->assertStatus(403);
+        $this->actingAs($this->direktur)->get('/roles')->assertStatus(403);
     }
 
     public function test_direktur_dapat_memberi_dan_menghapus_tanda_review_pesanan_cut_off(): void

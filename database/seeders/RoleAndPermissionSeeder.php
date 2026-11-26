@@ -113,12 +113,11 @@ class RoleAndPermissionSeeder extends Seeder
 
         if ($direktur) {
             $direktur->permissions()->sync(Permission::whereIn('name', [
-                'dashboard.view', 'cs.view',
-                'orders.cutoff', 'returns.online',
-                'stock.master', 'stock.shopee', 'stock.tiktok', 'stock.view', 'warehouse.view',
-                'customer.view', 'supplier.view', 'product.view', 'category.view', 'sales_order.view', 'purchase_order.view', 'invoice.view',
-                'cash_bank.view', 'cash_transaction.view', 'factory_receivable.view', 'fund_allocation.view',
-                'user.view', 'role.view',
+                'orders.cutoff',
+                'returns.online',
+                'content_reports.view',
+                'content_reports.create',
+                'content_reports.review',
             ])->pluck('id')->toArray());
         }
 

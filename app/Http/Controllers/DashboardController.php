@@ -13,8 +13,12 @@ use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Request $request): \Inertia\Response
+    public function __invoke(Request $request): \Inertia\Response|\Illuminate\Http\RedirectResponse
     {
+        if ($request->user()?->role?->name === 'Direktur') {
+            return redirect()->route('cut-off-orders.index');
+        }
+
         Gate::authorize('dashboard.view');
 
         Carbon::setLocale('id');

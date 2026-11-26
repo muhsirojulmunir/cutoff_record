@@ -61,6 +61,12 @@ class LoginController extends Controller
 
         $request->session()->regenerate();
 
+        $user = Auth::user();
+        $user?->loadMissing('role');
+        if ($user?->role?->name === 'Direktur') {
+            return redirect()->intended(route('cut-off-orders.index'));
+        }
+
         return redirect()->intended(route('dashboard'));
     }
 

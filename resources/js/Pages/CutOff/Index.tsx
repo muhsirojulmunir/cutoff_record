@@ -1495,14 +1495,14 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
     <AppLayout headerRight={liveMonitorButton}>
       <Head title="Pesanan Cut Off 2026" />
 
-      <div className="space-y-6 w-full max-w-[1700px] mx-auto">
+      <div className="space-y-4 sm:space-y-6 w-full max-w-[1700px] mx-auto">
         {/* Header Title Banner */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-xs">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
               Pesanan Cut Off 2026
             </h1>
-            <p className="text-sm text-slate-500 mt-0.5">
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
               Kelola {summary.total_orders.toLocaleString('id-ID')} pesanan multi-channel, monitoring gudang (OOS & substitusi SKU), dan tracking pelunasan DPP.
             </p>
           </div>
@@ -1659,67 +1659,67 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
         </div>
 
         {/* 4 Metric Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Card 1 */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Pesanan</span>
-              <span className="p-2 bg-blue-50 text-blue-700 rounded-xl">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-5 shadow-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">Total Pesanan</span>
+              <span className="p-1.5 sm:p-2 bg-blue-50 text-blue-700 rounded-xl shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5 sm:w-4 sm:h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z" />
                 </svg>
               </span>
             </div>
-            <p className="text-2xl font-extrabold text-slate-900 mt-3">{summary.total_orders.toLocaleString('id-ID')}</p>
-            <p className="text-xs text-slate-500 mt-1">Data sheet Cut Off 2026</p>
+            <p className="text-lg sm:text-2xl font-extrabold text-slate-900 mt-2 sm:mt-3">{summary.total_orders.toLocaleString('id-ID')}</p>
+            <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1 truncate">Data sheet Cut Off 2026</p>
           </div>
 
           {/* Card 2: Pesanan Harian (jumlah qty produk laku dari pesanan Cut Off yang telah diproses) */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Pesanan Harian</span>
-              <span className="p-2 bg-sky-50 text-sky-700 rounded-xl">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-5 shadow-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">Pesanan Harian</span>
+              <span className="p-1.5 sm:p-2 bg-sky-50 text-sky-700 rounded-xl shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5 sm:w-4 sm:h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
                 </svg>
               </span>
             </div>
-            <div className="mt-3 flex items-baseline gap-1.5">
-              <p className="text-2xl font-extrabold text-slate-900">{safeSummary.daily_products.toLocaleString('id-ID')}</p>
-              <span className="text-xs font-semibold text-slate-500">produk</span>
+            <div className="mt-2 sm:mt-3 flex items-baseline gap-1.5">
+              <p className="text-lg sm:text-2xl font-extrabold text-slate-900">{safeSummary.daily_products.toLocaleString('id-ID')}</p>
+              <span className="text-[11px] sm:text-xs font-semibold text-slate-500">produk</span>
             </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Telah diproses ({safeSummary.daily_date_label || 'Hari Ini'}) · {safeSummary.daily_orders.toLocaleString('id-ID')} pesanan
+            <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1 truncate">
+              {safeSummary.daily_date_label || 'Hari Ini'} · {safeSummary.daily_orders.toLocaleString('id-ID')} order
             </p>
           </div>
 
           {/* Card 3 */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Retur Jual (RJ)</span>
-              <span className="p-2 bg-amber-50 text-amber-600 rounded-xl">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-5 shadow-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">Retur Jual</span>
+              <span className="p-1.5 sm:p-2 bg-amber-50 text-amber-600 rounded-xl shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5 sm:w-4 sm:h-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
                 </svg>
               </span>
             </div>
-            <p className="text-2xl font-extrabold text-amber-600 mt-3">{safeSummary.total_rj.toLocaleString('id-ID')}</p>
-            <p className="text-xs text-slate-500 mt-1">Pesanan retur / kompensasi</p>
+            <p className="text-lg sm:text-2xl font-extrabold text-amber-600 mt-2 sm:mt-3">{safeSummary.total_rj.toLocaleString('id-ID')}</p>
+            <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1 truncate">Pesanan retur</p>
           </div>
 
-          {/* Card 4: Total Est. Bersih (Khusus Super Admin & Management) ATAU Monitoring Gudang (Admin & Gudang) */}
+          {/* Card 4: Total Est. Bersih (Khusus Super Admin, Direktur, PIC & Management) ATAU Monitoring Gudang */}
           {canViewFinancial ? (
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Est. Bersih</span>
-                <span className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+            <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-5 shadow-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">Total Est. Bersih</span>
+                <span className="p-1.5 sm:p-2 bg-emerald-50 text-emerald-600 rounded-xl shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5 sm:w-4 sm:h-4">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
                   </svg>
                 </span>
               </div>
-              <p className="text-xl font-extrabold text-slate-900 mt-3 truncate">{formatRupiah(safeSummary.total_est_income)}</p>
-              <p className="text-xs text-slate-500 mt-1">{(safeSummary.total_has_dpp || 0).toLocaleString('id-ID')} pesanan cair (DPP)</p>
+              <p className="text-base sm:text-xl font-extrabold text-slate-900 mt-2 sm:mt-3 truncate">{formatRupiah(safeSummary.total_est_income)}</p>
+              <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1 truncate">{(safeSummary.total_has_dpp || 0).toLocaleString('id-ID')} cair (DPP)</p>
             </div>
           ) : (
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
@@ -1980,9 +1980,212 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
           })()}
         </div>
 
-        {/* Data Table Container */}
+        {/* Data Container: Mobile Cards (HP) + Desktop Table (Laptop) */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
+          {/* Mobile Card List (< md screens) */}
+          <div className="md:hidden divide-y divide-slate-100">
+            {orderList.length === 0 ? (
+              <div className="py-12 px-4 text-center">
+                <p className="text-sm font-semibold text-slate-700">Tabel Pesanan Cut Off Kosong</p>
+                <p className="text-xs text-slate-400 mt-1">Tidak ada pesanan yang sesuai dengan filter.</p>
+              </div>
+            ) : (
+              orderList.map((order, index) => {
+                const currentPage = orders?.current_page ?? 1;
+                const perPage = orders?.per_page ?? 25;
+                const rowNumber = (currentPage - 1) * perPage + index + 1;
+                const shippingTier = getShippingTier(order.shipping_courier);
+                const displayDate = order.processed_at || order.order_date;
+                const orderStatusLower = (order.order_status ?? '').toLowerCase();
+                const isCancelled = orderStatusLower.includes('batal') || orderStatusLower.includes('cancel');
+                const flagMeta = canSeeReview ? getManagementFlagMeta(order.management_flag) : null;
+                const isResolved = Boolean(order.management_resolved_at);
+                const isResolvingThis = resolvingOrderId === order.id;
+
+                return (
+                  <div
+                    key={`mobile-${order.id}`}
+                    className={`p-3.5 space-y-2.5 ${
+                      isCancelled
+                        ? 'bg-rose-50/40 border-l-4 border-l-rose-600'
+                        : flagMeta
+                        ? `${isResolved ? 'border-l-4 border-l-emerald-500' : flagMeta.leftBorderClass}`
+                        : ''
+                    }`}
+                  >
+                    {/* Top Row: No, Channel, Time, Status */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-[11px] font-bold text-slate-400">#{rowNumber}</span>
+                        <span className="inline-block px-2 py-0.5 rounded-md bg-[#0B132B] text-white font-bold text-[10px]">
+                          {order.channel}
+                        </span>
+                        <span className="text-[11px] font-medium text-slate-600 truncate">
+                          {formatDate(displayDate)}
+                          {formatTime(displayDate) ? ` · ${formatTime(displayDate)}` : ''}
+                        </span>
+                      </div>
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                          isCancelled
+                            ? 'bg-rose-600 text-white'
+                            : orderStatusLower.includes('selesai')
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {isCancelled ? 'DIBATALKAN' : order.order_status || 'Diproses'}
+                      </span>
+                    </div>
+
+                    {/* Order Number, Buyer & Courier */}
+                    <div className="flex flex-wrap items-center justify-between gap-1.5">
+                      <div className="min-w-0">
+                        <p className="font-mono text-xs font-bold text-slate-900 select-all">{order.order_number}</p>
+                        {order.buyer_username && (
+                          <p className="text-[11px] text-slate-500 truncate">@{order.buyer_username}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className={`px-1.5 py-0.5 rounded border text-[10px] font-bold ${shippingTier.badgeClass}`}>
+                          {shippingTier.label}
+                        </span>
+                        {order.shipping_courier && (
+                          <span className="text-[10px] font-medium text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
+                            {order.shipping_courier}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Product & SKU */}
+                    <div className="bg-slate-50/90 rounded-xl p-2.5 border border-slate-100 space-y-1">
+                      <p className="text-xs font-semibold text-slate-900 leading-snug">
+                        {order.variation_name || order.product_name || '—'}
+                      </p>
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
+                        <span className="font-mono truncate">SKU: {order.sku_utama || '—'}</span>
+                        <span>QTY: <strong className="text-slate-900">{order.qty}</strong></span>
+                      </div>
+                      {(order.info_gudang || order.sku_pengganti) && (
+                        <div className="pt-1 flex flex-wrap gap-1.5 text-[10px]">
+                          {order.info_gudang && (
+                            <span className="px-1.5 py-0.5 rounded bg-white border border-slate-200 font-semibold text-slate-700">
+                              Gudang: {order.info_gudang}
+                            </span>
+                          )}
+                          {order.sku_pengganti && (
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 font-semibold text-emerald-700">
+                              Pengganti: {order.sku_pengganti}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Financial + Action Row */}
+                    <div className="flex items-center justify-between gap-2 pt-0.5">
+                      {canViewFinancial ? (
+                        <div>
+                          <p className={`text-sm font-extrabold ${isCancelled ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
+                            {formatRupiah(order.est_net_income)}
+                          </p>
+                          <div className="flex items-center gap-2 text-[10px]">
+                            {Boolean(order.financial_breakdown && Number(order.financial_breakdown.seller_voucher) > 0) && (
+                              <span className="text-rose-600 font-medium">
+                                Voucher -{formatBreakdownCurrency(Number(order.financial_breakdown?.seller_voucher || 0))}
+                              </span>
+                            )}
+                            <span className="text-slate-400">{order.dpp_number || 'Belum DPP'}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] font-mono text-slate-500">
+                          {order.jl_number ? `Resi: ${order.jl_number}` : 'Belum Ada Resi'}
+                        </span>
+                      )}
+
+                      {showAksiColumn && (
+                        canFlagReview ? (
+                          <button
+                            type="button"
+                            onClick={(e) => openReviewDropdown(e, order)}
+                            disabled={savingReviewOrderId === order.id}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer ${
+                              flagMeta
+                                ? flagMeta.badgeClass
+                                : 'bg-white border-slate-200 text-slate-700 hover:bg-[#0B132B] hover:text-white'
+                            }`}
+                          >
+                            <span>{flagMeta ? flagMeta.shortLabel : 'Review'}</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-3.5 h-3.5">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                            </svg>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(order)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-[#0B132B] hover:text-white"
+                          >
+                            Edit
+                          </button>
+                        )
+                      )}
+                    </div>
+
+                    {/* Review Strip on Mobile */}
+                    {flagMeta && (
+                      <div className={`p-2.5 rounded-xl border text-[11px] space-y-1.5 ${
+                        isResolved ? 'bg-emerald-50/60 border-emerald-200' : 'bg-slate-50 border-slate-200'
+                      }`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[10px] font-bold ${flagMeta.badgeClass}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${flagMeta.dotClass}`} />
+                            {flagMeta.label}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            {order.management_reviewed_by_name || 'Direktur'}
+                          </span>
+                        </div>
+                        {order.management_note && (
+                          <p className="text-slate-700 font-medium">&ldquo;{order.management_note}&rdquo;</p>
+                        )}
+                        {isResolved ? (
+                          <div className="flex items-center justify-between gap-2 pt-0.5">
+                            <span className="text-emerald-700 font-semibold">
+                              ✓ {order.management_resolved_note || 'Selesai'} · {order.management_resolved_by_name || 'PIC'}
+                            </span>
+                            {canResolveReview && (
+                              <button
+                                type="button"
+                                disabled={isResolvingThis}
+                                onClick={(e) => openResolveDropdown(e, order)}
+                                className="text-[10px] font-semibold text-slate-500 underline"
+                              >
+                                Ubah
+                              </button>
+                            )}
+                          </div>
+                        ) : canResolveReview ? (
+                          <button
+                            type="button"
+                            disabled={isResolvingThis}
+                            onClick={(e) => openResolveDropdown(e, order)}
+                            className="w-full py-1.5 rounded-lg bg-[#0B132B] text-white font-semibold text-[11px]"
+                          >
+                            Tanggapi ▾
+                          </button>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-900 text-white font-semibold uppercase tracking-wider text-[11px] whitespace-nowrap">
