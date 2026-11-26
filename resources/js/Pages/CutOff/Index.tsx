@@ -143,6 +143,7 @@ interface Props {
     total_orders: number;
     daily_products: number;
     daily_orders: number;
+    daily_est_income?: number;
     daily_date_label: string;
     total_rj: number;
     total_has_dpp: number;
@@ -418,6 +419,7 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
     total_orders: 0,
     daily_products: 0,
     daily_orders: 0,
+    daily_est_income: 0,
     daily_date_label: '',
     total_rj: 0,
     total_has_dpp: 0,
@@ -1693,19 +1695,38 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
             </p>
           </div>
 
-          {/* Card 3 */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-5 shadow-xs">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">Retur Jual</span>
-              <span className="p-1.5 sm:p-2 bg-amber-50 text-amber-600 rounded-xl shrink-0">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5 sm:w-4 sm:h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
-                </svg>
-              </span>
+          {/* Card 3: Est. Bersih Hari Ini (Finansial) ATAU Retur Jual (Gudang/Non-Finansial) */}
+          {canViewFinancial ? (
+            <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-5 shadow-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">Est. Bersih Hari Ini</span>
+                <span className="p-1.5 sm:p-2 bg-emerald-50 text-emerald-600 rounded-xl shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5 sm:w-4 sm:h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </span>
+              </div>
+              <p className="text-base sm:text-xl font-extrabold text-emerald-700 mt-2 sm:mt-3 truncate">
+                {formatRupiah(safeSummary.daily_est_income ?? 0)}
+              </p>
+              <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1 truncate">
+                {safeSummary.daily_date_label || 'Hari Ini'} · {safeSummary.daily_orders.toLocaleString('id-ID')} order
+              </p>
             </div>
-            <p className="text-lg sm:text-2xl font-extrabold text-amber-600 mt-2 sm:mt-3">{safeSummary.total_rj.toLocaleString('id-ID')}</p>
-            <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1 truncate">Pesanan retur</p>
-          </div>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-5 shadow-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500">Retur Jual</span>
+                <span className="p-1.5 sm:p-2 bg-amber-50 text-amber-600 rounded-xl shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5 sm:w-4 sm:h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+                  </svg>
+                </span>
+              </div>
+              <p className="text-lg sm:text-2xl font-extrabold text-amber-600 mt-2 sm:mt-3">{safeSummary.total_rj.toLocaleString('id-ID')}</p>
+              <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1 truncate">Pesanan retur</p>
+            </div>
+          )}
 
           {/* Card 4: Total Est. Bersih (Khusus Super Admin, Direktur, PIC & Management) ATAU Monitoring Gudang */}
           {canViewFinancial ? (

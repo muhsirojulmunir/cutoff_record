@@ -113,6 +113,7 @@ class RoleAndPermissionSeeder extends Seeder
 
         if ($direktur) {
             $direktur->permissions()->sync(Permission::whereIn('name', [
+                'dashboard.view',
                 'orders.cutoff',
                 'returns.online',
                 'content_reports.view',

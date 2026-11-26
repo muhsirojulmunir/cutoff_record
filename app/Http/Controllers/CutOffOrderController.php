@@ -113,18 +113,21 @@ class CutOffOrderController extends Controller
                 })
                 ->selectRaw(
                     'COALESCE(SUM(qty), 0) as total_products,
-                     COUNT(DISTINCT COALESCE(NULLIF(order_number, \'\'), CAST(id AS CHAR))) as total_orders'
+                     COUNT(DISTINCT COALESCE(NULLIF(order_number, \'\'), CAST(id AS CHAR))) as total_orders,
+                     COALESCE(SUM(est_net_income), 0) as total_est_income'
                 )
                 ->first();
 
-            $dailyProducts = (int) ($dailyStats->total_products ?? 0);
-            $dailyOrders   = (int) ($dailyStats->total_orders ?? 0);
+            $dailyProducts  = (int) ($dailyStats->total_products ?? 0);
+            $dailyOrders    = (int) ($dailyStats->total_orders ?? 0);
+            $dailyEstIncome = (float) ($dailyStats->total_est_income ?? 0);
 
             $summary = [
                 'total_orders'      => (int) ($rawSummary->total_orders ?? 0),
                 'total_items_qty'   => (int) ($rawSummary->total_items_qty ?? 0),
                 'daily_products'    => $dailyProducts,
                 'daily_orders'      => $dailyOrders,
+                'daily_est_income'  => $dailyEstIncome,
                 'daily_date_label'  => $dailyDateLabel,
                 'total_rj'          => (int) ($rawSummary->total_rj ?? 0),
                 'total_has_dpp'     => (int) ($rawSummary->total_has_dpp ?? 0),
@@ -198,7 +201,7 @@ class CutOffOrderController extends Controller
         } else {
             try {
                 $overview = \Illuminate\Support\Facades\Cache::store('file')->remember(
-                    "cut_off_overview_v5_{$cacheVer}_{$todayStart}",
+                    "cut_off_overview_v6_{$cacheVer}_{$todayStart}",
                     30,
                     $computeOverview
                 );
@@ -1511,7 +1514,7 @@ XML;
     private function ensureManagementReviewReady(): void
     {
         $schemaKey = 'cut_off_management_review_schema_v2';
-        $revokeKey = 'direktur_orders_marketplace_revoked_v2';
+        $revokeKey = 'direktur_orders_marketplace_revoked_v3';
         $store = null;
 
         if (! app()->runningUnitTests()) {
@@ -1558,6 +1561,7 @@ XML;
                 if ($direkturId) {
                     $allowedIds = DB::table('permissions')
                         ->whereIn('name', [
+                            'dashboard.view',
                             'orders.cutoff',
                             'returns.online',
                             'content_reports.view',

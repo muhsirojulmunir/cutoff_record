@@ -46,23 +46,29 @@ class CutOffManagementReviewTest extends TestCase
         ]);
     }
 
-    public function test_direktur_hanya_memiliki_akses_empat_menu_dan_redirect_ke_cut_off(): void
+    public function test_direktur_hanya_memiliki_akses_lima_menu_termasuk_dashboard(): void
     {
         $direkturPerms = $this->direktur->getPermissions();
 
         $this->assertNotContains('orders.shopee', $direkturPerms);
         $this->assertNotContains('orders.tiktok', $direkturPerms);
-        $this->assertNotContains('dashboard.view', $direkturPerms);
         $this->assertNotContains('stock.master', $direkturPerms);
         $this->assertNotContains('cs.view', $direkturPerms);
         $this->assertNotContains('user.view', $direkturPerms);
         $this->assertNotContains('role.view', $direkturPerms);
+        $this->assertContains('dashboard.view', $direkturPerms);
         $this->assertContains('orders.cutoff', $direkturPerms);
         $this->assertContains('returns.online', $direkturPerms);
 
-        $this->actingAs($this->direktur)->get('/')->assertRedirect('/cut-off-orders');
-        $this->actingAs($this->direktur)->get('/dashboard')->assertRedirect('/cut-off-orders');
-        $this->actingAs($this->direktur)->get('/cut-off-orders')->assertOk();
+        $this->actingAs($this->direktur)->get('/')->assertRedirect('/dashboard');
+        $this->actingAs($this->direktur)->get('/dashboard')->assertOk();
+        $this->actingAs($this->direktur)
+            ->get('/cut-off-orders')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('CutOff/Index')
+                ->where('summary.daily_est_income', 45000)
+            );
         $this->actingAs($this->direktur)->get('/cut-off-returns')->assertOk();
         $this->actingAs($this->direktur)->get('/stock-forecast')->assertOk();
         $this->actingAs($this->direktur)->get('/content-reports')->assertOk();
