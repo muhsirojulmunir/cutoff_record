@@ -197,6 +197,181 @@ class CutOffOrderController extends Controller
     }
 
     /**
+     * Ambil data Pesanan Cut Off untuk di-export menjadi file Excel (.xlsx) di frontend.
+     * Hanya mengembalikan kolom ringkas sesuai kebutuhan sheet tanpa mengubah perhitungan Est. Bersih.
+     */
+    public function exportData(Request $request): JsonResponse
+    {
+        $this->ensureProcessedAtColumnReady();
+
+        $filters = $request->only([
+            'search',
+            'channel',
+            'info_gudang',
+            'order_status',
+            'dpp_status',
+            'shipping_courier',
+            'shipping_tier',
+            'date_from',
+            'date_to',
+        ]);
+
+        $dateFrom = $this->normalizeExportDate($filters['date_from'] ?? null);
+        $dateTo   = $this->normalizeExportDate($filters['date_to'] ?? null);
+        if ($dateFrom !== null && $dateTo !== null && $dateFrom > $dateTo) {
+            [$dateFrom, $dateTo] = [$dateTo, $dateFrom];
+        }
+        $filters['date_from'] = $dateFrom;
+        $filters['date_to']   = $dateTo;
+
+        $user = $request->user();
+        $roleName = $user?->role?->name;
+        $canViewFinancial = $user && (
+            (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) ||
+            in_array($roleName, ['Super Admin', 'Direktur', 'Management'], true) ||
+            $user->roles->contains(fn ($r) => in_array($r->name, ['Super Admin', 'Direktur', 'Management'], true))
+        );
+
+        $orders = CutOffOrder::query()
+            ->onlyProcessed()
+            ->filter($filters)
+            ->select([
+                'id',
+                'order_date',
+                'processed_at',
+                'channel',
+                'order_number',
+                'sku_utama',
+                'qty',
+                'buyer_username',
+                'est_net_income',
+                'shipping_courier',
+                'financial_breakdown',
+            ])
+            ->orderByRaw('DATE(COALESCE(processed_at, order_date)) ASC')
+            ->orderByRaw("CASE WHEN UPPER(channel) LIKE 'SH%' THEN 1 WHEN UPPER(channel) LIKE 'TT%' THEN 2 ELSE 3 END ASC")
+            ->orderByRaw('COALESCE(processed_at, order_date) ASC')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $headers = [
+            'Tanggal',
+            'Nomor Urut',
+            'Platform',
+            'No Pesanan',
+            'SKU',
+            'QTY',
+            'Username',
+        ];
+        if ($canViewFinancial) {
+            $headers[] = 'Est Bersih';
+        }
+        $headers[] = 'Ekspedisi';
+
+        $rows = [];
+        $no = 1;
+
+        foreach ($orders as $order) {
+            $rawDate = $order->processed_at ?? $order->order_date;
+            $formattedDate = '';
+            if ($rawDate) {
+                try {
+                    $formattedDate = \Carbon\Carbon::parse($rawDate)->timezone('Asia/Jakarta')->format('d-m-y');
+                } catch (\Throwable) {
+                    $formattedDate = (string) $rawDate;
+                }
+            }
+
+            $channelRaw = strtoupper(trim((string) ($order->channel ?? '')));
+            if ($channelRaw === 'SH' || str_starts_with($channelRaw, 'SH')) {
+                $platform = 'Shopee';
+            } elseif ($channelRaw === 'TT' || str_starts_with($channelRaw, 'TT')) {
+                $platform = 'TikTok';
+            } else {
+                $platform = trim((string) ($order->channel ?? ''));
+            }
+
+            $sku = $this->resolveExportSku($order);
+
+            $row = [
+                $formattedDate,
+                $no++,
+                $platform,
+                (string) ($order->order_number ?? ''),
+                $sku,
+                (int) ($order->qty ?? 0),
+                (string) ($order->buyer_username ?? ''),
+            ];
+            if ($canViewFinancial) {
+                $row[] = (float) ($order->est_net_income ?? 0);
+            }
+            $row[] = (string) ($order->shipping_courier ?? '');
+
+            $rows[] = $row;
+        }
+
+        $dateTag = match (true) {
+            $dateFrom !== null && $dateTo !== null && $dateFrom === $dateTo => $dateFrom,
+            $dateFrom !== null && $dateTo !== null => "{$dateFrom}_sd_{$dateTo}",
+            $dateFrom !== null => "mulai_{$dateFrom}",
+            $dateTo !== null => "sampai_{$dateTo}",
+            default => now('Asia/Jakarta')->format('Y-m-d'),
+        };
+
+        return response()->json([
+            'headers'      => $headers,
+            'rows'         => $rows,
+            'total_orders' => count($rows),
+            'file_name'    => "Pesanan_Cut_Off_{$dateTag}.xlsx",
+        ]);
+    }
+
+    /**
+     * Normalisasi input tanggal Y-m-d untuk filter export.
+     */
+    private function normalizeExportDate(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+        $trimmed = trim($value);
+        if ($trimmed === '') {
+            return null;
+        }
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $trimmed) === 1) {
+            return $trimmed;
+        }
+        try {
+            return \Carbon\Carbon::parse($trimmed)->format('Y-m-d');
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Ambil SKU untuk export Excel (mendukung pesanan multi-item via financial_breakdown).
+     */
+    private function resolveExportSku(CutOffOrder $order): string
+    {
+        $breakdownItems = is_array($order->financial_breakdown) ? ($order->financial_breakdown['items'] ?? null) : null;
+        if (is_array($breakdownItems) && count($breakdownItems) > 1) {
+            $skus = [];
+            foreach ($breakdownItems as $item) {
+                $candidate = trim((string) ($item['sku'] ?? ''));
+                if ($candidate !== '' && $candidate !== '-' && ! in_array($candidate, $skus, true)) {
+                    $skus[] = $candidate;
+                }
+            }
+            if (! empty($skus)) {
+                return implode(', ', $skus);
+            }
+        }
+
+        $mainSku = trim((string) ($order->sku_utama ?? ''));
+        return ($mainSku === '-' ? '' : $mainSku);
+    }
+
+    /**
      * Tambah data pesanan Cut Off baru secara manual.
      */
     public function store(Request $request): RedirectResponse

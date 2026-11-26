@@ -36,6 +36,7 @@ Route::middleware('auth')->group(function () {
 
     // Pesanan Cut Off 2026
     Route::get('/cut-off-orders', [CutOffOrderController::class, 'index'])->name('cut-off-orders.index');
+    Route::get('/cut-off-orders/export-data', [CutOffOrderController::class, 'exportData'])->name('cut-off-orders.export-data');
     Route::post('/cut-off-orders', [CutOffOrderController::class, 'store'])->name('cut-off-orders.store');
     Route::post('/cut-off-orders/import', [CutOffOrderController::class, 'importBatch'])->name('cut-off-orders.import');
     Route::post('/cut-off-orders/import-jl/preview', [CutOffOrderController::class, 'previewImportJl'])->name('cut-off-orders.import-jl.preview');

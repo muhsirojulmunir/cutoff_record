@@ -3,6 +3,7 @@ import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import AppLayout from '../../Layouts/AppLayout';
+import CutOffOrderExportModal from '../../Components/CutOffOrderExportModal';
 
 interface CutOffOrder {
   id: number;
@@ -308,6 +309,7 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
         auth.user.roles.includes('Management')));
   const [isTruncating, setIsTruncating] = useState(false);
   const [isSyncingShopee, setIsSyncingShopee] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   const handlePageChange = (rawUrl: string | null) => {
     if (!rawUrl) return;
@@ -1190,6 +1192,19 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                 Akses Management (Read-Only)
               </span>
             )}
+
+            {/* Export Excel (.xlsx) */}
+            <button
+              type="button"
+              onClick={() => setIsExportModalOpen(true)}
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors shadow-2xs cursor-pointer whitespace-nowrap"
+              title="Export data Pesanan Cut Off ke file Excel (.xlsx)"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" className="w-4 h-4 text-emerald-600">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              Export Excel
+            </button>
 
             {canManage && (
               <>
@@ -3078,6 +3093,13 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
         })(),
         document.body
       )}
+
+      <CutOffOrderExportModal
+        show={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        filters={filters}
+        canViewFinancial={canViewFinancial}
+      />
     </AppLayout>
   );
 }
