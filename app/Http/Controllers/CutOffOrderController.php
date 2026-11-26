@@ -484,7 +484,7 @@ class CutOffOrderController extends Controller
     <xf numFmtId="0"  fontId="1" fillId="0" borderId="0" xfId="0"><alignment horizontal="center" wrapText="1"/></xf>
     <xf numFmtId="0"  fontId="2" fillId="0" borderId="0" xfId="0"/>
     <xf numFmtId="0"  fontId="2" fillId="0" borderId="0" xfId="0"><alignment horizontal="center"/></xf>
-    <xf numFmtId="4"  fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="3"  fontId="0" fillId="0" borderId="0" xfId="0"/>
     <xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0"/>
   </cellXfs>
 </styleSheet>
