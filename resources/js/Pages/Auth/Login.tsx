@@ -116,7 +116,7 @@ export default function Login() {
             <img
               src="/images/logo-brand.png"
               alt="Record"
-              className="h-7 w-auto object-contain mb-4"
+              className="h-5 w-auto max-w-[148px] object-contain object-left mb-3"
             />
             <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Masuk ke Sistem</h2>
             <p className="text-slate-500 text-sm mt-1">Silakan masukkan username dan password Anda.</p>
