@@ -216,6 +216,7 @@ class CutOffOrderController extends Controller
                 $order->setAttribute('management_reviewed_at', null);
                 $order->setAttribute('management_resolved_at', null);
                 $order->setAttribute('management_resolved_by_name', null);
+                $order->setAttribute('management_resolved_note', null);
 
                 return $order;
             });
@@ -1011,6 +1012,7 @@ XML;
                 'management_reviewed_at'      => null,
                 'management_resolved_at'      => null,
                 'management_resolved_by_name' => null,
+                'management_resolved_note'    => null,
             ]);
 
             return back()->with('success', "Tanda review pada pesanan #{$cutOffOrder->order_number} dihapus.");
@@ -1024,6 +1026,7 @@ XML;
             'management_reviewed_at'      => now('Asia/Jakarta'),
             'management_resolved_at'      => null,
             'management_resolved_by_name' => null,
+            'management_resolved_note'    => null,
         ]);
 
         $label = CutOffOrder::MANAGEMENT_FLAGS[$flag] ?? $flag;
@@ -1032,7 +1035,7 @@ XML;
     }
 
     /**
-     * Tandai review manajemen sudah ditindaklanjuti oleh PIC / Super Admin.
+     * Tandai review manajemen sudah ditindaklanjuti beserta tanggapan PIC / Super Admin.
      */
     public function resolveReview(Request $request, CutOffOrder $cutOffOrder): RedirectResponse
     {
@@ -1047,15 +1050,22 @@ XML;
             return back()->with('error', "Pesanan #{$cutOffOrder->order_number} tidak memiliki tanda review aktif.");
         }
 
-        $resolved = $request->boolean('resolved', true);
+        $validated = $request->validate([
+            'resolved'        => ['nullable', 'boolean'],
+            'resolution_note' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $resolved = array_key_exists('resolved', $validated) ? (bool) $validated['resolved'] : true;
+        $resolutionNote = trim((string) ($validated['resolution_note'] ?? ''));
 
         $cutOffOrder->update([
             'management_resolved_at'      => $resolved ? now('Asia/Jakarta') : null,
             'management_resolved_by_name' => $resolved ? ($user?->name ?? 'PIC') : null,
+            'management_resolved_note'    => $resolved && $resolutionNote !== '' ? $resolutionNote : null,
         ]);
 
         $msg = $resolved
-            ? "Review pesanan #{$cutOffOrder->order_number} ditandai sudah ditindaklanjuti."
+            ? "Tanggapan review pesanan #{$cutOffOrder->order_number} tersimpan."
             : "Status tindak lanjut pesanan #{$cutOffOrder->order_number} dibuka kembali.";
 
         return back()->with('success', $msg);
@@ -1500,7 +1510,7 @@ XML;
      */
     private function ensureManagementReviewReady(): void
     {
-        $schemaKey = 'cut_off_management_review_schema_v1';
+        $schemaKey = 'cut_off_management_review_schema_v2';
         $revokeKey = 'direktur_orders_marketplace_revoked_v1';
         $store = null;
 
@@ -1516,20 +1526,27 @@ XML;
         }
 
         try {
-            if (Schema::hasTable('cut_off_orders') && ! Schema::hasColumn('cut_off_orders', 'management_flag')) {
-                Schema::table('cut_off_orders', function (\Illuminate\Database\Schema\Blueprint $table) {
-                    $table->string('management_flag', 50)->nullable()->index()->after('dpp_number');
-                    $table->text('management_note')->nullable()->after('management_flag');
-                    $table->unsignedBigInteger('management_reviewed_by')->nullable()->after('management_note');
-                    $table->string('management_reviewed_by_name', 120)->nullable()->after('management_reviewed_by');
-                    $table->timestamp('management_reviewed_at')->nullable()->after('management_reviewed_by_name');
-                    $table->timestamp('management_resolved_at')->nullable()->after('management_reviewed_at');
-                    $table->string('management_resolved_by_name', 120)->nullable()->after('management_resolved_at');
-                });
-            }
+            if (Schema::hasTable('cut_off_orders')) {
+                if (! Schema::hasColumn('cut_off_orders', 'management_flag')) {
+                    Schema::table('cut_off_orders', function (\Illuminate\Database\Schema\Blueprint $table) {
+                        $table->string('management_flag', 50)->nullable()->index()->after('dpp_number');
+                        $table->text('management_note')->nullable()->after('management_flag');
+                        $table->unsignedBigInteger('management_reviewed_by')->nullable()->after('management_note');
+                        $table->string('management_reviewed_by_name', 120)->nullable()->after('management_reviewed_by');
+                        $table->timestamp('management_reviewed_at')->nullable()->after('management_reviewed_by_name');
+                        $table->timestamp('management_resolved_at')->nullable()->after('management_reviewed_at');
+                        $table->string('management_resolved_by_name', 120)->nullable()->after('management_resolved_at');
+                        $table->text('management_resolved_note')->nullable()->after('management_resolved_by_name');
+                    });
+                } elseif (! Schema::hasColumn('cut_off_orders', 'management_resolved_note')) {
+                    Schema::table('cut_off_orders', function (\Illuminate\Database\Schema\Blueprint $table) {
+                        $table->text('management_resolved_note')->nullable()->after('management_resolved_by_name');
+                    });
+                }
 
-            if ($store !== null && Schema::hasColumn('cut_off_orders', 'management_flag')) {
-                $store->forever($schemaKey, true);
+                if ($store !== null && Schema::hasColumn('cut_off_orders', 'management_resolved_note')) {
+                    $store->forever($schemaKey, true);
+                }
             }
         } catch (\Throwable) {
             // Abaikan error sementara saat kolom dibuat bersamaan

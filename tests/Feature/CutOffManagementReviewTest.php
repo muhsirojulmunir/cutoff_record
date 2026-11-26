@@ -155,12 +155,26 @@ class CutOffManagementReviewTest extends TestCase
             ->assertRedirect();
 
         $this->actingAs($this->pic)
-            ->post("/cut-off-orders/{$this->order->id}/review/resolve", ['resolved' => true])
+            ->post("/cut-off-orders/{$this->order->id}/review/resolve", [
+                'resolved'        => true,
+                'resolution_note' => 'Subsidi Shopee',
+            ])
             ->assertRedirect();
 
         $this->order->refresh();
         $this->assertNotNull($this->order->management_resolved_at);
         $this->assertSame($this->pic->name, $this->order->management_resolved_by_name);
+        $this->assertSame('Subsidi Shopee', $this->order->management_resolved_note);
+
+        // Direktur dapat melihat tanggapan PIC di response Inertia
+        $this->actingAs($this->direktur)
+            ->get('/cut-off-orders')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('CutOff/Index')
+                ->where('orders.data.0.management_resolved_note', 'Subsidi Shopee')
+                ->where('reviewSummary.total_unresolved', 0)
+            );
 
         // Admin ditolak saat mencoba resolve
         $this->actingAs($this->admin)

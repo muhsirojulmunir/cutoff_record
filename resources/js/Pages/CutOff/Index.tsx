@@ -40,6 +40,7 @@ interface CutOffOrder {
   management_reviewed_at?: string | null;
   management_resolved_at?: string | null;
   management_resolved_by_name?: string | null;
+  management_resolved_note?: string | null;
   financial_breakdown?: CutOffOrderFinancialBreakdown | null;
 }
 
@@ -204,6 +205,18 @@ const MANAGEMENT_FLAG_OPTIONS: Array<{
 
 function getManagementFlagMeta(flag: string | null | undefined) {
   return MANAGEMENT_FLAG_OPTIONS.find((opt) => opt.key === flag) ?? null;
+}
+
+function getPicResponsePresets(channel: string | null | undefined): string[] {
+  const ch = (channel ?? '').toUpperCase();
+  const isTiktok = ch.startsWith('TT') || ch.includes('TIKTOK');
+  const platformName = isTiktok ? 'TikTok' : 'Shopee';
+  return [
+    `Subsidi ${platformName}`,
+    `Promo / Flash Sale ${platformName}`,
+    'Voucher / Diskon Toko',
+    'Harga Normal / Sudah Dicek',
+  ];
 }
 
 function formatRupiah(val: number | string | null | undefined): string {
@@ -506,7 +519,7 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
   const [selectedTier, setSelectedTier] = useState(filters.shipping_tier ?? 'all');
   const [selectedReview, setSelectedReview] = useState(filters.management_review ?? 'all');
 
-  // Direktur Review Dropdown State (Portal Popover)
+  // Direktur Review Dropdown State & PIC Resolve Popover State
   const [reviewMenuState, setReviewMenuState] = useState<{
     order: CutOffOrder;
     rect: { top: number; bottom: number; left: number; right: number };
@@ -516,24 +529,39 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
   const [resolvingOrderId, setResolvingOrderId] = useState<number | null>(null);
   const reviewPopoverRef = useRef<HTMLDivElement>(null);
 
+  const [resolveMenuState, setResolveMenuState] = useState<{
+    order: CutOffOrder;
+    rect: { top: number; bottom: number; left: number; right: number };
+  } | null>(null);
+  const [resolveOtherMode, setResolveOtherMode] = useState(false);
+  const [resolveCustomNote, setResolveCustomNote] = useState('');
+  const resolvePopoverRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     setSelectedReview(filters.management_review ?? 'all');
   }, [filters.management_review]);
 
   useEffect(() => {
-    if (!reviewMenuState) return;
+    if (!reviewMenuState && !resolveMenuState) return;
     function handleOutside(e: MouseEvent) {
       const target = e.target as Node;
-      if (reviewPopoverRef.current && !reviewPopoverRef.current.contains(target)) {
+      if (reviewMenuState && reviewPopoverRef.current && !reviewPopoverRef.current.contains(target)) {
         setReviewMenuState(null);
+      }
+      if (resolveMenuState && resolvePopoverRef.current && !resolvePopoverRef.current.contains(target)) {
+        setResolveMenuState(null);
       }
     }
     function handleEsc(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         setReviewMenuState(null);
+        setResolveMenuState(null);
       }
     }
-    const handleScroll = () => setReviewMenuState(null);
+    const handleScroll = () => {
+      setReviewMenuState(null);
+      setResolveMenuState(null);
+    };
 
     document.addEventListener('mousedown', handleOutside);
     document.addEventListener('keydown', handleEsc);
@@ -543,10 +571,11 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
       document.removeEventListener('keydown', handleEsc);
       window.removeEventListener('scroll', handleScroll, true);
     };
-  }, [reviewMenuState]);
+  }, [reviewMenuState, resolveMenuState]);
 
   function openReviewDropdown(e: React.MouseEvent<HTMLButtonElement>, order: CutOffOrder) {
     e.stopPropagation();
+    setResolveMenuState(null);
     if (reviewMenuState?.order.id === order.id) {
       setReviewMenuState(null);
       return;
@@ -554,6 +583,25 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
     const rect = e.currentTarget.getBoundingClientRect();
     setReviewNoteInput(order.management_note ?? '');
     setReviewMenuState({
+      order,
+      rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
+    });
+  }
+
+  function openResolveDropdown(e: React.MouseEvent<HTMLButtonElement>, order: CutOffOrder) {
+    e.stopPropagation();
+    setReviewMenuState(null);
+    if (resolveMenuState?.order.id === order.id) {
+      setResolveMenuState(null);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const presets = getPicResponsePresets(order.channel);
+    const existingNote = (order.management_resolved_note ?? '').trim();
+    const isCustomExisting = existingNote !== '' && !presets.includes(existingNote);
+    setResolveOtherMode(isCustomExisting);
+    setResolveCustomNote(isCustomExisting ? existingNote : '');
+    setResolveMenuState({
       order,
       rect: { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right },
     });
@@ -580,14 +628,20 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
     );
   }
 
-  function handleResolveReview(orderId: number, resolved: boolean) {
+  function handleResolveReview(orderId: number, resolved: boolean, resolutionNote?: string | null) {
     setResolvingOrderId(orderId);
     router.post(
       `/cut-off-orders/${orderId}/review/resolve`,
-      { resolved },
+      {
+        resolved,
+        resolution_note: resolved ? (resolutionNote?.trim() || null) : null,
+      },
       {
         preserveScroll: true,
         preserveState: true,
+        onSuccess: () => {
+          setResolveMenuState(null);
+        },
         onFinish: () => {
           setResolvingOrderId(null);
         },
@@ -619,7 +673,7 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
     };
   }, [isMoreMenuOpen]);
 
-  function renderManagementReviewCard(order: CutOffOrder) {
+  function renderManagementReviewStripRow(order: CutOffOrder, isCancelled: boolean) {
     if (!canSeeReview || !order.management_flag) return null;
     const meta = getManagementFlagMeta(order.management_flag);
     if (!meta) return null;
@@ -628,68 +682,100 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
     const isResolvingThis = resolvingOrderId === order.id;
 
     return (
-      <div
-        className={`mt-2 pt-2 border-t border-slate-200/80 whitespace-normal w-[215px] rounded-xl p-2 border ${
-          isResolved ? 'bg-emerald-50/70 border-emerald-200' : `${meta.badgeClass}`
-        }`}
-      >
-        <div className="flex items-start justify-between gap-1.5">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className={`w-2 h-2 rounded-full shrink-0 ${isResolved ? 'bg-emerald-500' : meta.dotClass}`} />
-            <span className="text-[10px] font-bold leading-tight">
-              {meta.label}
-            </span>
-          </div>
-        </div>
-
-        {order.management_note && (
-          <p className="mt-1 text-[10px] text-slate-700 bg-white/75 rounded-lg px-2 py-1 border border-slate-200/70 leading-snug break-words">
-            {order.management_note}
-          </p>
-        )}
-
-        <div className="mt-1.5 flex items-center justify-between gap-1 text-[10px] text-slate-500">
-          <span className="truncate" title={order.management_reviewed_at || undefined}>
-            {order.management_reviewed_by_name || 'Direktur'}
-            {formatTime(order.management_reviewed_at) ? ` · ${formatTime(order.management_reviewed_at)}` : ''}
-          </span>
-        </div>
-
-        {isResolved ? (
-          <div className="mt-1.5 flex items-center justify-between gap-1.5">
-            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 shrink-0">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
-              </svg>
-              <span className="truncate">Selesai · {order.management_resolved_by_name || 'PIC'}</span>
-            </span>
-            {canResolveReview && (
-              <button
-                type="button"
-                disabled={isResolvingThis}
-                onClick={() => handleResolveReview(order.id, false)}
-                className="text-[10px] font-semibold text-slate-500 hover:text-slate-800 underline cursor-pointer shrink-0 disabled:opacity-50"
+      <tr className="!border-t-0 bg-white">
+        <td
+          colSpan={showAksiColumn ? 9 : 8}
+          className={`px-3 pt-0 pb-2.5 ${
+            isCancelled
+              ? 'border-l-4 border-l-rose-600'
+              : isResolved
+              ? 'border-l-4 border-l-emerald-500'
+              : meta.leftBorderClass
+          }`}
+        >
+          <div
+            className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3 py-2 rounded-xl border text-[11px] ${
+              isResolved
+                ? 'bg-emerald-50/50 border-emerald-200/80'
+                : 'bg-slate-50/90 border-slate-200/90'
+            }`}
+          >
+            {/* Sisi Kiri: Flag Direktur & Catatan Direktur */}
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 min-w-0">
+              <span
+                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[10px] font-bold shrink-0 ${meta.badgeClass}`}
               >
-                Buka
-              </button>
-            )}
+                <span className={`w-1.5 h-1.5 rounded-full ${meta.dotClass}`} />
+                {meta.label}
+              </span>
+
+              {order.management_note && (
+                <span className="text-slate-700 font-medium break-words">
+                  &ldquo;{order.management_note}&rdquo;
+                </span>
+              )}
+
+              <span className="text-[10px] text-slate-400 whitespace-nowrap">
+                {order.management_reviewed_by_name || 'Direktur'}
+                {formatTime(order.management_reviewed_at) ? ` · ${formatTime(order.management_reviewed_at)}` : ''}
+              </span>
+            </div>
+
+            {/* Sisi Kanan: Tanggapan PIC / Tombol Tanggapi */}
+            <div className="flex items-center gap-2 shrink-0">
+              {isResolved ? (
+                <>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-100/80 border border-emerald-200 text-emerald-800 text-[11px] font-semibold">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-emerald-600 shrink-0">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
+                    </svg>
+                    <span>
+                      {order.management_resolved_note ? (
+                        <>
+                          <strong>{order.management_resolved_note}</strong>
+                          <span className="font-normal text-emerald-700"> · {order.management_resolved_by_name || 'PIC'}</span>
+                        </>
+                      ) : (
+                        <>Selesai · {order.management_resolved_by_name || 'PIC'}</>
+                      )}
+                    </span>
+                  </span>
+
+                  {canResolveReview && (
+                    <button
+                      type="button"
+                      disabled={isResolvingThis}
+                      onClick={(e) => openResolveDropdown(e, order)}
+                      className="text-[10px] font-semibold text-slate-500 hover:text-slate-900 underline cursor-pointer disabled:opacity-50"
+                    >
+                      Ubah
+                    </button>
+                  )}
+                </>
+              ) : canResolveReview ? (
+                <button
+                  type="button"
+                  disabled={isResolvingThis}
+                  onClick={(e) => openResolveDropdown(e, order)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#0B132B] hover:bg-slate-800 text-white text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+                  </svg>
+                  <span>{isResolvingThis ? 'Menyimpan...' : 'Tanggapi'}</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-3 h-3 opacity-80">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                  </svg>
+                </button>
+              ) : (
+                <span className="text-[10px] font-medium text-slate-400 italic">
+                  Menunggu tanggapan PIC
+                </span>
+              )}
+            </div>
           </div>
-        ) : (
-          canResolveReview && (
-            <button
-              type="button"
-              disabled={isResolvingThis}
-              onClick={() => handleResolveReview(order.id, true)}
-              className="mt-1.5 w-full inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg bg-[#0B132B] hover:bg-slate-800 text-white text-[10px] font-semibold transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" className="w-3 h-3">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-              </svg>
-              {isResolvingThis ? 'Menyimpan...' : 'Tandai Selesai'}
-            </button>
-          )
-        )}
-      </div>
+        </td>
+      </tr>
     );
   }
 
@@ -805,7 +891,7 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
       if (!isLiveActive) return;
 
       // Don't auto-refresh if user has any modal/form active
-      if (editingOrder || isCreateModalOpen || isImportModalOpen || isImportJlModalOpen || reviewMenuState) {
+      if (editingOrder || isCreateModalOpen || isImportModalOpen || isImportJlModalOpen || reviewMenuState || resolveMenuState) {
         return;
       }
 
@@ -819,7 +905,7 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isLiveActive, editingOrder, isCreateModalOpen, isImportModalOpen, isImportJlModalOpen, reviewMenuState]);
+  }, [isLiveActive, editingOrder, isCreateModalOpen, isImportModalOpen, isImportJlModalOpen, reviewMenuState, resolveMenuState]);
 
   function parseIndonesianNumber(val: any): number {
     if (val === '' || val === null || val === undefined) return 0;
@@ -1825,110 +1911,73 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                 <option value="no_dpp">Belum DPP</option>
               </select>
             </div>
-
-            {/* Filter Review Manajemen (Khusus Direktur, PIC & Super Admin) */}
-            {canSeeReview && (
-              <div className="lg:col-span-3">
-                <select
-                  value={selectedReview}
-                  onChange={(e) => {
-                    setSelectedReview(e.target.value);
-                    applyFilters({ management_review: e.target.value });
-                  }}
-                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs font-medium focus:outline-none focus:border-[#0B132B]"
-                >
-                  <option value="all">Semua Status Review</option>
-                  <option value="unresolved">Perlu Tindak Lanjut ({reviewSummary?.total_unresolved ?? 0})</option>
-                  <option value="harga_bermasalah">Harga Bermasalah / Terlalu Rendah</option>
-                  <option value="margin_tipis">Margin Tipis / Voucher Kebesaran</option>
-                  <option value="ongkir_tidak_wajar">Potongan / Ongkir Tidak Wajar</option>
-                  <option value="resolved">Sudah Ditindaklanjuti ({reviewSummary?.total_resolved ?? 0})</option>
-                  <option value="flagged">Semua yang Ditandai ({reviewSummary?.total_flagged ?? 0})</option>
-                </select>
-              </div>
-            )}
           </div>
 
-          {/* Banner Ringkasan Review Direktur (Khusus Direktur, PIC & Super Admin) */}
-          {canSeeReview && ((reviewSummary?.total_flagged ?? 0) > 0 || selectedReview !== 'all') && (
-            <div className="pt-3 border-t border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-slate-900 text-amber-400 shrink-0">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-.005-10.499l-3.11.732a9 9 0 01-6.085-.711l-.108-.054a9 9 0 00-6.208-.682L3 4.5M3 15V4.5" />
-                  </svg>
-                </span>
-                <div>
-                  <span className="font-bold text-slate-900">Review Manajemen</span>
-                  <span className="text-slate-500 ml-1.5">
-                    {(reviewSummary?.total_unresolved ?? 0) > 0
-                      ? `${reviewSummary?.total_unresolved} pesanan perlu tindak lanjut`
-                      : 'Semua temuan sudah ditindaklanjuti'}
+          {/* Banner Ringkasan Review Manajemen — Hanya tampil saat masih ada temuan yang belum ditanggapi */}
+          {canSeeReview && ((reviewSummary?.total_unresolved ?? 0) > 0 || selectedReview !== 'all') && (() => {
+            const activeFlags = MANAGEMENT_FLAG_OPTIONS.filter(
+              (opt) => (reviewSummary ? Number(reviewSummary[opt.key] ?? 0) : 0) > 0
+            );
+            return (
+              <div className="pt-3 border-t border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-slate-900 text-amber-400 shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-.005-10.499l-3.11.732a9 9 0 01-6.085-.711l-.108-.054a9 9 0 00-6.208-.682L3 4.5M3 15V4.5" />
+                    </svg>
                   </span>
+                  <div>
+                    <span className="font-bold text-slate-900">Perlu Tindak Lanjut</span>
+                    <span className="text-slate-500 ml-1.5">
+                      {(reviewSummary?.total_unresolved ?? 0) > 0
+                        ? `${reviewSummary?.total_unresolved} pesanan ditandai Direktur`
+                        : 'Filter review aktif'}
+                    </span>
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {MANAGEMENT_FLAG_OPTIONS.map((opt) => {
-                  const count = reviewSummary ? Number(reviewSummary[opt.key] ?? 0) : 0;
-                  const active = selectedReview === opt.key;
-                  return (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {activeFlags.map((opt) => {
+                    const count = reviewSummary ? Number(reviewSummary[opt.key] ?? 0) : 0;
+                    const active = selectedReview === opt.key;
+                    return (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => {
+                          const next = active ? 'all' : opt.key;
+                          setSelectedReview(next);
+                          applyFilters({ management_review: next });
+                        }}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-all cursor-pointer ${
+                          active ? opt.pillActiveClass : `${opt.badgeClass} hover:opacity-85`
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-white' : opt.dotClass}`} />
+                        <span>{opt.shortLabel}</span>
+                        <span className={`px-1 rounded text-[10px] font-bold ${active ? 'bg-white/20 text-white' : 'bg-white/80 text-slate-800'}`}>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+
+                  {selectedReview !== 'all' && (
                     <button
-                      key={opt.key}
                       type="button"
                       onClick={() => {
-                        const next = active ? 'all' : opt.key;
-                        setSelectedReview(next);
-                        applyFilters({ management_review: next });
+                        setSelectedReview('all');
+                        applyFilters({ management_review: 'all' });
                       }}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-all cursor-pointer ${
-                        active ? opt.pillActiveClass : `${opt.badgeClass} hover:opacity-85`
-                      }`}
+                      className="px-2 py-1 rounded-lg text-[11px] font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
                     >
-                      <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-white' : opt.dotClass}`} />
-                      <span>{opt.shortLabel}</span>
-                      <span className={`px-1 rounded text-[10px] font-bold ${active ? 'bg-white/20 text-white' : 'bg-white/80 text-slate-800'}`}>
-                        {count}
-                      </span>
+                      Tampilkan Semua
                     </button>
-                  );
-                })}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = selectedReview === 'resolved' ? 'all' : 'resolved';
-                    setSelectedReview(next);
-                    applyFilters({ management_review: next });
-                  }}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-all cursor-pointer ${
-                    selectedReview === 'resolved'
-                      ? 'bg-emerald-600 text-white border-emerald-600'
-                      : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                  }`}
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${selectedReview === 'resolved' ? 'bg-white' : 'bg-emerald-500'}`} />
-                  <span>Selesai</span>
-                  <span className={`px-1 rounded text-[10px] font-bold ${selectedReview === 'resolved' ? 'bg-white/20 text-white' : 'bg-white/80 text-emerald-800'}`}>
-                    {reviewSummary?.total_resolved ?? 0}
-                  </span>
-                </button>
-
-                {selectedReview !== 'all' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedReview('all');
-                      applyFilters({ management_review: 'all' });
-                    }}
-                    className="px-2 py-1 rounded-lg text-[11px] font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
-                  >
-                    Tampilkan Semua
-                  </button>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
 
         {/* Data Table Container */}
@@ -2018,16 +2067,13 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                       (orderStatusLower.includes('dikirim') && !orderStatusLower.includes('perlu') && !orderStatusLower.includes('siap') && !orderStatusLower.includes('belum'));
                     const isPendingInstant = isInstantOrder && !isCancelled && !isCompleted && !isShipped;
                     const flagMeta = canSeeReview ? getManagementFlagMeta(order.management_flag) : null;
-                    const isReviewUnresolved = Boolean(flagMeta && !order.management_resolved_at);
 
                     return (
+                      <React.Fragment key={order.id}>
                       <tr
-                        key={order.id}
                         className={`group transition-colors ${
                           isCancelled
                             ? 'bg-rose-50/50 hover:bg-rose-100/60'
-                            : isReviewUnresolved && flagMeta
-                            ? flagMeta.rowClass
                             : isPendingInstant
                             ? 'bg-amber-50/30 hover:bg-amber-50/50'
                             : 'hover:bg-slate-50/80'
@@ -2381,7 +2427,6 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                                 <span className="text-[10px] text-slate-400">Belum DPP</span>
                               )}
                             </div>
-                            {renderManagementReviewCard(order)}
                           </td>
                         ) : (
                           <td className="py-2.5 px-3 whitespace-nowrap">
@@ -2406,7 +2451,6 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                                 {order.jl_number ? `Resi: ${order.jl_number}` : 'Belum Ada Resi'}
                               </span>
                             </div>
-                            {renderManagementReviewCard(order)}
                           </td>
                         )}
 
@@ -2455,6 +2499,8 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                           </td>
                         )}
                       </tr>
+                      {renderManagementReviewStripRow(order, Boolean(isCancelled))}
+                      </React.Fragment>
                     );
                   })
                 )}
@@ -3570,6 +3616,128 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                     Hapus Tanda Review
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })(),
+        document.body
+      )}
+
+      {/* Dropdown Popover Tanggapan PIC / Super Admin (Sesuai Platform) */}
+      {canResolveReview && resolveMenuState && typeof document !== 'undefined' && createPortal(
+        (() => {
+          const { order, rect } = resolveMenuState;
+          const presets = getPicResponsePresets(order.channel);
+          const menuWidth = 288;
+          const estimatedHeight = resolveOtherMode ? 330 : 260;
+          const spaceBelow = window.innerHeight - rect.bottom;
+          const openUpward = spaceBelow < estimatedHeight && rect.top > estimatedHeight;
+          const top = openUpward
+            ? Math.max(12, rect.top - estimatedHeight - 6)
+            : Math.min(window.innerHeight - estimatedHeight - 12, rect.bottom + 6);
+          const left = Math.max(12, Math.min(window.innerWidth - menuWidth - 12, rect.right - menuWidth));
+          const isSaving = resolvingOrderId === order.id;
+
+          return (
+            <div
+              ref={resolvePopoverRef}
+              style={{ top: `${top}px`, left: `${left}px`, width: `${menuWidth}px` }}
+              className="fixed z-[9998] bg-white rounded-2xl border border-slate-200 shadow-xl p-3.5 text-left"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Tanggapan PIC</p>
+                  <p className="text-xs font-bold text-slate-900 font-mono truncate">
+                    #{order.order_number} · {order.channel}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setResolveMenuState(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="mt-2.5 space-y-1.5">
+                {presets.map((preset) => {
+                  const isSelected = order.management_resolved_at && order.management_resolved_note === preset;
+                  return (
+                    <button
+                      key={preset}
+                      type="button"
+                      disabled={isSaving}
+                      onClick={() => handleResolveReview(order.id, true, preset)}
+                      className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-left text-xs font-semibold transition-all cursor-pointer disabled:opacity-50 ${
+                        isSelected
+                          ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300'
+                      }`}
+                    >
+                      <span>{preset}</span>
+                      {isSelected && (
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-emerald-600 shrink-0">
+                          <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </button>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  onClick={() => setResolveOtherMode(true)}
+                  className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-left text-xs font-semibold transition-all cursor-pointer disabled:opacity-50 ${
+                    resolveOtherMode
+                      ? 'bg-blue-50 border-blue-300 text-blue-900'
+                      : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <span>Lainnya (Isi Sendiri)</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5 shrink-0">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
+                  </svg>
+                </button>
+              </div>
+
+              {resolveOtherMode && (
+                <div className="mt-2.5 space-y-2 pt-2 border-t border-slate-100">
+                  <textarea
+                    value={resolveCustomNote}
+                    onChange={(e) => setResolveCustomNote(e.target.value)}
+                    rows={2}
+                    maxLength={500}
+                    autoFocus
+                    placeholder="Tulis tanggapan Anda di sini..."
+                    className="w-full px-2.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0B132B] focus:bg-white resize-none"
+                  />
+                  <button
+                    type="button"
+                    disabled={isSaving || resolveCustomNote.trim() === ''}
+                    onClick={() => handleResolveReview(order.id, true, resolveCustomNote)}
+                    className="w-full px-3 py-1.5 rounded-xl bg-[#0B132B] hover:bg-slate-800 text-white text-xs font-semibold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {isSaving ? 'Menyimpan...' : 'Simpan Tanggapan'}
+                  </button>
+                </div>
+              )}
+
+              {order.management_resolved_at && (
+                <div className="mt-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={() => handleResolveReview(order.id, false)}
+                    className="w-full px-3 py-1.5 rounded-xl text-[11px] font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    Batalkan Status Selesai
                   </button>
                 </div>
               )}

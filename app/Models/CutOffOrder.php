@@ -53,6 +53,7 @@ class CutOffOrder extends Model
         'management_reviewed_at',
         'management_resolved_at',
         'management_resolved_by_name',
+        'management_resolved_note',
         'financial_breakdown',
     ];
 
@@ -785,7 +786,8 @@ class CutOffOrder extends Model
                     ->where('management_flag', '!=', '')
                     ->whereNotNull('management_resolved_at');
             } elseif (array_key_exists($reviewFilter, self::MANAGEMENT_FLAGS)) {
-                $q->where('management_flag', $reviewFilter);
+                $q->where('management_flag', $reviewFilter)
+                    ->whereNull('management_resolved_at');
             }
         });
     }
