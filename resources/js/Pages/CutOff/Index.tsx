@@ -380,7 +380,8 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
   const canViewFinancial =
     isSuperAdmin ||
     isDirektur ||
-    isManagement;
+    isManagement ||
+    isPic;
   const [isTruncating, setIsTruncating] = useState(false);
   const [isSyncingShopee, setIsSyncingShopee] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);

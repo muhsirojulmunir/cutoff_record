@@ -273,8 +273,8 @@ class CutOffOrderController extends Controller
         $roleName = $user?->role?->name;
         $canViewFinancial = $user && (
             (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) ||
-            in_array($roleName, ['Super Admin', 'Direktur', 'Management'], true) ||
-            $user->roles->contains(fn ($r) => in_array($r->name, ['Super Admin', 'Direktur', 'Management'], true))
+            in_array($roleName, ['Super Admin', 'Direktur', 'Management', 'PIC'], true) ||
+            (method_exists($user, 'roles') && $user->roles->contains(fn ($r) => in_array($r->name, ['Super Admin', 'Direktur', 'Management', 'PIC'], true)))
         );
 
         $orders = CutOffOrder::query()
