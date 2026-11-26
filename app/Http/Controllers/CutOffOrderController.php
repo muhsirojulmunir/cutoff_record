@@ -242,6 +242,8 @@ class CutOffOrderController extends Controller
                 'channel',
                 'order_number',
                 'sku_utama',
+                'product_name',
+                'variation_name',
                 'qty',
                 'buyer_username',
                 'est_net_income',
@@ -282,7 +284,7 @@ class CutOffOrderController extends Controller
                 });
         }
 
-        $headers = ['Tanggal', 'Nomor Urut', 'Platform', 'No Pesanan', 'SKU', 'QTY', 'Username'];
+        $headers = ['Tanggal', 'Nomor Urut', 'Platform', 'No Pesanan', 'SKU', 'Varian', 'QTY', 'Username'];
         if ($canViewFinancial) {
             $headers[] = 'Est Bersih';
         }
@@ -339,9 +341,10 @@ class CutOffOrderController extends Controller
                     if ($itemSku === '' || $itemSku === '-') {
                         $itemSku = trim((string) ($order->sku_utama ?? ''));
                     }
+                    $itemVarian = $this->resolveExportVarian($order, is_array($item) ? $item : null, true);
                     $itemQty = max(1, (int) ($item['qty'] ?? 1));
 
-                    $row = [$formattedDate, $no++, $platform, $orderNumber, $itemSku, $itemQty, $rawUsername];
+                    $row = [$formattedDate, $no++, $platform, $orderNumber, $itemSku, $itemVarian, $itemQty, $rawUsername];
                     if ($canViewFinancial) {
                         $row[] = (float) ($item['est_net_income'] ?? 0);
                     }
@@ -351,7 +354,9 @@ class CutOffOrderController extends Controller
                 }
             } else {
                 $sku = $this->resolveExportSku($order);
-                $row = [$formattedDate, $no++, $platform, $orderNumber, $sku, (int) ($order->qty ?? 0), $rawUsername];
+                $singleItem = (is_array($breakdownItems) && count($breakdownItems) === 1) ? reset($breakdownItems) : null;
+                $varian = $this->resolveExportVarian($order, is_array($singleItem) ? $singleItem : null);
+                $row = [$formattedDate, $no++, $platform, $orderNumber, $sku, $varian, (int) ($order->qty ?? 0), $rawUsername];
                 if ($canViewFinancial) {
                     $row[] = (float) ($order->est_net_income ?? 0);
                 }
@@ -435,6 +440,36 @@ class CutOffOrderController extends Controller
 
         $mainSku = trim((string) ($order->sku_utama ?? ''));
         return ($mainSku === '-' ? '' : $mainSku);
+    }
+
+    /**
+     * Ambil nama varian untuk export Excel (prioritas: variation per item -> variation_name -> name/product_name).
+     *
+     * @param  array<string, mixed>|null  $item
+     */
+    private function resolveExportVarian(CutOffOrder $order, ?array $item = null, bool $isMultiItem = false): string
+    {
+        $candidates = [];
+        if ($item !== null) {
+            $candidates[] = $item['variation'] ?? null;
+            if ($isMultiItem) {
+                $candidates[] = $item['name'] ?? null;
+            }
+        }
+        $candidates[] = $order->variation_name;
+        if ($item !== null && ! $isMultiItem) {
+            $candidates[] = $item['name'] ?? null;
+        }
+        $candidates[] = $order->product_name;
+
+        foreach ($candidates as $candidate) {
+            $val = trim((string) ($candidate ?? ''));
+            if ($val !== '' && $val !== '-') {
+                return $val;
+            }
+        }
+
+        return '';
     }
 
     /**

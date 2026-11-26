@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import * as XLSX from 'xlsx';
 import Modal from '@/Components/Modal';
 
 interface Props {
@@ -274,8 +273,8 @@ export default function CutOffOrderExportModal({
           </div>
           <p className="mt-1 text-emerald-800 leading-relaxed font-medium">
             {canViewFinancial
-              ? 'Tanggal · Nomor Urut · Platform · No Pesanan · SKU · QTY · Username · Est Bersih · Ekspedisi'
-              : 'Tanggal · Nomor Urut · Platform · No Pesanan · SKU · QTY · Username · Ekspedisi'}
+              ? 'Tanggal · Nomor Urut · Platform · No Pesanan · SKU · Varian · QTY · Username · Est Bersih · Ekspedisi · Status'
+              : 'Tanggal · Nomor Urut · Platform · No Pesanan · SKU · Varian · QTY · Username · Ekspedisi · Status'}
           </p>
         </div>
 
