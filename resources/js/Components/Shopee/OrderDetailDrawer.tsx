@@ -295,7 +295,11 @@ export default function OrderDetailDrawer({
   }
 
   const canShip = isShippableOrderStatus(normalizedStatus);
-  const canPrintWaybill = !isWaybillBlockedStatus(normalizedStatus, order.shipping_carrier);
+  const canPrintWaybill = !isWaybillBlockedStatus(
+    normalizedStatus,
+    order.shipping_carrier,
+    Boolean(order.tracking_number || order.shipping_arranged_at)
+  );
   const isInCancel = normalizedStatus === 'IN_CANCEL';
   const hasCancellationBox = Boolean(
     order.buyer_cancel_reason ||

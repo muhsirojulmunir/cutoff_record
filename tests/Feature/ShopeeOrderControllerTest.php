@@ -840,6 +840,89 @@ class ShopeeOrderControllerTest extends TestCase
         });
     }
 
+    public function test_mass_print_waybill_retries_processing_and_keeps_already_created_orders(): void
+    {
+        $sn1 = '261126SPX01';
+        $sn2 = '261126SPX02';
+
+        $this->makeShopeeOrder([
+            'order_sn'          => $sn1,
+            'package_number'    => 'OFG-SPX-01',
+            'shipping_carrier'  => 'SPX Hemat',
+            'order_status'      => 'PROCESSED',
+            'tracking_number'   => 'SPXID01001',
+            'label_print_count' => 0,
+        ]);
+        $this->makeShopeeOrder([
+            'order_sn'          => $sn2,
+            'package_number'    => 'OFG-SPX-02',
+            'shipping_carrier'  => 'Hemat Kargo-SPX Hemat',
+            'order_status'      => 'PROCESSED',
+            'tracking_number'   => 'SPXID01002',
+            'label_print_count' => 0,
+        ]);
+
+        $pdfPayload = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF";
+        $resultPollAttempts = 0;
+
+        Http::fake([
+            '*/api/v2/logistics/create_shipping_document*' => Http::response([
+                'error'    => '',
+                'message'  => '',
+                'response' => [
+                    'result_list' => [
+                        ['order_sn' => $sn1],
+                        // Pesanan ke-2 sudah pernah dibuat dokumennya sebelumnya -> tetap harus diunduh
+                        [
+                            'order_sn'     => $sn2,
+                            'fail_error'   => 'logistics.shipping_document_already_created',
+                            'fail_message' => 'Shipping document already created',
+                        ],
+                    ],
+                ],
+            ], 200),
+            '*/api/v2/logistics/get_shipping_document_result*' => function (HttpClientRequest $req) use ($sn1, $sn2, &$resultPollAttempts) {
+                $resultPollAttempts++;
+                $orderList = $req->data()['order_list'] ?? [];
+                $results = [];
+                foreach ($orderList as $item) {
+                    $sn = $item['order_sn'];
+                    // Simulasikan resi ke-2 masih PROCESSING pada attempt 1, baru READY di attempt 2
+                    $status = ($sn === $sn2 && $resultPollAttempts === 1) ? 'PROCESSING' : 'READY';
+                    $results[] = [
+                        'order_sn' => $sn,
+                        'status'   => $status,
+                    ];
+                }
+
+                return Http::response([
+                    'error'    => '',
+                    'message'  => '',
+                    'response' => ['result_list' => $results],
+                ], 200);
+            },
+            '*/api/v2/logistics/download_shipping_document*' => function (HttpClientRequest $req) use ($pdfPayload, $sn1, $sn2) {
+                $orderList = $req->data()['order_list'] ?? [];
+                $sns = array_column($orderList, 'order_sn');
+                $this->assertSame([$sn1, $sn2], $sns);
+
+                return Http::response($pdfPayload, 200, ['Content-Type' => 'application/pdf']);
+            },
+        ]);
+
+        $response = $this->actingAs($this->superAdmin)
+            ->post('/shopee-orders/mass-waybill-a4', [
+                'order_sns' => [$sn1, $sn2],
+            ]);
+
+        $response->assertOk();
+        $response->assertHeader('Content-Type', 'application/pdf');
+        $response->assertHeader('X-Shopee-Orders-Count', '2');
+        $this->assertSame(2, $resultPollAttempts);
+        $this->assertSame(1, ShopeeOrder::where('order_sn', $sn1)->firstOrFail()->label_print_count);
+        $this->assertSame(1, ShopeeOrder::where('order_sn', $sn2)->firstOrFail()->label_print_count);
+    }
+
     public function test_handle_buyer_cancellation_updates_shopee_and_cutoff_status(): void
     {
         $orderSn = '261111CANCEL01';

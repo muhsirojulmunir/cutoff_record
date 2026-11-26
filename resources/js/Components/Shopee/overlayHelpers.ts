@@ -109,11 +109,18 @@ export function isInstantCarrier(carrier: string | null | undefined): boolean {
 
 export function isWaybillBlockedStatus(
   status: ShopeeOrderStatus | null | undefined,
-  carrier?: string | null
+  carrier?: string | null,
+  hasArrangedShipping = false
 ): boolean {
   const normalized = normalizeOrderStatus(status);
+  if (normalized === 'UNPAID' || normalized === 'CANCELLED') {
+    return true;
+  }
+  if (hasArrangedShipping) {
+    return false;
+  }
   if (carrier && isInstantCarrier(carrier)) {
-    return normalized === 'UNPAID' || normalized === 'CANCELLED';
+    return false;
   }
   return WAYBILL_BLOCKED_STATUSES.has(normalized);
 }

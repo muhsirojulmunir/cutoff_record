@@ -1181,7 +1181,11 @@ export default function ShipOrderModal({
 
   const handlePrintSelectedOrders = async () => {
     const ordersToPrint = targetOrdersToShip.filter(
-      (o) => Boolean(o.tracking_number) || o.order_status === 'PROCESSED'
+      (o) =>
+        Boolean(o.tracking_number) ||
+        Boolean(o.shipping_arranged_at) ||
+        o.order_status === 'PROCESSED' ||
+        o.order_status === 'SHIPPED'
     );
     if (ordersToPrint.length === 0 || isPreparingWaybill) return;
 

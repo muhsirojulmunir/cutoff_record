@@ -1155,7 +1155,15 @@ export default function ShopeeOrdersPage({
     [selectedOrders]
   );
   const selectedPrintableOrders = useMemo(
-    () => selectedOrders.filter((o) => !isWaybillBlockedStatus(o.order_status, o.shipping_carrier)),
+    () =>
+      selectedOrders.filter(
+        (o) =>
+          !isWaybillBlockedStatus(
+            o.order_status,
+            o.shipping_carrier,
+            Boolean(o.tracking_number || o.shipping_arranged_at)
+          )
+      ),
     [selectedOrders]
   );
 
@@ -1199,7 +1207,14 @@ export default function ShopeeOrdersPage({
     async (targetOrders: ShopeeOrderRecord[], isMass: boolean) => {
       if (printingTarget !== null) return;
 
-      const eligible = targetOrders.filter((o) => !isWaybillBlockedStatus(o.order_status, o.shipping_carrier));
+      const eligible = targetOrders.filter(
+        (o) =>
+          !isWaybillBlockedStatus(
+            o.order_status,
+            o.shipping_carrier,
+            Boolean(o.tracking_number || o.shipping_arranged_at)
+          )
+      );
       if (eligible.length === 0) {
         showToast('error', 'Pesanan yang dipilih belum diproses atau dibatalkan sehingga resi belum dapat dicetak.');
         return;
@@ -1283,6 +1298,29 @@ export default function ShopeeOrdersPage({
         );
         const headerCount = Number(response.headers.get('x-shopee-orders-count'));
         const resolvedCount = Number.isFinite(headerCount) && headerCount > 0 ? headerCount : capped.length;
+
+        const rawWarningsHeader = response.headers.get('x-shopee-waybill-warnings');
+        if (rawWarningsHeader) {
+          try {
+            const binStr = atob(rawWarningsHeader);
+            const bytes = Uint8Array.from(binStr, (ch) => ch.charCodeAt(0));
+            const parsedWarnings = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+            if (Array.isArray(parsedWarnings)) {
+              for (const w of parsedWarnings) {
+                if (typeof w === 'string' && w.trim() !== '' && !warnings.includes(w)) {
+                  warnings.push(w);
+                }
+              }
+            }
+          } catch {
+            // Abaikan jika header warning gagal didekode
+          }
+        }
+        if (isMass && resolvedCount < capped.length && warnings.length === 0) {
+          warnings.push(
+            `Hanya ${resolvedCount} dari ${capped.length} resi yang berhasil disiapkan Shopee. Silakan cetak ulang sisa pesanan beberapa saat lagi.`
+          );
+        }
 
         revokeActiveBlobUrl();
         const blobUrl = URL.createObjectURL(blob);
@@ -3029,7 +3067,11 @@ export default function ShopeeOrdersPage({
                         </button>
                       )}
 
-                      {(isInstant ? (!['UNPAID', 'CANCELLED'].includes(normalizedStatus) && !isInCancel && !isShipped) : isProcessed) && (
+                      {!['UNPAID', 'CANCELLED', 'IN_CANCEL', 'TO_CONFIRM_RECEIVE', 'COMPLETED', 'TO_RETURN'].includes(normalizedStatus) &&
+                        !isShipped &&
+                        (isInstant ||
+                          isProcessed ||
+                          Boolean(order.tracking_number || order.shipping_arranged_at)) && (
                         <button
                           type="button"
                           disabled={printingTarget !== null}

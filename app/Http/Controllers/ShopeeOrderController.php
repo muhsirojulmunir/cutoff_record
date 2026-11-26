@@ -996,12 +996,22 @@ class ShopeeOrderController extends Controller
             $safeFilename .= '.pdf';
         }
 
-        return response($result['pdf_binary'], 200, [
+        $headers = [
             'Content-Type'          => 'application/pdf',
             'Content-Disposition'   => 'inline; filename="' . $safeFilename . '"',
             'X-Shopee-Orders-Count' => (string) count($result['orders']),
             'Cache-Control'         => 'no-store, no-cache, must-revalidate',
-        ]);
+        ];
+
+        $warnings = array_values(array_unique(array_filter(
+            array_map('strval', $result['warnings'] ?? []),
+            static fn (string $w): bool => trim($w) !== ''
+        )));
+        if (! empty($warnings)) {
+            $headers['X-Shopee-Waybill-Warnings'] = base64_encode((string) json_encode($warnings, JSON_UNESCAPED_UNICODE));
+        }
+
+        return response($result['pdf_binary'], 200, $headers);
     }
 
     /**

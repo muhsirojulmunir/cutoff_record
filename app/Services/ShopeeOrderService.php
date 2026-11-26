@@ -911,20 +911,47 @@ class ShopeeOrderService
             }
         }
 
-        $createResp = $this->postApi($account, '/api/v2/logistics/create_shipping_document', [
-            'order_list' => $this->buildWaybillOrderList($orders, true, true),
-        ]);
+        $createResultList = $this->requestCreateShippingDocuments($account, $orders);
+        $failedSnMessages = $this->extractCreateShippingFailures($createResultList);
 
-        $failedSnMessages = [];
-        foreach (($createResp['response']['result_list'] ?? []) as $entry) {
-            if (! is_array($entry)) {
-                continue;
+        // Retry 1x khusus untuk order yang gagal sementara (mis. error_not_ready / tracking belum siap sesaat setelah ship)
+        if (! empty($failedSnMessages)) {
+            $retryOrders = [];
+            foreach ($orders as $order) {
+                $sn = $order->order_sn;
+                if (! isset($failedSnMessages[$sn])) {
+                    continue;
+                }
+                if ($this->isTransientCreateWaybillError($failedSnMessages[$sn])) {
+                    $retryOrders[] = $order;
+                }
             }
-            $sn = (string) ($entry['order_sn'] ?? '');
-            $failErr = trim((string) ($entry['fail_error'] ?? ''));
-            $failMsg = trim((string) ($entry['fail_message'] ?? ''));
-            if ($sn !== '' && ($failErr !== '' || $failMsg !== '')) {
-                $failedSnMessages[$sn] = trim($failErr . ($failErr && $failMsg ? ': ' : '') . $failMsg);
+
+            if (! empty($retryOrders)) {
+                usleep(800000);
+                foreach ($retryOrders as $retryOrder) {
+                    if (empty($retryOrder->tracking_number)) {
+                        try {
+                            $tn = $this->fetchTrackingNumber($account, $retryOrder->order_sn, $retryOrder->package_number ?: null);
+                            if (! empty($tn)) {
+                                $retryOrder->tracking_number = $tn;
+                            }
+                        } catch (\Throwable $e) {
+                            Log::warning("Shopee waybill retry fetchTrackingNumber ({$retryOrder->order_sn}): " . $e->getMessage());
+                        }
+                    }
+                }
+
+                $retryResultList = $this->requestCreateShippingDocuments($account, $retryOrders);
+                $retryFailures = $this->extractCreateShippingFailures($retryResultList);
+                foreach ($retryOrders as $retryOrder) {
+                    $sn = $retryOrder->order_sn;
+                    if (isset($retryFailures[$sn])) {
+                        $failedSnMessages[$sn] = $retryFailures[$sn];
+                    } else {
+                        unset($failedSnMessages[$sn]);
+                    }
+                }
             }
         }
 
@@ -945,10 +972,12 @@ class ShopeeOrderService
             $warnings[] = "Resi {$sn} gagal dibuat Shopee: {$msg}";
         }
 
-        $docQueryList = $this->buildWaybillOrderList($eligibleOrders, true, false);
         $statusBySn = [];
+        $pendingOrders = $eligibleOrders;
+        $maxPollAttempts = 14;
 
-        for ($attempt = 1; $attempt <= 5; $attempt++) {
+        for ($attempt = 1; $attempt <= $maxPollAttempts; $attempt++) {
+            $docQueryList = $this->buildWaybillOrderList($pendingOrders, true, false);
             $resultResp = $this->postApi($account, '/api/v2/logistics/get_shipping_document_result', [
                 'order_list' => $docQueryList,
             ]);
@@ -958,7 +987,6 @@ class ShopeeOrderService
                 break;
             }
 
-            $hasProcessing = false;
             foreach ($resultList as $entry) {
                 if (! is_array($entry)) {
                     continue;
@@ -972,17 +1000,27 @@ class ShopeeOrderService
                     $failErr = trim((string) ($entry['fail_error'] ?? ''));
                     $failMsg = trim((string) ($entry['fail_message'] ?? ''));
                     $failedSnMessages[$sn] = trim($failErr . ($failErr && $failMsg ? ': ' : '') . $failMsg) ?: 'Status dokumen FAILED';
-                } elseif (in_array($status, ['PROCESSING', 'WAITING'], true)) {
-                    $hasProcessing = true;
                 }
             }
 
-            if (! $hasProcessing) {
+            $pendingOrders = array_values(array_filter(
+                $eligibleOrders,
+                static function (ShopeeOrder $o) use ($statusBySn, $failedSnMessages): bool {
+                    if (isset($failedSnMessages[$o->order_sn])) {
+                        return false;
+                    }
+                    $st = $statusBySn[$o->order_sn] ?? null;
+
+                    return $st === null || in_array($st, ['PROCESSING', 'WAITING'], true);
+                }
+            ));
+
+            if (empty($pendingOrders)) {
                 break;
             }
 
-            if ($attempt < 5) {
-                usleep(500000);
+            if ($attempt < $maxPollAttempts) {
+                usleep($attempt <= 4 ? 500000 : 800000);
             }
         }
 
@@ -1017,7 +1055,7 @@ class ShopeeOrderService
 
         if (empty($readyOrders)) {
             if (! empty($processingSns)) {
-                $errDetail = 'Dokumen resi Shopee masih dalam proses pembuatan setelah 5x pengecekan (' . implode(', ', $processingSns) . '). Silakan coba beberapa saat lagi.';
+                $errDetail = "Dokumen resi Shopee masih dalam proses pembuatan setelah {$maxPollAttempts}x pengecekan (" . implode(', ', $processingSns) . '). Silakan coba beberapa saat lagi.';
                 if (! empty($failedSnMessages)) {
                     $errDetail .= ' Gagal: ' . implode('; ', $failedSnMessages);
                 }
@@ -1875,22 +1913,172 @@ class ShopeeOrderService
     }
 
     /**
+     * Panggil create_shipping_document dengan toleransi already-created & isolasi kegagalan batch > 1 pesanan.
+     *
+     * @param  array<int, ShopeeOrder>  $orders
+     * @return array<int, array<string, mixed>>
+     */
+    private function requestCreateShippingDocuments(ShopeeAccount &$account, array $orders): array
+    {
+        try {
+            $resp = $this->postApi($account, '/api/v2/logistics/create_shipping_document', [
+                'order_list' => $this->buildWaybillOrderList($orders, true, true),
+            ]);
+
+            $list = $resp['response']['result_list'] ?? [];
+
+            return is_array($list) ? $list : [];
+        } catch (\Throwable $e) {
+            if ($this->isAlreadyCreatedWaybillError($e->getMessage())) {
+                Log::info('Shopee create_shipping_document already created notice: ' . $e->getMessage());
+
+                return [];
+            }
+
+            // Jika batch > 1 pesanan gagal di level HTTP/API (bukan error auth), pecah per-pesanan
+            // agar pesanan yang sudah pernah dibuat atau valid tidak ikut gagal.
+            $msgLower = strtolower($e->getMessage());
+            $isAuthError = str_contains($msgLower, 'otorisasi shopee') || str_contains($msgLower, 'error_auth');
+            if (count($orders) <= 1 || $isAuthError) {
+                throw $e;
+            }
+
+            Log::warning('Shopee create_shipping_document batch fallback ke per-order: ' . $e->getMessage());
+            $combinedResults = [];
+            foreach ($orders as $singleOrder) {
+                try {
+                    $singleResp = $this->postApi($account, '/api/v2/logistics/create_shipping_document', [
+                        'order_list' => $this->buildWaybillOrderList([$singleOrder], true, true),
+                    ]);
+                    $singleList = $singleResp['response']['result_list'] ?? [];
+                    if (is_array($singleList)) {
+                        foreach ($singleList as $entry) {
+                            if (is_array($entry)) {
+                                $combinedResults[] = $entry;
+                            }
+                        }
+                    }
+                } catch (\Throwable $singleErr) {
+                    if ($this->isAlreadyCreatedWaybillError($singleErr->getMessage())) {
+                        Log::info("Shopee create_shipping_document ({$singleOrder->order_sn}) already created.");
+                        continue;
+                    }
+                    $combinedResults[] = [
+                        'order_sn'     => $singleOrder->order_sn,
+                        'fail_error'   => 'CREATE_FAILED',
+                        'fail_message' => $singleErr->getMessage(),
+                    ];
+                }
+            }
+
+            return $combinedResults;
+        }
+    }
+
+    /**
+     * Ekstrak daftar pesanan yang benar-benar gagal dari result_list create_shipping_document.
+     *
+     * @param  array<int, array<string, mixed>>  $resultList
+     * @return array<string, string>
+     */
+    private function extractCreateShippingFailures(array $resultList): array
+    {
+        $failed = [];
+        foreach ($resultList as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+            $sn = (string) ($entry['order_sn'] ?? '');
+            $failErr = trim((string) ($entry['fail_error'] ?? ''));
+            $failMsg = trim((string) ($entry['fail_message'] ?? ''));
+            if ($sn === '' || ($failErr === '' && $failMsg === '')) {
+                continue;
+            }
+
+            $combined = trim($failErr . ($failErr && $failMsg ? ': ' : '') . $failMsg);
+            if ($this->isAlreadyCreatedWaybillError($combined)) {
+                Log::info("Shopee create_shipping_document ({$sn}) dilewati karena dokumen sudah pernah dibuat: {$combined}");
+                continue;
+            }
+
+            $failed[$sn] = $combined;
+        }
+
+        return $failed;
+    }
+
+    private function isAlreadyCreatedWaybillError(string $message): bool
+    {
+        $lower = strtolower($message);
+
+        return str_contains($lower, 'already')
+            || str_contains($lower, 'exist')
+            || str_contains($lower, 'duplicate')
+            || str_contains($lower, 'created');
+    }
+
+    private function isTransientCreateWaybillError(string $message): bool
+    {
+        $lower = strtolower($message);
+
+        return str_contains($lower, 'not_ready')
+            || str_contains($lower, 'not ready')
+            || str_contains($lower, 'busy')
+            || str_contains($lower, 'timeout')
+            || str_contains($lower, 'try again')
+            || str_contains($lower, 'system')
+            || str_contains($lower, 'tracking_number')
+            || str_contains($lower, 'tracking number');
+    }
+
+    /**
      * @param  array<int, ShopeeOrder>  $orders
      * @return array<int, array<string, string>>
      */
     private function buildWaybillOrderList(array $orders, bool $includeType, bool $includeTracking): array
     {
-        return array_values(array_map(
-            function (ShopeeOrder $order) use ($includeType, $includeTracking): array {
-                return $this->filterNonEmpty([
-                    'order_sn'               => $order->order_sn,
-                    'package_number'         => $order->package_number ?: null,
-                    'tracking_number'        => $includeTracking ? ($order->tracking_number ?: null) : null,
-                    'shipping_document_type' => $includeType ? self::WAYBILL_DOCUMENT_TYPE : null,
-                ]);
-            },
-            $orders
-        ));
+        $items = [];
+        foreach ($orders as $order) {
+            $pkgList = is_array($order->package_list_json) ? $order->package_list_json : [];
+            $activePackages = [];
+
+            if (count($pkgList) > 1) {
+                foreach ($pkgList as $pkg) {
+                    if (! is_array($pkg)) {
+                        continue;
+                    }
+                    $pkgStatus = strtoupper(trim((string) ($pkg['logistics_status'] ?? '')));
+                    if (in_array($pkgStatus, ['LOGISTICS_REQUEST_CANCELED', 'CANCELLED'], true)) {
+                        continue;
+                    }
+                    $pkgNo = trim((string) ($pkg['package_number'] ?? ''));
+                    if ($pkgNo !== '' && ! isset($activePackages[$pkgNo])) {
+                        $activePackages[$pkgNo] = trim((string) ($pkg['tracking_number'] ?? ''));
+                    }
+                }
+            }
+
+            if (count($activePackages) > 1) {
+                foreach ($activePackages as $pkgNo => $pkgTracking) {
+                    $items[] = $this->filterNonEmpty([
+                        'order_sn'               => $order->order_sn,
+                        'package_number'         => $pkgNo,
+                        'tracking_number'        => $includeTracking ? (($pkgTracking !== '' ? $pkgTracking : $order->tracking_number) ?: null) : null,
+                        'shipping_document_type' => $includeType ? self::WAYBILL_DOCUMENT_TYPE : null,
+                    ]);
+                }
+                continue;
+            }
+
+            $items[] = $this->filterNonEmpty([
+                'order_sn'               => $order->order_sn,
+                'package_number'         => $order->package_number ?: null,
+                'tracking_number'        => $includeTracking ? ($order->tracking_number ?: null) : null,
+                'shipping_document_type' => $includeType ? self::WAYBILL_DOCUMENT_TYPE : null,
+            ]);
+        }
+
+        return $items;
     }
 
     /**
