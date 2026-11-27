@@ -383,6 +383,7 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
     roleName === 'Super Admin' ||
     rolesList.includes('Super Admin')
   );
+  const isAdmin = !isSuperAdmin && (roleName === 'Admin' || rolesList.includes('Admin'));
   const isDirektur = !isSuperAdmin && (roleName === 'Direktur' || rolesList.includes('Direktur'));
   const isManagement = !isSuperAdmin && (roleName === 'Management' || rolesList.includes('Management'));
   const isPic = !isSuperAdmin && (roleName === 'PIC' || rolesList.includes('PIC'));
@@ -393,6 +394,7 @@ export default function CutOffIndex({ orders, filters, summary, channels = [], c
   const showAksiColumn = canManage || canFlagReview;
   const canViewFinancial =
     isSuperAdmin ||
+    isAdmin ||
     isDirektur ||
     isManagement ||
     isPic;

@@ -21,15 +21,15 @@ class CutOffExportDataTest extends TestCase
     {
         parent::setUp();
 
-        $superAdminRole = Role::create([
-            'name'        => 'Super Admin',
-            'description' => 'Akses penuh sistem',
-        ]);
+        $superAdminRole = Role::firstOrCreate(
+            ['name' => 'Super Admin'],
+            ['description' => 'Akses penuh sistem']
+        );
 
-        $gudangRole = Role::create([
-            'name'        => 'Gudang',
-            'description' => 'Akses gudang',
-        ]);
+        $gudangRole = Role::firstOrCreate(
+            ['name' => 'Gudang'],
+            ['description' => 'Akses gudang']
+        );
 
         $this->superAdmin = User::create([
             'name'     => 'Super Admin Test',
@@ -205,6 +205,68 @@ class CutOffExportDataTest extends TestCase
             1,
             'pembeli_1',
             'SPX Standard',
+            '',
+        ], $response->json('rows.0'));
+    }
+
+    public function test_export_data_includes_est_bersih_column_for_admin_role(): void
+    {
+        $adminRole = Role::firstOrCreate(
+            ['name' => 'Admin'],
+            ['description' => 'Akses operasional dan administrasi sistem']
+        );
+
+        $adminUser = User::create([
+            'name'     => 'Admin Cut Off Test',
+            'email'    => 'admin-export@test.local',
+            'password' => Hash::make('password'),
+            'role_id'  => $adminRole->id,
+            'status'   => 'active',
+        ]);
+
+        CutOffOrder::create([
+            'order_date'       => '2026-11-25 08:00:00',
+            'processed_at'     => '2026-11-25 09:10:00',
+            'channel'          => 'SH',
+            'order_number'     => '261125ADMIN01',
+            'sku_utama'        => 'SKU-ADMIN-1',
+            'variation_name'   => 'HITAM, 41',
+            'qty'              => 1,
+            'buyer_username'   => 'pembeli_admin',
+            'est_net_income'   => 142500,
+            'shipping_courier' => 'SPX Hemat',
+            'order_status'     => 'Diproses',
+        ]);
+
+        $response = $this->actingAs($adminUser)
+            ->getJson('/cut-off-orders/export-data?date_from=2026-11-25&date_to=2026-11-25');
+
+        $response->assertOk()
+            ->assertJsonPath('headers', [
+                'Tanggal',
+                'Nomor Urut',
+                'Platform',
+                'No Pesanan',
+                'SKU',
+                'Varian',
+                'QTY',
+                'Username',
+                'Est Bersih',
+                'Ekspedisi',
+                'Status',
+            ]);
+
+        $this->assertSame([
+            '25-11-26',
+            1,
+            'Shopee',
+            '261125ADMIN01',
+            'SKU-ADMIN-1',
+            'HITAM, 41',
+            1,
+            'pembeli_admin',
+            142500,
+            'SPX Hemat',
             '',
         ], $response->json('rows.0'));
     }
