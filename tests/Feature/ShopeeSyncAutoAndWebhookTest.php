@@ -37,15 +37,15 @@ class ShopeeSyncAutoAndWebhookTest extends TestCase
         app(ShopeeOrderService::class)->resetSchemaCache();
         app(ShopeeOrderRecorder::class)->resetSchemaCache();
 
-        $superAdminRole = Role::create([
-            'name'        => 'Super Admin',
-            'description' => 'Akses penuh sistem',
-        ]);
+        $superAdminRole = Role::firstOrCreate(
+            ['name' => 'Super Admin'],
+            ['description' => 'Akses penuh sistem']
+        );
 
-        $staffRole = Role::create([
-            'name'        => 'Staff Gudang',
-            'description' => 'Akses operasional gudang',
-        ]);
+        $staffRole = Role::firstOrCreate(
+            ['name' => 'Staff Gudang'],
+            ['description' => 'Akses operasional gudang']
+        );
 
         $this->superAdmin = User::create([
             'name'     => 'Super Admin Shopee',
@@ -690,6 +690,7 @@ class ShopeeSyncAutoAndWebhookTest extends TestCase
         ]);
 
         // Default GET /shopee-orders -> tab=to_ship, sub_tab=unprocessed, order_type=all
+        // orderTypeCounts dihitung dari seluruh status to_ship (termasuk PROCESSED) = 7 total
         $this->actingAs($this->superAdmin)
             ->get('/shopee-orders')
             ->assertOk()
@@ -698,9 +699,9 @@ class ShopeeSyncAutoAndWebhookTest extends TestCase
                 ->where('filters.tab', 'to_ship')
                 ->where('filters.sub_tab', 'unprocessed')
                 ->where('filters.order_type', 'all')
-                ->where('orderTypeCounts.all', 6)
+                ->where('orderTypeCounts.all', 7)
                 ->where('orderTypeCounts.regular', 2)
-                ->where('orderTypeCounts.instant', 2)
+                ->where('orderTypeCounts.instant', 3)
                 ->where('orderTypeCounts.kilat', 2)
                 ->has('orders.data', 6)
             );
@@ -712,7 +713,7 @@ class ShopeeSyncAutoAndWebhookTest extends TestCase
             ->assertInertia(fn (AssertableInertia $page) => $page
                 ->component('Shopee/Orders', false)
                 ->where('filters.order_type', 'regular')
-                ->where('orderTypeCounts.all', 6)
+                ->where('orderTypeCounts.all', 7)
                 ->where('orderTypeCounts.regular', 2)
                 ->has('orders.data', 2)
                 ->where('orders.data.0.order_sn', '261112REG01')

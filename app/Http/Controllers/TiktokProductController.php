@@ -32,6 +32,7 @@ class TiktokProductController extends Controller
         try {
             $store = Cache::store('file');
             $store->forget('tiktok_stock_alert_queue');
+            $store->forget('tiktok_stock_alert_queue_v2');
             $store->forget('tiktok_products_light_cols_v1');
             $store->forget('master_stock_wh_stats_v2');
             $store->forget('master_stock_wh_summary_v3');
@@ -148,7 +149,7 @@ class TiktokProductController extends Controller
         $empty = ['items' => [], 'total' => 0, 'critical' => 0];
 
         try {
-            $cached = Cache::store('file')->get('tiktok_stock_alert_queue');
+            $cached = Cache::store('file')->get('tiktok_stock_alert_queue_v2');
             if (is_array($cached) && isset($cached['items'])) {
                 return $cached;
             }
@@ -198,6 +199,7 @@ class TiktokProductController extends Controller
             $maps     = ProductStockMatcher::buildMasterStockMaps($masterStocks);
             $allProds = TiktokProduct::select($this->getLightProductColumns())
                 ->where('tiktok_account_id', $account->id)
+                ->where('item_status', 'ACTIVATE')
                 ->get();
 
             $variantCounts = ProductStockMatcher::countDistinctSizesPerItem($allProds);
@@ -228,7 +230,7 @@ class TiktokProductController extends Controller
             $queue = self::buildStockWorkQueue($criticalOosCount, $discrepancyCount, $campaignUnlockedCount);
 
             try {
-                Cache::store('file')->put('tiktok_stock_alert_queue', $queue, 3600);
+                Cache::store('file')->put('tiktok_stock_alert_queue_v2', $queue, 3600);
             } catch (\Throwable $e) {
                 // Abaikan jika tidak bisa menulis file cache
             }
@@ -357,7 +359,7 @@ class TiktokProductController extends Controller
             $lastImportG  = (string) ($masterStockSummary['last_imported_g'] ?? '');
             $lastImportA  = (string) ($masterStockSummary['last_imported_a'] ?? '');
             $verHash      = md5("{$account->id}_{$warehouse}_{$lastImportG}_{$lastImportA}_{$cacheVer}");
-            $evalCacheKey = "tiktok_stock_audit_eval_v5_{$verHash}";
+            $evalCacheKey = "tiktok_stock_audit_eval_v6_{$verHash}";
 
             $evalData = Cache::store('file')->remember($evalCacheKey, 300, function () use ($account, $warehouse) {
                 $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs', 'raw_qty', 'unit')->get();
@@ -369,6 +371,7 @@ class TiktokProductController extends Controller
 
                 $allProds = TiktokProduct::select($this->getLightProductColumns())
                     ->where('tiktok_account_id', $account->id)
+                    ->where('item_status', 'ACTIVATE')
                     ->get();
 
                 $variantCounts = ProductStockMatcher::countDistinctSizesPerItem($allProds);
@@ -583,7 +586,7 @@ class TiktokProductController extends Controller
             count($campaignUnlockedIds)
         );
         try {
-            Cache::store('file')->put('tiktok_stock_alert_queue', $stockWorkQueue, 3600);
+            Cache::store('file')->put('tiktok_stock_alert_queue_v2', $stockWorkQueue, 3600);
         } catch (\Throwable) {
         }
 
@@ -858,6 +861,7 @@ class TiktokProductController extends Controller
         }
 
         $products = TiktokProduct::query()
+            ->where('item_status', 'ACTIVATE')
             ->where(function ($outerQuery) use ($tokens) {
                 foreach ($tokens as $token) {
                     $upper = strtoupper($token);
@@ -1204,7 +1208,8 @@ class TiktokProductController extends Controller
             $cleanKeywords = $keywords;
         }
 
-        $query = TiktokProduct::where('tiktok_account_id', $account->id);
+        $query = TiktokProduct::where('tiktok_account_id', $account->id)
+            ->where('item_status', 'ACTIVATE');
         if ($itemId !== '') {
             $query->where('item_id', $itemId);
         }
@@ -1376,7 +1381,9 @@ class TiktokProductController extends Controller
             ], 422);
         }
 
-        $tiktokProducts = TiktokProduct::where('tiktok_account_id', $account->id)->get();
+        $tiktokProducts = TiktokProduct::where('tiktok_account_id', $account->id)
+            ->where('item_status', 'ACTIVATE')
+            ->get();
 
         $productMap = [];
         $codeMap    = [];
@@ -1525,7 +1532,9 @@ class TiktokProductController extends Controller
         }
 
         $maps = ProductStockMatcher::buildMasterStockMaps($masterStocks);
-        $tiktokProducts = TiktokProduct::where('tiktok_account_id', $account->id)->get();
+        $tiktokProducts = TiktokProduct::where('tiktok_account_id', $account->id)
+            ->where('item_status', 'ACTIVATE')
+            ->get();
         $variantCounts = ProductStockMatcher::countDistinctSizesPerItem($tiktokProducts);
 
         $comparisonList   = [];

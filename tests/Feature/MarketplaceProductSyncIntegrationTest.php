@@ -491,4 +491,101 @@ class MarketplaceProductSyncIntegrationTest extends TestCase
         $secondTiktok = $this->actingAs($this->superAdmin)->postJson('/tiktok-products/auto-sync');
         $secondTiktok->assertOk()->assertJsonPath('synced', false)->assertJsonPath('reason', 'cooldown');
     }
+
+    public function test_shopee_and_tiktok_web_endpoints_only_display_active_products(): void
+    {
+        // Shopee: hanya NORMAL yang boleh muncul, UNLIST/BANNED/SELLER_DELETE harus disembunyikan
+        $shopeeActive = ShopeeProduct::create([
+            'shopee_account_id' => $this->shopeeAccount->id,
+            'item_id'           => 3001,
+            'model_id'          => 3101,
+            'item_name'         => 'Sepatu Aktif Shopee',
+            'model_name'        => 'Hitam, 40',
+            'sku'               => 'SH-AKTIF-40',
+            'stock'             => 10,
+            'price'             => 200000,
+            'item_status'       => 'NORMAL',
+            'has_model'         => true,
+        ]);
+
+        ShopeeProduct::create([
+            'shopee_account_id' => $this->shopeeAccount->id,
+            'item_id'           => 3002,
+            'model_id'          => 3102,
+            'item_name'         => 'Sepatu Arsip Shopee',
+            'model_name'        => 'Putih, 40',
+            'sku'               => 'SH-ARSIP-40',
+            'stock'             => 99,
+            'price'             => 200000,
+            'item_status'       => 'UNLIST',
+            'has_model'         => true,
+        ]);
+
+        ShopeeProduct::create([
+            'shopee_account_id' => $this->shopeeAccount->id,
+            'item_id'           => 3003,
+            'model_id'          => 0,
+            'item_name'         => 'Sepatu Diblokir Shopee',
+            'sku'               => 'SH-BANNED',
+            'stock'             => 50,
+            'price'             => 200000,
+            'item_status'       => 'BANNED',
+            'has_model'         => false,
+        ]);
+
+        // TikTok: hanya ACTIVATE yang boleh muncul, SELLER_DEACTIVATED/PLATFORM_DEACTIVATED harus disembunyikan
+        $tiktokActive = TiktokProduct::create([
+            'tiktok_account_id' => $this->tiktokAccount->id,
+            'item_id'           => 'TT_ACT_1',
+            'model_id'          => 'TT_MOD_1',
+            'item_name'         => 'Sepatu Aktif TikTok',
+            'model_name'        => 'Coklat, 41',
+            'sku'               => 'TT-AKTIF-41',
+            'stock'             => 8,
+            'price'             => 220000,
+            'item_status'       => 'ACTIVATE',
+            'has_model'         => true,
+        ]);
+
+        TiktokProduct::create([
+            'tiktok_account_id' => $this->tiktokAccount->id,
+            'item_id'           => 'TT_DEACT_1',
+            'model_id'          => 'TT_MOD_2',
+            'item_name'         => 'Sepatu Arsip TikTok',
+            'model_name'        => 'Putih, 41',
+            'sku'               => 'TT-ARSIP-41',
+            'stock'             => 77,
+            'price'             => 220000,
+            'item_status'       => 'SELLER_DEACTIVATED',
+            'has_model'         => true,
+        ]);
+
+        // Verifikasi halaman index Shopee + search-variants + variants
+        $shopeeIndex = $this->actingAs($this->superAdmin)->get('/shopee-products');
+        $shopeeIndex->assertOk();
+        $shopeePage = $shopeeIndex->viewData('page')['props'] ?? [];
+        $this->assertSame(1, $shopeePage['summary']['total_skus'] ?? null);
+        $this->assertSame(10, $shopeePage['summary']['total_stock'] ?? null);
+        $this->assertCount(1, $shopeePage['products']['data'] ?? []);
+        $this->assertSame($shopeeActive->id, $shopeePage['products']['data'][0]['id'] ?? null);
+
+        $shopeeSearch = $this->actingAs($this->superAdmin)->getJson('/shopee-products/search-variants?q=Sepatu');
+        $shopeeSearch->assertOk();
+        $shopeeIds = collect($shopeeSearch->json('data'))->pluck('id')->all();
+        $this->assertSame([$shopeeActive->id], $shopeeIds);
+
+        // Verifikasi halaman index TikTok + search-variants
+        $tiktokIndex = $this->actingAs($this->superAdmin)->get('/tiktok-products');
+        $tiktokIndex->assertOk();
+        $tiktokPage = $tiktokIndex->viewData('page')['props'] ?? [];
+        $this->assertSame(1, $tiktokPage['summary']['total_skus'] ?? null);
+        $this->assertSame(8, $tiktokPage['summary']['total_stock'] ?? null);
+        $this->assertCount(1, $tiktokPage['products']['data'] ?? []);
+        $this->assertSame($tiktokActive->id, $tiktokPage['products']['data'][0]['id'] ?? null);
+
+        $tiktokSearch = $this->actingAs($this->superAdmin)->getJson('/tiktok-products/search-variants?q=Sepatu');
+        $tiktokSearch->assertOk();
+        $tiktokIds = collect($tiktokSearch->json('data'))->pluck('id')->all();
+        $this->assertSame([$tiktokActive->id], $tiktokIds);
+    }
 }

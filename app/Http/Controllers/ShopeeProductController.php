@@ -32,6 +32,7 @@ class ShopeeProductController extends Controller
         try {
             $store = Cache::store('file');
             $store->forget('shopee_stock_alert_queue');
+            $store->forget('shopee_stock_alert_queue_v2');
             $store->forget('shopee_products_light_cols_v1');
             $store->forget('master_stock_wh_stats_v2');
             $store->forget('master_stock_wh_summary_v3');
@@ -40,9 +41,11 @@ class ShopeeProductController extends Controller
             if ($accountId) {
                 $store->forget("shopee_summary_stats_{$accountId}");
                 $store->forget("shopee_summary_stats_v3_{$accountId}");
+                $store->forget("shopee_summary_stats_v4_{$accountId}");
             }
             $store->forget('shopee_summary_stats_all');
             $store->forget('shopee_summary_stats_v3_all');
+            $store->forget('shopee_summary_stats_v4_all');
 
             // Naikkan versi cache untuk menginvalidasi seluruh kalkulasi hash rekonsiliasi seketika
             $currentVer = (int) $store->get('shopee_audit_cache_ver', 1);
@@ -148,7 +151,7 @@ class ShopeeProductController extends Controller
         $empty = ['items' => [], 'total' => 0, 'critical' => 0];
 
         try {
-            $cached = Cache::store('file')->get('shopee_stock_alert_queue');
+            $cached = Cache::store('file')->get('shopee_stock_alert_queue_v2');
             if (is_array($cached) && isset($cached['items'])) {
                 return $cached;
             }
@@ -198,6 +201,7 @@ class ShopeeProductController extends Controller
             $maps     = ProductStockMatcher::buildMasterStockMaps($masterStocks);
             $allProds = ShopeeProduct::select($this->getLightProductColumns())
                 ->where('shopee_account_id', $account->id)
+                ->where('item_status', 'NORMAL')
                 ->get();
 
             $variantCounts = ProductStockMatcher::countDistinctSizesPerItem($allProds);
@@ -228,7 +232,7 @@ class ShopeeProductController extends Controller
             $queue = self::buildStockWorkQueue($criticalOosCount, $discrepancyCount, $campaignUnlockedCount);
 
             try {
-                Cache::store('file')->put('shopee_stock_alert_queue', $queue, 3600);
+                Cache::store('file')->put('shopee_stock_alert_queue_v2', $queue, 3600);
             } catch (\Throwable $e) {
                 // Abaikan jika tidak bisa menulis file cache
             }
@@ -361,7 +365,7 @@ class ShopeeProductController extends Controller
             $lastImportG  = (string) ($masterStockSummary['last_imported_g'] ?? '');
             $lastImportA  = (string) ($masterStockSummary['last_imported_a'] ?? '');
             $verHash      = md5("{$account->id}_{$warehouse}_{$lastImportG}_{$lastImportA}_{$cacheVer}");
-            $evalCacheKey = "shopee_stock_audit_eval_v5_{$verHash}";
+            $evalCacheKey = "shopee_stock_audit_eval_v6_{$verHash}";
 
             $evalData = Cache::store('file')->remember($evalCacheKey, 300, function () use ($account, $warehouse) {
                 $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs', 'raw_qty', 'unit')->get();
@@ -374,6 +378,7 @@ class ShopeeProductController extends Controller
                 // Ambil kolom produk tanpa raw_data (JSON besar) dan tetap aman walau skema berbeda
                 $allProds = ShopeeProduct::select($this->getLightProductColumns())
                     ->where('shopee_account_id', $account->id)
+                    ->where('item_status', 'NORMAL')
                     ->get();
 
                 $variantCounts = ProductStockMatcher::countDistinctSizesPerItem($allProds);
@@ -458,10 +463,10 @@ class ShopeeProductController extends Controller
         $periodSalesCount = (int) ($periodSalesData['total_skus'] ?? 0);
 
         $summaryStats = Cache::store('file')->remember(
-            'shopee_summary_stats_v3_' . ($account ? $account->id : 'all'),
+            'shopee_summary_stats_v4_' . ($account ? $account->id : 'all'),
             60,
             function () use ($account) {
-                $qStats = ShopeeProduct::query();
+                $qStats = ShopeeProduct::query()->where('item_status', 'NORMAL');
                 if ($account) {
                     $qStats->where('shopee_account_id', $account->id);
                 }
@@ -495,8 +500,8 @@ class ShopeeProductController extends Controller
         $totalSales     = $totalPeriodSales > 0 ? $totalPeriodSales : (int) ($summaryStats['total_sales'] ?? 0);
         $lastSyncedAt   = $summaryStats['last_synced_at'] ?? null;
 
-        // 4. Query Paginasi 50 Item
-        $query = ShopeeProduct::query();
+        // 4. Query Paginasi 50 Item (hanya produk aktif Shopee, non-arsip)
+        $query = ShopeeProduct::query()->where('shopee_products.item_status', 'NORMAL');
         if ($account) {
             $query->where('shopee_products.shopee_account_id', $account->id);
         }
@@ -518,6 +523,7 @@ class ShopeeProductController extends Controller
         $soldProductIds   = [];
         if ($needsPeriodSalesIds && ! empty($periodSalesMap)) {
             $skuRows = ShopeeProduct::query()
+                ->where('item_status', 'NORMAL')
                 ->when($account, fn ($q) => $q->where('shopee_account_id', $account->id))
                 ->whereNotNull('sku')
                 ->where('sku', '!=', '')
@@ -666,7 +672,7 @@ class ShopeeProductController extends Controller
             count($campaignUnlockedIds)
         );
         try {
-            \Illuminate\Support\Facades\Cache::store('file')->put('shopee_stock_alert_queue', $stockWorkQueue, 3600);
+            \Illuminate\Support\Facades\Cache::store('file')->put('shopee_stock_alert_queue_v2', $stockWorkQueue, 3600);
         } catch (\Throwable $e) {
             // Abaikan error cache file pada environment hosting terbatas
         }
@@ -909,7 +915,7 @@ class ShopeeProductController extends Controller
         $stockStatus = (string) $request->input('stock_status', 'all');
         $sort        = (string) $request->input('sort', 'stock_desc');
 
-        $query = ShopeeProduct::query();
+        $query = ShopeeProduct::query()->where('item_status', 'NORMAL');
 
         if (! empty($search)) {
             $query->where(function ($q) use ($search) {
@@ -1011,8 +1017,10 @@ class ShopeeProductController extends Controller
             ], 422);
         }
 
-        // Ambil seluruh produk Shopee untuk akun ini
-        $shopeeProducts = ShopeeProduct::where('shopee_account_id', $account->id)->get();
+        // Ambil seluruh produk aktif Shopee untuk akun ini
+        $shopeeProducts = ShopeeProduct::where('shopee_account_id', $account->id)
+            ->where('item_status', 'NORMAL')
+            ->get();
 
         // Buat map lookup berdasarkan SKU Shopee dan kode barang internal 8 digit
         $productMap = [];
@@ -1189,7 +1197,9 @@ class ShopeeProductController extends Controller
         }
 
         $maps = ProductStockMatcher::buildMasterStockMaps($masterStocks);
-        $shopeeProducts = ShopeeProduct::where('shopee_account_id', $account->id)->get();
+        $shopeeProducts = ShopeeProduct::where('shopee_account_id', $account->id)
+            ->where('item_status', 'NORMAL')
+            ->get();
         $variantCounts = ProductStockMatcher::countDistinctSizesPerItem($shopeeProducts);
 
         $comparisonList   = [];
@@ -1622,6 +1632,7 @@ class ShopeeProductController extends Controller
 
         $term = strtoupper($q);
         $products = ShopeeProduct::query()
+            ->where('item_status', 'NORMAL')
             ->where(function ($query) use ($q, $term) {
                 $query->where('sku', 'like', "%{$q}%")
                     ->orWhere('sku', 'like', "%{$term}%")
@@ -2613,7 +2624,8 @@ class ShopeeProductController extends Controller
             $cleanKeywords = $keywords;
         }
 
-        $query = ShopeeProduct::where('shopee_account_id', $account->id);
+        $query = ShopeeProduct::where('shopee_account_id', $account->id)
+            ->where('item_status', 'NORMAL');
 
         if (! empty($itemId)) {
             $query->where('item_id', $itemId);

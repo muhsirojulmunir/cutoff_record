@@ -37,9 +37,11 @@ class ShopeeIntegrationController extends Controller
 
         try {
             if (\Illuminate\Support\Facades\Schema::hasTable('shopee_products')) {
-                $productsCount   = ShopeeProduct::where('shopee_account_id', $account->id)->count();
-                $totalStock      = (int) ShopeeProduct::where('shopee_account_id', $account->id)->sum('stock');
-                $lastProductSync = ShopeeProduct::where('shopee_account_id', $account->id)->max('last_synced_at');
+                $activeQuery     = ShopeeProduct::where('shopee_account_id', $account->id)
+                    ->where('item_status', 'NORMAL');
+                $productsCount   = (clone $activeQuery)->count();
+                $totalStock      = (int) (clone $activeQuery)->sum('stock');
+                $lastProductSync = (clone $activeQuery)->max('last_synced_at');
             }
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('Shopee products summary error: ' . $e->getMessage());
@@ -270,7 +272,9 @@ class ShopeeIntegrationController extends Controller
         Gate::authorize('user.view');
 
         $search = trim((string) $request->input('search', ''));
-        $query  = ShopeeProduct::query()->orderBy('stock', 'desc');
+        $query  = ShopeeProduct::query()
+            ->where('item_status', 'NORMAL')
+            ->orderBy('stock', 'desc');
 
         if (! empty($search)) {
             $query->where(function ($q) use ($search) {
