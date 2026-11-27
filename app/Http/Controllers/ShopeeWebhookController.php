@@ -15,6 +15,7 @@ class ShopeeWebhookController extends Controller
 {
     public function __construct(
         private readonly ShopeeOrderService $orderService,
+        private readonly \App\Services\ShopeeSyncService $syncService,
     ) {}
 
     /**
@@ -56,8 +57,9 @@ class ShopeeWebhookController extends Controller
 
         $data = is_array($payload['data'] ?? null) ? $payload['data'] : [];
         $orderSn = trim((string) ($data['ordersn'] ?? $data['order_sn'] ?? ''));
+        $itemId = isset($data['item_id']) && is_numeric($data['item_id']) ? (int) $data['item_id'] : 0;
 
-        if ($code === 0 || $orderSn === '') {
+        if ($code === 0 || ($orderSn === '' && $itemId <= 0)) {
             return response()->json([
                 'status'  => 'ok',
                 'code'    => $code,
@@ -65,6 +67,42 @@ class ShopeeWebhookController extends Controller
                     ? 'Shopee webhook ping acknowledged.'
                     : 'Shopee webhook event acknowledged.',
             ], 200);
+        }
+
+        if ($orderSn === '' && $itemId > 0) {
+            $itemLock = Cache::lock("shopee_webhook_item_{$verifiedAccount->id}_{$itemId}", 5);
+            if (! $itemLock->get()) {
+                return response()->json([
+                    'status'    => 'accepted',
+                    'debounced' => true,
+                    'item_id'   => $itemId,
+                    'code'      => $code,
+                    'message'   => 'Webhook produk sedang diproses dalam jeda debounce.',
+                ], 200);
+            }
+
+            try {
+                $itemStats = $this->syncService->syncSingleItemFromShopee($verifiedAccount, $itemId);
+                return response()->json([
+                    'status'    => 'ok',
+                    'item_id'   => $itemId,
+                    'code'      => $code,
+                    'refreshed' => true,
+                    'stats'     => $itemStats,
+                    'message'   => "Produk Shopee #{$itemId} berhasil disinkronkan secara otomatis.",
+                ], 200);
+            } catch (\Throwable $e) {
+                Log::warning("ShopeeWebhookController item sync failed ({$itemId}): " . $e->getMessage());
+                return response()->json([
+                    'status'    => 'accepted',
+                    'item_id'   => $itemId,
+                    'code'      => $code,
+                    'refreshed' => false,
+                    'message'   => 'Webhook produk diterima; sinkronisasi tertunda.',
+                ], 200);
+            } finally {
+                $itemLock->release();
+            }
         }
 
         $lock = Cache::lock("shopee_webhook_{$verifiedAccount->id}_{$orderSn}", 10);

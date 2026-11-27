@@ -832,6 +832,75 @@ class ShopeeProductController extends Controller
     }
 
     /**
+     * Background non-blocking auto-sync triggered when viewing Shopee products page.
+     * Enforces a 2-minute per-account cooldown and cache lock to prevent duplicate API calls.
+     */
+    public function autoSync(Request $request): JsonResponse
+    {
+        $accounts = ShopeeAccount::where('status', 'active')
+            ->whereNotNull('access_token')
+            ->where('access_token', '!=', '')
+            ->get();
+
+        if ($accounts->isEmpty()) {
+            return response()->json(['synced' => false, 'reason' => 'no_active_account']);
+        }
+
+        $syncedAny = false;
+        $totalSynced = 0;
+        $totalPruned = 0;
+        $skippedCooldown = 0;
+
+        foreach ($accounts as $account) {
+            $cooldownKey = "shopee_products_auto_sync_at_{$account->id}";
+            if (! $request->boolean('force') && Cache::has($cooldownKey)) {
+                $skippedCooldown++;
+                continue;
+            }
+
+            $lock = Cache::lock("shopee_products_auto_sync_lock_{$account->id}", 180);
+            if (! $lock->get()) {
+                continue;
+            }
+
+            try {
+                @ini_set('max_execution_time', '300');
+                @set_time_limit(300);
+
+                $result = $this->syncService->syncProductsFromShopee($account);
+                self::clearAuditCache($account->id);
+                Cache::put($cooldownKey, now()->toIso8601String(), 120);
+
+                $syncedAny = true;
+                $totalSynced += (int) ($result['total_variants'] ?? $result['synced_count'] ?? 0);
+                $totalPruned += (int) ($result['pruned_items'] ?? 0) + (int) ($result['pruned_variants'] ?? $result['pruned_models'] ?? 0);
+            } catch (\Throwable $e) {
+                Log::warning('[ShopeeProductController::autoSync] Background sync gagal', [
+                    'account_id' => $account->id,
+                    'error' => $e->getMessage(),
+                ]);
+                // Backoff 60 detik jika gagal agar tidak membombardir API saat gangguan
+                Cache::put($cooldownKey, now()->toIso8601String(), 60);
+            } finally {
+                $lock->release();
+            }
+        }
+
+        if (! $syncedAny) {
+            return response()->json([
+                'synced' => false,
+                'reason' => $skippedCooldown > 0 ? 'cooldown' : 'locked',
+            ]);
+        }
+
+        return response()->json([
+            'synced'       => true,
+            'synced_count' => $totalSynced,
+            'pruned_count' => $totalPruned,
+        ]);
+    }
+
+    /**
      * Export products to CSV file.
      */
     public function export(Request $request): StreamedResponse
@@ -2702,7 +2771,7 @@ class ShopeeProductController extends Controller
 
         try {
             $res = $this->syncService->updateShopeeProductsStock($account, $validated['updates']);
-            if (! empty($res['success'])) {
+            if (! empty($res['updated_count'])) {
                 self::clearAuditCache($account->id);
             }
             return response()->json([

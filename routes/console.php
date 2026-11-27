@@ -26,6 +26,12 @@ Schedule::command('shopee:sync-products')
     ->withoutOverlapping(15)
     ->runInBackground();
 
+// Auto-sync katalog produk & stok TikTok Shop setiap 10 menit
+Schedule::command('tiktok:sync-products')
+    ->everyTenMinutes()
+    ->withoutOverlapping(15)
+    ->runInBackground();
+
 // Auto-boost produk Shopee secara berkala (cek slot kosong & otomatis naikkan produk antrean setiap 5 menit)
 Schedule::command('shopee:auto-boost')
     ->everyFiveMinutes()

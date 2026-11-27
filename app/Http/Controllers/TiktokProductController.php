@@ -658,6 +658,75 @@ class TiktokProductController extends Controller
     }
 
     /**
+     * Background non-blocking auto-sync triggered when viewing TikTok products page.
+     * Enforces a 2-minute per-account cooldown and cache lock to prevent duplicate API calls.
+     */
+    public function autoSync(Request $request): JsonResponse
+    {
+        $accounts = TiktokAccount::where('status', 'active')
+            ->whereNotNull('access_token')
+            ->where('access_token', '!=', '')
+            ->get()
+            ->filter(fn (TiktokAccount $acc) => $acc->isConnected());
+
+        if ($accounts->isEmpty()) {
+            return response()->json(['synced' => false, 'reason' => 'no_active_account']);
+        }
+
+        $syncedAny = false;
+        $totalSynced = 0;
+        $totalPruned = 0;
+        $skippedCooldown = 0;
+
+        foreach ($accounts as $account) {
+            $cooldownKey = "tiktok_products_auto_sync_at_{$account->id}";
+            if (! $request->boolean('force') && Cache::has($cooldownKey)) {
+                $skippedCooldown++;
+                continue;
+            }
+
+            $lock = Cache::lock("tiktok_products_auto_sync_lock_{$account->id}", 180);
+            if (! $lock->get()) {
+                continue;
+            }
+
+            try {
+                @ini_set('max_execution_time', '300');
+                @set_time_limit(300);
+
+                $result = $this->syncService->syncProductsFromTiktok($account);
+                self::clearAuditCache($account->id);
+                Cache::put($cooldownKey, now()->toIso8601String(), 120);
+
+                $syncedAny = true;
+                $totalSynced += (int) ($result['total_variants'] ?? $result['synced_count'] ?? 0);
+                $totalPruned += (int) ($result['pruned_items'] ?? 0) + (int) ($result['pruned_variants'] ?? $result['pruned_models'] ?? 0);
+            } catch (\Throwable $e) {
+                Log::warning('[TiktokProductController::autoSync] Background sync gagal', [
+                    'account_id' => $account->id,
+                    'error' => $e->getMessage(),
+                ]);
+                Cache::put($cooldownKey, now()->toIso8601String(), 60);
+            } finally {
+                $lock->release();
+            }
+        }
+
+        if (! $syncedAny) {
+            return response()->json([
+                'synced' => false,
+                'reason' => $skippedCooldown > 0 ? 'cooldown' : 'locked',
+            ]);
+        }
+
+        return response()->json([
+            'synced'       => true,
+            'synced_count' => $totalSynced,
+            'pruned_count' => $totalPruned,
+        ]);
+    }
+
+    /**
      * Export daftar produk & stok TikTok ke format Excel / CSV.
      */
     public function export(Request $request): StreamedResponse
@@ -1112,45 +1181,131 @@ class TiktokProductController extends Controller
     }
 
     /**
-     * Get product variants for quick restock/edit modal.
+     * Ambil variasi produk TikTok berdasarkan item_id atau pencarian nama/sku (untuk modal Restock Cepat).
      */
     public function getProductVariants(Request $request): JsonResponse
     {
-        $itemId = trim((string) $request->input('item_id', ''));
-        if (empty($itemId)) {
-            return response()->json(['status' => 'error', 'message' => 'Item ID tidak valid.'], 422);
+        $account = TiktokAccount::where('status', 'active')->first() ?? TiktokAccount::first();
+        if (! $account) {
+            return response()->json(['status' => 'error', 'message' => 'Toko TikTok belum terhubung.'], 422);
         }
 
-        $variants = TiktokProduct::where('item_id', $itemId)
-            ->orderBy('id', 'ASC')
-            ->get();
+        $itemId = trim((string) $request->input('item_id', ''));
+        $q      = trim((string) $request->input('q', ''));
+
+        if ($itemId === '' && $q === '') {
+            return response()->json(['status' => 'success', 'variants' => []]);
+        }
+
+        $keywords = preg_split('/[\s,]+/', strtolower($q), -1, PREG_SPLIT_NO_EMPTY);
+        $filler = ['record', 'sepatu', 'spt', 'shoes', 'anak', 'pria', 'wanita'];
+        $cleanKeywords = array_values(array_filter($keywords, static fn ($k) => count($keywords) === 1 || ! in_array($k, $filler, true)));
+        if (empty($cleanKeywords)) {
+            $cleanKeywords = $keywords;
+        }
+
+        $query = TiktokProduct::where('tiktok_account_id', $account->id);
+        if ($itemId !== '') {
+            $query->where('item_id', $itemId);
+        }
+        if (! empty($cleanKeywords)) {
+            $query->where(function ($sub) use ($cleanKeywords) {
+                foreach ($cleanKeywords as $kw) {
+                    $sub->where(function ($w) use ($kw) {
+                        $w->where('sku', 'like', "%{$kw}%")
+                          ->orWhere('model_name', 'like', "%{$kw}%")
+                          ->orWhere('item_name', 'like', "%{$kw}%");
+                    });
+                }
+            });
+        }
+
+        $products = $query->orderBy('item_name', 'asc')->orderBy('model_name', 'asc')->limit(150)->get();
+
+        $maps = null;
+        $variantCounts = [];
+        if (\Illuminate\Support\Facades\Schema::hasTable('master_stocks')) {
+            try {
+                $masterStocks = MasterStock::select('warehouse', 'item_code', 'item_name', 'qty_pcs', 'raw_qty', 'unit')->get();
+                if ($masterStocks->isNotEmpty()) {
+                    $maps = ProductStockMatcher::buildMasterStockMaps($masterStocks);
+                    $variantCounts = ProductStockMatcher::countDistinctSizesPerItem($products);
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        $result = $products->map(function ($p) use ($maps, $variantCounts) {
+            $whStock = 0;
+            $stockG = 0;
+            $stockA = 0;
+            $suggestedCode = null;
+            if ($maps) {
+                $info = ProductStockMatcher::resolveStockInfo(
+                    $p,
+                    $maps,
+                    'ALL',
+                    $variantCounts[$p->item_id] ?? 6
+                );
+                $whStock = $info['warehouse_stock'];
+                $stockG = $info['stock_g'];
+                $stockA = $info['stock_a'];
+                $suggestedCode = $info['matched_code'] ?? $info['suggested_code'];
+            }
+
+            return [
+                'id'              => $p->id,
+                'item_id'         => $p->item_id,
+                'model_id'        => $p->model_id,
+                'sku'             => $p->sku,
+                'item_name'       => $p->item_name,
+                'model_name'      => $p->model_name ?: 'Standar',
+                'current_stock'   => (int) $p->stock,
+                'reserved_stock'  => (int) $p->reserved_stock,
+                'warehouse_stock' => $whStock,
+                'stock_g'         => $stockG,
+                'stock_a'         => $stockA,
+                'matched_code'    => $suggestedCode,
+            ];
+        });
 
         return response()->json([
             'status'   => 'success',
-            'variants' => $variants,
+            'variants' => $result,
         ]);
     }
 
     /**
-     * Quick stock update for variant(s).
+     * Quick stock update for variant(s) (mendukung array updates maupun satuan).
      */
     public function updateStock(Request $request): JsonResponse
     {
         $this->ensureSuperAdminUser($request);
 
         $validated = $request->validate([
-            'product_id' => 'required|integer',
-            'stock'      => 'required|integer|min:0',
+            'updates'              => 'nullable|array|min:1',
+            'updates.*.product_id' => 'required_with:updates|integer',
+            'updates.*.stock'      => 'required_with:updates|integer|min:0|max:100000',
+            'product_id'           => 'nullable|integer',
+            'stock'                => 'nullable|integer|min:0|max:100000',
         ]);
 
-        $account = TiktokAccount::where('status', 'active')->first() ?? TiktokAccount::first();
-        $product = TiktokProduct::findOrFail($validated['product_id']);
+        $updates = ! empty($validated['updates'])
+            ? $validated['updates']
+            : (! empty($validated['product_id'])
+                ? [['product_id' => (int) $validated['product_id'], 'stock' => (int) ($validated['stock'] ?? 0)]]
+                : []);
 
+        if (empty($updates)) {
+            return response()->json(['status' => 'error', 'message' => 'Pilih setidaknya 1 variasi untuk diperbarui stoknya.'], 422);
+        }
+
+        $account = TiktokAccount::where('status', 'active')->first() ?? TiktokAccount::first();
         if (! $account) {
             return response()->json(['status' => 'error', 'message' => 'Akun TikTok tidak ditemukan.'], 422);
         }
 
-        $res = $this->syncService->updateProductStock($account, $product, (int) $validated['stock']);
+        $res = $this->syncService->updateTiktokProductsStock($account, $updates);
 
         return response()->json($res);
     }

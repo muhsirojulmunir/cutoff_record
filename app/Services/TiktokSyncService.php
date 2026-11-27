@@ -1707,6 +1707,10 @@ class TiktokSyncService
             $syncedCount = 0;
             $totalProducts = 0;
             $totalStockSum = 0;
+            $prunedVariantsCount = 0;
+            $prunedItemsCount = 0;
+            $syncedProductIds = [];
+            $completedFullScan = false;
 
             do {
                 $pageCount++;
@@ -1760,34 +1764,49 @@ class TiktokSyncService
                         continue;
                     }
                     $totalProducts++;
+                    $syncedProductIds[] = $pId;
                     $pName = (string) ($p['title'] ?? $p['product_name'] ?? 'Produk TikTok');
                     $pStatus = (string) ($p['status'] ?? $p['product_status'] ?? 'ACTIVATE');
                     $skus = is_array($p['skus'] ?? null) ? $p['skus'] : [];
 
-                    // Jika endpoint search tidak mengembalikan rincian SKU / sales_attributes varian, ambil dari Get Product Detail
+                    // Tarik detail lengkap bila search belum memuat skus, sales_attributes (multi-varian), atau data inventory/warehouse_id
                     $needsDetail = empty($skus);
-                    if (! $needsDetail && count($skus) > 1) {
-                        $hasAnyAttr = false;
+                    if (! $needsDetail) {
+                        $hasAnyAttr = count($skus) <= 1;
+                        $hasMissingInventory = false;
                         foreach ($skus as $checkSku) {
-                            if (! empty($checkSku['sales_attributes'])) {
+                            if (count($skus) > 1 && ! empty($checkSku['sales_attributes'])) {
                                 $hasAnyAttr = true;
-                                break;
+                            }
+                            if (empty($checkSku['inventory']) && empty($checkSku['stock_infos']) && ! isset($checkSku['available_stock'])) {
+                                $hasMissingInventory = true;
                             }
                         }
-                        if (! $hasAnyAttr) {
+                        if (! $hasAnyAttr || $hasMissingInventory) {
                             $needsDetail = true;
                         }
                     }
 
+                    $detailFailed = false;
                     if ($needsDetail) {
                         $detail = $this->fetchProductDetailRaw($account, $pId, $shopCipher);
+                        if ($detail === null) {
+                            usleep(300000);
+                            $detail = $this->fetchProductDetailRaw($account, $pId, $shopCipher);
+                        }
                         if (is_array($detail)) {
                             $pName = (string) ($detail['title'] ?? $detail['product_name'] ?? $pName);
                             $pStatus = (string) ($detail['status'] ?? $detail['product_status'] ?? $pStatus);
                             if (! empty($detail['skus']) && is_array($detail['skus'])) {
                                 $skus = $detail['skus'];
                             }
+                        } elseif (empty($skus)) {
+                            $detailFailed = true;
                         }
+                    }
+
+                    if ($detailFailed) {
+                        continue;
                     }
 
                     if (empty($skus)) {
@@ -1799,8 +1818,10 @@ class TiktokSyncService
                         ]];
                     }
 
+                    $syncedSkuIds = [];
                     foreach ($skus as $sku) {
                         $sId = (string) ($sku['id'] ?? $sku['sku_id'] ?? '0');
+                        $syncedSkuIds[] = $sId;
                         $sSku = trim((string) ($sku['seller_sku'] ?? ''));
 
                         $sStock = 0;
@@ -1870,8 +1891,18 @@ class TiktokSyncService
                         $syncedCount++;
                         $totalStockSum += $sStock;
                     }
+
+                    // Hapus varian usang di lokal jika sudah dihapus di TikTok Seller Center
+                    if (! empty($syncedSkuIds)) {
+                        $prunedVariantsCount += (int) \App\Models\TiktokProduct::where('tiktok_account_id', $account->id)
+                            ->where('item_id', $pId)
+                            ->whereNotIn('model_id', $syncedSkuIds)
+                            ->delete();
+                    }
                 }
             } while (! empty($pageToken) && $pageCount < $maxPages);
+
+            $completedFullScan = empty($pageToken);
 
             // Bersihkan produk contoh bawaan (seedInitialProducts) setelah katalog asli TikTok berhasil tersinkron
             if ($syncedCount > 0) {
@@ -1886,18 +1917,42 @@ class TiktokSyncService
                     ->delete();
             }
 
+            // Hapus produk lokal yang sudah dihapus dari TikTok Seller Center (hanya jika full scan selesai bersih)
+            if ($completedFullScan) {
+                if (! empty($syncedProductIds)) {
+                    $prunedItemsCount = (int) \App\Models\TiktokProduct::where('tiktok_account_id', $account->id)
+                        ->whereNotIn('item_id', $syncedProductIds)
+                        ->delete();
+                } else {
+                    $prunedItemsCount = (int) \App\Models\TiktokProduct::where('tiktok_account_id', $account->id)->delete();
+                }
+            }
+
+            \App\Http\Controllers\TiktokProductController::clearAuditCache($account->id);
+
             $account->update([
                 'last_synced_at'   => $now,
                 'last_sync_status' => 'success',
                 'last_sync_error'  => null,
             ]);
 
+            $pruneNotes = [];
+            if ($prunedItemsCount > 0) {
+                $pruneNotes[] = "{$prunedItemsCount} varian dari produk yang dihapus ikut dibersihkan";
+            }
+            if ($prunedVariantsCount > 0) {
+                $pruneNotes[] = "{$prunedVariantsCount} varian lama dibersihkan";
+            }
+            $extraNote = ! empty($pruneNotes) ? ' (' . implode(', ', $pruneNotes) . ')' : '';
+
             return [
-                'status'         => 'success',
-                'total_items'    => $totalProducts,
-                'total_variants' => $syncedCount,
-                'total_stock'    => $totalStockSum,
-                'message'        => "Sinkronisasi live TikTok Shop API berhasil! {$syncedCount} SKU dari {$totalProducts} produk tersinkron.",
+                'status'          => 'success',
+                'total_items'     => $totalProducts,
+                'total_variants'  => $syncedCount,
+                'total_stock'     => $totalStockSum,
+                'pruned_items'    => $prunedItemsCount,
+                'pruned_variants' => $prunedVariantsCount,
+                'message'         => "Sinkronisasi live TikTok Shop API berhasil! {$syncedCount} SKU dari {$totalProducts} produk tersinkron{$extraNote}.",
             ];
         }
 
@@ -1964,64 +2019,327 @@ class TiktokSyncService
     }
 
     /**
-     * Update stok produk TikTok secara live ke API TikTok Shop dan database lokal.
+     * Update stok produk TikTok secara massal maupun satuan melalui TikTok Shop Open API v202309.
+     * Menggunakan shop_cipher, warehouse_id, serta signature payload JSON yang valid.
+     *
+     * @param  array<int, array{product_id: int|string, stock: int}>  $updates
+     * @return array{success: bool, status: string, updated_count: int, failures: array<int, array<string, mixed>>, succeeded_ids: array<int, int>, message: string}
      */
-    public function updateProductStock(TiktokAccount $account, \App\Models\TiktokProduct $product, int $newStock): array
+    public function updateTiktokProductsStock(TiktokAccount $account, array $updates): array
     {
         $this->ensureProductSchema();
 
+        $productIds = array_column($updates, 'product_id');
+        $stocksByProdId = [];
+        foreach ($updates as $u) {
+            $stocksByProdId[(int) $u['product_id']] = max(0, (int) $u['stock']);
+        }
+
+        $products = \App\Models\TiktokProduct::where('tiktok_account_id', $account->id)
+            ->whereIn('id', $productIds)
+            ->get();
+
+        if ($products->isEmpty()) {
+            return [
+                'success'       => false,
+                'status'        => 'error',
+                'updated_count' => 0,
+                'failures'      => [],
+                'succeeded_ids' => [],
+                'message'       => 'Tidak ada produk TikTok yang ditemukan untuk diubah stoknya.',
+            ];
+        }
+
         $token = trim((string) ($account->access_token ?? ''));
-        $apiUpdated = false;
+        $isConnectedApi = $token !== '' && $account->isConnected();
 
-        if ($token !== '' && $account->isConnected()) {
-            try {
-                $path = sprintf('/product/202309/products/%s/stocks/update', $product->item_id);
-                $timestamp = time();
-                $sign = $this->generateSignature($path, ['app_key' => $account->app_key, 'timestamp' => $timestamp], (string) $account->app_secret);
+        if ($isConnectedApi) {
+            $this->ensureValidAccessToken($account);
+            $account->refresh();
+            $token = trim((string) ($account->access_token ?? ''));
 
-                $url = sprintf(
-                    '%s%s?app_key=%s&timestamp=%s&sign=%s',
-                    $this->openHost, $path, urlencode((string) $account->app_key), $timestamp, $sign
-                );
-
-                $body = [
-                    'skus' => [
-                        [
-                            'id'              => $product->model_id !== '0' ? $product->model_id : $product->item_id,
-                            'available_stock' => $newStock,
-                        ],
-                    ],
-                ];
-
-                $res = Http::timeout(15)->withHeaders([
-                    'x-tts-access-token' => $token,
-                    'Content-Type'       => 'application/json',
-                ])->post($url, $body);
-
-                if ($res->successful()) {
-                    $apiUpdated = true;
-                }
-            } catch (\Throwable $e) {
-                Log::warning('TikTok Shop update stock API warning: ' . $e->getMessage());
+            if (empty($account->shop_cipher)) {
+                $this->fetchAuthorizedShops($account);
+                $account->refresh();
             }
         }
 
-        $oldStock = $product->stock;
-        $product->update([
-            'stock'          => $newStock,
-            'last_synced_at' => now(),
-        ]);
+        $shopCipher = trim((string) ($account->shop_cipher ?? ''));
+        $defaultWarehouseId = null;
+        $now = now();
+        $successCount = 0;
+        $failures = [];
+        $succeededIds = [];
+
+        $grouped = $products->groupBy('item_id');
+
+        foreach ($grouped as $itemId => $items) {
+            if (! $isConnectedApi) {
+                foreach ($items as $product) {
+                    $targetStock = $stocksByProdId[$product->id] ?? 0;
+                    $product->update([
+                        'stock'          => $targetStock,
+                        'last_synced_at' => $now,
+                    ]);
+                    $succeededIds[] = (int) $product->id;
+                    $successCount++;
+                }
+                continue;
+            }
+
+            if ($shopCipher === '') {
+                foreach ($items as $product) {
+                    $failures[] = [
+                        'item_id'  => $itemId,
+                        'model_id' => $product->model_id,
+                        'sku'      => $product->sku,
+                        'reason'   => 'Shop Cipher TikTok kosong. Hubungkan ulang akun di Integrasi TikTok.',
+                    ];
+                }
+                continue;
+            }
+
+            // Kumpulkan warehouse_id per SKU; tarik detail produk jika raw_data belum menyimpan warehouse_id
+            $whBySkuId = [];
+            $needsDetail = false;
+            foreach ($items as $product) {
+                $skuId = ($product->model_id !== null && $product->model_id !== '0' && $product->model_id !== '')
+                    ? (string) $product->model_id
+                    : (string) $product->item_id;
+
+                $raw = is_array($product->raw_data) ? $product->raw_data : [];
+                $whId = trim((string) (
+                    $raw['inventory'][0]['warehouse_id']
+                    ?? $raw['stock_infos'][0]['warehouse_id']
+                    ?? ''
+                ));
+                if ($whId !== '') {
+                    $whBySkuId[$skuId] = $whId;
+                } else {
+                    $needsDetail = true;
+                }
+            }
+
+            if ($needsDetail) {
+                $detail = $this->fetchProductDetailRaw($account, (string) $itemId, $shopCipher);
+                if (is_array($detail) && ! empty($detail['skus']) && is_array($detail['skus'])) {
+                    foreach ($detail['skus'] as $dSku) {
+                        $dSkuId = (string) ($dSku['id'] ?? $dSku['sku_id'] ?? '');
+                        $dWhId = trim((string) (
+                            $dSku['inventory'][0]['warehouse_id']
+                            ?? $dSku['stock_infos'][0]['warehouse_id']
+                            ?? ''
+                        ));
+                        if ($dSkuId !== '' && $dWhId !== '') {
+                            $whBySkuId[$dSkuId] = $dWhId;
+                        }
+                    }
+                }
+            }
+
+            $skusPayload = [];
+            $missingWhProducts = [];
+            foreach ($items as $product) {
+                $skuId = ($product->model_id !== null && $product->model_id !== '0' && $product->model_id !== '')
+                    ? (string) $product->model_id
+                    : (string) $product->item_id;
+                $whId = $whBySkuId[$skuId] ?? null;
+
+                if (! $whId) {
+                    if ($defaultWarehouseId === null) {
+                        $defaultWarehouseId = $this->fetchFirstWarehouseId($account, $shopCipher) ?? '';
+                    }
+                    $whId = $defaultWarehouseId !== '' ? $defaultWarehouseId : null;
+                }
+
+                if (! $whId) {
+                    $missingWhProducts[(int) $product->id] = true;
+                    $failures[] = [
+                        'item_id'  => $itemId,
+                        'model_id' => $product->model_id,
+                        'sku'      => $product->sku,
+                        'reason'   => 'Warehouse ID TikTok tidak ditemukan untuk produk ini.',
+                    ];
+                    continue;
+                }
+
+                $targetStock = $stocksByProdId[$product->id] ?? 0;
+                $skusPayload[] = [
+                    'id'        => $skuId,
+                    'inventory' => [
+                        [
+                            'warehouse_id' => $whId,
+                            'quantity'     => $targetStock,
+                        ],
+                    ],
+                ];
+            }
+
+            if (empty($skusPayload)) {
+                continue;
+            }
+
+            try {
+                $path = sprintf('/product/202309/products/%s/inventory/update', $itemId);
+                $timestamp = time();
+                $queryParams = [
+                    'app_key'     => (string) $account->app_key,
+                    'timestamp'   => (string) $timestamp,
+                    'shop_cipher' => $shopCipher,
+                ];
+                $bodyJson = json_encode(['skus' => $skusPayload], JSON_UNESCAPED_UNICODE);
+                $queryParams['sign'] = $this->generateSignature($path, $queryParams, (string) $account->app_secret, (string) $bodyJson);
+                $url = $this->openHost . $path . '?' . http_build_query($queryParams);
+
+                $res = Http::timeout(20)
+                    ->withHeaders([
+                        'x-tts-access-token' => $token,
+                        'Content-Type'       => 'application/json',
+                    ])
+                    ->withBody((string) $bodyJson, 'application/json')
+                    ->send('POST', $url);
+
+                $json = $res->json();
+                if (! $res->successful() || ($json['code'] ?? -1) !== 0) {
+                    $errMsg = is_array($json) ? ($json['message'] ?? "HTTP {$res->status()}") : "HTTP {$res->status()}";
+                    throw new RuntimeException($errMsg);
+                }
+
+                $failedSkuMessages = [];
+                foreach (($json['data']['failed_skus'] ?? $json['data']['errors'] ?? []) as $failEntry) {
+                    if (! is_array($failEntry)) {
+                        continue;
+                    }
+                    $fId = (string) ($failEntry['id'] ?? $failEntry['sku_id'] ?? '');
+                    if ($fId !== '') {
+                        $failedSkuMessages[$fId] = (string) ($failEntry['message'] ?? $failEntry['reason'] ?? 'Gagal update stok SKU TikTok');
+                    }
+                }
+
+                foreach ($items as $product) {
+                    if (isset($missingWhProducts[(int) $product->id])) {
+                        continue;
+                    }
+                    $skuId = ($product->model_id !== null && $product->model_id !== '0' && $product->model_id !== '')
+                        ? (string) $product->model_id
+                        : (string) $product->item_id;
+
+                    if (isset($failedSkuMessages[$skuId])) {
+                        $failures[] = [
+                            'item_id'  => $itemId,
+                            'model_id' => $product->model_id,
+                            'sku'      => $product->sku,
+                            'reason'   => $failedSkuMessages[$skuId],
+                        ];
+                        continue;
+                    }
+
+                    $targetStock = $stocksByProdId[$product->id] ?? 0;
+                    $raw = is_array($product->raw_data) ? $product->raw_data : [];
+                    if (empty($raw['inventory']) && isset($whBySkuId[$skuId])) {
+                        $raw['inventory'] = [['warehouse_id' => $whBySkuId[$skuId], 'quantity' => $targetStock]];
+                    } elseif (! empty($raw['inventory'][0])) {
+                        $raw['inventory'][0]['quantity'] = $targetStock;
+                    }
+
+                    $updateData = [
+                        'stock'          => $targetStock,
+                        'last_synced_at' => $now,
+                        'raw_data'       => $raw,
+                    ];
+                    if ($targetStock > 0) {
+                        $updateData['was_campaign_locked'] = false;
+                    }
+                    $product->update($updateData);
+                    $succeededIds[] = (int) $product->id;
+                    $successCount++;
+                }
+            } catch (\Throwable $e) {
+                Log::warning("[TikTokUpdateStock] Gagal update stok product {$itemId}: " . $e->getMessage());
+                foreach ($items as $product) {
+                    if (isset($missingWhProducts[(int) $product->id])) {
+                        continue;
+                    }
+                    $failures[] = [
+                        'item_id'  => $itemId,
+                        'model_id' => $product->model_id,
+                        'sku'      => $product->sku,
+                        'reason'   => $e->getMessage(),
+                    ];
+                }
+            }
+        }
+
+        if ($successCount > 0) {
+            \App\Http\Controllers\TiktokProductController::clearAuditCache($account->id);
+        }
 
         return [
-            'status'      => 'success',
-            'api_updated' => $apiUpdated,
+            'success'       => $successCount > 0,
+            'status'        => $successCount > 0 ? 'success' : 'error',
+            'updated_count' => $successCount,
+            'failures'      => $failures,
+            'succeeded_ids' => $succeededIds,
+            'message'       => $successCount > 0
+                ? "Berhasil memperbarui stok {$successCount} variasi di TikTok Shop!" . (! empty($failures) ? ' (' . count($failures) . ' variasi gagal)' : '')
+                : 'Gagal memperbarui stok di TikTok Shop: ' . ($failures[0]['reason'] ?? 'Periksa koneksi API TikTok.'),
+        ];
+    }
+
+    /**
+     * Ambil warehouse_id utama milik toko dari TikTok Shop API sebagai fallback bila raw_data belum memuat warehouse_id.
+     */
+    private function fetchFirstWarehouseId(TiktokAccount $account, string $shopCipher): ?string
+    {
+        try {
+            $path = '/logistics/202309/warehouses';
+            $queryParams = [
+                'app_key'     => (string) $account->app_key,
+                'timestamp'   => (string) time(),
+                'shop_cipher' => $shopCipher,
+            ];
+            $queryParams['sign'] = $this->generateSignature($path, $queryParams, (string) $account->app_secret, '');
+            $url = $this->openHost . $path . '?' . http_build_query($queryParams);
+
+            $res = Http::timeout(15)->withHeaders([
+                'x-tts-access-token' => (string) $account->access_token,
+                'Content-Type'       => 'application/json',
+            ])->get($url);
+
+            if (! $res->successful()) {
+                return null;
+            }
+            $json = $res->json();
+            $warehouses = $json['data']['warehouses'] ?? [];
+            foreach ($warehouses as $wh) {
+                $id = trim((string) ($wh['id'] ?? ''));
+                if ($id !== '' && (! empty($wh['is_default']) || count($warehouses) === 1)) {
+                    return $id;
+                }
+            }
+            return isset($warehouses[0]['id']) ? trim((string) $warehouses[0]['id']) : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Update stok 1 produk TikTok (kompatibel untuk pemanggil tunggal maupun zero-out/restore).
+     */
+    public function updateProductStock(TiktokAccount $account, \App\Models\TiktokProduct $product, int $newStock): array
+    {
+        $res = $this->updateTiktokProductsStock($account, [[
+            'product_id' => $product->id,
+            'stock'      => $newStock,
+        ]]);
+
+        return array_merge($res, [
+            'api_updated' => $res['success'] && ! empty($account->access_token) && $account->isConnected(),
             'item_id'     => $product->item_id,
             'model_id'    => $product->model_id,
             'sku'         => $product->sku,
-            'old_stock'   => $oldStock,
             'new_stock'   => $newStock,
-            'message'     => "Stok produk TikTok '{$product->sku}' berhasil diperbarui menjadi {$newStock} pcs" . ($apiUpdated ? ' dan tersinkron ke TikTok Shop API.' : '.'),
-        ];
+        ]);
     }
 
     /**

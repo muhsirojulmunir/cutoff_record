@@ -286,6 +286,51 @@ export default function TiktokProductsIndex({
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [zeroingOutId, setZeroingOutId] = useState<number | null>(null);
+  const autoSyncInFlightRef = useRef(false);
+
+  // Auto-sync latar belakang saat halaman dibuka & setiap 2 menit agar produk/varian/stok TikTok selalu up-to-date
+  useEffect(() => {
+    if (!account) return;
+    let isMounted = true;
+
+    const runBackgroundSync = async () => {
+      if (!isMounted || autoSyncInFlightRef.current || document.hidden) return;
+      autoSyncInFlightRef.current = true;
+      try {
+        const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
+        const res = await fetch('/tiktok-products/auto-sync', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            ...(csrfToken ? { 'X-CSRF-TOKEN': csrfToken } : {}),
+          },
+          body: '{}',
+        });
+        if (!res.ok || !isMounted) return;
+        const data = await res.json();
+        if (isMounted && data?.synced) {
+          router.reload({
+            only: ['products', 'summary', 'account', 'master_stock_summary', 'zeroRestoreSummary'],
+          });
+        }
+      } catch {
+        // Silent fail — tidak mengganggu aktivitas user saat auto-sync latar belakang gagal
+      } finally {
+        autoSyncInFlightRef.current = false;
+      }
+    };
+
+    runBackgroundSync();
+    const intervalId = window.setInterval(runBackgroundSync, 120_000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [account?.id]);
 
   // Dengarkan aksi "Kosongkan di TikTok" dari NotificationBell di topbar (khusus Super Admin)
   const latestPromptZeroOutRef = useRef<() => void>(() => {});

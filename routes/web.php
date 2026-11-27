@@ -65,6 +65,7 @@ Route::middleware('auth')->group(function () {
     // Stok Produk Shopee (Katalog SKU & Stok)
     Route::get('/shopee-products', [\App\Http\Controllers\ShopeeProductController::class, 'index'])->name('shopee-products.index');
     Route::post('/shopee-products/sync', [\App\Http\Controllers\ShopeeProductController::class, 'sync'])->name('shopee-products.sync');
+    Route::post('/shopee-products/auto-sync', [\App\Http\Controllers\ShopeeProductController::class, 'autoSync'])->name('shopee-products.auto-sync');
     Route::get('/shopee-products/export', [\App\Http\Controllers\ShopeeProductController::class, 'export'])->name('shopee-products.export');
     Route::post('/shopee-products/compare', [\App\Http\Controllers\ShopeeProductController::class, 'compareStock'])->name('shopee-products.compare');
     Route::post('/shopee-products/audit-master', [\App\Http\Controllers\ShopeeProductController::class, 'compareWithMaster'])->name('shopee-products.audit-master');
@@ -81,6 +82,7 @@ Route::middleware('auth')->group(function () {
     // Stok Produk TikTok (Katalog SKU & Stok)
     Route::get('/tiktok-products', [\App\Http\Controllers\TiktokProductController::class, 'index'])->name('tiktok-products.index');
     Route::post('/tiktok-products/sync', [\App\Http\Controllers\TiktokProductController::class, 'sync'])->name('tiktok-products.sync');
+    Route::post('/tiktok-products/auto-sync', [\App\Http\Controllers\TiktokProductController::class, 'autoSync'])->name('tiktok-products.auto-sync');
     Route::get('/tiktok-products/export', [\App\Http\Controllers\TiktokProductController::class, 'export'])->name('tiktok-products.export');
     Route::post('/tiktok-products/compare', [\App\Http\Controllers\TiktokProductController::class, 'compareStock'])->name('tiktok-products.compare');
     Route::post('/tiktok-products/audit-master', [\App\Http\Controllers\TiktokProductController::class, 'compareWithMaster'])->name('tiktok-products.audit-master');
@@ -272,6 +274,39 @@ Route::match(['get', 'post'], '/cron/shopee-products-sync/{token?}', function (\
         ], 500);
     }
 })->name('cron.shopee-products-sync');
+
+// Web Cron Trigger untuk sinkronisasi otomatis Stok & Produk TikTok Shop dari cPanel (via curl / wget)
+Route::match(['get', 'post'], '/cron/tiktok-products-sync/{token?}', function (\Illuminate\Http\Request $request, $token = null) {
+    $providedToken = $token ?? $request->query('token') ?? $request->header('X-Cron-Token');
+    $expectedToken = env('CRON_SYNC_TOKEN', 'recordsh_cutoff_sync_2026');
+
+    if ($providedToken && $providedToken !== $expectedToken) {
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'Unauthorized cron access: token tidak valid.',
+        ], 403);
+    }
+
+    try {
+        @ini_set('max_execution_time', '900');
+        @set_time_limit(900);
+        \Illuminate\Support\Facades\Artisan::call('tiktok:sync-products');
+        $output = \Illuminate\Support\Facades\Artisan::output();
+
+        return response()->json([
+            'status'    => 'success',
+            'message'   => 'TikTok products & stock sync executed successfully.',
+            'timestamp' => now()->toIso8601String(),
+            'output'    => trim($output),
+        ]);
+    } catch (\Throwable $e) {
+        \Illuminate\Support\Facades\Log::error('[WebCron] TikTok products sync failed: ' . $e->getMessage());
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'Sync error: ' . $e->getMessage(),
+        ], 500);
+    }
+})->name('cron.tiktok-products-sync');
 
 // Web Cron Trigger untuk Auto-Naikkan Produk Shopee berkala (setiap 5-10 menit via cron job cPanel)
 Route::match(['get', 'post'], '/cron/shopee-auto-boost/{token?}', function (\Illuminate\Http\Request $request, $token = null) {
