@@ -727,6 +727,9 @@ class ShopeeOrderService
             'fulfillment_method'   => $method,
             'shipping_arranged_at' => $refreshedOrder->shipping_arranged_at ?? now('Asia/Jakarta'),
         ];
+        if (in_array($refreshedOrder->order_status, ['READY_TO_SHIP', 'RETRY_SHIP'], true)) {
+            $localUpdates['order_status'] = 'PROCESSED';
+        }
         if (! empty($trackingNumber)) {
             $localUpdates['tracking_number'] = $trackingNumber;
         }
@@ -758,7 +761,7 @@ class ShopeeOrderService
             'tracking_number'      => $refreshedOrder->tracking_number,
             'fulfillment_method'   => $refreshedOrder->fulfillment_method,
             'order_status'         => $refreshedOrder->order_status,
-            'shipping_arranged_at' => $refreshedOrder->shipping_arranged_at?->format('Y-m-d H:i:s'),
+            'shipping_arranged_at' => $refreshedOrder->shipping_arranged_at?->toIso8601String(),
             'order'                => $refreshedOrder,
             'message'              => $refreshedOrder->tracking_number
                 ? "Pengiriman berhasil diatur. No. Resi: {$refreshedOrder->tracking_number}"
@@ -812,10 +815,11 @@ class ShopeeOrderService
                 $result = $this->shipOrder($account, $sn, $shipPayload);
 
                 $succeeded[] = [
-                    'order_sn'           => $sn,
-                    'tracking_number'    => $result['tracking_number'] ?? null,
-                    'fulfillment_method' => $result['fulfillment_method'] ?? null,
-                    'order_status'       => $result['order_status'] ?? 'PROCESSED',
+                    'order_sn'             => $sn,
+                    'tracking_number'      => $result['tracking_number'] ?? null,
+                    'fulfillment_method'   => $result['fulfillment_method'] ?? null,
+                    'order_status'         => $result['order_status'] ?? 'PROCESSED',
+                    'shipping_arranged_at' => $result['shipping_arranged_at'] ?? now('Asia/Jakarta')->toIso8601String(),
                 ];
             } catch (\Throwable $e) {
                 $failed[] = [
@@ -888,34 +892,24 @@ class ShopeeOrderService
         }
 
         $warnings = [];
+        $this->hydrateMissingTrackingNumbersForOrders($account, $orders);
+
         foreach ($orders as $order) {
             if (empty($order->tracking_number)) {
-                $tn = null;
-                for ($attempt = 1; $attempt <= 5; $attempt++) {
-                    try {
-                        $tn = $this->fetchTrackingNumber($account, $order->order_sn, $order->package_number ?: null);
-                        if (! empty($tn)) {
-                            $order->tracking_number = $tn;
-                            break;
-                        }
-                    } catch (\Throwable $e) {
-                        Log::warning("Shopee waybill fetchTrackingNumber attempt {$attempt} ({$order->order_sn}): " . $e->getMessage());
-                    }
-                    if ($attempt < 5) {
-                        usleep(min(2000000, 800000 + ($attempt * 300000)));
-                    }
-                }
-                if (empty($tn)) {
-                    $warnings[] = "No. Resi untuk {$order->order_sn} belum tersedia dari Shopee.";
-                }
+                $warnings[] = "No. Resi untuk {$order->order_sn} belum tersedia dari Shopee.";
             }
         }
 
         $createResultList = $this->requestCreateShippingDocuments($account, $orders);
         $failedSnMessages = $this->extractCreateShippingFailures($createResultList);
 
-        // Retry 1x khusus untuk order yang gagal sementara (mis. error_not_ready / tracking belum siap sesaat setelah ship)
-        if (! empty($failedSnMessages)) {
+        // Retry bertahap khusus untuk order yang gagal sementara (mis. SPX Hemat / error_not_ready sesaat setelah ship_order)
+        $createRetryDelaysMicros = [1200000, 2000000, 3000000];
+        foreach ($createRetryDelaysMicros as $delayMicros) {
+            if (empty($failedSnMessages)) {
+                break;
+            }
+
             $retryOrders = [];
             foreach ($orders as $order) {
                 $sn = $order->order_sn;
@@ -927,30 +921,21 @@ class ShopeeOrderService
                 }
             }
 
-            if (! empty($retryOrders)) {
-                usleep(800000);
-                foreach ($retryOrders as $retryOrder) {
-                    if (empty($retryOrder->tracking_number)) {
-                        try {
-                            $tn = $this->fetchTrackingNumber($account, $retryOrder->order_sn, $retryOrder->package_number ?: null);
-                            if (! empty($tn)) {
-                                $retryOrder->tracking_number = $tn;
-                            }
-                        } catch (\Throwable $e) {
-                            Log::warning("Shopee waybill retry fetchTrackingNumber ({$retryOrder->order_sn}): " . $e->getMessage());
-                        }
-                    }
-                }
+            if (empty($retryOrders)) {
+                break;
+            }
 
-                $retryResultList = $this->requestCreateShippingDocuments($account, $retryOrders);
-                $retryFailures = $this->extractCreateShippingFailures($retryResultList);
-                foreach ($retryOrders as $retryOrder) {
-                    $sn = $retryOrder->order_sn;
-                    if (isset($retryFailures[$sn])) {
-                        $failedSnMessages[$sn] = $retryFailures[$sn];
-                    } else {
-                        unset($failedSnMessages[$sn]);
-                    }
+            usleep($delayMicros);
+            $this->hydrateMissingTrackingNumbersForOrders($account, $retryOrders, 2);
+
+            $retryResultList = $this->requestCreateShippingDocuments($account, $retryOrders);
+            $retryFailures = $this->extractCreateShippingFailures($retryResultList);
+            foreach ($retryOrders as $retryOrder) {
+                $sn = $retryOrder->order_sn;
+                if (isset($retryFailures[$sn])) {
+                    $failedSnMessages[$sn] = $retryFailures[$sn];
+                } else {
+                    unset($failedSnMessages[$sn]);
                 }
             }
         }
@@ -974,7 +959,8 @@ class ShopeeOrderService
 
         $statusBySn = [];
         $pendingOrders = $eligibleOrders;
-        $maxPollAttempts = 14;
+        $maxPollAttempts = 24;
+        $retriedPollingFailures = [];
 
         for ($attempt = 1; $attempt <= $maxPollAttempts; $attempt++) {
             $docQueryList = $this->buildWaybillOrderList($pendingOrders, true, false);
@@ -987,6 +973,7 @@ class ShopeeOrderService
                 break;
             }
 
+            $transientPollFailOrders = [];
             foreach ($resultList as $entry) {
                 if (! is_array($entry)) {
                     continue;
@@ -999,8 +986,32 @@ class ShopeeOrderService
                 if ($status === 'FAILED' && $sn !== '') {
                     $failErr = trim((string) ($entry['fail_error'] ?? ''));
                     $failMsg = trim((string) ($entry['fail_message'] ?? ''));
-                    $failedSnMessages[$sn] = trim($failErr . ($failErr && $failMsg ? ': ' : '') . $failMsg) ?: 'Status dokumen FAILED';
+                    $combinedFail = trim($failErr . ($failErr && $failMsg ? ': ' : '') . $failMsg) ?: 'Status dokumen FAILED';
+
+                    if (! isset($retriedPollingFailures[$sn]) && $this->isTransientCreateWaybillError($combinedFail)) {
+                        $retriedPollingFailures[$sn] = true;
+                        $matchedOrder = null;
+                        foreach ($eligibleOrders as $eo) {
+                            if ($eo->order_sn === $sn) {
+                                $matchedOrder = $eo;
+                                break;
+                            }
+                        }
+                        if ($matchedOrder !== null) {
+                            $transientPollFailOrders[] = $matchedOrder;
+                            $statusBySn[$sn] = 'PROCESSING';
+                            continue;
+                        }
+                    }
+
+                    $failedSnMessages[$sn] = $combinedFail;
                 }
+            }
+
+            if (! empty($transientPollFailOrders) && $attempt < $maxPollAttempts) {
+                usleep(1000000);
+                $this->hydrateMissingTrackingNumbersForOrders($account, $transientPollFailOrders, 1);
+                $this->requestCreateShippingDocuments($account, $transientPollFailOrders);
             }
 
             $pendingOrders = array_values(array_filter(
@@ -1020,7 +1031,7 @@ class ShopeeOrderService
             }
 
             if ($attempt < $maxPollAttempts) {
-                usleep($attempt <= 4 ? 500000 : 800000);
+                usleep($attempt <= 6 ? 500000 : 900000);
             }
         }
 
@@ -1108,10 +1119,11 @@ class ShopeeOrderService
             : 'resi-shopee-massal-' . count($orderedResult) . '-pesanan-' . $printedAt->format('Ymd-His') . '-thermal.pdf';
 
         return [
-            'pdf_binary' => $binary,
-            'filename'   => $filename,
-            'orders'     => $orderedResult,
-            'warnings'   => array_values(array_unique($warnings)),
+            'pdf_binary'      => $binary,
+            'filename'        => $filename,
+            'orders'          => $orderedResult,
+            'ready_order_sns' => array_values(array_map(static fn (ShopeeOrder $o): string => $o->order_sn, $orderedResult)),
+            'warnings'        => array_values(array_unique($warnings)),
         ];
     }
 
@@ -2021,6 +2033,17 @@ class ShopeeOrderService
     {
         $lower = strtolower($message);
 
+        if (
+            str_contains($lower, 'error_auth')
+            || str_contains($lower, 'otorisasi shopee')
+            || str_contains($lower, 'different channel_id')
+            || str_contains($lower, 'packages_can_not_download_together')
+            || str_contains($lower, 'cancelled')
+            || str_contains($lower, 'unpaid')
+        ) {
+            return false;
+        }
+
         return str_contains($lower, 'not_ready')
             || str_contains($lower, 'not ready')
             || str_contains($lower, 'busy')
@@ -2028,7 +2051,112 @@ class ShopeeOrderService
             || str_contains($lower, 'try again')
             || str_contains($lower, 'system')
             || str_contains($lower, 'tracking_number')
-            || str_contains($lower, 'tracking number');
+            || str_contains($lower, 'tracking number')
+            || str_contains($lower, 'order_status')
+            || str_contains($lower, 'not_arranged')
+            || str_contains($lower, 'not arranged')
+            || str_contains($lower, 'not_processed')
+            || str_contains($lower, 'not processed')
+            || str_contains($lower, 'processing')
+            || str_contains($lower, 'in_progress')
+            || str_contains($lower, 'in progress')
+            || str_contains($lower, 'package_number')
+            || str_contains($lower, 'document')
+            || str_contains($lower, 'waybill')
+            || str_contains($lower, 'generating');
+    }
+
+    /**
+     * Ambil tracking number yang masih kosong untuk batch pesanan secara paralel (dengan retry putaran singkat).
+     *
+     * @param  array<int, ShopeeOrder>  $orders
+     */
+    private function hydrateMissingTrackingNumbersForOrders(ShopeeAccount &$account, array $orders, int $maxRounds = 4): void
+    {
+        for ($round = 1; $round <= $maxRounds; $round++) {
+            $missing = array_values(array_filter(
+                $orders,
+                static fn (ShopeeOrder $o): bool => trim((string) ($o->tracking_number ?? '')) === ''
+            ));
+
+            if (empty($missing)) {
+                return;
+            }
+
+            if (count($missing) === 1) {
+                $single = $missing[0];
+                try {
+                    $tn = $this->fetchTrackingNumber($account, $single->order_sn, $single->package_number ?: null);
+                    if (! empty($tn)) {
+                        $single->tracking_number = $tn;
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning("Shopee waybill fetchTrackingNumber round {$round} ({$single->order_sn}): " . $e->getMessage());
+                }
+            } else {
+                $trackingMap = [];
+                try {
+                    $responses = Http::pool(function (Pool $pool) use ($account, $missing): array {
+                        $reqs = [];
+                        foreach ($missing as $order) {
+                            $resolvedPkg = $this->resolvePackageNumber($account, $order->order_sn, $order->package_number ?: null);
+                            $query = $this->filterNonEmpty([
+                                'order_sn'       => $order->order_sn,
+                                'package_number' => $resolvedPkg,
+                            ]);
+                            $url = $this->buildSignedUrl($account, '/api/v2/logistics/get_tracking_number', $query);
+                            $reqs[$order->order_sn] = $pool->as($order->order_sn)->timeout(15)->get($url);
+                        }
+
+                        return $reqs;
+                    });
+
+                    foreach ($responses as $sn => $response) {
+                        if (! ($response instanceof Response) || ! $response->successful()) {
+                            continue;
+                        }
+                        $data = $response->json();
+                        if (! is_array($data) || ! empty($data['error'])) {
+                            continue;
+                        }
+                        $resp = is_array($data['response'] ?? null) ? $data['response'] : [];
+                        $tn = trim((string) (
+                            $resp['tracking_number']
+                            ?? $resp['last_mile_tracking_number']
+                            ?? $resp['first_mile_tracking_number']
+                            ?? $resp['plp_number']
+                            ?? ''
+                        ));
+                        if ($tn !== '') {
+                            $trackingMap[(string) $sn] = $tn;
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning("Shopee waybill pool fetchTrackingNumber round {$round}: " . $e->getMessage());
+                }
+
+                if (! empty($trackingMap)) {
+                    $this->recorder->applyTrackingNumbers($account, $trackingMap);
+                    foreach ($missing as $order) {
+                        if (isset($trackingMap[$order->order_sn])) {
+                            $order->tracking_number = $trackingMap[$order->order_sn];
+                        }
+                    }
+                }
+            }
+
+            $stillMissing = array_filter(
+                $missing,
+                static fn (ShopeeOrder $o): bool => trim((string) ($o->tracking_number ?? '')) === ''
+            );
+            if (empty($stillMissing)) {
+                return;
+            }
+
+            if ($round < $maxRounds) {
+                usleep(min(1800000, 700000 + ($round * 350000)));
+            }
+        }
     }
 
     /**

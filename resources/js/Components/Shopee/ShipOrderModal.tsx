@@ -8,6 +8,7 @@ import {
   ShopeeOrderRecord,
   ShopeePickupAddress,
   ShopeePickupTimeSlot,
+  ShopeePrintWaybillOutcome,
   ShopeeShipResult,
   ShopeeShippingParameterResponse,
 } from '../../Types/shopeeOrder';
@@ -31,7 +32,7 @@ export interface ShipOrderModalProps {
   onMassShipped?: (result: ShopeeMassShipResult) => void;
   onSuccess?: (result: ShopeeShipResult | ShopeeMassShipResult) => void;
   onPrintWaybill?: (order: ShopeeOrderRecord) => void;
-  onPrintMassWaybill?: (orders: ShopeeOrderRecord[]) => Promise<void> | void;
+  onPrintMassWaybill?: (orders: ShopeeOrderRecord[]) => Promise<ShopeePrintWaybillOutcome | void> | void;
 }
 
 type MassPreferredMethod = 'auto' | 'pickup' | 'dropoff';
@@ -589,7 +590,9 @@ export default function ShipOrderModal({
       const total = list.length;
       const printed = list.filter((o) => isOrderPrinted(o)).length;
       const unprinted = total - printed;
-      const needsArrange = list.filter((o) => !o.tracking_number && isShippableOrderStatus(o.order_status)).length;
+      const needsArrange = list.filter(
+        (o) => !o.tracking_number && !o.shipping_arranged_at && isShippableOrderStatus(o.order_status)
+      ).length;
       const isAllPrinted = total > 0 && unprinted === 0;
       return { total, printed, unprinted, needsArrange, isAllPrinted };
     },
@@ -1075,13 +1078,18 @@ export default function ShipOrderModal({
   };
 
   const handleExecuteMassShip = async (method: 'pickup' | 'dropoff') => {
-    if (submitting || targetOrdersToShip.length === 0) return;
+    const arrangeTargets = targetOrdersToShip.filter(
+      (o) => !o.tracking_number && !o.shipping_arranged_at && isShippableOrderStatus(o.order_status)
+    );
+    const effectiveTargets = arrangeTargets.length > 0 ? arrangeTargets : targetOrdersToShip;
+    if (submitting || effectiveTargets.length === 0) return;
 
     setSubmitError(null);
+    setShipSuccessNotice(null);
     setMassExecutingMethod(method);
 
     const payload: Record<string, unknown> = {
-      order_sns: targetOrdersToShip.map((o) => o.order_sn),
+      order_sns: effectiveTargets.map((o) => o.order_sn),
       preferred_method: method,
     };
 
@@ -1105,9 +1113,10 @@ export default function ShipOrderModal({
 
     if (result.data.succeeded && result.data.succeeded.length > 0) {
       const succeededMap = new Map(result.data.succeeded.map((s) => [s.order_sn, s]));
+      const arrangedAtNow = new Date().toISOString();
 
       // 1. Kumpulkan pesanan yang baru saja berhasil diatur pengirimannya
-      const succeededOrdersToPrint: ShopeeOrderRecord[] = targetOrdersToShip
+      const succeededOrdersToPrint: ShopeeOrderRecord[] = effectiveTargets
         .filter((o) => succeededMap.has(o.order_sn))
         .map((o) => {
           const resItem = succeededMap.get(o.order_sn);
@@ -1116,10 +1125,11 @@ export default function ShipOrderModal({
             order_status: resItem?.order_status || 'PROCESSED',
             tracking_number: resItem?.tracking_number || o.tracking_number,
             fulfillment_method: resItem?.fulfillment_method || method,
+            shipping_arranged_at: resItem?.shipping_arranged_at || o.shipping_arranged_at || arrangedAtNow,
           };
         });
 
-      // 2. Update orders in pendingMassOrders with their new status and tracking_number
+      // 2. Update orders in pendingMassOrders with their new status, arranged timestamp, and tracking_number
       setPendingMassOrders((prev) =>
         prev.map((o) => {
           const resItem = succeededMap.get(o.order_sn);
@@ -1129,6 +1139,7 @@ export default function ShipOrderModal({
             order_status: resItem.order_status || 'PROCESSED',
             tracking_number: resItem.tracking_number || o.tracking_number,
             fulfillment_method: resItem.fulfillment_method || method,
+            shipping_arranged_at: resItem.shipping_arranged_at || o.shipping_arranged_at || arrangedAtNow,
           };
         })
       );
@@ -1143,22 +1154,43 @@ export default function ShipOrderModal({
         setMassResult(null);
       }
 
-      // 3. AUTO CETAK RESI + TAMPILKAN LOADING DI TENGAH LAYAR
+      // 3. AUTO CETAK RESI + VERIFIKASI PDF BENAR-BENAR TERBUKA (ANTI SILENT FAILURE)
       if (succeededOrdersToPrint.length > 0 && onPrintMassWaybill) {
         setIsPreparingWaybill(true);
         setWaybillLoadingMessage(
           `Pengiriman berhasil diatur! Sedang memuat resi thermal untuk ${succeededOrdersToPrint.length} pesanan... Mohon tunggu sebentar.`
         );
         try {
-          await onPrintMassWaybill(succeededOrdersToPrint);
-          setPrintedOrderSns((prev) => {
-            const next = new Set(prev);
-            succeededOrdersToPrint.forEach((o) => next.add(o.order_sn));
-            return next;
-          });
-          setShipSuccessNotice(
-            `Pengiriman berhasil diatur dan resi thermal (${succeededOrdersToPrint.length} pesanan) telah dibuka untuk dicetak. Selesai cetak Anda tetap berada di halaman pengiriman massal.`
-          );
+          const outcome = await onPrintMassWaybill(succeededOrdersToPrint);
+          if (outcome && outcome.ok === false) {
+            setSubmitError(
+              `Pengiriman berhasil diatur (${succeededOrdersToPrint.length} pesanan), tetapi PDF resi gagal dibuka: ${outcome.error || 'Dokumen resi belum siap.'} Klik tombol "Cetak Resi & Simpan" di atas tanpa perlu keluar menu.`
+            );
+          } else {
+            const actualPrintedSns =
+              outcome && Array.isArray(outcome.readyOrderSns) && outcome.readyOrderSns.length > 0
+                ? outcome.readyOrderSns
+                : succeededOrdersToPrint.map((o) => o.order_sn);
+
+            setPrintedOrderSns((prev) => {
+              const next = new Set(prev);
+              actualPrintedSns.forEach((sn) => next.add(sn));
+              return next;
+            });
+
+            if (actualPrintedSns.length < succeededOrdersToPrint.length) {
+              setShipSuccessNotice(
+                `Pengiriman berhasil diatur (${succeededOrdersToPrint.length} pesanan). ${actualPrintedSns.length} resi dibuka, silakan klik "Cetak Resi & Simpan" untuk sisa pesanan.`
+              );
+              if (outcome?.warnings && outcome.warnings.length > 0) {
+                setSubmitError(outcome.warnings.join(' '));
+              }
+            } else {
+              setShipSuccessNotice(
+                `Pengiriman berhasil diatur dan resi thermal (${actualPrintedSns.length} pesanan) telah dibuka untuk dicetak. Selesai cetak Anda tetap berada di halaman pengiriman massal.`
+              );
+            }
+          }
         } catch (err: any) {
           console.error('Auto print waybill error:', err);
           setSubmitError(err instanceof Error ? err.message : 'Gagal menyiapkan PDF resi thermal otomatis.');
@@ -1195,15 +1227,34 @@ export default function ShipOrderModal({
     );
     setSubmitError(null);
     try {
-      await onPrintMassWaybill?.(ordersToPrint);
-      setPrintedOrderSns((prev) => {
-        const next = new Set(prev);
-        ordersToPrint.forEach((o) => next.add(o.order_sn));
-        return next;
-      });
-      setShipSuccessNotice(
-        `PDF Resi Thermal (${ordersToPrint.length} pesanan) berhasil disiapkan. Selesai mencetak, Anda tetap berada di halaman pengiriman massal.`
-      );
+      const outcome = await onPrintMassWaybill?.(ordersToPrint);
+      if (outcome && outcome.ok === false) {
+        setSubmitError(outcome.error || 'Gagal menyiapkan PDF resi thermal.');
+      } else {
+        const actualPrintedSns =
+          outcome && Array.isArray(outcome.readyOrderSns) && outcome.readyOrderSns.length > 0
+            ? outcome.readyOrderSns
+            : ordersToPrint.map((o) => o.order_sn);
+
+        setPrintedOrderSns((prev) => {
+          const next = new Set(prev);
+          actualPrintedSns.forEach((sn) => next.add(sn));
+          return next;
+        });
+
+        if (actualPrintedSns.length < ordersToPrint.length) {
+          setShipSuccessNotice(
+            `${actualPrintedSns.length} dari ${ordersToPrint.length} resi berhasil dibuka. Silakan cetak ulang sisanya sebentar lagi.`
+          );
+          if (outcome?.warnings && outcome.warnings.length > 0) {
+            setSubmitError(outcome.warnings.join(' '));
+          }
+        } else {
+          setShipSuccessNotice(
+            `PDF Resi Thermal (${actualPrintedSns.length} pesanan) berhasil disiapkan. Selesai mencetak, Anda tetap berada di halaman pengiriman massal.`
+          );
+        }
+      }
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Gagal menyiapkan PDF resi thermal.');
     } finally {
@@ -1917,10 +1968,14 @@ export default function ShipOrderModal({
                   </p>
                 </div>
 
-                {/* Box 2: Cetak Resi & Simpan (Tampil jika ada pesanan terpilih yang sudah ada No. Resi) */}
+                {/* Box 2: Cetak Resi & Simpan (Tampil jika ada pesanan terpilih yang sudah ada No. Resi / telah diatur) */}
                 {(() => {
                   const selectedReadyToPrint = targetOrdersToShip.filter(
-                    (o) => Boolean(o.tracking_number) || o.order_status === 'PROCESSED'
+                    (o) =>
+                      Boolean(o.tracking_number) ||
+                      Boolean(o.shipping_arranged_at) ||
+                      o.order_status === 'PROCESSED' ||
+                      o.order_status === 'SHIPPED'
                   );
                   const selectedUnprinted = selectedReadyToPrint.filter((o) => !isOrderPrinted(o));
 
@@ -1985,7 +2040,7 @@ export default function ShipOrderModal({
                 {/* Box 3: Atur Pengiriman Massal (Tampil jika ada pesanan terpilih yang belum diatur) */}
                 {(() => {
                   const selectedNeedArrange = targetOrdersToShip.filter(
-                    (o) => !o.tracking_number && isShippableOrderStatus(o.order_status)
+                    (o) => !o.tracking_number && !o.shipping_arranged_at && isShippableOrderStatus(o.order_status)
                   );
 
                   return (
@@ -2130,7 +2185,7 @@ export default function ShipOrderModal({
 
                             <button
                               type="button"
-                              disabled={submitting || targetOrdersToShip.length === 0}
+                              disabled={submitting || selectedNeedArrange.length === 0}
                               onClick={() => handleExecuteMassShip('pickup')}
                               className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#EE4D2D] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#d94122] disabled:cursor-not-allowed disabled:opacity-50 shadow-xs transition-colors cursor-pointer"
                             >
@@ -2140,7 +2195,7 @@ export default function ShipOrderModal({
                                   <span>Memproses Pickup...</span>
                                 </>
                               ) : (
-                                <span>Atur Pickup Massal ({targetOrdersToShip.length})</span>
+                                <span>Atur Pickup Massal ({selectedNeedArrange.length})</span>
                               )}
                             </button>
                           </>
@@ -2218,7 +2273,7 @@ export default function ShipOrderModal({
 
                             <button
                               type="button"
-                              disabled={submitting || targetOrdersToShip.length === 0}
+                              disabled={submitting || selectedNeedArrange.length === 0}
                               onClick={() => handleExecuteMassShip('dropoff')}
                               className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#EE4D2D] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#d94122] disabled:cursor-not-allowed disabled:opacity-50 shadow-xs transition-colors cursor-pointer"
                             >
@@ -2228,7 +2283,7 @@ export default function ShipOrderModal({
                                   <span>Memproses Drop-off...</span>
                                 </>
                               ) : (
-                                <span>Atur Antar ke Counter Massal ({targetOrdersToShip.length})</span>
+                                <span>Atur Antar ke Counter Massal ({selectedNeedArrange.length})</span>
                               )}
                             </button>
                           </>

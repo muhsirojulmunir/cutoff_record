@@ -28,15 +28,15 @@ class ShopeeOrderControllerTest extends TestCase
     {
         parent::setUp();
 
-        $superAdminRole = Role::create([
-            'name'        => 'Super Admin',
-            'description' => 'Akses penuh sistem',
-        ]);
+        $superAdminRole = Role::firstOrCreate(
+            ['name' => 'Super Admin'],
+            ['description' => 'Akses penuh sistem']
+        );
 
-        $staffRole = Role::create([
-            'name'        => 'Staff Gudang',
-            'description' => 'Akses operasional gudang',
-        ]);
+        $staffRole = Role::firstOrCreate(
+            ['name' => 'Staff Gudang'],
+            ['description' => 'Akses operasional gudang']
+        );
 
         $this->superAdmin = User::create([
             'name'     => 'Super Admin Shopee',
@@ -1146,5 +1146,163 @@ class ShopeeOrderControllerTest extends TestCase
             ->assertJsonPath('order_income.voucher_from_seller', 20000)
             ->assertJsonPath('cutoff.seller_voucher', 20000)
             ->assertJsonPath('cutoff.voucher_code', 'RECORD20');
+    }
+
+    public function test_mass_ship_and_immediate_mass_waybill_for_spx_hemat_recovers_from_async_lag(): void
+    {
+        $sns = [
+            '261127SPXHEMAT01',
+            '261127SPXHEMAT02',
+            '261127SPXHEMAT03',
+            '261127SPXHEMAT04',
+            '261127SPXHEMAT05',
+            '261127SPXHEMAT06',
+        ];
+
+        foreach ($sns as $idx => $sn) {
+            $pkgNo = 'OFG-HEMAT-' . ($idx + 1);
+            $this->makeShopeeOrder([
+                'order_sn'          => $sn,
+                'package_number'    => $pkgNo,
+                'package_list_json' => [[
+                    'package_number'   => $pkgNo,
+                    'logistics_status' => 'LOGISTICS_NOT_START',
+                ]],
+                'shipping_carrier'  => 'SPX Hemat',
+                'order_status'      => 'READY_TO_SHIP',
+                'tracking_number'   => null,
+            ]);
+        }
+
+        $trackingCalls = 0;
+        $createCalls = 0;
+        $pollCalls = 0;
+        $pdfPayload = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF";
+
+        Http::fake([
+            '*/api/v2/logistics/get_shipping_parameter*' => Http::response([
+                'error'    => '',
+                'message'  => '',
+                'response' => [
+                    'info_needed' => ['pickup' => ['address_id'], 'dropoff' => []],
+                    'pickup'      => [
+                        'address_list' => [
+                            [
+                                'address_id'     => 10,
+                                'address'        => 'Gudang Utama',
+                                'time_slot_list' => [['pickup_time_id' => 'SLOT_1']],
+                            ],
+                        ],
+                    ],
+                    'dropoff'     => ['branch_list' => []],
+                ],
+            ], 200),
+            '*/api/v2/logistics/ship_order*' => Http::response(['error' => '', 'message' => '', 'response' => []], 200),
+            // Simulasikan get_order_detail masih tertinggal READY_TO_SHIP sesaat setelah ship_order
+            '*/api/v2/order/get_order_detail*' => function (HttpClientRequest $req) {
+                $snList = array_filter(explode(',', (string) ($req['order_sn_list'] ?? '')));
+                $orderList = [];
+                foreach ($snList as $sn) {
+                    $orderList[] = [
+                        'order_sn'         => $sn,
+                        'order_status'     => 'READY_TO_SHIP',
+                        'shipping_carrier' => 'SPX Hemat',
+                        'package_list'     => [
+                            ['package_number' => 'OFG-HEMAT', 'logistics_status' => 'LOGISTICS_NOT_START'],
+                        ],
+                    ];
+                }
+
+                return Http::response(['error' => '', 'message' => '', 'response' => ['order_list' => $orderList]], 200);
+            },
+            // Simulasikan tracking_number belum keluar selama mass_ship, baru keluar saat createAndDownloadWaybillA4
+            '*/api/v2/logistics/get_tracking_number*' => function (HttpClientRequest $req) use (&$trackingCalls) {
+                $trackingCalls++;
+                $sn = (string) ($req['order_sn'] ?? '');
+                // 36 panggilan pertama (6 order x 6 attempt di shipOrder) belum keluar, baru keluar setelahnya
+                if ($trackingCalls <= 36) {
+                    return Http::response(['error' => 'logistics.error_not_ready', 'message' => 'Not ready'], 200);
+                }
+
+                return Http::response([
+                    'error'    => '',
+                    'message'  => '',
+                    'response' => ['tracking_number' => 'SPXID' . substr($sn, -6)],
+                ], 200);
+            },
+            // Attempt 1 create_shipping_document gagal sementara (error_not_ready), attempt 2 sukses semua 6
+            '*/api/v2/logistics/create_shipping_document*' => function (HttpClientRequest $req) use (&$createCalls) {
+                $createCalls++;
+                $orderList = $req->data()['order_list'] ?? [];
+                $results = [];
+                foreach ($orderList as $item) {
+                    $sn = (string) ($item['order_sn'] ?? '');
+                    if ($createCalls === 1) {
+                        $results[] = [
+                            'order_sn'     => $sn,
+                            'fail_error'   => 'logistics.error_not_ready',
+                            'fail_message' => 'Shipping document not ready',
+                        ];
+                    } else {
+                        $results[] = ['order_sn' => $sn];
+                    }
+                }
+
+                return Http::response([
+                    'error'    => '',
+                    'message'  => '',
+                    'response' => ['result_list' => $results],
+                ], 200);
+            },
+            '*/api/v2/logistics/get_shipping_document_result*' => function (HttpClientRequest $req) use (&$pollCalls) {
+                $pollCalls++;
+                $orderList = $req->data()['order_list'] ?? [];
+                $results = [];
+                foreach ($orderList as $item) {
+                    $results[] = [
+                        'order_sn' => (string) ($item['order_sn'] ?? ''),
+                        'status'   => $pollCalls === 1 ? 'PROCESSING' : 'READY',
+                    ];
+                }
+
+                return Http::response([
+                    'error'    => '',
+                    'message'  => '',
+                    'response' => ['result_list' => $results],
+                ], 200);
+            },
+            '*/api/v2/logistics/download_shipping_document*' => function () use ($pdfPayload) {
+                return Http::response($pdfPayload, 200, ['Content-Type' => 'application/pdf']);
+            },
+        ]);
+
+        // 1. Mass ship semua 6 pesanan SPX Hemat
+        $massRes = $this->actingAs($this->superAdmin)
+            ->postJson('/shopee-orders/mass-ship', [
+                'order_sns'        => $sns,
+                'preferred_method' => 'pickup',
+            ]);
+
+        $massRes->assertOk()
+            ->assertJsonPath('status', 'success')
+            ->assertJsonCount(6, 'succeeded');
+
+        foreach ($massRes->json('succeeded') as $item) {
+            // Wajib sudah PROCESSED & punya shipping_arranged_at meski get_order_detail sempat lag
+            $this->assertSame('PROCESSED', $item['order_status']);
+            $this->assertNotEmpty($item['shipping_arranged_at']);
+        }
+
+        // 2. Langsung cetak resi massal (auto-print setelah mass ship)
+        $waybillRes = $this->actingAs($this->superAdmin)
+            ->post('/shopee-orders/mass-waybill-a4', [
+                'order_sns' => $sns,
+            ]);
+
+        $waybillRes->assertOk();
+        $waybillRes->assertHeader('Content-Type', 'application/pdf');
+        $waybillRes->assertHeader('X-Shopee-Orders-Count', '6');
+        $waybillRes->assertHeader('X-Shopee-Ready-Order-Sns', implode(',', $sns));
+        $this->assertGreaterThanOrEqual(2, $createCalls);
     }
 }

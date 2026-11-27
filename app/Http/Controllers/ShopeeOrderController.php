@@ -1003,6 +1003,14 @@ class ShopeeOrderController extends Controller
             'Cache-Control'         => 'no-store, no-cache, must-revalidate',
         ];
 
+        $readyOrderSns = array_values(array_filter(array_map(
+            static fn ($o): string => $o instanceof ShopeeOrder ? (string) $o->order_sn : (string) $o,
+            $result['ready_order_sns'] ?? $result['orders'] ?? []
+        )));
+        if (! empty($readyOrderSns)) {
+            $headers['X-Shopee-Ready-Order-Sns'] = implode(',', $readyOrderSns);
+        }
+
         $warnings = array_values(array_unique(array_filter(
             array_map('strval', $result['warnings'] ?? []),
             static fn (string $w): bool => trim($w) !== ''

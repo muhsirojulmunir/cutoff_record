@@ -289,6 +289,14 @@ export interface ShopeeMassShipSuccessItem {
   tracking_number: string | null;
   fulfillment_method: string | null;
   order_status: string;
+  shipping_arranged_at?: string | null;
+}
+
+export interface ShopeePrintWaybillOutcome {
+  ok: boolean;
+  error?: string;
+  readyOrderSns?: string[];
+  warnings?: string[];
 }
 
 /**

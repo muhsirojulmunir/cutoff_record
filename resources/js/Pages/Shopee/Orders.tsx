@@ -38,6 +38,7 @@ import {
   ShopeeOrderType,
   ShopeeOrdersPageProps,
   ShopeePrintStatusFilter,
+  ShopeePrintWaybillOutcome,
   ShopeeRefreshDetailResponse,
   ShopeeShipResult,
   ShopeeSubTab,
@@ -1204,8 +1205,10 @@ export default function ShopeeOrdersPage({
   }, [revokeActiveBlobUrl]);
 
   const openWaybillPdfStream = useCallback(
-    async (targetOrders: ShopeeOrderRecord[], isMass: boolean) => {
-      if (printingTarget !== null) return;
+    async (targetOrders: ShopeeOrderRecord[], isMass: boolean): Promise<ShopeePrintWaybillOutcome> => {
+      if (printingTarget !== null) {
+        return { ok: false, error: 'Sedang menyiapkan dokumen resi lain, mohon tunggu sebentar.' };
+      }
 
       const eligible = targetOrders.filter(
         (o) =>
@@ -1216,8 +1219,9 @@ export default function ShopeeOrdersPage({
           )
       );
       if (eligible.length === 0) {
-        showToast('error', 'Pesanan yang dipilih belum diproses atau dibatalkan sehingga resi belum dapat dicetak.');
-        return;
+        const msg = 'Pesanan yang dipilih belum diproses atau dibatalkan sehingga resi belum dapat dicetak.';
+        showToast('error', msg);
+        return { ok: false, error: msg };
       }
 
       const capped = eligible.slice(0, MAX_SHOPEE_BATCH);
@@ -1267,7 +1271,9 @@ export default function ShopeeOrdersPage({
               },
             });
 
-        if (controller.signal.aborted || !isMountedRef.current) return;
+        if (controller.signal.aborted || !isMountedRef.current) {
+          return { ok: false, error: 'Permintaan cetak resi dibatalkan.' };
+        }
 
         const contentType = response.headers.get('content-type') ?? '';
         if (!response.ok || !contentType.toLowerCase().includes('application/pdf')) {
@@ -1279,14 +1285,17 @@ export default function ShopeeOrdersPage({
             // Non-JSON response
           }
           showToast('error', errMessage);
-          return;
+          return { ok: false, error: errMessage };
         }
 
         const blob = await response.blob();
-        if (controller.signal.aborted || !isMountedRef.current) return;
+        if (controller.signal.aborted || !isMountedRef.current) {
+          return { ok: false, error: 'Permintaan cetak resi dibatalkan.' };
+        }
         if (blob.size === 0) {
-          showToast('error', 'Dokumen PDF Resi kosong dari Shopee.');
-          return;
+          const msg = 'Dokumen PDF Resi kosong dari Shopee.';
+          showToast('error', msg);
+          return { ok: false, error: msg };
         }
 
         const fallbackFilename = isMass
@@ -1298,6 +1307,14 @@ export default function ShopeeOrdersPage({
         );
         const headerCount = Number(response.headers.get('x-shopee-orders-count'));
         const resolvedCount = Number.isFinite(headerCount) && headerCount > 0 ? headerCount : capped.length;
+
+        const rawReadySnsHeader = response.headers.get('x-shopee-ready-order-sns');
+        const readyOrderSns = rawReadySnsHeader
+          ? rawReadySnsHeader
+              .split(',')
+              .map((sn) => sn.trim())
+              .filter(Boolean)
+          : capped.map((o) => o.order_sn);
 
         const rawWarningsHeader = response.headers.get('x-shopee-waybill-warnings');
         if (rawWarningsHeader) {
@@ -1345,14 +1362,16 @@ export default function ShopeeOrdersPage({
         );
 
         router.reload({ only: ['orders', 'tabCounts'] });
+        return { ok: true, readyOrderSns, warnings };
       } catch (err: unknown) {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        if (isMountedRef.current) {
-          showToast(
-            'error',
-            err instanceof Error ? err.message : 'Kendala jaringan saat mengunduh PDF Resi.'
-          );
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return { ok: false, error: 'Permintaan cetak resi dibatalkan.' };
         }
+        const errMsg = err instanceof Error ? err.message : 'Kendala jaringan saat mengunduh PDF Resi.';
+        if (isMountedRef.current) {
+          showToast('error', errMsg);
+        }
+        return { ok: false, error: errMsg };
       } finally {
         if (waybillAbortRef.current === controller) {
           waybillAbortRef.current = null;
@@ -1373,8 +1392,10 @@ export default function ShopeeOrdersPage({
   );
 
   const handlePrintMassWaybillWithOrders = useCallback(
-    async (targetOrders: ShopeeOrderRecord[]) => {
-      if (targetOrders.length === 0) return;
+    async (targetOrders: ShopeeOrderRecord[]): Promise<ShopeePrintWaybillOutcome> => {
+      if (targetOrders.length === 0) {
+        return { ok: false, error: 'Tidak ada pesanan yang dipilih untuk dicetak.' };
+      }
       return await openWaybillPdfStream(targetOrders, true);
     },
     [openWaybillPdfStream]
