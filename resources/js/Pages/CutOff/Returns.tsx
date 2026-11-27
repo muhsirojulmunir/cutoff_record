@@ -1283,7 +1283,7 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                         </div>
 
                         <div className="pt-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-                          {task.seller_center_url ? (
+                          {canManage && task.seller_center_url ? (
                             <a
                               href={task.seller_center_url}
                               target="_blank"
@@ -1296,8 +1296,8 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                               </svg>
                             </a>
                           ) : (
-                            <span className="text-[10px] font-medium text-slate-400">
-                              {task.return_status || 'Aktif'}
+                            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                              {task.return_status ? `Status: ${task.return_status}` : 'Monitoring'}
                             </span>
                           )}
 
@@ -1320,6 +1320,12 @@ export default function Returns({ returns, filters, summary, disputeTasks = [], 
                                 Tidak Perlu
                               </button>
                             </div>
+                          )}
+
+                          {!canManage && activeWidgetTab === 'awaiting_appeal' && (
+                            <span className="text-[10px] font-medium text-slate-500">
+                              Menunggu validasi / banding admin
+                            </span>
                           )}
 
                           {activeWidgetTab === 'otw_office' && (
